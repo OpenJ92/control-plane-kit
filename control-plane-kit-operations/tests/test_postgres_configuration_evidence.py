@@ -2,6 +2,7 @@
 from dataclasses import replace
 from hashlib import sha256
 import unittest
+import json
 
 import psycopg
 import rfc8785
@@ -123,6 +124,24 @@ class _ObservedConnection:
 
 
 class PostgresConfigurationEvidenceTests(ConfigurationEvidenceHistoryFixture, unittest.TestCase):
+    def test_source_and_allocation_refuse_missing_or_wrong_original_state_commitment(self):
+        for reader in ("source", "allocation"):
+            for evidence in ({}, {"effect_attempt": {"attempt": 1, "state_fingerprint": "f" * 64}}):
+                with self.subTest(reader=reader, evidence="missing" if not evidence else "wrong"):
+                    ref, attempts = self.seed_recorded_claims(1)
+                    self.connection.execute("UPDATE cpk_activity_events SET payload=jsonb_set(payload, "
+                        "'{evidence}', %s::jsonb) WHERE event_id=%s",
+                        (json.dumps(evidence), attempts[0].original_start_event.event_id))
+                    before = self.complete_start_snapshot()
+                    if reader == "source":
+                        result = self.read_source(attempts[0], ref)
+                        self.assertEqual(result.state, "unavailable")
+                        self.assertIsNone(result.source)
+                    else:
+                        with self.unit_of_work() as uow:
+                            self.assert_allocation_unavailable(self.allocation_reader(uow.stores)(ref))
+                    self.assertEqual(self.complete_start_snapshot(), before)
+
     def test_public_and_private_attempt_writers_require_owner_preparation(self):
         for method in ("insert_absent", "_insert_absent"):
             with self.subTest(method=method):
