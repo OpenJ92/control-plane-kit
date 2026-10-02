@@ -528,7 +528,8 @@ def _require_intent_replay(
             command.intent,
         )
         observed = stores.effect_attempt_intents.get(attempt.state.identity)
-        if observed.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+        if (type(observed) is EffectAttemptIntentRecord
+                and observed.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
             stores.configuration_preparation._require_original(observed)
     except (KeyError, OperationsRecordError):
         failed = True

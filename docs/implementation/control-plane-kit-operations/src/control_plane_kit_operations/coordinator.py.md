@@ -114,3 +114,16 @@ The observation-only replay context already carries the verified original
 intent. Execution consumes it directly; unrelated legacy effect steps do not
 open an extra intent-locator UoW. Request-before-run lock tests identify the
 actual locking connection after the preceding read-only routing connection.
+
+The private context loader requires the command's accounting scope when its
+pinned graph contains configuration. Production callers enter through the
+existing execute, managed-execute or reobserve roots. Direct-context test
+fixtures explicitly establish the same accounting and routing precondition;
+they join an existing same-command ledger and do not introduce a production
+standalone fallback or reset an existing budget.
+
+Selected ancillary material belongs to one activity. The synthetic retained-
+history fixture therefore reloads each selected activity through the same
+material owner and translator in one shared accounting scope and UoW. Its
+canonical graph also registers its declared runtime through the real owner.
+These are test premises, not configuration allocation, provider or health proof.

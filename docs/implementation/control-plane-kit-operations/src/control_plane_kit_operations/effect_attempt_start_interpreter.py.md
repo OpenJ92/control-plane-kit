@@ -65,3 +65,8 @@ value gates all five durable components: event, intent, attempt, refs and claims
 Postinsert and replay validation require complete original protection. Existing
 attempts retain their exact intent and claims without reminting or current
 catalog selection; unsupported configuration compensation and B2 reuse refuse.
+
+Replay rejects nonexact intent-record types before reading an attribute or
+invoking equality on them. Configuration protection validation only runs after
+that nominal boundary; the hostile-subclass regression keeps this ordering
+observable without allocating IDs or mutating history.

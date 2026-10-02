@@ -25,8 +25,10 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     NativeConnectionObservation, NativeConnectionOutcome, effect_outcome_transition,
 )
 from control_plane_kit_operations.postgres import effect_attempt_store, effect_attempt_intent_store
+from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+from control_plane_kit_operations._configuration_preparation import _configuration_accounting
 from control_plane_kit_operations.records import ActivityEventRecord, BoundedEvidence
-from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_context
+from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_material
 from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
 
 
@@ -37,8 +39,10 @@ LEGACY_EVENT_ONLY = (AddSocketConnection, SwitchSocketConnection, RemoveSocketCo
 def retain_completion_inputs(case, context, *, activities=None):
     """Retain only the selected prefix/all of the plan, never target current truth."""
     selected = context.plan.activities if activities is None else activities
-    with case.unit_of_work() as uow:
+    with _configuration_accounting(context.run.run_id, join=True), case.unit_of_work() as uow:
         stores = uow.stores
+        stores.configuration_preparation._configure_run(context.run.run_id)
+        read = _EvidenceRead(stores.connection)
         ordinal = stores.execution.next_event_ordinal(context.run.run_id)
         for activity in selected:
             started_at = case.now()
@@ -53,10 +57,14 @@ def retain_completion_inputs(case, context, *, activities=None):
                 stores.execution.add_event(start)
                 stores.execution.add_event(end)
             else:
-                # This is the same pure pinned-material translator used by the
-                # coordinator, including Observe* intent construction. It does
-                # not establish signed-health preparation or authority.
-                intent = _runtime_effect_intent_for_context(context, activity)
+                # A coordinator context holds only one activity's ancillary
+                # material. Read each premise activity through the real owner
+                # and its original pinned graphs, sharing this UoW and ledger.
+                # The shared translator does not establish B1 refs/claims,
+                # signed-health preparation, provider effects or acceptance.
+                material = stores.configuration_preparation._material(
+                    stores, context.request, context.run, activity, read)
+                intent = _runtime_effect_intent_for_material(material, activity)
                 identity = EffectAttemptIdentity(intent.source.run_id, activity.activity_id.value, 1)
                 fingerprint = runtime_effect_intent_fingerprint(intent)
                 fence = EffectAttemptFence(context.fence.worker_id, context.fence.generation)
