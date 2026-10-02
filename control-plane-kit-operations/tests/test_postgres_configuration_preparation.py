@@ -1,5 +1,6 @@
 """#1923 first target batch; new laws at Operations' durable start boundary."""
 from dataclasses import replace
+from hashlib import sha256
 import unittest
 
 from control_plane_kit_core.configuration_instances import (
@@ -28,6 +29,8 @@ class PostgresConfigurationPreparationTests(ConfigurationPreparationFixture, uni
         self.assertEqual([row[6:] for row in refs], [(
             ref.runtime_id, ref.node_id, ConfigurationInstanceRefCodec().encode_canonical_bytes(ref),
             runtime_effect_intent_fingerprint(command.intent), "configuration-start", True,
+            "run-a", "start-api", 1, ref.artifact_id,
+            sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(),
         ) for ref in selected])
         with self.unit_of_work() as uow:
             original = uow.stores.effect_attempt_intents.get(command.transition.identity)

@@ -115,8 +115,8 @@ class PostgresConfigurationPreparationTransactionTests(ConfigurationPreparationF
                 fault = RuntimeError("injected compound-write fault")
                 original = getattr(owner, method)
 
-                def write_then_fail(store, value):
-                    original(store, value)
+                def write_then_fail(store, *args, **kwargs):
+                    original(store, *args, **kwargs)
                     raise fault
 
                 with mock.patch.object(owner, method, write_then_fail):

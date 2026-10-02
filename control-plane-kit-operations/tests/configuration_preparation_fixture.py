@@ -150,7 +150,8 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
                 f"missing #1923 durable protection relation: {relation}")
         refs = self.connection.execute(
             "SELECT run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, "
-            "runtime_id, node_id, ref_preimage, request_fingerprint, original_event_id, is_birth "
+            "runtime_id, node_id, ref_preimage, request_fingerprint, original_event_id, is_birth, "
+            "birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id, ref_digest "
             "FROM cpk_effect_configuration_refs ORDER BY artifact_id").fetchall()
         claims = self.connection.execute(
             "SELECT run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id "
