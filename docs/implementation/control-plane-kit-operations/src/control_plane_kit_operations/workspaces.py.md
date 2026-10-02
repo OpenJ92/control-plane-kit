@@ -23,5 +23,9 @@ backfill or reset. This evidence is not claim-release or configuration-acceptanc
 authority; B2's advancement/current-use boundary remains separate.
 
 E7 implementation is in progress on #1924 / draft PR #1926. The first three
-owning targets establish reviewed causal red at e4b9b1f7. Green validation and
-remaining rollback/concurrency/later-current/corruption/guard proofs are pending.
+owning targets establish reviewed causal red at e4b9b1f7. The focused owning
+gate at bf8d8b64 passes all nine initialization targets and nine schema targets,
+plus compile and clean import. It covers concurrency, commit rollback, original
+replay, corruption/missing-origin refusal, bounded transport and shared command
+accounting. Later-current replay after real advancement, remaining guard/order
+proofs and broader E7/B2 validation are pending.

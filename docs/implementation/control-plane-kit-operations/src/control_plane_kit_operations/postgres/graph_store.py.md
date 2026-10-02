@@ -58,8 +58,9 @@ projection. The immutable receipt is checked against the exact original empty
 graph, projection, creator and idempotency metadata, with bounded point reads;
 replay verification does not require today's current pointer to remain initial.
 No helper commits, adopts metadata as origin, backfills a missing receipt or
-grants accepted configuration membership. Source validation is pending; the
-first three creation laws have reviewed causal-red evidence on #1924.
+grants accepted configuration membership. The focused owning gate at bf8d8b64
+passes nine initialization and nine schema targets, compile and clean import;
+broader E7/B2 validation remains pending on #1924.
 
 The E7 command evidence scope roots/joins the existing ledger before the initial
 workspace lookup. It covers guarded creation writes as scalar returns, lifecycle
@@ -69,4 +70,6 @@ reserves only its bounded ID return, then retrieves the complete immutable row
 through the existing bounded getter; zero-row conflicts retain statement cost.
 Standalone roots are used only outside an active command, such as current-data
 verification. The review-found metadata transport and missing-ledger defects
-have focused causal-red evidence; corrected source has not yet run green.
+have focused causal-red evidence and pass their unchanged assertions in that
+green gate. The explicit-projection selection path, unreachable from E7's fresh
+creation, remains an accounting obligation for E1/E2 before those paths release.
