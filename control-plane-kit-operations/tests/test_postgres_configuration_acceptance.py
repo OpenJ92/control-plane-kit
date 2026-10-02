@@ -101,10 +101,11 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
             for relation in ("cpk_activity_events", "cpk_operation_actions"))
         return workspace, counts
 
-    def retained_snapshot(self):
+    def retained_snapshot(self, connection=None):
         # Observe the actual retained fixture, including deliberate corruption,
         # on this connection. This is a no-repair witness, not a receipt decoder.
-        return tuple((table, self.connection.execute(f"SELECT * FROM {table} ORDER BY {key}").fetchall())
+        connection = connection or self.connection
+        return tuple((table, connection.execute(f"SELECT * FROM {table} ORDER BY {key}").fetchall())
             for table, key in (
                 ("cpk_workspaces", "workspace_id"),
                 ("cpk_graph_versions", "graph_id"),
@@ -120,6 +121,43 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
         before = self.retained_snapshot()
         install_schema(self.connection)
         self.assertEqual(self.retained_snapshot(), before)
+
+    def test_private_writers_refuse_reconstructed_unissued_advancement_owner(self):
+        from control_plane_kit_operations._configuration_acceptance import _PreparedAdvancementReceipt
+        with self.unit_of_work() as uow:
+            original_workspace = uow.stores.workspaces.get("workspace-a")
+        accepted = self.advance()
+        original = self.retained_snapshot()
+        for writer in ("event", "action"):
+            with self.subTest(writer=writer):
+                with self.unit_of_work() as uow:
+                    stores = uow.stores
+                    guard = stores.graphs.lock_receiver_lifecycle("workspace-a")
+                    request = stores.execution.get_request("request-a")
+                    run = stores.execution.get_run("run-a")
+                    plan = stores.activity_history.get_plan("plan-a")
+                    event = replace(accepted.event, event_id="event-unissued",
+                        ordinal=stores.execution.next_event_ordinal("run-a"))
+                    action = replace(accepted.action, action_id="action-unissued",
+                        ordinal=stores.activity_history.next_action_ordinal("session-a"),
+                        idempotency_key="unissued-advance",
+                        payload={**accepted.action.payload, "event_id": event.event_id})
+                    # Attack premise: congruent copied data and real fresh L are
+                    # not an owner-issued prepared advancement transaction.
+                    reconstructed = _PreparedAdvancementReceipt(stores, guard, original_workspace,
+                        request, run, plan,
+                        stores.realized_graphs.get(plan.base_realized_projection_id),
+                        stores.realized_graphs.get(plan.desired_realized_projection_id), event, action)
+                    before = self.retained_snapshot(stores.connection)
+                    with self.assertRaises(OperationsRecordError) as caught:
+                        if writer == "event":
+                            stores.execution._add_advancement_event(event, reconstructed)
+                        else:
+                            stores.activity_history._add_advancement_action(action, reconstructed)
+                    self.assertIs(type(caught.exception), OperationsRecordError)
+                    self.assertLessEqual(len(str(caught.exception)), 512)
+                    self.assertEqual(self.retained_snapshot(stores.connection), before)
+                self.assertEqual(self.retained_snapshot(), original)
 
     def test_current_schema_refuses_corrupt_original_acceptance_without_repair(self):
         accepted = self.advance()
