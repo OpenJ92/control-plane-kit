@@ -94,8 +94,14 @@ class PostgresWorkspaceInitializationTests(LifecycleLockFixture, unittest.TestCa
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.workspaces.get("workspace-a"), before)
             self.assertEqual(uow.stores.graphs.get(graph.graph_id), graph)
+        if self.connection.execute(
+                "SELECT to_regclass('cpk_workspace_initializations')").fetchone()[0] is not None:
+            self.assertEqual(self.connection.execute(
+                "SELECT count(*) FROM cpk_workspace_initializations "
+                "WHERE workspace_id='workspace-a'").fetchone()[0], 0,
+                "refused replay backfilled an original initialization receipt")
 
-    def test_fresh_creation_takes_lifecycle_before_ids_time_and_any_new_rows(self):
+    def test_fresh_creation_takes_lifecycle_before_ids_and_time(self):
         ids, clock_calls = [], []
 
         def create(factory):
@@ -106,9 +112,6 @@ class PostgresWorkspaceInitializationTests(LifecycleLockFixture, unittest.TestCa
                 ("receiver-lifecycle:workspace-a",), create) as future:
             self.assertEqual(ids, [], "fresh creation allocated graph identity before L")
             self.assertEqual(clock_calls, [], "fresh creation sampled time before L")
-            self.assertEqual(self.connection.execute(
-                "SELECT count(*) FROM cpk_workspaces WHERE workspace_id='workspace-a'"
-            ).fetchone()[0], 0)
         self.assertEqual(future.result(timeout=1).current_graph.graph_id, "graph-initial")
         self.assertEqual(ids, ["graph-initial"])
         self.assertEqual(clock_calls, ["sampled"])
