@@ -538,6 +538,42 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
                 )
             )
 
+    def test_approved_configuration_cleanup_is_refused_before_clock_ids_or_writes(self) -> None:
+        from tests.configuration_instance_fixture import configuration_cleanup_activity
+
+        activity = configuration_cleanup_activity()
+        self.seed_plan_truth(
+            plan_id="plan-cleanup",
+            approval_request_id="approval-cleanup",
+            approval_decision_id="decision-cleanup",
+            plan=ActivityPlan((activity,)),
+        )
+        before = self.connection.execute(
+            "SELECT action_id FROM cpk_operation_actions ORDER BY action_id"
+        ).fetchall()
+        calls = []
+
+        def forbidden_value():
+            calls.append("clock-or-id")
+            raise AssertionError("cleanup refusal must precede clock and ID allocation")
+
+        service = ExecutionAdmissionCommandService(
+            self.unit_of_work, clock=forbidden_value, id_factory=forbidden_value,
+        )
+        with self.assertRaisesRegex(ExecutionAdmissionConflict, "configuration cleanup.*unsupported"):
+            service.execute(self.command(
+                plan_id="plan-cleanup", approval_request_id="approval-cleanup",
+                scopes=(PolicyScope.PLAN_EXECUTE,),
+            ))
+        self.assertEqual(calls, [])
+        self.assertEqual(self.connection.execute(
+            "SELECT action_id FROM cpk_operation_actions ORDER BY action_id"
+        ).fetchall(), before)
+        with self.unit_of_work() as unit_of_work:
+            self.assertIsNone(unit_of_work.stores.execution.request_for_idempotency(
+                "workspace-a", "execute-a",
+            ))
+
     def test_empty_plan_is_valid_planning_truth_but_not_executable_work(self) -> None:
         self.seed_plan_truth(
             plan_id="plan-empty",

@@ -13,6 +13,14 @@ import re
 from typing import Mapping
 from urllib.parse import urlsplit
 
+import rfc8785
+
+from control_plane_kit_core.configuration_instances import (
+    ConfigurationCleanupOutcomeSet, ConfigurationCleanupOutcomeSetCodec,
+    ConfigurationCleanupStatus, ConfigurationInstanceSelection,
+    ConfigurationInstanceSelectionCodec, _maximum_cleanup_outcomes,
+)
+
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -21,7 +29,7 @@ from control_plane_kit_core.environment import (
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityOperation, ReconcileNode, ReviewChange, StartNode,
+    ActivityId, ActivityOperation, CleanupConfigurationInstances, ReconcileNode, ReviewChange, StartNode,
 )
 from control_plane_kit_core.planning.codec import (
     ActivityPlanDescriptorError,
@@ -76,6 +84,7 @@ class RuntimeEffectKind(StrEnum):
     """Closed runtime-effect intents interpreters can execute."""
 
     REALIZE_ACTIVITY = "realize-activity"
+    CONFIGURATION_ACTIVITY_V1 = "configuration-activity.v1"
 
 
 @dataclass(frozen=True, order=True)
@@ -490,6 +499,7 @@ class RuntimeEffectRequest:
         repr=False,
     )
     products: tuple[RuntimeProductMaterial, ...] = ()
+    configuration_instances: ConfigurationInstanceSelection | None = None
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
@@ -609,10 +619,16 @@ class RuntimeEffectRequest:
         _validate_runtime_authority_recipient(
             self.operation, self.authority_ref, self.authority_deliveries, products
         )
+        _validate_configuration_effect(
+            self.kind, self.operation, self.source.workspace_id, products,
+            self.authority_deliveries, self.configuration_instances,
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
             "effect_id": self.effect_id,
+            **({"configuration_instances": ConfigurationInstanceSelectionCodec().encode(self.configuration_instances)}
+               if self.configuration_instances is not None else {}),
             "kind": self.kind.value,
             "runtime_kind": self.runtime_kind.value,
             "authority_ref": None
@@ -1239,3 +1255,136 @@ def _validate_repository_scope(value: str) -> None:
         raise RuntimeEffectContractError(
             "repository must be a bounded lowercase OCI path"
         )
+
+
+# Full RuntimeEffectResult capacity, shared with the existing fingerprint/store
+# contract. This is distinct from read-only observation evidence capacity.
+_CONFIGURATION_RESULT_MAX_BYTES = 8_192
+
+
+def _validate_configuration_effect(
+    kind: RuntimeEffectKind,
+    operation: object,
+    workspace_id: str,
+    products: tuple[RuntimeProductMaterial, ...],
+    deliveries: tuple[RuntimeAuthorityAccessDelivery, ...],
+    selection: ConfigurationInstanceSelection | None,
+) -> None:
+    if kind is RuntimeEffectKind.REALIZE_ACTIVITY:
+        if selection is not None or isinstance(operation, CleanupConfigurationInstances):
+            raise RuntimeEffectContractError("configuration material requires configuration-activity.v1")
+        return
+    if kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+        raise RuntimeEffectContractError("configuration effect kind is malformed")
+    if type(operation) is CleanupConfigurationInstances:
+        if selection is not None or products or deliveries:
+            raise RuntimeEffectContractError("configuration cleanup has one candidate source")
+        operation.__post_init__()
+        if any(ref.workspace_id != workspace_id for ref in operation.instances):
+            raise RuntimeEffectContractError("configuration cleanup workspace must match source")
+        _require_cleanup_capacity(operation)
+        return
+    if type(operation) not in (StartNode, ReconcileNode):
+        raise RuntimeEffectContractError("operation does not support configuration instances")
+    if type(selection) is not ConfigurationInstanceSelection:
+        raise RuntimeEffectContractError("configuration effect requires exact selection")
+    invalid = False
+    try:
+        ConfigurationInstanceSelectionCodec().encode(selection)
+    except (TypeError, ValueError):
+        invalid = True
+    if invalid:
+        raise RuntimeEffectContractError("configuration effect selection is malformed")
+    if len(products) != 1 or products[0].node_id != operation.target.node_id:
+        raise RuntimeEffectContractError("configuration effect requires exact target material")
+    material = products[0]
+    if any((ref.workspace_id, ref.runtime_id, ref.node_id) !=
+           (workspace_id, material.runtime_id, material.node_id) for ref in selection.instances):
+        raise RuntimeEffectContractError("configuration selection scope must match target")
+    selected = {(ref.artifact_id, ref.target_path, ref.media_type, ref.file_mode, ref.content_digest)
+                for ref in selection.instances}
+    artifacts = material.product.runtime_contract.configuration_artifacts
+    expected = {(artifact.artifact_id, artifact.target_path, artifact.media_type,
+                 artifact.file_mode, artifact.content_digest) for artifact in artifacts}
+    if len(selection.instances) != len(artifacts) or selected != expected:
+        raise RuntimeEffectContractError("configuration selection must match all selected artifacts")
+
+
+def _cleanup_result_envelope(
+    effect_id: str, outcomes: ConfigurationCleanupOutcomeSet, kind: EffectResultKind,
+) -> RuntimeEffectResult:
+    """One actual envelope constructor for capacity and conserved results."""
+    failure = None
+    if kind is EffectResultKind.UNCERTAIN:
+        failure = RuntimeEffectFailure("configuration.cleanup-uncertain",
+            "Configuration cleanup outcome is uncertain.")
+    elif kind is EffectResultKind.FAILED:
+        failure = RuntimeEffectFailure("configuration.cleanup-incomplete",
+            "Configuration cleanup is incomplete.")
+    return RuntimeEffectResult(effect_id=effect_id, kind=kind,
+        evidence={"configuration_cleanup": ConfigurationCleanupOutcomeSetCodec().encode(outcomes)},
+        failure=failure, observations=())
+
+
+def _require_cleanup_result_size(result: RuntimeEffectResult) -> None:
+    document = b""
+    try:
+        document = rfc8785.dumps(result.descriptor())
+    except (TypeError, ValueError, RecursionError):
+        pass
+    if not document or len(document) > _CONFIGURATION_RESULT_MAX_BYTES:
+        raise RuntimeEffectContractError("configuration cleanup result exceeds durable capacity")
+
+
+def _require_cleanup_capacity(operation: CleanupConfigurationInstances) -> None:
+    # Preserve every full original ref. The longest legal row and every outer
+    # aggregate deliberately overestimate, including maximal event-id escaping.
+    outcomes = _maximum_cleanup_outcomes(operation.instances)
+    for kind in (EffectResultKind.SUCCEEDED, EffectResultKind.FAILED, EffectResultKind.UNCERTAIN):
+        _require_cleanup_result_size(_cleanup_result_envelope("\x01" * 512, outcomes, kind))
+
+
+def configuration_cleanup_result(
+    request: RuntimeEffectRequest, outcomes: ConfigurationCleanupOutcomeSet,
+) -> RuntimeEffectResult:
+    """Conserve original candidates and derive correlation and aggregate truth.
+
+    This validates reported structure, not ownership or provider deletion.
+    """
+    if (type(request) is not RuntimeEffectRequest
+            or type(request.operation) is not CleanupConfigurationInstances
+            or request.kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
+        raise RuntimeEffectContractError("configuration cleanup requires exact request")
+    RuntimeEffectRequest.__post_init__(request)
+    if type(outcomes) is not ConfigurationCleanupOutcomeSet:
+        raise RuntimeEffectContractError("configuration cleanup outcomes are malformed")
+    ConfigurationCleanupOutcomeSetCodec().encode(outcomes)
+    if tuple(row.ref for row in outcomes.outcomes) != request.operation.instances:
+        raise RuntimeEffectContractError("configuration cleanup outcomes must conserve candidates")
+    statuses = {row.status for row in outcomes.outcomes}
+    if ConfigurationCleanupStatus.UNKNOWN in statuses:
+        kind = EffectResultKind.UNCERTAIN
+    elif statuses <= {ConfigurationCleanupStatus.REMOVED, ConfigurationCleanupStatus.ALREADY_ABSENT}:
+        kind = EffectResultKind.SUCCEEDED
+    else:
+        kind = EffectResultKind.FAILED
+    result = _cleanup_result_envelope(request.effect_id, outcomes, kind)
+    _require_cleanup_result_size(result)
+    return result
+
+
+def configuration_cleanup_outcomes(
+    request: RuntimeEffectRequest, result: RuntimeEffectResult,
+) -> ConfigurationCleanupOutcomeSet:
+    """Read only an exact total outcome set correlated to the original request."""
+    if type(result) is not RuntimeEffectResult:
+        raise RuntimeEffectContractError("configuration cleanup result is malformed")
+    RuntimeEffectResult.__post_init__(result)
+    if set(result.evidence) != {"configuration_cleanup"}:
+        raise RuntimeEffectContractError("configuration cleanup evidence is malformed")
+    outcomes = ConfigurationCleanupOutcomeSetCodec().decode(result.evidence["configuration_cleanup"])
+    expected = configuration_cleanup_result(request, outcomes)
+    if result.descriptor() != expected.descriptor():
+        raise RuntimeEffectContractError("configuration cleanup result does not match conserved outcomes")
+    _require_cleanup_result_size(result)
+    return outcomes

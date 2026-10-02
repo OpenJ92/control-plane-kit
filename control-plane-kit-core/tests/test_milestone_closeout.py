@@ -15,6 +15,7 @@ EXPECTED_MODULES = {
     "approval_subjects",
     "capabilities",
     "configuration",
+    "configuration_instances",
     "configuration_rendering",
     "control_contracts",
     "control_routes",

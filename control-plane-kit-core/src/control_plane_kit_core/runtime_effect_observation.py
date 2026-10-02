@@ -11,6 +11,10 @@ from typing import TypeAlias
 
 import rfc8785
 
+from control_plane_kit_core.configuration_instances import (
+    ConfigurationInstanceSelection, ConfigurationInstanceSelectionCodec,
+)
+
 from control_plane_kit_core.runtime_authority import (
     RemoteDockerTlsConnectionAdmission,
     validate_runtime_connection_grants,
@@ -33,6 +37,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeProductMaterial,
     activity_operation_descriptor,
     _validate_runtime_authority_recipient,
+    _validate_configuration_effect,
 )
 from control_plane_kit_core.secrets import SecretResolutionGrant, SecretUseIntent
 from control_plane_kit_core.verification import (
@@ -100,6 +105,7 @@ class RuntimeEffectIntent:
     authority_ref: RuntimeAuthorityReference | None
     authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...]
     products: tuple[RuntimeProductMaterial, ...]
+    configuration_instances: ConfigurationInstanceSelection | None = None
 
     def __post_init__(self) -> None:
         if type(self.kind) is not RuntimeEffectKind:
@@ -135,9 +141,15 @@ class RuntimeEffectIntent:
         _validate_runtime_authority_recipient(
             self.operation, self.authority_ref, self.authority_deliveries, self.products
         )
+        _validate_configuration_effect(
+            self.kind, self.operation, self.source.workspace_id, self.products,
+            self.authority_deliveries, self.configuration_instances,
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
+            **({"configuration_instances": ConfigurationInstanceSelectionCodec().encode(self.configuration_instances)}
+               if self.configuration_instances is not None else {}),
             "kind": self.kind.value,
             "runtime_kind": self.runtime_kind.value,
             "authority_ref": (
@@ -185,6 +197,7 @@ def runtime_effect_intent_for_request(
         authority_ref=request.authority_ref,
         authority_deliveries=request.authority_deliveries,
         products=request.products,
+        configuration_instances=request.configuration_instances,
     )
 
 
@@ -224,6 +237,7 @@ def runtime_effect_request_for_intent(
         authority_deliveries=intent.authority_deliveries,
         secret_resolution_grants=secret_resolution_grants,
         products=intent.products,
+        configuration_instances=intent.configuration_instances,
     )
 
 

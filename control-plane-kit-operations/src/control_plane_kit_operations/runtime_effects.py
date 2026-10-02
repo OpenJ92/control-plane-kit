@@ -11,6 +11,7 @@ from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
+    CleanupConfigurationInstances,
     NodeTarget,
     ObserveManagementBootstrap,
     ObserveNodeHealth,
@@ -127,6 +128,8 @@ def _runtime_effect_intent_for_context(
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
+    if isinstance(activity.operation, CleanupConfigurationInstances):
+        raise InvalidOperationCommand("configuration cleanup execution is unsupported")
     if runtime_management_execution_is_unsupported(
         DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
         DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
