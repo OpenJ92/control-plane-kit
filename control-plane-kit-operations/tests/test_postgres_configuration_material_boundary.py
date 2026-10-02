@@ -14,13 +14,17 @@ from tests.test_postgres_configuration_evidence import _ObservedConnection, _Obs
 from tests.test_runtime_effect_translation import _registered_product
 
 
-def _catalog_read(query, observations):
-    text = str(query).lower().strip()
+def _catalog_read(query, connection, observations):
+    rendered = query.as_string(connection) if hasattr(query, "as_string") else query
+    if isinstance(rendered, bytes):
+        rendered = rendered.decode("utf-8")
+    text = str(rendered).lower().strip()
     if text.startswith(("select", "with")) and any(table in text for table in (
             "cpk_registered_products", "cpk_image_pull_authorities", "cpk_runtime_authorities",
             "cpk_runtime_authority_deliveries", "cpk_ingress_authorities",
             "cpk_cloudflare_ingress_resources", "cpk_generated_ingress_secret_references")):
         observations.setdefault("catalog_reads", []).append(text)
+    return str(rendered)
 
 
 def _contains_identity(value, identities):
@@ -28,8 +32,8 @@ def _contains_identity(value, identities):
         return any(_contains_identity(item, identities) for item in value.values())
     if isinstance(value, (tuple, list)):
         return any(_contains_identity(item, identities) for item in value)
-    if isinstance(value, bytes):
-        value = value.decode("utf-8")
+    if isinstance(value, (bytes, memoryview)):
+        value = bytes(value).decode("utf-8")
     if isinstance(value, str):
         if value in identities:
             return True
@@ -44,8 +48,10 @@ def _contains_identity(value, identities):
 
 class _CatalogObservedRows(_ObservedRows):
     def execute(self, query, *args, **kwargs):
-        _catalog_read(query, self.observations)
-        return super().execute(query, *args, **kwargs)
+        rendered = _catalog_read(query, self.cursor.connection, self.observations)
+        result = super().execute(query, *args, **kwargs)
+        self.query = rendered
+        return result
 
     def _record(self, row):
         result = super()._record(row)
@@ -57,10 +63,10 @@ class _CatalogObservedRows(_ObservedRows):
 
 class _CatalogObservedConnection(_ObservedConnection):
     def execute(self, query, *args, **kwargs):
-        _catalog_read(query, self.observations)
+        rendered = _catalog_read(query, self.connection, self.observations)
         self.observations["bytes"] += 256
         self.observations["statements"] = self.observations.get("statements", 0) + 1
-        return _CatalogObservedRows(self.connection.execute(query, *args, **kwargs), self.observations, query)
+        return _CatalogObservedRows(self.connection.execute(query, *args, **kwargs), self.observations, rendered)
 
     def cursor(self, *args, **kwargs):
         return _CatalogObservedRows(self.connection.cursor(*args, **kwargs), self.observations)
