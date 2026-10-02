@@ -134,6 +134,14 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
         return self.command(intent=intent,
             transition=self.transition(identity=self.identity(activity_id="start-api"), intent=intent))
 
+    def intent_for_attempt(self, *, compensation=False, run_id="run-a", activity_id="start-api"):
+        # The established record fixture asks for a fingerprint while building
+        # its state, before intent_attempt replaces it with the explicit source.
+        # Preserve this world's exact original source, including historical uses.
+        self.assertFalse(compensation, "configuration compensation is not a fixture authority")
+        self.assertEqual(run_id, "run-a")
+        return replace(self.intent(), activity_id=ActivityId(activity_id))
+
     def protection_rows(self):
         # Capability assertions make absent B1 behavior explicit, rather than
         # earning red from SQL against an absent table.
