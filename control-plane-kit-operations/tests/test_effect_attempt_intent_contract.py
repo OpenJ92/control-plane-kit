@@ -62,6 +62,9 @@ ROOT_EXPORTS = {"EffectAttemptIntentRecord"}
 EXACT_IMPORT_SURFACE = (
     architecture_testing.ImportSurfaceEntry("__future__", "annotations", None),
     architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.configuration_instances", "ConfigurationInstanceSelectionCodec", None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
         "control_plane_kit_core.operations",
         "ActivityEventKind",
         None,
@@ -171,6 +174,12 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("_raise_intent_error"),
     architecture_testing.ResolvedCallTarget("_raise_intent_error"),
     architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.configuration_instances.ConfigurationInstanceSelectionCodec"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.configuration_instances.ConfigurationInstanceSelectionCodec.decode"
+    ),
+    architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.operations.EffectAttemptIdentity"
     ),
     architecture_testing.ResolvedCallTarget("control_plane_kit_core.operations.RunId"),
@@ -234,6 +243,7 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
     architecture_testing.ResolvedCallTarget("json.loads"),
+    architecture_testing.ResolvedCallTarget("len"),
     architecture_testing.ResolvedCallTarget("len"),
     architecture_testing.ResolvedCallTarget("len"),
     architecture_testing.ResolvedCallTarget("rfc8785.dumps"),
@@ -795,6 +805,7 @@ class EffectAttemptIntentContractTests(
         self.assertEqual(
             set(row["internal_dependencies"]),
             {
+                "control_plane_kit_core.configuration_instances",
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.planning",
                 "control_plane_kit_core.runtime_authority",

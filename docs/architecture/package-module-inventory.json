@@ -2,6 +2,34 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_core.configuration_instances",
+      "destination": "control_plane_kit_core.configuration_instances",
+      "source": "control-plane-kit-core/src/control_plane_kit_core/configuration_instances.py",
+      "owner": "core",
+      "role": "deployment-language",
+      "semantic_roles": ["values", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "ConfigurationInstanceError", "ConfigurationInstanceRef", "ConfigurationInstanceRefCodec",
+        "ConfigurationInstanceSelection", "ConfigurationInstanceSelectionCodec",
+        "ConfigurationCleanupStatus", "ConfigurationCleanupReason", "ConfigurationCleanupOutcome",
+        "ConfigurationCleanupOutcomeSet", "ConfigurationCleanupOutcomeSetCodec"
+      ],
+      "internal_dependencies": ["control_plane_kit_core.configuration"],
+      "known_package_consumers": [
+        "control_plane_kit_core.planning.activity_plan", "control_plane_kit_core.planning.codec",
+        "control_plane_kit_core.runtime_effects", "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_operations.effect_attempt_intent_evidence"
+      ],
+      "optional_external_dependencies": ["rfc8785"],
+      "motivation": "Pure exact allocation references, ordinary selections and total cleanup outcomes. Carries neither contents nor authority or provider locators; effect envelopes own durable result capacity and original-request correlation.",
+      "protecting_tests": [
+        "tests/test_configuration_instances.py", "tests/test_configuration_cleanup_contract.py",
+        "tests/test_configuration_effect_contract.py", "tests/test_configuration_instance_contract.py"
+      ]
+    },
+    {
       "module": "control_plane_kit_operations.read_services.receiver_authoring_context",
       "destination": "control_plane_kit_operations.read_services.receiver_authoring_context",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/receiver_authoring_context.py",
@@ -9849,6 +9877,7 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_intent_evidence",
       "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning",
         "control_plane_kit_core.runtime_authority",

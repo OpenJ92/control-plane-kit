@@ -7,6 +7,8 @@ import json
 
 import rfc8785
 
+from control_plane_kit_core.configuration_instances import ConfigurationInstanceSelectionCodec
+
 from control_plane_kit_core.operations import (
     ActivityEventKind,
     EffectAttemptIdentity,
@@ -143,7 +145,7 @@ def _decode_runtime_effect_intent(document: bytes) -> RuntimeEffectIntent:
                 "operation": {**operation_descriptor},
                 "products": [*product_descriptors],
                 **extra,
-                } if not source_extra and not extra:
+                } if not source_extra and (not extra or len(extra) == 1 and "configuration_instances" in extra):
                     intent = RuntimeEffectIntent(
                     kind=RuntimeEffectKind(kind),
                     runtime_kind=RuntimeKind(runtime_kind),
@@ -181,6 +183,11 @@ def _decode_runtime_effect_intent(document: bytes) -> RuntimeEffectIntent:
                             RuntimeProductMaterial.from_descriptor(item)
                             for item in product_descriptors
                         ],
+                    ),
+                    configuration_instances=(
+                        ConfigurationInstanceSelectionCodec.decode(
+                            ConfigurationInstanceSelectionCodec(), extra["configuration_instances"])
+                        if "configuration_instances" in extra else None
                     ),
                 )
                     canonical = _canonical_runtime_effect_intent(intent)

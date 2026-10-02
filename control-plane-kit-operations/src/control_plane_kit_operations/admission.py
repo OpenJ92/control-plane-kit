@@ -20,6 +20,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import (
     ActivityId,
+    CleanupConfigurationInstances,
     ManagementObservationError,
     PlannedActivity,
     ReconcileNode,
@@ -282,6 +283,9 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionConflict(
                     "activity plan contains no executable changes"
                 )
+            if any(isinstance(activity.operation, CleanupConfigurationInstances)
+                   for activity in plan.plan.activities):
+                raise ExecutionAdmissionConflict("configuration cleanup execution is unsupported")
             if not plan.plan.ready_for_execution:
                 raise ExecutionAdmissionConflict("plan contains unresolved review blockers")
             decision = history.approval_decision_for_request(
