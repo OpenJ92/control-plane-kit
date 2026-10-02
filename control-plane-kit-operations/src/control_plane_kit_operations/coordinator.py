@@ -1449,13 +1449,8 @@ class ExecutionCoordinator:
             transition = None
             if not legacy:
                 identity = EffectAttemptIdentity(RunId(context.run.run_id), planned.activity_id.value, 1)
-                with self._unit_of_work_factory() as original_uow:
-                    try:
-                        original = original_uow.stores.effect_attempt_intents.get(identity)
-                    except KeyError:
-                        original = None
-                if original is not None:
-                    intent = original.intent
+                if type(context) is _ConfigurationReplayContext:
+                    intent = context.original.intent
                 else:
                     from control_plane_kit_operations._configuration_preparation import _propose_configuration
                     intent = _propose_configuration(identity, _runtime_effect_intent_for_context(context, planned))

@@ -204,6 +204,8 @@ EXACT_START_DEPENDENCIES = {
 }
 
 EXACT_INTERPRETER_DEPENDENCIES = {
+    "control_plane_kit_operations._configuration_preparation",
+    "control_plane_kit_core.runtime_effects",
     "control_plane_kit_core.operations",
     "control_plane_kit_core.operations.lifecycle",
     "control_plane_kit_core.planning",

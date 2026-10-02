@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from control_plane_kit_core.operations.lifecycle import (
@@ -371,6 +372,30 @@ class PostgresExecutionStore:
         _require_command_key(idempotency_key)
         if type(result) is not ExecutionCommandResultRecord:
             raise OperationsRecordError("execution command result must be typed")
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("run_id", "idempotency_key", "intent_fingerprint", "worker_id", "authority_scopes",
+                "claim_generation", "max_effects", "admitted_at", "initial_run", "receipt_status", "completed_at", "result", "managed_intent")
+            valid = " AND ".join(f"({name} IS NULL OR octet_length({name}::text)<=65536)" for name in names)
+            projection = ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in names)
+            rows = read.query("WITH updated AS (UPDATE cpk_execution_command_receipts "
+                "SET receipt_status='completed', completed_at=%s, result=%s::jsonb "
+                "WHERE run_id=%s AND idempotency_key=%s AND intent_fingerprint=%s "
+                "AND receipt_status='incomplete' AND completed_at IS NULL AND result IS NULL "
+                "RETURNING *) SELECT " + projection + f",({valid}) FROM updated",
+                (encode_postgres_timestamp(completed_at), _json(_result_descriptor(result)),
+                    run_id, idempotency_key, intent_fingerprint), records=1, octets=13 * 65536 + 1, cells=14)
+            if not rows:
+                return None
+            if rows[0][-1] is not True:
+                raise OperationsRecordError("execution command receipt is unavailable")
+            values = list(rows[0][:-1])
+            for index in (4, 8, 11, 12):
+                values[index] = None if values[index] is None else json.loads(values[index])
+            for index in (7, 10):
+                values[index] = None if values[index] is None else datetime.fromisoformat(values[index])
+            values[5] = int(values[5])
+            return _command_receipt(tuple(values))
         row = self._connection.execute(
             """
             UPDATE cpk_execution_command_receipts

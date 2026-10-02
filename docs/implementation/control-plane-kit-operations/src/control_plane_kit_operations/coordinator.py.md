@@ -109,3 +109,8 @@ ExistingAttempt to reconciliation. Managed authority still precedes effectful
 classification. The ledger joins nested start, reconciliation and fold within
 the same task/thread and command identity; material caches remain UoW-local.
 Read refusal does not authorize dispatch or manufacture current-use truth.
+
+The observation-only replay context already carries the verified original
+intent. Execution consumes it directly; unrelated legacy effect steps do not
+open an extra intent-locator UoW. Request-before-run lock tests identify the
+actual locking connection after the preceding read-only routing connection.

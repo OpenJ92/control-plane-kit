@@ -9805,6 +9805,7 @@
       ],
       "destination": "control_plane_kit_operations.coordinator",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_core.identity",
         "control_plane_kit_core.node_health_read_results",
         "control_plane_kit_core.receiver_health_read_results",
@@ -10132,6 +10133,8 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_start_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_core.runtime_effects",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.planning",
@@ -10236,6 +10239,7 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_operations.effect_run_prefix",
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations",
@@ -10327,6 +10331,7 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.policies",

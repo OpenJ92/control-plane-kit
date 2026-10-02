@@ -97,15 +97,19 @@ class EffectAttemptStore:
             original = None
         if original is not None:
             _require_prepared_intent(configuration_preparation, self._connection, record.state.identity, original.intent)
-        row = self._connection.execute(
-            f"""
+        sql = f"""
             INSERT INTO cpk_effect_attempts ({_COLUMNS})
             VALUES ({_VALUES})
             ON CONFLICT (run_id, activity_id, attempt) DO NOTHING
-            RETURNING run_id
-            """,
-            _record_values(record),
-        ).fetchone()
+            RETURNING CASE WHEN octet_length(run_id)<=200 THEN run_id END
+            """
+        from .configuration_evidence import _active_read
+        read = _active_read(self._connection)
+        if read is None:
+            row = self._connection.execute(sql, _record_values(record)).fetchone()
+        else:
+            rows = read.query(sql, _record_values(record), records=1, octets=200, cells=1)
+            row = rows[0] if rows else None
         return None if row is None else record
 
     def compare_and_set(
@@ -116,24 +120,29 @@ class EffectAttemptStore:
         _require_replacement(current, replacement)
         replacement_values = _record_values(replacement)[3:]
         identity = current.state.identity
-        row = self._connection.execute(
-            f"""
+        sql = f"""
             UPDATE cpk_effect_attempts
             SET {', '.join(f'{name} = %s' for name in _COMPLETE_PRIOR_COLUMNS)}
             WHERE run_id = %s
               AND activity_id = %s
               AND attempt = %s
             {_COMPLETE_PRIOR}
-            RETURNING run_id
-            """,
-            (
+            RETURNING CASE WHEN octet_length(run_id)<=200 THEN run_id END
+            """
+        params = (
                 *replacement_values,
                 identity.run_id.value,
                 identity.activity_id,
                 identity.attempt,
                 *_record_values(current)[3:],
-            ),
-        ).fetchone()
+            )
+        from .configuration_evidence import _active_read
+        read = _active_read(self._connection)
+        if read is None:
+            row = self._connection.execute(sql, params).fetchone()
+        else:
+            rows = read.query(sql, params, records=1, octets=200, cells=1)
+            row = rows[0] if rows else None
         return None if row is None else replacement
 
     def _get(

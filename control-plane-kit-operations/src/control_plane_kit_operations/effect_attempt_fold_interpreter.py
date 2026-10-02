@@ -22,7 +22,7 @@ from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.planning import resolve_management_observation
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure
+from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure, RuntimeEffectKind
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -251,7 +251,6 @@ def _execute_fold_once(
         configuration_guard = None
         configuration_prefix = None
         from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
-        from control_plane_kit_core.runtime_effects import RuntimeEffectKind
         accounting = _ACCOUNTING.get()
         if accounting is not None and native is None and health is None:
             if not accounting.active:

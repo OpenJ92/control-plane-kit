@@ -124,6 +124,7 @@ COORDINATOR_EXPORTS = {
     "RuntimeInterpreterDispatcher",
 }
 COORDINATOR_DEPENDENCIES = {
+    "control_plane_kit_operations._configuration_preparation",
     "control_plane_kit_core.identity",
     "control_plane_kit_core.node_health_read_results",
     "control_plane_kit_core.operations",
@@ -190,11 +191,17 @@ RUNTIME_EFFECTS_DEPENDENCIES = {
 def _exact_imports(*rows: tuple[str, str | None, str | None]):
     return tuple(
         architecture_testing.ImportSurfaceEntry(*row)
-        for row in rows
+        for row in sorted(rows, key=lambda row: (row[0], row[1] or "", row[2] or ""))
     )
 
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
+    ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
+    ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
+    ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
+    ("control_plane_kit_operations._configuration_preparation", "_propose_configuration", None),
+    ("control_plane_kit_operations._configuration_preparation", "_ACCOUNTING", None),
+    ("control_plane_kit_core.runtime_effects", "RuntimeEffectKind", None),
     ("__future__", "annotations", None),
     ("asyncio", None, None),
     ("control_plane_kit_core.identity", "TrustedCommandContext", None),
@@ -361,6 +368,8 @@ EXACT_COORDINATOR_IMPORTS = _exact_imports(
 )
 
 EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
+    ("dataclasses", "dataclass", None),
+    ("control_plane_kit_core.operations", "ActivityEventKind", None),
     ("__future__", "annotations", None),
     ("control_plane_kit_core.configuration", "ConfigurationArtifact", None),
     ("control_plane_kit_core.environment", "PublicStaticEnvironmentBinding", None),
@@ -462,10 +471,43 @@ def _exact_calls(*rows: tuple[str | None, int]):
         )
         for _ in range(count):
             targets.append(target_type() if value is None else target_type(value))
-    return tuple(targets)
+    return tuple(sorted(targets, key=lambda target: (0, "") if type(target) is architecture_testing.UnresolvedCallTarget
+        else (1, target.qualified_name)))
 
 
 EXACT_COORDINATOR_CALLS = _exact_calls(
+    # B1 adds private material/original-context and cumulative accounting calls.
+    (None, 1),
+    ("type", 6),
+    ("ExecutionCoordinatorConflict", 4),
+    ("control_plane_kit_operations._configuration_preparation._configuration_accounting", 3),
+    ("self._configure_run", 3),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),
+    ("control_plane_kit_core.operations.EffectAttemptIdentity", 2),
+    ("control_plane_kit_core.operations.RunId", 2),
+    ("self._configuration_context", 2),
+    ("dataclasses.dataclass", 1),
+    ("ExecutionCoordinatorResult", 1),
+    ("_require_operate_scope", 1),
+    ("self._execute_command", 1),
+    ("self._unit_of_work_factory", 1),
+    ("uow.stores.configuration_preparation._configure_run", 1),
+    ("self._execute_managed_command", 1),
+    ("any", 1),
+    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 1),
+    ("stores.effect_attempt_intents.get", 1),
+    ("self._reobserve", 1),
+    ("control_plane_kit_core.planning.saga.project_activity_journal", 1),
+    ("control_plane_kit_operations.activity_journal.activity_journal_events", 1),
+    ("control_plane_kit_core.planning.saga.derive_schedule", 1),
+    ("control_plane_kit_operations._configuration_preparation._propose_configuration", 1),
+    ("control_plane_kit_operations._configuration_preparation._ACCOUNTING.get", 1),
+    ("_CoordinatorContext", 1),
+    ("stores.configuration_preparation._snapshot", 1),
+    ("dict", 1),
+    ("_ConfigurationReplayContext", 1),
+    ("plan.plan.activity", 1),
+    ("stores.configuration_preparation._material", 1),
     (None, 3),  # closed status lookup, timestamp projection, event evidence descriptor
     ("ActivityExecutionOutcome.succeeded", 1),
     ("ActivityExecutionOutcome.uncertain", 3),
@@ -693,6 +735,12 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
 )
 
 EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
+    ("type", 2),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),
+    ("dataclasses.dataclass", 1),
+    ("_RuntimeEffectMaterial", 1),
+    ("_runtime_effect_intent_for_material", 1),
+    ("_node_target", 1),
     (None, 1),
     ("_configuration_artifact_contract_keys", 2),
     ("_connector_ingress_for_node", 1),
@@ -793,6 +841,8 @@ class EffectAttemptCoordinatorContractTests(
     EffectAttemptCoordinatorFixture,
     unittest.TestCase,
 ):
+    maxDiff = None
+
     def test_control_accepted_effect_attempt_languages_are_lawful(self) -> None:
         started = self.newly_started()
         runtime_result = RuntimeEffectResult.succeeded(
@@ -2026,6 +2076,7 @@ class EffectAttemptCoordinatorContractTests(
             ),
         )
         self.assertEqual(findings, ())
+
 
     @staticmethod
     def request_for_started(intent, started: NewlyStarted):

@@ -360,7 +360,7 @@ class EffectAttemptFoldInterpreterContractTests(
                 for node in ast.walk(tree):
                     if isinstance(node, ast.ImportFrom) and node.module == pure_runtime_values:
                         self.assertEqual({alias.name for alias in node.names},
-                            {"RuntimeEffectResult", "RuntimeEffectFailure"})
+                            {"RuntimeEffectResult", "RuntimeEffectFailure", "RuntimeEffectKind"})
                     if isinstance(node, ast.Import):
                         self.assertNotIn(pure_runtime_values, {alias.name for alias in node.names})
                 self.assertTrue(
@@ -412,6 +412,7 @@ class EffectAttemptFoldInterpreterContractTests(
         self.assertEqual(
             set(interpreter["internal_dependencies"]),
             {
+                "control_plane_kit_operations._configuration_preparation",
                 "control_plane_kit_core.approval_subjects",
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.planning",
