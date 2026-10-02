@@ -140,7 +140,7 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
 
         for name, query, parameters in cases:
             with self.subTest(case=name):
-                try:
+                with self.assertRaises(RestoreFixture):
                     with self.connection.transaction():
                         self.connection.execute(query, parameters)
                         corrupted = self.retained_snapshot()
@@ -151,8 +151,6 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
                         self.assertNotIn("untrusted-acceptance-marker", str(caught.exception))
                         self.assertEqual(self.retained_snapshot(), corrupted)
                         raise RestoreFixture
-                except RestoreFixture:
-                    pass
                 self.assertEqual(self.retained_snapshot(), original)
 
     def test_zero_slot_advancement_retains_typed_original_pair(self):
