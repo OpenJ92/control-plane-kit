@@ -8,6 +8,10 @@ import psycopg
 
 from control_plane_kit_operations.effect_attempt_start import ExistingAttempt, NewlyStarted
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
+from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
+from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
+from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_failure, effect_outcome_transition
 from control_plane_kit_operations.postgres import PostgresExecutionStore, PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.postgres.schema import SchemaInstallationError
 from control_plane_kit_operations.postgres.effect_attempt_intent_store import EffectAttemptIntentStore
@@ -38,6 +42,34 @@ class PostgresConfigurationPreparationTransactionTests(ConfigurationPreparationF
     # Reuse the established real-PostgreSQL blocker apparatus, not its tests.
     _factory_with_pids = concurrency.PostgresEffectAttemptStartConcurrencyTests._factory_with_pids
     _wait_until_blocked_by = concurrency.PostgresEffectAttemptStartConcurrencyTests._wait_until_blocked_by
+
+    def test_fresh_configuration_fold_waits_for_lifecycle_lock_before_ids(self):
+        started = self.start_service("configuration-start").execute(self.configuration_command())
+        original_protection = self.protection_rows()
+        outcome = ExecutionEffectOutcome(started.attempt.state.identity, started.attempt.state.request_fingerprint,
+            RuntimeEffectResult.failed(started.attempt.original_start_event.event_id,
+                RuntimeEffectFailure("configuration.test-failure", "Bounded test outcome.")))
+        command = FoldEffectAttempt("request-a", effect_outcome_transition(outcome), self.authority(), self.fence(),
+            effect_outcome_failure(outcome), outcome)
+        pids = queue.Queue()
+        ids = Sequence("configuration-fold")
+        service = EffectAttemptFoldService(self._factory_with_pids(pids), id_factory=ids)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            with self.unit_of_work() as held:
+                held.stores.graphs.lock_receiver_lifecycle("workspace-a")
+                holder_pid = held.stores.connection.execute("SELECT pg_backend_pid()").fetchone()[0]
+                future = executor.submit(service.execute, command)
+                try:
+                    self._wait_until_blocked_by(pids.get(timeout=5), holder_pid)
+                except AssertionError:
+                    # A worker error is not evidence of the missing lock law.
+                    if future.done():
+                        future.result(timeout=1)
+                    raise
+                self.assertEqual(ids.calls, [])
+            result = future.result(timeout=10)
+        self.assertEqual(result.attempt.state.identity, started.attempt.state.identity)
+        self.assertEqual(self.protection_rows(), original_protection)
 
     def test_current_schema_verifies_prepared_rows_and_refuses_drift_without_repair(self):
         self.start_service("configuration-start").execute(self.configuration_command())
