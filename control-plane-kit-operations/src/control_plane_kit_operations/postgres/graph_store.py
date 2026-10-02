@@ -242,6 +242,15 @@ class PostgresWorkspaceStore:
             raise RealizedGraphProjectionConflict(
                 "current graph replacement must be the exact desired lineage"
             )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            rows = read.query("UPDATE cpk_workspaces SET current_graph_id=%s, current_realized_projection_id=%s "
+                "WHERE workspace_id=%s AND current_graph_id=%s AND current_realized_projection_id=%s "
+                "AND desired_graph_id=%s AND desired_realized_projection_id=%s AND desired_graph_revision=%s RETURNING 1",
+                (replacement_graph_id, replacement_projection_id, workspace_id, expected_graph_id,
+                    expected_projection_id, expected_desired_graph_id, desired_projection_id, expected_desired_graph_revision),
+                records=1, octets=1, cells=1)
+            return self.get(workspace_id) if rows else None
         row = self._connection.execute(
             """
             UPDATE cpk_workspaces
@@ -422,6 +431,14 @@ class PostgresWorkspaceStore:
                 ) from error
             row = (store.save(identity).projection_id,)
         else:
+            from .configuration_evidence import _active_read
+            if (read := _active_read(self._connection)) is not None:
+                rows = read.bounded_rows("cpk_realized_graph_projections", (("projection_id", "text", 2048),),
+                    "projection_id=%s AND workspace_id=%s AND source_authored_graph_id=%s",
+                    (projection_id, workspace_id, authored_graph_id))
+                if not rows:
+                    raise RealizedGraphProjectionConflict("workspace graph pointer requires a matching realized projection")
+                return rows[0][0]
             row = self._connection.execute(
                 """
                 SELECT projection_id

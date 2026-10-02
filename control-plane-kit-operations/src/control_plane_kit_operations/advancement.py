@@ -283,7 +283,9 @@ class CurrentGraphAdvancementCommandService:
     ) -> CurrentGraphAdvancementResult:
         _require_operate_scope(command.authority)
         fingerprint = _fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work:
+        with self._unit_of_work_factory() as unit_of_work, \
+                unit_of_work.stores.configuration_preparation._advancement_evidence(
+                    command.workspace_id, command.run_id):
             stores = unit_of_work.stores
             locator_run = _get_run(stores, command.run_id)
             locator_request = _get_request(

@@ -996,21 +996,24 @@ class PostgresExecutionStore:
                 else record.recovery.descriptor()
             ),
         }
-        self._connection.execute(
-            """
+        query = """
             INSERT INTO cpk_activity_events
               (event_id, run_id, ordinal, event_type, occurred_at, payload)
             VALUES (%s, %s, %s, %s, %s, %s::jsonb)
-            """,
-            (
+            """
+        values = (
                 record.event_id,
                 record.run_id,
                 record.ordinal,
                 record.kind.value,
                 encode_postgres_timestamp(record.occurred_at),
                 _json(payload),
-            ),
-        )
+            )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)
+        else:
+            self._connection.execute(query, values)
         return record
 
     def get_event(self, event_id: str) -> ActivityEventRecord:

@@ -71,5 +71,8 @@ through the existing bounded getter; zero-row conflicts retain statement cost.
 Standalone roots are used only outside an active command, such as current-data
 verification. The review-found metadata transport and missing-ledger defects
 have focused causal-red evidence and pass their unchanged assertions in that
-green gate. The explicit-projection selection path, unreachable from E7's fresh
-creation, remains an accounting obligation for E1/E2 before those paths release.
+green gate. The E1/E2 accounting source now charges and bounds explicit-projection
+selection. Active current CAS reserves a scalar return and then retrieves the
+complete workspace through its bounded getter; misses still consume statement
+cost. These advancement changes await their focused gate and prepared-owner
+integration before acceptance.

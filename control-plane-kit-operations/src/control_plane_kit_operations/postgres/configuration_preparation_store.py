@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+from contextlib import contextmanager
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
@@ -55,6 +56,20 @@ def _decode(row, read):
 class ConfigurationPreparationStore:
     def __init__(self, connection):
         self._connection = connection
+
+    @contextmanager
+    def _advancement_evidence(self, workspace_id, run_id):
+        """One advancement ledger, including locators and original replay."""
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.advancement import CurrentGraphAdvancementConflict
+        try:
+            with _configuration_accounting(("configuration-advancement", workspace_id, run_id), join=True):
+                yield
+        except (_Capacity, _Unavailable):
+            pass
+        else:
+            return
+        raise CurrentGraphAdvancementConflict("configuration advancement evidence is unavailable") from None
 
     def _configure_run(self, run_id):
         """Bounded catalog-free routing from the plan's exact pinned graphs."""

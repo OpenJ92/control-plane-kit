@@ -8,3 +8,7 @@ Candidates and transaction guard probes also charge that reader. Without an
 active configuration command, the original transport ledger remains unchanged.
 Length probes, sentinels, complete membership and exact immutable cache keys
 are retained; no fresh mutable authority is inferred from retained history.
+
+Receiver scope evidence joins the active configuration reader when invoked by
+advancement. Repeated prepare/finish reads retain their actual costs in the
+same command ledger; a fresh storage instance does not reset accounting.

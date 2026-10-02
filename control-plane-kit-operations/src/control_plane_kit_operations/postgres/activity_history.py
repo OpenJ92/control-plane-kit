@@ -88,7 +88,11 @@ class PostgresActivityHistoryStore:
 
     def lock_action_idempotency(self, session_id: str, idempotency_key: str) -> None:
         """Serialize one session-scoped command before its action row exists."""
-
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"operation-action:{session_id}:{idempotency_key}",), records=1, octets=1, cells=1)
+            return
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"operation-action:{session_id}:{idempotency_key}",),
@@ -254,14 +258,13 @@ class PostgresActivityHistoryStore:
         return None if row is None else _session_record(row)
 
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord:
-        self._connection.execute(
-            """
+        query = """
             INSERT INTO cpk_operation_actions
               (action_id, session_id, ordinal, action_type, actor_id, payload,
                created_at, idempotency_key, intent_fingerprint)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
+            """
+        values = (
                 record.action_id,
                 record.session_id,
                 record.ordinal,
@@ -271,8 +274,12 @@ class PostgresActivityHistoryStore:
                 encode_postgres_timestamp(record.created_at),
                 record.idempotency_key,
                 record.intent_fingerprint,
-            ),
-        )
+            )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)
+        else:
+            self._connection.execute(query, values)
         return record
 
     def action_for_idempotency(
@@ -280,6 +287,16 @@ class PostgresActivityHistoryStore:
         session_id: str,
         idempotency_key: str,
     ) -> OperationActionRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("action_id", "session_id", "ordinal", "action_type", "actor_id", "payload",
+                "created_at", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "json" if name == "payload" else "int" if name == "ordinal"
+                else "time" if name == "created_at" else "text", 65536 if name == "payload" else 2048)
+                for name in names)
+            rows = read.bounded_rows("cpk_operation_actions", columns,
+                "session_id=%s AND idempotency_key=%s", (session_id, idempotency_key))
+            return None if not rows else _action_record(rows[0])
         row = self._connection.execute(
             """
             SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
@@ -292,6 +309,13 @@ class PostgresActivityHistoryStore:
         return None if row is None else _action_record(row)
 
     def next_action_ordinal(self, session_id: str) -> int:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            if not read.query("SELECT 1 FROM cpk_operation_sessions WHERE session_id=%s FOR UPDATE",
+                    (session_id,), records=1, octets=1, cells=1):
+                raise KeyError("missing operation session")
+            return read.query("SELECT COALESCE(MAX(ordinal),0)+1 FROM cpk_operation_actions WHERE session_id=%s",
+                (session_id,), records=1, octets=20, cells=1)[0][0]
         session = self._connection.execute(
             "SELECT session_id FROM cpk_operation_sessions WHERE session_id = %s FOR UPDATE",
             (session_id,),

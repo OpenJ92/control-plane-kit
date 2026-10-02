@@ -627,8 +627,9 @@ def read_receiver_scope_evidence(connection, workspace_id, requested_scopes, gua
     from psycopg import Error
     from control_plane_kit_operations.advancement import CurrentGraphAdvancementError
     from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeEvidence
+    from .configuration_evidence import _active_read
     try:
-        return _ExecutionScopeStorage(connection).evidence(workspace_id, requested_scopes, guard)
+        return _ExecutionScopeStorage(connection, _active_read(connection)).evidence(workspace_id, requested_scopes, guard)
     except ReceiverScopeCapacity:
         return ReceiverScopeEvidence("capacity")
     except (ValueError, TypeError, AttributeError, KeyError, OverflowError, RecursionError, Error, CurrentGraphAdvancementError):

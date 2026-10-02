@@ -21,3 +21,8 @@ relational identities; its row cost is deducted from available value bytes.
 The current command's already-used footprint is added without resetting it.
 Any later consumer must still obey the global 4,096-identity/16 MiB limit; B1
 neither implements nor grants B2/current-use or cleanup authority.
+
+B2's advancement evidence scope roots the existing command ledger before the
+first locator read and includes original replay. It translates closed capacity
+or unavailable failures after the handler into bounded advancement conflict;
+there is no connection wrapper, independent commit or acceptance authority.
