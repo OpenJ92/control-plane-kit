@@ -9,6 +9,7 @@ import rfc8785
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.postgres.schema import SchemaInstallationError
 from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
 from control_plane_kit_operations.effect_attempt_start import ExistingAttempt
 from tests.configuration_evidence_history_fixture import ConfigurationEvidenceHistoryFixture
 
@@ -128,7 +129,8 @@ class PostgresConfigurationEvidenceTests(ConfigurationEvidenceHistoryFixture, un
                 self.reset_start_truth()
                 candidate, _ = self.seed_recorded_source(include_attempt=False)
                 before = self.complete_start_snapshot()
-                with self.assertRaises(OperationsRecordError):
+                rejection = ReceiverScopeUnavailable if method == "insert_absent" else OperationsRecordError
+                with self.assertRaises(rejection):
                     with self.unit_of_work() as uow:
                         getattr(uow.stores.effect_attempts, method)(candidate)
                         uow.commit()

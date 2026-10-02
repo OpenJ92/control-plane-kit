@@ -23,7 +23,7 @@ from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.records import (
     ActivityPlanRecord, ActivityPlanStatus, ActivityRunRecord, AdmittedRun,
-    ApprovalDecisionKind, ApprovalDecisionRecord, ApprovalRequestRecord,
+    ApprovalDecisionKind, ApprovalDecisionRecord, ApprovalRequestRecord, BoundedEvidence,
     OperationSessionRecord, OperationSessionStatus, RetryIdentity,
 )
 from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_context
@@ -89,7 +89,8 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
         with self.unit_of_work() as uow:
             uow.stores.execution._add_run(ActivityRunRecord(
                 "run-a", "plan-a", AdmittedRun("request-a"), RetryIdentity(1),
-                ActivityRunStatus.CLAIMED, "2026-08-15T03:59:10Z"))
+                ActivityRunStatus.CLAIMED, "2026-08-15T03:59:10Z",
+                metadata=BoundedEvidence.from_mapping({"attempt": 1})))
             for event in self.history_events("active-empty"):
                 uow.stores.execution.add_event(event)
             uow.commit()

@@ -12,6 +12,7 @@ from control_plane_kit_operations.effect_attempt_start import (
     EffectAttemptStartConflict, ExistingAttempt, NewlyStarted,
 )
 from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
 from tests.configuration_preparation_fixture import ConfigurationPreparationFixture
 
 
@@ -54,7 +55,7 @@ class PostgresConfigurationPreparationTests(ConfigurationPreparationFixture, uni
         intent = self.intent()
         attempt, evidence = self.intent_attempt(activity_id="start-api", intent=intent)
         before = self.complete_start_snapshot()
-        with self.assertRaises(OperationsRecordError):
+        with self.assertRaises(ReceiverScopeUnavailable):
             with self.unit_of_work() as uow:
                 uow.stores.execution.add_event(attempt.original_start_event)
                 uow.stores.effect_attempt_intents.insert(evidence)
