@@ -51,3 +51,12 @@ and predecessor provenance; legacy receipt fingerprints remain unchanged.
 These are changes to the exact current schema, not an automatic migration.
 Installation still rejects incompatible populated namespaces without changing
 them. Application admission/fold transactions own all related writes.
+
+B1 / #1923 adds immutable `cpk_effect_configuration_refs` and
+`cpk_configuration_claims`. Exact original intent commitments retain provenance;
+a deferred self birth FK and reciprocal ref/claim FKs require one complete
+protective aggregate at commit. A partial unique index allows one birth per
+workspace/allocation. Indexed ref identities must agree with the canonical
+preimage and digest under current-row verification. The owning start transaction
+writes this aggregate; installation still accepts only empty or exactly current
+namespaces, with no automatic migration, deletion or backfill.

@@ -657,14 +657,19 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             try:
                 future = executor.submit(coordinator.execute, self.command())
                 worker_pid = worker_pids.get(timeout=5)
+                candidates = {worker_pid}
                 deadline = time.monotonic() + 5
                 while True:
-                    blocked_by = self.connection.execute(
-                        "SELECT pg_blocking_pids(%s)",
-                        (worker_pid,),
-                    ).fetchone()[0]
-                    if blocker_pid in blocked_by:
+                    # Read-only configuration routing can use an earlier UoW;
+                    # find the command's actual lock-taking connection.
+                    while not worker_pids.empty():
+                        candidates.add(worker_pids.get_nowait())
+                    if any(blocker_pid in self.connection.execute(
+                            "SELECT pg_blocking_pids(%s)", (candidate,)).fetchone()[0]
+                            for candidate in candidates):
                         break
+                    if future.done():
+                        future.result(timeout=1)
                     if time.monotonic() >= deadline:
                         self.fail("coordinator did not block on the request row")
                 with psycopg.connect(self.database_url) as probe:

@@ -1,6 +1,14 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.configuration_evidence"
+selector = "_EvidenceRead.query"
+category = "fixed-cardinality"
+sql = "owner-declared SQL CASE/LIMIT or bounded RETURNING projection; reserve maximum records, value octets, scalar markers and one statement before fetch; reject excess rows/cells/bytes; zero-record savepoint statements do not fetch"
+consumer_kind = "production"
+consumer = "configuration preparation, original-source and allocation evidence readers share the logical command ledger across owner queries and units of work"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
 selector = "_ReceiverStorage.bindings"
 category = "exact-verifier"

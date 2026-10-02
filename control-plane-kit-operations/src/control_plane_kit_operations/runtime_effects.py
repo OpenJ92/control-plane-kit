@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Mapping
 
 from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
-from control_plane_kit_core.operations import RunId
+from control_plane_kit_core.operations import ActivityEventKind, RunId
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
     CleanupConfigurationInstances,
@@ -99,6 +99,24 @@ from control_plane_kit_operations.workflows import InvalidOperationCommand
 _GATEWAY_TARGETS_ENVIRONMENT = "CPK_GATEWAY_TARGETS_JSON"
 
 
+@dataclass(frozen=True)
+class _RuntimeEffectMaterial:
+    """Private event-free inputs to the single pinned-material translator."""
+    request: object
+    run: object
+    plan_record: object
+    base_graph: object
+    desired_graph: object
+    registered_products: tuple
+    image_pull_authorities: tuple = ()
+    runtime_authorities: tuple = ()
+    runtime_authority_deliveries: tuple = ()
+    ingress_authorities: tuple = ()
+    ingress_resources: tuple = ()
+    generated_ingress_secrets: tuple = ()
+    compensation: bool = False
+
+
 def runtime_effect_request_for_context(
     context: ActivityRealizationContext,
 ) -> RuntimeEffectRequest:
@@ -128,6 +146,18 @@ def _runtime_effect_intent_for_context(
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
+    material = _RuntimeEffectMaterial(context.request, context.run, context.plan_record,
+        context.base_graph, context.desired_graph, context.registered_products,
+        context.image_pull_authorities, context.runtime_authorities, context.runtime_authority_deliveries,
+        context.ingress_authorities, context.ingress_resources, context.generated_ingress_secrets,
+        type(context) is ActivityRealizationContext
+            and context.intent_event.kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
+    return _runtime_effect_intent_for_material(material, activity)
+
+
+def _runtime_effect_intent_for_material(context: _RuntimeEffectMaterial, activity: object) -> RuntimeEffectIntent:
+    if type(context) is not _RuntimeEffectMaterial:
+        raise InvalidOperationCommand("runtime effect material is invalid")
     if isinstance(activity.operation, CleanupConfigurationInstances):
         raise InvalidOperationCommand("configuration cleanup execution is unsupported")
     if runtime_management_execution_is_unsupported(
@@ -147,6 +177,10 @@ def _runtime_effect_intent_for_context(
     if run_id is None:
         raise InvalidOperationCommand("runtime effect run_id is malformed")
     graph = _material_graph(context, operation)
+    if context.compensation:
+        target = _node_target(operation)
+        if target is not None and graph.nodes[target].configuration_artifacts:
+            raise InvalidOperationCommand("configuration compensation execution is unsupported")
     runtime_id = _runtime_id_for_context(context, graph, operation)
     authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
     return RuntimeEffectIntent(

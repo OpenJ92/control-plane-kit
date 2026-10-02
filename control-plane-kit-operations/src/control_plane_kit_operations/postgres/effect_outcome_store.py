@@ -209,6 +209,26 @@ class EffectAttemptOutcomeStore:
     ) -> EffectAttemptOutcomeRecord:
         admitted_identity = _require_identity(identity)
         _require_event_id(transition_event_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            numeric = {"attempt", "fence_generation", "prior_attempt", "original_event_ordinal", "direct_event_ordinal", "observation_count"}
+            columns = tuple((name, "bytes" if name == "preimage" else "int" if name in numeric else "text",
+                8192 if name == "preimage" else 2048) for name in _COLUMN_NAMES)
+            rows = read.bounded_rows("cpk_effect_attempt_outcomes", columns,
+                "run_id=%s AND activity_id=%s AND attempt=%s AND direct_event_id=%s",
+                (admitted_identity.run_id.value, admitted_identity.activity_id, admitted_identity.attempt, transition_event_id))
+            if not rows:
+                raise KeyError("effect attempt outcome was not found")
+            row = rows[0]
+            count = _observation_count(row)
+            columns = (("membership.position", "int", 32), ("membership.observation_count", "int", 32)) + tuple(
+                ("observation." + name, "time" if name == "observed_at" else "json" if name == "evidence"
+                 else "text", 8192) for name in _OBSERVATION_COLUMNS)
+            memberships = read.bounded_rows("cpk_effect_attempt_outcome_observations membership JOIN cpk_observations observation "
+                "ON observation.observation_id=membership.observation_id AND observation.workspace_id=membership.workspace_id",
+                columns, "membership.run_id=%s AND membership.activity_id=%s AND membership.attempt=%s", row[:3],
+                maximum=count, point=False, order="membership.position", identities=2)
+            return _decode_row(self._connection, row, memberships)
         row = self._connection.execute(
             f"""
             {_SELECT}

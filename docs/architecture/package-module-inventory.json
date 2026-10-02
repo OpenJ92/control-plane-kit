@@ -2,6 +2,176 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.configuration_preparation",
+      "destination": "control_plane_kit_operations.configuration_preparation",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_preparation.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "ConfigurationEvidenceFootprint",
+        "ConfigurationCapacityDecision",
+        "ConfigurationSourceProjection",
+        "ConfigurationSourceEvidence",
+        "ConfigurationRefEvidence",
+        "ConfigurationAllocationEvidence",
+        "configuration_evidence_capacity",
+        "configuration_preparation_capacity"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_preparation.py",
+        "tests/test_postgres_configuration_evidence.py",
+        "tests/test_postgres_configuration_material_boundary.py",
+        "tests/test_configuration_preparation_capacity.py"
+      ],
+      "motivation": "Closed provenance evidence and capacity values; complete evidence never grants reuse or release authority."
+    },
+    {
+      "module": "control_plane_kit_operations._configuration_preparation",
+      "destination": "control_plane_kit_operations._configuration_preparation",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_preparation.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_preparation.py",
+        "tests/test_postgres_configuration_evidence.py",
+        "tests/test_postgres_configuration_material_boundary.py",
+        "tests/test_configuration_preparation_capacity.py"
+      ],
+      "motivation": "Private first-start preparation guard, deterministic proposal construction and one logical command's accounting scope."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_evidence",
+      "destination": "control_plane_kit_operations.postgres.configuration_evidence",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_evidence.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations._configuration_preparation"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_preparation.py",
+        "tests/test_postgres_configuration_evidence.py",
+        "tests/test_postgres_configuration_material_boundary.py",
+        "tests/test_configuration_preparation_capacity.py"
+      ],
+      "motivation": "Bounded owner-declared SQL transport, outstanding reservations and UoW-local evidence caches."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_source",
+      "destination": "control_plane_kit_operations.postgres.configuration_source",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_source.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.postgres.configuration_evidence"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_preparation.py",
+        "tests/test_postgres_configuration_evidence.py",
+        "tests/test_postgres_configuration_material_boundary.py",
+        "tests/test_configuration_preparation_capacity.py"
+      ],
+      "motivation": "Read the exact original configuration source with canonical commitment validation before compact projection."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_preparation_store",
+      "destination": "control_plane_kit_operations.postgres.configuration_preparation_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_preparation_store.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "ConfigurationPreparationStore"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.configuration_source",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes",
+        "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations._configuration_preparation"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_preparation.py",
+        "tests/test_postgres_configuration_evidence.py",
+        "tests/test_postgres_configuration_material_boundary.py",
+        "tests/test_configuration_preparation_capacity.py"
+      ],
+      "motivation": "Own original configuration refs and protective claims inside the existing first-start transaction."
+    },
+    {
       "module": "control_plane_kit_core.configuration_instances",
       "destination": "control_plane_kit_core.configuration_instances",
       "source": "control-plane-kit-core/src/control_plane_kit_core/configuration_instances.py",
@@ -9635,6 +9805,7 @@
       ],
       "destination": "control_plane_kit_operations.coordinator",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_core.identity",
         "control_plane_kit_core.node_health_read_results",
         "control_plane_kit_core.receiver_health_read_results",
@@ -9962,6 +10133,8 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_start_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_core.runtime_effects",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.planning",
@@ -10066,6 +10239,7 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_operations.effect_run_prefix",
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations",
@@ -10157,6 +10331,7 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.policies",

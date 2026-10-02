@@ -926,6 +926,23 @@ class ExecutionCoordinator:
 
     def execute(self, command: ExecuteActivityRun) -> ExecutionCoordinatorResult:
         _require_operate_scope(command.authority)
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with _configuration_accounting(command.run_id, active=False):
+            self._configure_run(command.run_id)
+            return self._execute_command(command)
+
+    def _configure_run(self, run_id):
+        try:
+            with self._unit_of_work_factory() as uow:
+                uow.stores.configuration_preparation._configure_run(run_id)
+        except (KeyError, ValueError, TypeError, AttributeError):
+            pass
+        else:
+            return
+        raise ExecutionCoordinatorConflict("configuration routing is unavailable")
+
+    def _execute_command(self, command: ExecuteActivityRun) -> ExecutionCoordinatorResult:
+        _require_operate_scope(command.authority)
         replay = self._admit_command(command)
         if replay is not None:
             return replay
@@ -934,6 +951,14 @@ class ExecutionCoordinator:
         return result
 
     async def execute_managed(self, command: ExecuteManagedActivityRun) -> ExecutionCoordinatorResult:
+        if type(command) is not ExecuteManagedActivityRun:
+            raise InvalidOperationCommand("managed execution command is invalid")
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with _configuration_accounting(command.execution.run_id, active=False):
+            self._configure_run(command.execution.run_id)
+            return await self._execute_managed_command(command)
+
+    async def _execute_managed_command(self, command: ExecuteManagedActivityRun) -> ExecutionCoordinatorResult:
         if type(command) is not ExecuteManagedActivityRun:
             raise InvalidOperationCommand("managed execution command is invalid")
         provenance = self._managed_provenance(command)
@@ -977,6 +1002,10 @@ class ExecutionCoordinator:
         return provenance
 
     def _managed_preflight(self, context, caller):
+        if type(context) is _ConfigurationReplayContext:
+            # This context can only hand the exact original to observation.
+            # Any subsequent fresh step reloads complete policy material.
+            return None
         guarded = self._guard_runtime_management(context, 0, managed_execution=True)
         if guarded is not None:
             return guarded
@@ -1143,6 +1172,14 @@ class ExecutionCoordinator:
         return intent, authority
 
     async def reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
+        if type(command) is not ReobserveConnectorConnection:
+            raise InvalidOperationCommand("connector reobservation command is invalid")
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with _configuration_accounting(command.execution.run_id, active=False):
+            self._configure_run(command.execution.run_id)
+            return await self._reobserve(command)
+
+    async def _reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
         if type(command) is not ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
         provenance = self._managed_provenance(command)
@@ -1411,7 +1448,12 @@ class ExecutionCoordinator:
             intent = None
             transition = None
             if not legacy:
-                intent = _runtime_effect_intent_for_context(context, planned)
+                identity = EffectAttemptIdentity(RunId(context.run.run_id), planned.activity_id.value, 1)
+                if type(context) is _ConfigurationReplayContext:
+                    intent = context.original.intent
+                else:
+                    from control_plane_kit_operations._configuration_preparation import _propose_configuration
+                    intent = _propose_configuration(identity, _runtime_effect_intent_for_context(context, planned))
                 transition = EffectAttemptTransition(
                     EffectAttemptTransitionKind.STARTED,
                     EffectAttemptIdentity(
@@ -1696,6 +1738,8 @@ class ExecutionCoordinator:
         *,
         managed_execution: bool = False,
     ) -> ExecutionCoordinatorResult | None:
+        if type(context) is _ConfigurationReplayContext:
+            return None
         # Existing authoritative lifecycle states retain their classification.
         # The ordinary classifier can write completion/failure for RUNNING, so
         # unsupported material must be intercepted before calling it.
@@ -1732,6 +1776,9 @@ class ExecutionCoordinator:
         context: "_CoordinatorContext",
         effects_attempted: int = 0,
     ) -> ExecutionCoordinatorResult:
+        if type(context) is _ConfigurationReplayContext:
+            return ExecutionCoordinatorResult(context.run, CoordinatorStatus.IN_FLIGHT,
+                effects_attempted, context.original.identity.activity_id)
         run = context.run
         if run.status is ActivityRunStatus.CLAIMED:
             raise ExecutionCoordinatorConflict("activity run must be started")
@@ -1941,6 +1988,14 @@ class ExecutionCoordinator:
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             request, run = _locked_request_and_run(stores, command)
+            from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+            accounting = _ACCOUNTING.get()
+            if accounting is not None and accounting.active:
+                try:
+                    return self._configuration_context(stores, command, request, run)
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    pass
+                raise ExecutionCoordinatorConflict("configuration material is unavailable")
             missing_plan = False
             try:
                 plan_record = stores.activity_history.get_plan(run.plan_id)
@@ -2001,6 +2056,14 @@ class ExecutionCoordinator:
                 missing_projection = True
             if missing_projection:
                 raise ExecutionCoordinatorNotFound("pinned graph was not found")
+            if any(node.configuration_artifacts
+                    for pinned in (base_graph, desired_graph)
+                    for node in DEFAULT_GRAPH_CODEC.decode(pinned.graph_descriptor).nodes.values()):
+                try:
+                    return self._configuration_context(stores, command, request, run)
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    pass
+                raise ExecutionCoordinatorConflict("configuration material is unavailable")
             registered_products = stores.registered_products.list_active(
                 request.identity.workspace_id
             )
@@ -2050,9 +2113,62 @@ class ExecutionCoordinator:
             fence=command.fence,
         )
 
+    def _configuration_context(self, stores, command, request, run):
+        from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+        (plan, base, desired), events, read = stores.configuration_preparation._snapshot(request, run)
+        if run.plan_id != plan.plan_id or request.identity.plan_id != plan.plan_id:
+            raise ExecutionCoordinatorConflict("configuration run must use the pinned activity plan")
+        projection = project_activity_journal(plan.plan, activity_journal_events(events))
+        schedule = derive_schedule(plan.plan, projection.state)
+        common = dict(request=request, run=run, plan_record=plan, base_graph=base,
+            desired_graph=desired, events=events, projection=projection, schedule=schedule,
+            authority=command.authority, fence=command.fence)
+        # Locating an in-flight original is pure. In particular, the ordinary
+        # classifier is not called here: it can complete or fail the run.
+        if (run.status is ActivityRunStatus.RUNNING and not projection.uncertain
+                and not schedule.failed and schedule.running):
+            identity = EffectAttemptIdentity(RunId(run.run_id), schedule.running[0].activity_id.value, 1)
+            try:
+                original = stores.effect_attempt_intents.get(identity)
+            except KeyError:
+                original = None
+            if original is not None and original.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+                return _ConfigurationReplayContext(**common, original=original)
+        selected = schedule.running or schedule.ready
+        activity = plan.plan.activity(selected[0].activity_id) if selected else None
+        material = stores.configuration_preparation._material(stores, request, run, activity, read)
+        return _CoordinatorContext(**common,
+            registered_products=material.registered_products,
+            image_pull_authorities=material.image_pull_authorities,
+            runtime_authorities=material.runtime_authorities,
+            runtime_authority_deliveries=material.runtime_authority_deliveries,
+            ingress_authorities=material.ingress_authorities,
+            ingress_resources=material.ingress_resources,
+            generated_ingress_secrets=material.generated_ingress_secrets)
+
     def _fresh_run(self, run_id: str) -> ActivityRunRecord:
         with self._unit_of_work_factory() as unit_of_work:
             return _get_run(unit_of_work.stores, run_id)
+
+
+@dataclass(frozen=True)
+class _ConfigurationReplayContext:
+    """Catalog-free pinned snapshot whose sole next boundary is observation."""
+    request: ExecutionRequestRecord
+    run: ActivityRunRecord
+    plan_record: ActivityPlanRecord
+    base_graph: RealizedGraphProjectionRecord
+    desired_graph: RealizedGraphProjectionRecord
+    events: tuple[ActivityEventRecord, ...]
+    projection: SagaJournalProjection
+    schedule: ExecutionSchedule
+    authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
+    original: object
+
+    @property
+    def plan(self):
+        return self.plan_record.plan
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from control_plane_kit_core.operations.lifecycle import (
@@ -67,6 +68,32 @@ class PostgresExecutionStore:
 
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
+
+    def _configuration_request(self, read, request_id, *, for_update=False):
+        from .receiver_execution_scopes import _Transport, _REQUEST, _columns, _decode
+        if for_update:
+            read.query("SELECT 1 FROM cpk_execution_requests WHERE request_id=%s FOR UPDATE",
+                (request_id,), records=1, octets=1, cells=1)
+        rows = _Transport(self._connection, read).read("cpk_execution_requests", _columns(_REQUEST),
+            "request_id=%s", (request_id,), point=True)
+        if not rows:
+            raise KeyError("missing execution request")
+        return _execution_request(_decode(rows[0], _REQUEST, int_columns=("claim_generation",),
+            time_columns=("requested_at", "claimed_at", "lease_expires_at")))
+
+    def _configuration_run(self, read, where, params, *, for_update=False, order=""):
+        from .receiver_execution_scopes import _Transport, _RUN, _columns, _decode
+        if for_update:
+            suffix = " ORDER BY " + order if order else ""
+            read.query("SELECT 1 FROM cpk_activity_runs WHERE " + where + suffix + " LIMIT 1 FOR UPDATE",
+                params, records=1, octets=1, cells=1)
+        rows = _Transport(self._connection, read).read("cpk_activity_runs",
+            _columns(_RUN, json_columns=("metadata",), ceilings={"metadata": 65536}),
+            where, params, order=order, point=True)
+        if not rows:
+            raise KeyError("missing activity run")
+        return _activity_run(_decode(rows[0], _RUN, json_columns=("metadata",),
+            int_columns=("attempt",), time_columns=("created_at", "started_at", "settled_at")))
 
     def add_request(self, record: ExecutionRequestRecord) -> ExecutionRequestRecord:
         """Direct history insertion is restricted to proved empty footprints."""
@@ -132,7 +159,8 @@ class PostgresExecutionStore:
 
     def _receiver_execution_material(self, identity, guard):
         from .receiver_execution_scopes import _ExecutionScopeStorage
-        storage = _ExecutionScopeStorage(self._connection)
+        from .configuration_evidence import _active_read
+        storage = _ExecutionScopeStorage(self._connection, _active_read(self._connection))
         storage.guard(identity.workspace_id, guard)
         return storage.verify(identity)
 
@@ -162,7 +190,8 @@ class PostgresExecutionStore:
             derive_receiver_bindings,
         )
 
-        reader = _ExecutionScopeStorage(self._connection)
+        from .configuration_evidence import _active_read
+        reader = _ExecutionScopeStorage(self._connection, _active_read(self._connection))
         receipts, requests, result = {}, {}, []
         try:
             for origin in origins:
@@ -250,6 +279,11 @@ class PostgresExecutionStore:
 
         _require_run_id(run_id)
         _require_command_key(idempotency_key)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"execution-command:{run_id}:{idempotency_key}",), records=1, octets=1, cells=1)
+            return
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"execution-command:{run_id}:{idempotency_key}",),
@@ -297,6 +331,20 @@ class PostgresExecutionStore:
     ) -> ExecutionCommandReceiptRecord | None:
         _require_run_id(run_id)
         _require_command_key(idempotency_key)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            params = (run_id, idempotency_key)
+            where = "run_id=%s AND idempotency_key=%s"
+            if for_update:
+                read.query("SELECT 1 FROM cpk_execution_command_receipts WHERE " + where + " FOR UPDATE",
+                    params, records=1, octets=1, cells=1)
+            names = ("run_id", "idempotency_key", "intent_fingerprint", "worker_id", "authority_scopes",
+                "claim_generation", "max_effects", "admitted_at", "initial_run", "receipt_status", "completed_at", "result", "managed_intent")
+            columns = tuple((name, "json" if name in ("authority_scopes", "initial_run", "result", "managed_intent")
+                else "time" if name in ("admitted_at", "completed_at") else "int" if name == "claim_generation"
+                else "text", 65536) for name in names)
+            rows = read.bounded_rows("cpk_execution_command_receipts", columns, where, params)
+            return _command_receipt(rows[0]) if rows else None
         lock = "FOR UPDATE" if for_update else ""
         row = self._connection.execute(
             f"""
@@ -324,6 +372,30 @@ class PostgresExecutionStore:
         _require_command_key(idempotency_key)
         if type(result) is not ExecutionCommandResultRecord:
             raise OperationsRecordError("execution command result must be typed")
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("run_id", "idempotency_key", "intent_fingerprint", "worker_id", "authority_scopes",
+                "claim_generation", "max_effects", "admitted_at", "initial_run", "receipt_status", "completed_at", "result", "managed_intent")
+            valid = " AND ".join(f"({name} IS NULL OR octet_length({name}::text)<=65536)" for name in names)
+            projection = ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in names)
+            rows = read.query("WITH updated AS (UPDATE cpk_execution_command_receipts "
+                "SET receipt_status='completed', completed_at=%s, result=%s::jsonb "
+                "WHERE run_id=%s AND idempotency_key=%s AND intent_fingerprint=%s "
+                "AND receipt_status='incomplete' AND completed_at IS NULL AND result IS NULL "
+                "RETURNING *) SELECT " + projection + f",({valid}) FROM updated",
+                (encode_postgres_timestamp(completed_at), _json(_result_descriptor(result)),
+                    run_id, idempotency_key, intent_fingerprint), records=1, octets=13 * 65536 + 1, cells=14)
+            if not rows:
+                return None
+            if rows[0][-1] is not True:
+                raise OperationsRecordError("execution command receipt is unavailable")
+            values = list(rows[0][:-1])
+            for index in (4, 8, 11, 12):
+                values[index] = None if values[index] is None else json.loads(values[index])
+            for index in (7, 10):
+                values[index] = None if values[index] is None else datetime.fromisoformat(values[index])
+            values[5] = int(values[5])
+            return _command_receipt(tuple(values))
         row = self._connection.execute(
             """
             UPDATE cpk_execution_command_receipts
@@ -350,6 +422,9 @@ class PostgresExecutionStore:
         return None if row is None else _command_receipt(row)
 
     def get_request(self, request_id: str) -> ExecutionRequestRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            return self._configuration_request(read, request_id)
         row = self._connection.execute(
             """
             SELECT request_id, workspace_id, session_id, plan_id, status,
@@ -446,6 +521,9 @@ class PostgresExecutionStore:
         return None if updated is None else _execution_request(updated)
 
     def get_request_for_update(self, request_id: str) -> ExecutionRequestRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            return self._configuration_request(read, request_id, for_update=True)
         row = self._connection.execute(
             """
             SELECT request_id, workspace_id, session_id, plan_id, status,
@@ -472,6 +550,16 @@ class PostgresExecutionStore:
             raise OperationsRecordError(
                 "execution request does not have an active lease"
             )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            from datetime import datetime
+            rows = read.query("WITH observed AS (SELECT clock_timestamp() AS at) "
+                "SELECT observed.at::text, request.lease_expires_at <= observed.at "
+                "FROM cpk_execution_requests request CROSS JOIN observed WHERE request.request_id=%s",
+                (request_id,), records=1, octets=65, cells=2)
+            if not rows:
+                raise KeyError("missing execution request")
+            return _ExecutionLeaseObservation(request, decode_postgres_timestamp(datetime.fromisoformat(rows[0][0])), rows[0][1])
         observed = self._connection.execute(
             """
             WITH observed AS (
@@ -505,6 +593,10 @@ class PostgresExecutionStore:
 
     def _latest_run_for_request(self, request_id: str, *, for_update: bool) -> ActivityRunRecord:
         _recovery_request_id(request_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            return self._configuration_run(read, "request_id=%s", (request_id,),
+                for_update=for_update, order="attempt DESC")
         suffix = " FOR UPDATE" if for_update else ""
         row = self._connection.execute(
             f"""
@@ -528,6 +620,9 @@ class PostgresExecutionStore:
     ) -> ActivityRunRecord:
         _recovery_request_id(request_id)
         _require_run_id(run_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            return self._configuration_run(read, "request_id=%s AND run_id=%s", (request_id, run_id), for_update=True)
         row = self._connection.execute(
             """
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
@@ -670,6 +765,9 @@ class PostgresExecutionStore:
 
     def get_run(self, run_id: str) -> ActivityRunRecord:
         _require_run_id(run_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            return self._configuration_run(read, "run_id=%s", (run_id,))
         row = self._connection.execute(
             """
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
@@ -685,6 +783,9 @@ class PostgresExecutionStore:
 
     def get_run_for_update(self, run_id: str) -> ActivityRunRecord:
         _require_run_id(run_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            return self._configuration_run(read, "run_id=%s", (run_id,), for_update=True)
         row = self._connection.execute(
             """
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
@@ -913,6 +1014,15 @@ class PostgresExecutionStore:
         return record
 
     def get_event(self, event_id: str) -> ActivityEventRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            columns = (("event_id", "text", 2048), ("run_id", "text", 2048),
+                ("ordinal", "int", 32), ("event_type", "text", 128), ("occurred_at", "time", 64),
+                ("payload", "json", 16384))
+            rows = read.bounded_rows("cpk_activity_events", columns, "event_id=%s", (event_id,))
+            if not rows:
+                raise KeyError("missing activity event")
+            return _activity_event(rows[0])
         row = self._connection.execute(
             """
             SELECT event_id, run_id, ordinal, event_type, occurred_at, payload
@@ -927,6 +1037,14 @@ class PostgresExecutionStore:
 
     def next_event_ordinal(self, run_id: str) -> int:
         _require_run_id(run_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            locked = read.query("SELECT 1 FROM cpk_activity_runs WHERE run_id=%s FOR UPDATE",
+                (run_id,), records=1, octets=1, cells=1)
+            if not locked:
+                raise KeyError("missing activity run")
+            return read.query("SELECT COALESCE(MAX(ordinal),0)+1 FROM cpk_activity_events WHERE run_id=%s",
+                (run_id,), records=1, octets=20, cells=1)[0][0]
         locked = self._connection.execute(
             "SELECT run_id FROM cpk_activity_runs WHERE run_id = %s FOR UPDATE",
             (run_id,),
@@ -945,6 +1063,10 @@ class PostgresExecutionStore:
 
     def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]:
         _require_run_id(run_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            from .receiver_execution_scopes import _ExecutionScopeStorage
+            return _ExecutionScopeStorage(self._connection, read).events(run_id)
         rows = self._connection.execute(
             """
             SELECT event_id, run_id, ordinal, event_type, occurred_at, payload

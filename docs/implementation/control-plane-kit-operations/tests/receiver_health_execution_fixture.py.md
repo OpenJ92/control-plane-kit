@@ -5,3 +5,9 @@ The fixture composes the existing managed-application owner sequence: workspace,
 
 O2 / #1883 implementation validation is pending on [PR #1915](https://github.com/OpenJ92/control-plane-kit/pull/1915).
 The reviewed target-only checkpoint does not establish implementation green.
+
+B1 context preparation uses the shared `load_execution_context` fixture helper
+to establish the existing public command accounting/routing precondition before
+the private pinned-context read. It joins an existing same-command ledger and
+retains real owner reads. It does not fabricate material, acceptance or health
+authority, and all downstream health assertions remain governing.

@@ -26,6 +26,19 @@ from tests.postgres_effect_attempt_reconciliation_fixture import FailIfObserver
 from tests.test_receiver_admission_execution_evidence import ReceiverAdmissionExecutionEvidenceTests
 
 
+def load_execution_context(coordinator, command):
+    """Read real pinned context under the public command's accounting precondition.
+
+    These tests use the private loader to prepare retained or health inputs;
+    public execution normally establishes this scope before reaching it. Join
+    any same-command outer ledger rather than resetting its budget.
+    """
+    from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+    with _configuration_accounting(command.run_id, active=False, join=True):
+        coordinator._configure_run(command.run_id)
+        return coordinator._load_context(command)
+
+
 class ReceiverFreshExecutionFixture(ReceiverExecutionScopeFixture):
     receiver_graph = ReceiverAdmissionExecutionEvidenceTests.receiver_graph
     receiver_command = ReceiverAdmissionExecutionEvidenceTests.receiver_command
@@ -83,7 +96,7 @@ class ReceiverFreshExecutionFixture(ReceiverExecutionScopeFixture):
         from tests.postgres_effect_attempt_coordinator_fixture import RecordingRuntimeAdapter
         coordinator = self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), suffix)
         command = self.execution_command(claimed, suffix)
-        context = coordinator._load_context(command)
+        context = load_execution_context(coordinator, command)
         activity = context.plan.activities[0] if activity_id is None else context.plan.activity(ActivityId(activity_id))
         intent = _runtime_effect_intent_for_context(context, activity)
         transition = EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,

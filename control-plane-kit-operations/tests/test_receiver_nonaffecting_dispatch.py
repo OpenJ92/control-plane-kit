@@ -17,6 +17,7 @@ from control_plane_kit_operations.secret_providers import (
 from tests.postgres_effect_attempt_coordinator_fixture import RecordingRuntimeAdapter
 from tests.receiver_canonical_acceptance_fixture import ReceiverCanonicalAcceptanceFixture
 from tests.receiver_recorded_completion_fixture import retain_completion_inputs
+from tests.receiver_fresh_execution_fixture import load_execution_context
 from tests.test_ingress_realization import RecordingIngressInterpreter, TrackingUnitOfWorkFactory
 
 
@@ -31,7 +32,8 @@ class ReceiverNonaffectingDispatchTests(ReceiverCanonicalAcceptanceFixture, unit
         claimed = self.ready_run("remove")
         command = self.execution_command(claimed, "ingress")
         command = replace(command, authority=replace(command.authority, scopes=tuple(PolicyScope)))
-        context = self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), "ingress")._load_context(command)
+        context = load_execution_context(
+            self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), "ingress"), command)
         index = next(index for index, activity in enumerate(plan.plan.activities)
             if type(activity.operation) is RemovePublicIngress)
         activity = plan.plan.activities[index]

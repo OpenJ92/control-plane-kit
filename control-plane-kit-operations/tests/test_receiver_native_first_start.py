@@ -11,6 +11,7 @@ from control_plane_kit_operations.admission import ExecutionAdmissionError
 from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
 from tests.receiver_canonical_acceptance_fixture import ReceiverCanonicalAcceptanceFixture
 from tests.receiver_recorded_completion_fixture import retain_completion_inputs
+from tests.receiver_fresh_execution_fixture import load_execution_context
 
 
 class ReceiverNativeFirstStartTests(ReceiverCanonicalAcceptanceFixture, unittest.TestCase):
@@ -29,7 +30,8 @@ class ReceiverNativeFirstStartTests(ReceiverCanonicalAcceptanceFixture, unittest
         self.desired_receiver("native", graph=self.canonical_receiver_graph)
         _, plan, _ = self.plan_and_admit("native")
         claimed = self.ready_run("native")
-        context = self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), "native")._load_context(
+        context = load_execution_context(
+            self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), "native"),
             self.execution_command(claimed, "native"))
         position = next(index for index, activity in enumerate(plan.plan.activities)
             if type(activity.operation) is StartNode and activity.operation.target.node_id == "api")

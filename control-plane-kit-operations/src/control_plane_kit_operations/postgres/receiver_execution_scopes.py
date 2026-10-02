@@ -24,13 +24,17 @@ The guarded second read returns text/bytea plus one fixed validity scalar. A
 changed row can never turn a small probe into an unbounded transported value.
     """
 
-    def __init__(self, connection):
+    def __init__(self, connection, configuration_read=None):
         self.connection = connection
+        self.configuration_read = configuration_read
         self.used = 0
         self.cache = {}
 
     @property
     def remaining(self):
+        if self.configuration_read is not None:
+            return max(0, min(MAX_VALUE_BYTES - self.used,
+                16 * 1024 * 1024 - self.configuration_read.used.accounted_bytes))
         return MAX_VALUE_BYTES - self.used
 
     def reserve(self, amount):
@@ -52,8 +56,21 @@ Each column is (SQL expression, maximum bytes). Expressions explicitly cast
 scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
         """
         key = (table, columns, where, params, order, maximum, point, page, unique)
+        _require(0 < len(columns) <= 32)
         if cache and key in self.cache:
             return self.cache[key]
+        if self.configuration_read is not None:
+            # Original-material verification keeps its decoder and authority
+            # laws, while B1 supplies the same command's transport accounting.
+            declared = tuple((expression, "bytes" if not expression.endswith("::text") else "text", cap)
+                for expression, cap in columns)
+            rows = self.configuration_read.bounded_rows(table, declared, where, params,
+                maximum=1 if point else maximum, order=order, point=point or page)
+            if unique and len(rows) > 1:
+                raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+            if cache:
+                self.cache[key] = rows
+            return rows
         _require(0 < len(columns) <= 32)
         nominal = 1 if point else maximum if page else maximum + 1
         limit = min(nominal, self.remaining // 512)
@@ -142,9 +159,9 @@ _ACTION = ("action_id", "session_id", "ordinal", "action_type", "actor_id", "pay
 
 
 class _ExecutionScopeStorage:
-    def __init__(self, connection):
+    def __init__(self, connection, configuration_read=None):
         self.connection = connection
-        self.transport = _Transport(connection)
+        self.transport = _Transport(connection, configuration_read)
         self.run_count = 0
         self.event_count = 0
         self.effect_count = 0
@@ -155,9 +172,15 @@ class _ExecutionScopeStorage:
         _require(type(guard) is WorkspaceLifecycleGuard)
         _require(guard.workspace_id == workspace_id and guard._owner._connection is self.connection)
         _require(guard._owner.owns_receiver_lifecycle(guard, workspace_id))
-        self.transport.reserve(512)
-        row = self.connection.execute("SELECT txid_current()").fetchone()
-        self.transport.charge(512, (row,))
+        if self.transport.configuration_read is None:
+            self.transport.reserve(512)
+            row = self.connection.execute("SELECT txid_current()").fetchone()
+            self.transport.charge(512, (row,))
+        else:
+            rows = self.transport.configuration_read.query("SELECT txid_current()", (),
+                records=1, octets=20, cells=1)
+            _require(len(rows) == 1)
+            row = rows[0]
         _require(row == (guard._transaction_id,))
 
     def originals(self, identity):
@@ -273,11 +296,13 @@ class _ExecutionScopeStorage:
             # and guards within the lookup index keys; runtime scopes imply a
             # zero-length NULL node. Full retained scope truth, including that
             # node and ordinal/kind, is checked by verify() before classification.
-            rows = self.connection.execute(
-                "SELECT " + ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in ("request_id", "workspace_id"))
-                + f",({valid}) FROM cpk_execution_receiver_scopes WHERE {where} LIMIT %s",
-                (*params, limit),
-            ).fetchall()
+            query = "SELECT " + ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in ("request_id", "workspace_id"))
+            query += f",({valid}) FROM cpk_execution_receiver_scopes WHERE {where} LIMIT %s"
+            if self.transport.configuration_read is None:
+                rows = self.connection.execute(query, (*params, limit)).fetchall()
+            else:
+                rows = self.transport.configuration_read.query(query, (*params, limit),
+                    records=limit, octets=limit * 4096, cells=3)
             self.transport.charge(reserved, rows)
             # Any full prefix refuses before interpretation; a shorter page
             # contains every matching row, irrespective of retrieval order.

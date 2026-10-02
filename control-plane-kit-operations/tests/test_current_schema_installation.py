@@ -23,6 +23,7 @@ _EXPECTED_RELATIONS = (
     "cpk_approval_decisions",
     "cpk_approval_requests",
     "cpk_cloudflare_ingress_resources",
+    "cpk_configuration_claims",
     "cpk_delegation_signing_keys",
     "cpk_desired_topology_draft_revisions",
     "cpk_desired_topology_drafts",
@@ -30,6 +31,7 @@ _EXPECTED_RELATIONS = (
     "cpk_effect_attempt_outcome_observations",
     "cpk_effect_attempt_outcomes",
     "cpk_effect_attempts",
+    "cpk_effect_configuration_refs",
     "cpk_execution_command_receipts",
     "cpk_execution_receiver_scopes",
     "cpk_execution_requests",
@@ -122,10 +124,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "34a250ef291ad69ec223c10405bc92c5c9955bd4ab8c40364375bb2cacb9ddd9"
+    "2cd679a84a0030402ed4b3187180268421b84128799950cf4b9f2abd5f673307"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "a535a108bc2621cef1ee505a1038c824f55f06a86cd8a87746162f17833ed383"
+    "da81ac9f0951f237be08fcac4eb93d5c73d3e665a25dd4f47891edfffdd9afb7"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -418,10 +420,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 44)
-        self.assertEqual(len(contract.columns), 557)
-        self.assertEqual(len(contract.constraints), 449)
-        self.assertEqual(len(contract.indexes), 147)
+        self.assertEqual(len(contract.relations), 46)
+        self.assertEqual(len(contract.columns), 580)
+        self.assertEqual(len(contract.constraints), 458)
+        self.assertEqual(len(contract.indexes), 153)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -627,7 +629,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            44,
+            46,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
@@ -658,7 +660,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (44, 557, 449, 147))
+        self.assertEqual(self._catalog_counts(), (46, 580, 458, 153))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -716,6 +718,35 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             for field in sorted(expected_index):
                 with self.subTest(index=name, field=field):
                     self.assertEqual(observed_index[field], expected_index[field])
+        postgres.install_schema(self.connection)
+
+    def test_configuration_protection_schema_matches_frozen_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import current_schema_verification, schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        self.connection.execute(schema._CURRENT_SCHEMA_SQL)
+        query, separator, _ = current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
+            "\nSELECT\n  COALESCE(")
+        self.assertTrue(separator)
+        relations = ("cpk_configuration_claims", "cpk_effect_configuration_refs")
+        limits = tuple(len(getattr(contract, section)) + 1
+            for section in ("relations", "columns", "constraints", "indexes"))
+        for section in ("columns", "constraints", "indexes"):
+            rows = self.connection.execute(query + f"\nSELECT value FROM semantic_{section} "
+                "WHERE relname = ANY(%s)", (*limits, list(relations))).fetchall()
+            observed = {(row[0]["relation"], row[0]["name"]): row[0] for row in rows}
+            expected = {(item.relation, item.name): json.loads(json.dumps(dataclasses.asdict(item)))
+                for item in getattr(contract, section) if item.relation in relations}
+            self.assertEqual(set(observed), set(expected))
+            for key, value in expected.items():
+                for field in value:
+                    with self.subTest(section=section, identity=key, field=field):
+                        self.assertEqual(observed[key][field], value[field])
+        self.assertTrue(current_schema_verification.current_schema_contract_is_exact(self.connection))
+        self.assertTrue(current_schema_verification.current_namespace_adjuncts_are_exact(self.connection))
+        from control_plane_kit_operations.postgres.current_data_validation import validate_current_rows
+        validate_current_rows(self.connection)
         postgres.install_schema(self.connection)
 
     def test_fresh_schema_persists_new_authority_purpose_and_intents(self) -> None:
@@ -1136,7 +1167,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (44, 557, 449, 147))
+        self.assertEqual(self._catalog_counts(), (46, 580, 458, 153))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

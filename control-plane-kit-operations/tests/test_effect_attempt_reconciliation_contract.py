@@ -636,6 +636,7 @@ class EffectAttemptReconciliationContractTests(
                 "control_plane_kit_core.runtime_authority",
                 "control_plane_kit_core.runtime_effect_observation",
                 "control_plane_kit_core.secrets",
+                "control_plane_kit_operations._configuration_preparation",
                 "control_plane_kit_operations.effect_attempt_fold",
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 LANGUAGE_MODULE,

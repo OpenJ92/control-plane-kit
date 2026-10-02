@@ -19,13 +19,14 @@ from control_plane_kit_operations.postgres.temporal import decode_postgres_times
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.records import ApprovalDecisionKind, GraphVersionRecord
 from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
+from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from control_plane_kit_operations.lifecycle import CompleteActivityRun
 from control_plane_kit_operations.advancement import _require_complete_success
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.managed_teardown_fixture import managed_teardown, seed_owned_ingress
 from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
 from tests.receiver_recorded_completion_fixture import retain_completion_inputs
-from tests.receiver_fresh_execution_fixture import ReceiverFreshExecutionFixture
+from tests.receiver_fresh_execution_fixture import ReceiverFreshExecutionFixture, load_execution_context
 from tests.test_execution_admission import Sequence
 
 
@@ -44,6 +45,9 @@ class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
                 configuration_artifacts=receiver_node.configuration_artifacts,
                 public_environment=receiver_node.public_environment))
         with self.unit_of_work() as uow:
+            uow.stores.runtime_authorities.register(workspace_id="workspace-a",
+                authority_ref=graph.runtimes["docker"].authority_ref, runtime_kind=graph.runtimes["docker"].kind,
+                authority=LocalDockerSocketAuthority(), admitted_by="operator-a", admitted_at=self.now())
             registered = uow.stores.registered_products.register(workspace_id="workspace-a",
                 descriptor_document=ProductDescriptorCodec().encode_document(product),
                 source=InlineDescriptorSource(), imported_by="operator-a", imported_at=self.now())
@@ -128,7 +132,8 @@ class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
         transition, plan, admitted = self.plan_and_admit(suffix)
         claimed = self.ready_run(suffix)
         command = self.execution_command(claimed, suffix)
-        context = self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), suffix)._load_context(command)
+        context = load_execution_context(
+            self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), suffix), command)
         retain_completion_inputs(self, context)
         completed = self.lifecycle("complete-event-" + suffix, "complete-action-" + suffix).execute(
             CompleteActivityRun(claimed.run.run_id, command.authority, command.fence,

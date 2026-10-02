@@ -285,7 +285,10 @@ class _ReceiverStorage:
     def guard(self, owner, guard, workspace):
         _require(owner.owns_receiver_lifecycle(guard, workspace))
         try:
-            row = self.connection.execute("SELECT txid_current()").fetchone()
+            from .configuration_evidence import _active_read
+            read = _active_read(self.connection)
+            row = (self.connection.execute("SELECT txid_current()").fetchone() if read is None else
+                read.query("SELECT txid_current()", (), records=1, octets=20, cells=1)[0])
         except (InterfaceError, OperationalError):
             failure = ReceiverLifecycleStorageError("receiver storage is unavailable")
         else:
@@ -296,18 +299,39 @@ class _ReceiverStorage:
     def introduction(self, workspace, receiver):
         _text(workspace)
         _text(receiver)
-        row = self.connection.execute(_select(_INTRO, _INTRO_COLUMNS) +
-            "WHERE workspace_id=%s AND receiver_id=%s", (workspace, receiver)).fetchone()
+        from .configuration_evidence import _active_read
+        read = _active_read(self.connection)
+        if read is None:
+            row = self.connection.execute(_select(_INTRO, _INTRO_COLUMNS) +
+                "WHERE workspace_id=%s AND receiver_id=%s", (workspace, receiver)).fetchone()
+        else:
+            rows = read.bounded_rows(_INTRO, tuple((name, "text", 2048) for name in _INTRO_COLUMNS),
+                "workspace_id=%s AND receiver_id=%s", (workspace, receiver))
+            row = (*rows[0], True) if rows else None
         return None if row is None else _decode(row, ReceiverIntroduction)
 
     def material(self, workspace, graph_id, projection_id, *, graph=None, projection=None):
         for value in (workspace, graph_id, projection_id):
             _text(value)
-        authored_row = self.connection.execute(_select("cpk_graph_versions", _GRAPH_COLUMNS) +
-            "WHERE workspace_id=%s AND graph_id=%s", (workspace, graph_id)).fetchone()
-        projected_row = self.connection.execute(_select("cpk_realized_graph_projections", _PROJECTION_COLUMNS) +
-            "WHERE workspace_id=%s AND projection_id=%s AND source_authored_graph_id=%s",
-            (workspace, projection_id, graph_id)).fetchone()
+        from .configuration_evidence import _active_read
+        read = _active_read(self.connection)
+        if read is None:
+            authored_row = self.connection.execute(_select("cpk_graph_versions", _GRAPH_COLUMNS) +
+                "WHERE workspace_id=%s AND graph_id=%s", (workspace, graph_id)).fetchone()
+            projected_row = self.connection.execute(_select("cpk_realized_graph_projections", _PROJECTION_COLUMNS) +
+                "WHERE workspace_id=%s AND projection_id=%s AND source_authored_graph_id=%s",
+                (workspace, projection_id, graph_id)).fetchone()
+        else:
+            def columns(names):
+                return tuple((name, "json" if name in _JSON else "int" if name == "version"
+                    else "time" if name == "created_at" else "text", 1048576 if name in _JSON else 2048)
+                    for name in names)
+            authored_rows = read.bounded_rows("cpk_graph_versions", columns(_GRAPH_COLUMNS),
+                "workspace_id=%s AND graph_id=%s", (workspace, graph_id))
+            projected_rows = read.bounded_rows("cpk_realized_graph_projections", columns(_PROJECTION_COLUMNS),
+                "workspace_id=%s AND projection_id=%s AND source_authored_graph_id=%s", (workspace, projection_id, graph_id))
+            authored_row = (*authored_rows[0], True) if authored_rows else None
+            projected_row = (*projected_rows[0], True) if projected_rows else None
 
         def authored(*values):
             values = list(values)
@@ -331,10 +355,18 @@ class _ReceiverStorage:
 
     def bindings(self, workspace, graph_id, projection_id):
         expected = self.material(workspace, graph_id, projection_id)
-        rows = self.connection.execute(_select(_BIND, _BIND_COLUMNS) +
-            "WHERE workspace_id=%s AND graph_id=%s AND realized_projection_id=%s "
-            "ORDER BY node_id,provider_socket_name LIMIT %s",
-            (workspace, graph_id, projection_id, len(expected) + 1)).fetchall()
+        from .configuration_evidence import _active_read
+        read = _active_read(self.connection)
+        if read is None:
+            rows = self.connection.execute(_select(_BIND, _BIND_COLUMNS) +
+                "WHERE workspace_id=%s AND graph_id=%s AND realized_projection_id=%s "
+                "ORDER BY node_id,provider_socket_name LIMIT %s",
+                (workspace, graph_id, projection_id, len(expected) + 1)).fetchall()
+        else:
+            rows = tuple((*row, True) for row in read.bounded_rows(_BIND,
+                tuple((name, "text", 2048) for name in _BIND_COLUMNS),
+                "workspace_id=%s AND graph_id=%s AND realized_projection_id=%s", (workspace, graph_id, projection_id),
+                maximum=len(expected), point=False, order="node_id,provider_socket_name"))
         actual = tuple(sorted((_decode(row, ReceiverBinding) for row in rows),
                               key=lambda item: (item.node_id, item.provider_socket_name)))
         _require(actual == expected)

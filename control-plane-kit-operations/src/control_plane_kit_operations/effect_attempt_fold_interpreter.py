@@ -22,7 +22,7 @@ from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.planning import resolve_management_observation
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure
+from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure, RuntimeEffectKind
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -215,7 +215,21 @@ class EffectAttemptFoldService:
         return result
 
 
-def _execute_fold(
+def _execute_fold(self, command, guarded, health=None, signing_authority=None):
+    if type(command) is FoldNativeConnectionObservation or health is not None:
+        return _execute_fold_once(self, command, guarded, health, signing_authority)
+    from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+    try:
+        with _configuration_accounting(command.transition.identity.run_id.value, join=True, active=False) as accounting:
+            return _execute_fold_once(self, command, guarded, health, signing_authority)
+    except (KeyError, ValueError, TypeError, AttributeError):
+        if not accounting.active:
+            raise
+        pass
+    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+
+
+def _execute_fold_once(
     self: EffectAttemptFoldService,
     command: FoldEffectAttempt | FoldNativeConnectionObservation,
     guarded: GuardedObservedEffectFold | None,
@@ -232,6 +246,22 @@ def _execute_fold(
         stores = unit_of_work.stores
         health_prefix = None
         health_locator = None
+        configuration_locator = None
+        configuration_request = None
+        configuration_guard = None
+        configuration_prefix = None
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+        accounting = _ACCOUNTING.get()
+        if accounting is not None and native is None and health is None:
+            if not accounting.active:
+                stores.configuration_preparation._configure_run(identity.run_id.value)
+            if accounting.active:
+                configuration_request = stores.execution.get_request(command.request_id)
+                configuration_locator = _attempt_for_update(stores, identity, for_update=False)
+                original = stores.effect_attempt_intents.get(identity)
+                if (original.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1
+                        and _fold(command, configuration_locator) != configuration_locator.state):
+                    configuration_guard = stores.graphs.lock_receiver_lifecycle(configuration_request.identity.workspace_id)
         if health is not None:
             # Locate replay without current permission. Only a fresh transition
             # acquires L, before ANY request/run/attempt/runtime row lock.
@@ -242,6 +272,13 @@ def _execute_fold(
                     raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
                 health_prefix = _lock_health_prefix(unit_of_work, locator, identity)
         request = _request_for_update(stores, command.request_id)
+        if configuration_request is not None and request != configuration_request:
+            raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        if configuration_guard is not None:
+            configuration_prefix = _lock_effect_run_prefix(unit_of_work, request,
+                identity.run_id.value, latest_required=True)
+            if configuration_prefix.latest_run != configuration_prefix.requested_run:
+                raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
         if health is not None and request != locator:
             raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
         if native is not None and native.context.workspace_id != request.identity.workspace_id:
@@ -253,7 +290,7 @@ def _execute_fold(
             command.request_id,
             identity.run_id.value,
         )
-        run_prefix, located_native_intent, located_health_intent = health_prefix, None, None
+        run_prefix, located_native_intent, located_health_intent = health_prefix or configuration_prefix, None, None
         if native is not None or health is not None:
             # Request serialization permits a nonlocking branch locator. Keep
             # malformed truth/current authority refusals before fresh latest-run
@@ -292,6 +329,8 @@ def _execute_fold(
                 raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
         else:
             attempt = _attempt_for_update(stores, identity)
+        if configuration_locator is not None and attempt != configuration_locator:
+            raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
         _require_current_authority(command, request)
         native_intent, native_clock = None, None
         if native is not None:
@@ -336,9 +375,16 @@ def _execute_fold(
                 raise EffectAttemptFoldConflict(replay_error)
         else:
             denied = False
+            if configuration_guard is not None:
+                stores.activity_history.get_session_for_update(request.identity.session_id)
             intent_record = (located_health_intent if health is not None else
                 _read_fold_intent(stores, command, attempt, guarded, None))
             invalid_truth = intent_record is None
+            if (not invalid_truth and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
+                if configuration_guard is None:
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+                stores.graphs._require_receiver_lifecycle(configuration_guard, request.identity.workspace_id)
+                stores.configuration_preparation._require_original(intent_record)
             observation = None
             if (not invalid_truth and native is None
                     and is_native_connection_operation(intent_record.intent.operation)):

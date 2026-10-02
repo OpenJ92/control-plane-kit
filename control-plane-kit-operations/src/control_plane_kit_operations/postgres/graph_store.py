@@ -298,6 +298,19 @@ class PostgresWorkspaceStore:
             self._require_legacy_pointer_material(workspace_id, graph_id, projection_id)
 
     def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            if for_update:
+                read.query("SELECT 1 FROM cpk_workspaces WHERE workspace_id=%s FOR UPDATE",
+                    (workspace_id,), records=1, octets=1, cells=1)
+            names = ("workspace_id", "name", "lifecycle", "current_graph_id", "desired_graph_id",
+                "metadata", "current_realized_projection_id", "desired_realized_projection_id", "desired_graph_revision")
+            columns = tuple((name, "json" if name == "metadata" else "int" if name == "desired_graph_revision"
+                else "text", 65536 if name == "metadata" else 2048) for name in names)
+            rows = read.bounded_rows("cpk_workspaces", columns, "workspace_id=%s", (workspace_id,))
+            if not rows:
+                raise KeyError("missing workspace")
+            return _workspace_record(rows[0])
         lock = " FOR UPDATE" if for_update else ""
         row = self._connection.execute(
             f"""
@@ -366,6 +379,12 @@ class PostgresGraphTopologyStore:
 
     def lock_receiver_lifecycle(self, workspace_id: str) -> WorkspaceLifecycleGuard:
         """Enter before existing rows; exact-key transaction reentry is legal."""
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"receiver-lifecycle:{workspace_id}",), records=1, octets=1, cells=1)
+            transaction_id = read.query("SELECT txid_current()", (), records=1, octets=20, cells=1)[0][0]
+            return WorkspaceLifecycleGuard(workspace_id, self, transaction_id)
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"receiver-lifecycle:{workspace_id}",),
@@ -396,15 +415,27 @@ class PostgresGraphTopologyStore:
 
     def _require_receiver_origin_action(self, origin):
         from control_plane_kit_operations.postgres.activity_history import _action_record
-
-        row = self._connection.execute(
-            "SELECT a.action_id,a.session_id,a.ordinal,a.action_type,a.actor_id,"
-            "CASE WHEN octet_length(a.payload::text)<=65536 THEN a.payload END,"
-            "a.created_at,a.idempotency_key,a.intent_fingerprint FROM cpk_operation_actions a "
-            "JOIN cpk_operation_sessions s ON s.session_id=a.session_id "
-            "WHERE a.action_id=%s AND a.session_id=%s AND s.workspace_id=%s",
-            (origin.introducing_action_id, origin.introducing_session_id, origin.workspace_id),
-        ).fetchone()
+        from .configuration_evidence import _active_read
+        read = _active_read(self._connection)
+        if read is not None:
+            names = ("action_id", "session_id", "ordinal", "action_type", "actor_id", "payload",
+                     "created_at", "idempotency_key", "intent_fingerprint")
+            columns = tuple(("a." + name, "json" if name == "payload" else "int" if name == "ordinal"
+                else "time" if name == "created_at" else "text", 65536 if name == "payload" else 2048)
+                for name in names)
+            rows = read.bounded_rows("cpk_operation_actions a JOIN cpk_operation_sessions s ON s.session_id=a.session_id",
+                columns, "a.action_id=%s AND a.session_id=%s AND s.workspace_id=%s",
+                (origin.introducing_action_id, origin.introducing_session_id, origin.workspace_id), identities=2)
+            row = rows[0] if rows else None
+        else:
+            row = self._connection.execute(
+                "SELECT a.action_id,a.session_id,a.ordinal,a.action_type,a.actor_id,"
+                "CASE WHEN octet_length(a.payload::text)<=65536 THEN a.payload END,"
+                "a.created_at,a.idempotency_key,a.intent_fingerprint FROM cpk_operation_actions a "
+                "JOIN cpk_operation_sessions s ON s.session_id=a.session_id "
+                "WHERE a.action_id=%s AND a.session_id=%s AND s.workspace_id=%s",
+                (origin.introducing_action_id, origin.introducing_session_id, origin.workspace_id),
+            ).fetchone()
         _require(row is not None and row[5] is not None)
         action = _action_record(row)
         projection = PostgresRealizedGraphProjectionStore(self._connection).get(
@@ -412,11 +443,12 @@ class PostgresGraphTopologyStore:
         graph = self.get(origin.introducing_graph_id)
         revision = _validate_receiver_origin_action(origin, action, graph, projection)
         if revision is not None:
-            _require(self._connection.execute(
-                "SELECT EXISTS(SELECT 1 FROM cpk_desired_topology_draft_revisions "
-                "WHERE workspace_id=%s AND draft_id=%s AND revision=%s AND graph_id=%s)",
-                (origin.workspace_id, origin.introducing_draft_id, revision, graph.graph_id),
-            ).fetchone() == (True,))
+            sql = ("SELECT EXISTS(SELECT 1 FROM cpk_desired_topology_draft_revisions "
+                "WHERE workspace_id=%s AND draft_id=%s AND revision=%s AND graph_id=%s)")
+            params = (origin.workspace_id, origin.introducing_draft_id, revision, graph.graph_id)
+            row = (self._connection.execute(sql, params).fetchone() if read is None else
+                read.query(sql, params, records=1, octets=1, cells=1)[0])
+            _require(row == (True,))
 
     def _reserve_receiver_introductions(self, graph, projection, *, action_id, session_id,
                                        draft_id=None, lifecycle_guard):
@@ -480,6 +512,15 @@ class PostgresGraphTopologyStore:
         raise GraphIdentityConflict("graph identity is unavailable")
 
     def get(self, graph_id: str) -> GraphVersionRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            columns = (("graph_id", "text", 2048), ("workspace_id", "text", 2048), ("version", "int", 32),
+                ("graph_descriptor", "json", 1048576), ("created_by", "text", 2048),
+                ("created_at", "time", 64), ("metadata", "json", 1048576))
+            rows = read.bounded_rows("cpk_graph_versions", columns, "graph_id=%s", (graph_id,))
+            if not rows:
+                raise KeyError("graph is unavailable")
+            return _graph_record(rows[0])
         row = self._connection.execute(
             """
             SELECT graph_id, workspace_id, version, graph_descriptor, created_by, created_at, metadata
@@ -603,6 +644,16 @@ class PostgresRealizedGraphProjectionStore:
         return existing
 
     def get(self, projection_id: str) -> RealizedGraphProjectionRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("projection_id", "workspace_id", "source_authored_graph_id", "projection_kind",
+                "projection_key", "projection_digest", "graph_descriptor", "created_by", "created_at")
+            columns = tuple((name, "json" if name == "graph_descriptor" else "time" if name == "created_at"
+                else "text", 1048576 if name == "graph_descriptor" else 2048) for name in names)
+            rows = read.bounded_rows("cpk_realized_graph_projections", columns, "projection_id=%s", (projection_id,))
+            if not rows:
+                raise KeyError("realized graph projection is unavailable")
+            return _realized_graph_projection_record(rows[0])
         row = self._connection.execute(
             """
             SELECT projection_id, workspace_id, source_authored_graph_id,

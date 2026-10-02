@@ -94,3 +94,36 @@ The signed managed-health port now returns exact Core ReceiverHealthReadResult. 
 
 Implementation validation is pending on PR #1915. The reviewed target-only red
 checkpoint establishes only its recorded missing boundaries, not these green laws.
+
+## B1 / #1923 configuration preparation
+
+Configuration commands open one logical evidence ledger before preliminary
+reads. A bounded plan-pinned route selects existing-owner readers; fresh work
+loads only both pinned graphs' products and runtime authorities, then the
+selected activity's pull, delivery and ingress material. One event-free material
+translator derives the same intent for the coordinator and first-start owner.
+
+Original in-flight replay locates the retained intent before fresh translation.
+Its narrow observation context carries no invented catalog material and hands
+ExistingAttempt to reconciliation. Managed authority still precedes effectful
+classification. The ledger joins nested start, reconciliation and fold within
+the same task/thread and command identity; material caches remain UoW-local.
+Read refusal does not authorize dispatch or manufacture current-use truth.
+
+The observation-only replay context already carries the verified original
+intent. Execution consumes it directly; unrelated legacy effect steps do not
+open an extra intent-locator UoW. Request-before-run lock tests identify the
+actual locking connection after the preceding read-only routing connection.
+
+The private context loader requires the command's accounting scope when its
+pinned graph contains configuration. Production callers enter through the
+existing execute, managed-execute or reobserve roots. Direct-context test
+fixtures explicitly establish the same accounting and routing precondition;
+they join an existing same-command ledger and do not introduce a production
+standalone fallback or reset an existing budget.
+
+Selected ancillary material belongs to one activity. The synthetic retained-
+history fixture therefore reloads each selected activity through the same
+material owner and translator in one shared accounting scope and UoW. Its
+canonical graph also registers its declared runtime through the real owner.
+These are test premises, not configuration allocation, provider or health proof.

@@ -67,6 +67,7 @@ from tests.execution_lease_recovery_fixture import Sequence
 from tests.health_effect_start_fixture import trusted_health_context
 from tests.health_receiver_trust_fixture import artifact, bindings, ByteDecoder, public_key, reference, wrapper_environment
 from tests.receiver_health_preparation_fixture import receiver_target
+from tests.receiver_fresh_execution_fixture import load_execution_context
 from tests.runtime_management_fixtures import bootstrap_management_graph
 from tests.test_cpk_server_adapters import operator_principal
 from tests.test_managed_application_chain import (
@@ -347,7 +348,7 @@ class ReceiverHealthExecutionFixture(ManagedApplicationFixture):
             adapter=self.runtime, start_service=self.start_service(), fold_service=fold,
             reconciliation_service=EffectAttemptReconciliationService(self.unit_of_work, ForbiddenRecovery(), fold),
             clock=now, id_factory=self.ids["execution"])
-        context = execution._load_context(run_command)
+        context = load_execution_context(execution, run_command)
         return context, run_command
 
     def start_service(self, *, factory=None, ids=None):
