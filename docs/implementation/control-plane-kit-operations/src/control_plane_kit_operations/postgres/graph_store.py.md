@@ -76,3 +76,13 @@ selection. Active current CAS reserves a scalar return and then retrieves the
 complete workspace through its bounded getter; misses still consume statement
 cost. These advancement changes await their focused gate and prepared-owner
 integration before acceptance.
+
+B2 private current CAS requires the same live prepared original advancement
+owner as the paired history writers. Every source/destination graph, projection
+and pinned revision must match preparation before the existing conditional update.
+The owning UoW rolls back CAS if history or acceptance preflight fails.
+
+The no-prepared legacy current setter/CAS retains its material-only behavior for
+receiver-free, configuration-free graphs. It validates both authored and realized
+material under the existing lifecycle guard and creates no acceptance authority.
+Desired-only material writes retain their prior contract.

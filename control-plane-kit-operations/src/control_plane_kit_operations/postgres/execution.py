@@ -979,6 +979,23 @@ class PostgresExecutionStore:
         return ReadPage.from_candidates(request, candidates)
 
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord:
+        return self._insert_event(record)
+
+    def _add_advancement_event(self, record, prepared_receipt):
+        return self._insert_event(record, prepared_receipt)
+
+    def _insert_event(self, record, prepared_receipt=None):
+        locators = (None,) * 4
+        if record.kind is ActivityEventKind.CURRENT_GRAPH_ADVANCED:
+            from control_plane_kit_operations._configuration_acceptance import _require_prepared_advancement
+            _require_prepared_advancement(prepared_receipt, self._connection,
+                record.evidence.descriptor().get("workspace_id"), after_cas=True)
+            if record != prepared_receipt.event:
+                raise OperationsRecordError("advancement event differs from original owner")
+            locators = (prepared_receipt.workspace.workspace_id, prepared_receipt.request.identity.request_id,
+                prepared_receipt.plan.plan_id, prepared_receipt.plan.desired_graph_revision)
+        elif prepared_receipt is not None:
+            raise OperationsRecordError("prepared advancement requires original event")
         payload = {
             "activity_id": record.activity_id,
             "evidence": record.evidence.descriptor(),
@@ -998,8 +1015,9 @@ class PostgresExecutionStore:
         }
         query = """
             INSERT INTO cpk_activity_events
-              (event_id, run_id, ordinal, event_type, occurred_at, payload)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+              (event_id, run_id, ordinal, event_type, occurred_at, payload,
+               advancement_workspace_id, advancement_request_id, advancement_plan_id, advancement_revision)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
             """
         values = (
                 record.event_id,
@@ -1008,7 +1026,7 @@ class PostgresExecutionStore:
                 record.kind.value,
                 encode_postgres_timestamp(record.occurred_at),
                 _json(payload),
-            )
+            ) + locators
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
             read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)

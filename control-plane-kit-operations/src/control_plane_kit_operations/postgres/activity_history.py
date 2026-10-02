@@ -258,11 +258,29 @@ class PostgresActivityHistoryStore:
         return None if row is None else _session_record(row)
 
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord:
+        return self._insert_action(record)
+
+    def _add_advancement_action(self, record, prepared_receipt):
+        return self._insert_action(record, prepared_receipt)
+
+    def _insert_action(self, record, prepared_receipt=None):
+        locators = (None,) * 5
+        if record.action_type is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH:
+            from control_plane_kit_operations._configuration_acceptance import _require_prepared_advancement
+            _require_prepared_advancement(prepared_receipt, self._connection,
+                record.payload.get("workspace_id"), after_cas=True)
+            if record != prepared_receipt.action:
+                raise OperationsRecordError("advancement action differs from original owner")
+            locators = (prepared_receipt.workspace.workspace_id, prepared_receipt.request.identity.request_id,
+                prepared_receipt.plan.plan_id, prepared_receipt.run.run_id, prepared_receipt.plan.desired_graph_revision)
+        elif prepared_receipt is not None:
+            raise OperationsRecordError("prepared advancement requires original action")
         query = """
             INSERT INTO cpk_operation_actions
               (action_id, session_id, ordinal, action_type, actor_id, payload,
-               created_at, idempotency_key, intent_fingerprint)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+               created_at, idempotency_key, intent_fingerprint, advancement_workspace_id,
+               advancement_request_id, advancement_plan_id, advancement_run_id, advancement_revision)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
         values = (
                 record.action_id,
@@ -274,7 +292,7 @@ class PostgresActivityHistoryStore:
                 encode_postgres_timestamp(record.created_at),
                 record.idempotency_key,
                 record.intent_fingerprint,
-            )
+            ) + locators
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
             read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)

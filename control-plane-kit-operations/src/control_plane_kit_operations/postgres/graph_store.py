@@ -9,7 +9,7 @@ from typing import Any
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
-from control_plane_kit_core.topology import GraphDescriptorError
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.graph_authoring import GraphIdentityConflict
 from control_plane_kit_operations.receiver_lifecycle import (
@@ -174,7 +174,7 @@ class PostgresWorkspaceStore:
         graph_id: str,
         realized_projection_id: str | None = None,
     ) -> WorkspaceRecord:
-        self._require_legacy_pointer_change(workspace_id, ((graph_id, realized_projection_id),))
+        self._require_legacy_pointer_change(workspace_id, ((graph_id, realized_projection_id),), configuration_free=True)
         projection_id = self._projection_for_source(
             workspace_id,
             graph_id,
@@ -204,7 +204,7 @@ class PostgresWorkspaceStore:
     ) -> WorkspaceRecord | None:
         self._require_legacy_pointer_change(workspace_id, (
             (replacement_graph_id, replacement_realized_projection_id),
-        ))
+        ), configuration_free=True)
         return self._compare_and_set_current_graph(workspace_id, expected_graph_id=expected_graph_id,
             replacement_graph_id=replacement_graph_id,
             expected_realized_projection_id=expected_realized_projection_id,
@@ -215,8 +215,22 @@ class PostgresWorkspaceStore:
 
     def _compare_and_set_current_graph(self, workspace_id, *, expected_graph_id,
             replacement_graph_id, expected_realized_projection_id, replacement_realized_projection_id,
-            expected_desired_graph_id, expected_desired_realized_projection_id, expected_desired_graph_revision):
+            expected_desired_graph_id, expected_desired_realized_projection_id, expected_desired_graph_revision,
+            prepared_receipt=None):
         """Private advancement write, following complete owner validation."""
+        from control_plane_kit_operations._configuration_acceptance import _require_prepared_advancement
+        if prepared_receipt is None:
+            self._require_legacy_pointer_change(workspace_id,
+                ((replacement_graph_id, replacement_realized_projection_id),), configuration_free=True)
+        else:
+            _require_prepared_advancement(prepared_receipt, self._connection, workspace_id)
+        if prepared_receipt is not None and (expected_graph_id, replacement_graph_id, expected_realized_projection_id, replacement_realized_projection_id,
+                expected_desired_graph_id, expected_desired_realized_projection_id, expected_desired_graph_revision) != (
+                prepared_receipt.plan.base_graph_id, prepared_receipt.plan.desired_graph_id,
+                prepared_receipt.current_projection.projection_id, prepared_receipt.desired_projection.projection_id,
+                prepared_receipt.plan.desired_graph_id, prepared_receipt.desired_projection.projection_id,
+                prepared_receipt.plan.desired_graph_revision):
+            raise RealizedGraphProjectionConflict("current graph replacement differs from original owner")
         try:
             expected_projection_id = self._projection_for_source(
                 workspace_id,
@@ -356,7 +370,7 @@ class PostgresWorkspaceStore:
         ).fetchone()
         return None if row is None else _workspace_record(row)
 
-    def _require_legacy_pointer_material(self, workspace_id, graph_id, projection_id):
+    def _require_legacy_pointer_material(self, workspace_id, graph_id, projection_id, *, configuration_free=False):
         if graph_id is None and projection_id is None:
             return
         graphs = PostgresGraphTopologyStore(self._connection)
@@ -375,14 +389,19 @@ class PostgresWorkspaceStore:
                                              projection.graph_descriptor))
         _require(not derive_receiver_bindings(workspace_id, graph_id, projection.projection_id,
                                              graph.graph_descriptor))
+        if configuration_free:
+            for descriptor in (graph.graph_descriptor, projection.graph_descriptor):
+                _require(not any(node.configuration_artifacts
+                    for node in DEFAULT_GRAPH_CODEC.decode(descriptor).nodes.values()))
 
-    def _require_legacy_pointer_change(self, workspace_id, proposed):
+    def _require_legacy_pointer_change(self, workspace_id, proposed, *, configuration_free=False):
         # Public single-record writes never acquire lifecycle after workspace.
         PostgresGraphTopologyStore(self._connection).lock_receiver_lifecycle(workspace_id)
         workspace = self.get_for_update(workspace_id)
         for graph_id, projection_id in ((workspace.current_graph_id, workspace.current_realized_projection_id),
                 (workspace.desired_graph_id, workspace.desired_realized_projection_id), *proposed):
-            self._require_legacy_pointer_material(workspace_id, graph_id, projection_id)
+            self._require_legacy_pointer_material(workspace_id, graph_id, projection_id,
+                configuration_free=configuration_free)
 
     def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
         from .configuration_evidence import _active_read

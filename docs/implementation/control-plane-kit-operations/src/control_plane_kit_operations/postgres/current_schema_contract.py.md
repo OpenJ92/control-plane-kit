@@ -38,3 +38,9 @@ primary index. Prospective totals are 47 relations, 589 columns, 467 constraints
 154 indexes and 119 foreign keys. The exact literal/SQL and owning assertions
 move together. Literal metadata hashing is source authoring only; independent
 owning Docker catalog/hash verification remains pending on draft PR #1926.
+
+The E1/E2 typed-original and acceptance schema adds two relations, 35 columns,
+29 constraints and eight indexes. Prospective totals are 49 relations, 624
+columns, 496 constraints, 162 indexes and 136 foreign keys. Both fixed hashes and
+metadata assertions move with the literal. This checkpoint remains unvalidated
+until the owning PostgreSQL catalog and static-law tests run.

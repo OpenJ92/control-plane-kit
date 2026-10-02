@@ -2,6 +2,68 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations._configuration_acceptance",
+      "destination": "control_plane_kit_operations._configuration_acceptance",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_acceptance.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations._temporal",
+        "control_plane_kit_operations.revision_history"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_acceptance.py",
+        "tests/test_current_schema_installation.py"
+      ],
+      "motivation": "Transaction-bound original advancement preparation and complete paired payload validation."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_acceptance_store",
+      "destination": "control_plane_kit_operations.postgres.configuration_acceptance_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_acceptance_store.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations._configuration_acceptance",
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.graph_store"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_acceptance.py",
+        "tests/test_current_schema_installation.py"
+      ],
+      "motivation": "Bounded original receipt discovery, explicit zero-slot acceptance and current-row verification in the advancement transaction."
+    },
+    {
       "module": "control_plane_kit_operations.configuration_preparation",
       "destination": "control_plane_kit_operations.configuration_preparation",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_preparation.py",
@@ -11945,6 +12007,7 @@
       "canonical_public_exports": [],
       "internal_dependencies": [
         "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations._configuration_acceptance",
         "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.topology",
@@ -11993,7 +12056,8 @@
         "control_plane_kit_operations.postgres.activity_history",
         "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.revision_history",
-        "control_plane_kit_operations.receiver_lifecycle"
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations._configuration_acceptance"
       ],
       "known_package_consumers": ["control_plane_kit_operations.postgres.stores"],
       "optional_external_dependencies": [],

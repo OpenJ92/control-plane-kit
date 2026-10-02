@@ -69,3 +69,10 @@ the guarded creation owner writes it, atomically with the existing creation
 transaction. Missing original evidence refuses the new authority path; the
 installer does not fabricate receipts for legacy workspaces. Source validation
 is pending on draft PR #1926.
+
+B2 E1/E2 adds nullable typed original-history locators with closed kind checks,
+compositional own-run/request/plan/workspace/revision FKs and partial numeric
+revision indexes. Acceptance headers retain paired originals and explicit complete
+membership count/digest. Slot rows reference immutable source/birth refs and
+outcomes; no historical mutable lock tail is introduced. This is still an exact
+fresh-store contract; no migration or retained-data repair is authorized.

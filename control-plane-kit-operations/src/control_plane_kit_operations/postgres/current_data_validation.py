@@ -268,6 +268,8 @@ def validate_current_rows(connection: _Connection) -> None:
         validate_configuration(connection)
         from .graph_store import _validate_workspace_initializations
         _validate_workspace_initializations(connection)
+        from .configuration_acceptance_store import validate_configuration_advancement_rows
+        validate_configuration_advancement_rows(connection)
         validate_effect_outcome_rows(connection)
         validate_saved_preparation_sources(connection)
         validate_health_preparations(connection)

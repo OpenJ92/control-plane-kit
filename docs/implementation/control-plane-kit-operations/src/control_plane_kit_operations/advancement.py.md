@@ -12,6 +12,10 @@ write returns share that ledger; closed capacity/unavailable failures become a
 bounded advancement conflict. The caller UoW still commits or rolls back all
 writes. Accounting is resource evidence, not acceptance or mutation authority.
 
-At this source checkpoint, typed original writer guards and complete acceptance
-headers are still pending. The focused target gate records their causal failures
-on PR #1926; this accounting change alone does not establish B2 acceptance.
+The next bounded source slice prepares original evidence before CAS, then writes
+typed event/action records and an explicit zero-slot acceptance header in the
+same UoW. Public standalone advancement history insertion refuses. Consumer
+preflight and original-header replay use the shared ledger. This slice supports
+validated runtime-only projections; nodes refuse until complete membership is
+implemented. Source review and focused Docker validation are pending; the earlier
+accounting-only green does not establish typed/header or full B2 acceptance.
