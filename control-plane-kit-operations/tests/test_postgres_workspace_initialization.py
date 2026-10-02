@@ -191,7 +191,7 @@ class PostgresWorkspaceInitializationTests(LifecycleLockFixture, unittest.TestCa
 
     def test_replay_refuses_oversized_workspace_metadata_before_transport(self):
         self.service().create(self.command())
-        self.connection.execute("UPDATE cpk_workspaces SET metadata=jsonb_build_object('canary', %s) "
+        self.connection.execute("UPDATE cpk_workspaces SET metadata=jsonb_build_object('canary', %s::text) "
             "WHERE workspace_id='workspace-a'", ("private-workspace-canary" * 4000,))
         observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
         factory = lambda: PostgresUnitOfWork(lambda: _ObservedConnection(
