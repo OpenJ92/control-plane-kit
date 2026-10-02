@@ -14,6 +14,7 @@ from control_plane_kit_operations.workspaces import (
     CreateWorkspace, WorkspaceCommandError, WorkspaceCommandService,
 )
 from tests.lifecycle_lock_fixture import LifecycleLockFixture, LIFECYCLE_LOCK
+from tests.test_postgres_configuration_evidence import _ObservedConnection
 
 
 class PostgresWorkspaceInitializationTests(LifecycleLockFixture, unittest.TestCase):
@@ -115,3 +116,118 @@ class PostgresWorkspaceInitializationTests(LifecycleLockFixture, unittest.TestCa
         self.assertEqual(future.result(timeout=1).current_graph.graph_id, "graph-initial")
         self.assertEqual(ids, ["graph-initial"])
         self.assertEqual(clock_calls, ["sampled"])
+
+    def test_concurrent_creators_share_one_original_receipt_and_projection(self):
+        leader_ids, follower_ids = [], []
+        leader, follower = self.opposing_commands(
+            lambda factory: self.service(unit_of_work=factory, ids=leader_ids).create(self.command()),
+            lambda factory: self.service(unit_of_work=factory, ids=follower_ids).create(self.command()),
+            lambda sql, params: sql == LIFECYCLE_LOCK
+                and params == ("receiver-lifecycle:workspace-a",))
+        first, replay = leader.result(), follower.result()
+        self.assertFalse(first.replayed)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(first.workspace, replay.workspace)
+        self.assertEqual(first.current_graph.graph_id, replay.current_graph.graph_id)
+        self.assertEqual(leader_ids, ["graph-initial"])
+        self.assertEqual(follower_ids, [])
+        for relation in ("cpk_workspace_initializations", "cpk_graph_versions",
+                "cpk_realized_graph_projections"):
+            self.assertEqual(self.connection.execute(
+                f"SELECT count(*) FROM {relation} WHERE workspace_id='workspace-a'"
+            ).fetchone()[0], 1)
+
+    def test_late_commit_failure_rolls_back_entire_creation(self):
+        class CommitFailure:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def __getattr__(self, name):
+                return getattr(self.connection, name)
+
+            def commit(self):
+                raise RuntimeError("injected workspace commit failure")
+
+        factory = lambda: PostgresUnitOfWork(
+            lambda: CommitFailure(psycopg.connect(self.database_url)))
+        with self.assertRaisesRegex(RuntimeError, "^injected workspace commit failure$"):
+            self.service(unit_of_work=factory).create(self.command())
+        for relation in ("cpk_workspaces", "cpk_graph_versions",
+                "cpk_realized_graph_projections", "cpk_workspace_initializations"):
+            self.assertEqual(self.connection.execute(
+                f"SELECT count(*) FROM {relation} WHERE workspace_id='workspace-a'"
+            ).fetchone()[0], 0)
+
+    def test_original_receipt_drift_refuses_replay_without_repair(self):
+        created = self.service().create(self.command())
+        self.connection.execute("UPDATE cpk_workspace_initializations "
+            "SET graph_descriptor_sha256=%s WHERE workspace_id='workspace-a'", ("0" * 64,))
+        ids, clock_calls = [], []
+        with self.assertRaises(WorkspaceCommandError):
+            self.service(ids=ids, clock_calls=clock_calls).create(self.command())
+        self.assertEqual(ids, [])
+        self.assertEqual(clock_calls, [])
+        self.assertEqual(self.connection.execute("SELECT graph_descriptor_sha256 "
+            "FROM cpk_workspace_initializations WHERE workspace_id='workspace-a'"
+        ).fetchone()[0], "0" * 64)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.workspaces.get("workspace-a"), created.workspace)
+
+    def test_original_replay_preserves_creation_inputs_without_new_ids(self):
+        created = self.service().create(self.command())
+        before = self.connection.execute("SELECT * FROM cpk_workspace_initializations "
+            "WHERE workspace_id='workspace-a'").fetchone()
+        ids, clock_calls = [], []
+        replay = self.service(ids=ids, clock_calls=clock_calls).create(
+            CreateWorkspace("workspace-a", "Workspace A", "later-operator",
+                IdempotencyKey("later-key")))
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.workspace, created.workspace)
+        self.assertEqual(replay.current_graph.graph_id, created.current_graph.graph_id)
+        self.assertEqual(ids, [])
+        self.assertEqual(clock_calls, [])
+        self.assertEqual(self.connection.execute("SELECT * FROM cpk_workspace_initializations "
+            "WHERE workspace_id='workspace-a'").fetchone(), before)
+
+    def test_replay_refuses_oversized_workspace_metadata_before_transport(self):
+        self.service().create(self.command())
+        self.connection.execute("UPDATE cpk_workspaces SET metadata=jsonb_build_object('canary', %s) "
+            "WHERE workspace_id='workspace-a'", ("private-workspace-canary" * 4000,))
+        observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+        factory = lambda: PostgresUnitOfWork(lambda: _ObservedConnection(
+            psycopg.connect(self.database_url), observed))
+        refusal = None
+        try:
+            self.service(unit_of_work=factory).create(self.command())
+        except WorkspaceCommandError as error:
+            refusal = error
+        self.assertLessEqual(observed["largest_cell"], 65536,
+            "creation replay transported oversized workspace metadata before refusal")
+        self.assertIsNotNone(refusal, "oversized replay must refuse with a bounded owner error")
+        self.assertNotIn("private-workspace-canary", str(refusal))
+
+    def test_create_and_replay_keep_one_ledger_for_all_owner_reads_and_returns(self):
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+
+        for replayed in (False, True):
+            with self.subTest(replayed=replayed):
+                observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+                ledgers = []
+
+                class CommandObservation(_ObservedConnection):
+                    def execute(self, *args, **kwargs):
+                        ledgers.append(_ACCOUNTING.get())
+                        return super().execute(*args, **kwargs)
+
+                factory = lambda: PostgresUnitOfWork(lambda: CommandObservation(
+                    psycopg.connect(self.database_url), observed))
+                result = self.service(unit_of_work=factory).create(self.command())
+                self.assertIs(result.replayed, replayed)
+                self.assertTrue(ledgers)
+                self.assertTrue(all(ledger is not None for ledger in ledgers),
+                    "workspace evidence access escaped the command ledger")
+                self.assertEqual(len({id(ledger) for ledger in ledgers}), 1)
+                footprint = ledgers[0].used
+                self.assertGreaterEqual(footprint.records, observed["rows"])
+                self.assertGreaterEqual(footprint.accounted_bytes, observed["bytes"])
+                self.assertEqual(footprint.statements, observed["statements"])

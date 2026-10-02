@@ -31,3 +31,10 @@ six indexes for immutable configuration protection. The current totals are
 46 relations, 580 columns, 458 constraints and 153 indexes, including 115 foreign
 keys. The SQL, contract hashes, table atlas and schema tests move together;
 these counts do not authorize migration or reset of a retained namespace.
+
+B2 E7 adds the original workspace-initialization leaf: one relation, nine
+columns, nine constraints (including four restrictive foreign keys) and one
+primary index. Prospective totals are 47 relations, 589 columns, 467 constraints,
+154 indexes and 119 foreign keys. The exact literal/SQL and owning assertions
+move together. Literal metadata hashing is source authoring only; independent
+owning Docker catalog/hash verification remains pending on draft PR #1926.

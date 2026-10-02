@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Any, Callable, Mapping
+
+import rfc8785
 
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
@@ -12,6 +15,56 @@ from control_plane_kit_operations.workflows import IdempotencyKey
 
 class WorkspaceCommandError(RuntimeError):
     """Raised when workspace command data or state is invalid."""
+
+
+@dataclass(frozen=True, repr=False)
+class _WorkspaceInitialization:
+    workspace_id: str
+    profile: str
+    initial_graph_id: str
+    initial_projection_id: str
+    graph_descriptor_sha256: str
+    projection_digest: str
+    configuration_slot_count: int
+    created_by: str
+    creation_idempotency_key: str
+
+
+@dataclass(frozen=True, repr=False)
+class _PreparedWorkspaceCreation:
+    stores: object
+    lifecycle_guard: object
+    command: object
+    graph: GraphVersionRecord
+
+    def require(self, connection, workspace_id):
+        if (self.stores.connection is not connection
+                or type(self.command) is not CreateWorkspace
+                or type(self.graph) is not GraphVersionRecord
+                or self.command.workspace_id != workspace_id
+                or self.graph.workspace_id != workspace_id):
+            raise WorkspaceCommandError("workspace initialization requires original owner")
+        self.stores.graphs._require_receiver_lifecycle(self.lifecycle_guard, workspace_id)
+        expected = GraphVersionRecord.from_graph(graph_id=self.graph.graph_id,
+            workspace_id=workspace_id, version=1, graph=DeploymentGraph("empty"),
+            created_by=self.command.actor_id, created_at=self.graph.created_at,
+            metadata={"bootstrap": "empty-current-graph",
+                "idempotency_key": self.command.idempotency_key.value})
+        if self.graph != expected:
+            raise WorkspaceCommandError("workspace initialization graph is invalid")
+
+    def receipt(self, projection):
+        return _WorkspaceInitialization(self.command.workspace_id,
+            "workspace-initialization.v1", self.graph.graph_id, projection.projection_id,
+            sha256(rfc8785.dumps(self.graph.graph_descriptor)).hexdigest(),
+            projection.projection_digest, 0, self.command.actor_id,
+            self.command.idempotency_key.value)
+
+
+def _require_prepared_creation(prepared, connection, workspace_id):
+    if type(prepared) is not _PreparedWorkspaceCreation:
+        raise WorkspaceCommandError("workspace initialization requires original owner")
+    prepared.require(connection, workspace_id)
 
 
 @dataclass(frozen=True)
@@ -89,6 +142,14 @@ class WorkspaceCommandService:
                 existing = unit_of_work.stores.workspaces.get(command.workspace_id)
             except KeyError:
                 existing = None
+            guard = None
+            if existing is None:
+                guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(command.workspace_id)
+                # A concurrent creator may have committed while L was held.
+                try:
+                    existing = unit_of_work.stores.workspaces.get(command.workspace_id)
+                except KeyError:
+                    existing = None
             if existing is not None:
                 if existing.name != command.name:
                     raise WorkspaceCommandError(
@@ -98,6 +159,7 @@ class WorkspaceCommandService:
                     raise WorkspaceCommandError(
                         "workspace exists without initial current graph"
                     )
+                unit_of_work.stores.workspaces._require_workspace_initialization(command.workspace_id)
                 graph = unit_of_work.stores.graphs.get(existing.current_graph_id)
                 unit_of_work.commit()
                 return CreateWorkspaceResult(existing, graph, replayed=True)
@@ -119,12 +181,13 @@ class WorkspaceCommandService:
                 name=command.name,
                 metadata=command.metadata,
             )
-            unit_of_work.stores.workspaces.create(workspace)
-            unit_of_work.stores.graphs.save(current_graph)
-            workspace = unit_of_work.stores.workspaces.set_current_graph(
-                command.workspace_id,
-                current_graph.graph_id,
-            )
+            prepared = _PreparedWorkspaceCreation(unit_of_work.stores, guard, command, current_graph)
+            unit_of_work.stores.workspaces._create_for_initialization(workspace, prepared)
+            unit_of_work.stores.graphs._save_workspace_initialization(current_graph, prepared)
+            workspace = unit_of_work.stores.workspaces._set_initial_current_graph(prepared)
+            projection = unit_of_work.stores.realized_graphs.get(workspace.current_realized_projection_id)
+            unit_of_work.stores.workspaces._insert_workspace_initialization(
+                prepared.receipt(projection), prepared)
             unit_of_work.commit()
             return CreateWorkspaceResult(workspace, current_graph)
 

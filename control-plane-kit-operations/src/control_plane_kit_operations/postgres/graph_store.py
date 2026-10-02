@@ -40,6 +40,64 @@ class PostgresWorkspaceStore:
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
 
+    def _create_for_initialization(self, record, prepared):
+        from control_plane_kit_operations.workspaces import _require_prepared_creation
+        _require_prepared_creation(prepared, self._connection, record.workspace_id)
+        command = prepared.command
+        if record != WorkspaceRecord(command.workspace_id, command.name, metadata=command.metadata):
+            raise ValueError("workspace initialization is incongruent")
+        return self.create(record)
+
+    def _set_initial_current_graph(self, prepared):
+        from control_plane_kit_operations.workspaces import (
+            _PreparedWorkspaceCreation, _require_prepared_creation, WorkspaceCommandError,
+        )
+        if type(prepared) is not _PreparedWorkspaceCreation:
+            raise WorkspaceCommandError("workspace initialization requires original owner")
+        workspace_id = prepared.command.workspace_id
+        _require_prepared_creation(prepared, self._connection, workspace_id)
+        workspace = self.get_for_update(workspace_id)
+        if any(value is not None for value in (workspace.current_graph_id, workspace.desired_graph_id,
+                workspace.current_realized_projection_id, workspace.desired_realized_projection_id)):
+            raise ValueError("workspace initialization requires an unset pointer")
+        # Use the existing identity projection owner once, in this same UoW.
+        projection_id = self._projection_for_source(workspace_id, prepared.graph.graph_id, None)
+        self._connection.execute("UPDATE cpk_workspaces SET current_graph_id=%s, "
+            "current_realized_projection_id=%s WHERE workspace_id=%s",
+            (prepared.graph.graph_id, projection_id, workspace_id))
+        return self.get(workspace_id)
+
+    def _insert_workspace_initialization(self, receipt, prepared):
+        from dataclasses import astuple
+        from control_plane_kit_operations.workspaces import (
+            _WorkspaceInitialization, _require_prepared_creation,
+        )
+        if type(receipt) is not _WorkspaceInitialization:
+            raise ValueError("workspace initialization is invalid")
+        _require_prepared_creation(prepared, self._connection, receipt.workspace_id)
+        projection = prepared.stores.realized_graphs.get(receipt.initial_projection_id)
+        workspace = self.get(receipt.workspace_id)
+        if (receipt != prepared.receipt(projection)
+                or (workspace.current_graph_id, workspace.current_realized_projection_id)
+                != (receipt.initial_graph_id, receipt.initial_projection_id)):
+            raise ValueError("workspace initialization is incongruent")
+        self._connection.execute("INSERT INTO cpk_workspace_initializations "
+            "(workspace_id,profile,initial_graph_id,initial_projection_id,graph_descriptor_sha256,"
+            "projection_digest,configuration_slot_count,created_by,creation_idempotency_key) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (workspace_id) DO NOTHING",
+            astuple(receipt))
+        if self._require_workspace_initialization(receipt.workspace_id) != receipt:
+            raise ValueError("workspace initialization differs from its original")
+
+    def _require_workspace_initialization(self, workspace_id):
+        """Verify the immutable original, independently of today's pointer."""
+        from control_plane_kit_operations.workspaces import WorkspaceCommandError
+        try:
+            return _read_workspace_initialization(self._connection, workspace_id)
+        except (KeyError, ValueError, TypeError, AttributeError):
+            pass
+        raise WorkspaceCommandError("workspace initialization evidence is unavailable") from None
+
     def create(self, record: WorkspaceRecord) -> WorkspaceRecord:
         # A pointer-bearing bootstrap cannot borrow foreign receiver material.
         for graph_id, projection_id in (
@@ -474,6 +532,13 @@ class PostgresGraphTopologyStore:
         return self._receivers.record_witness(self, workspace_id, receiver_id, action_id=action_id,
             session_id=session_id, lifecycle_guard=lifecycle_guard, retirement=True)
 
+    def _save_workspace_initialization(self, record, prepared):
+        from control_plane_kit_operations.workspaces import _require_prepared_creation
+        _require_prepared_creation(prepared, self._connection, record.workspace_id)
+        if record != prepared.graph:
+            raise ValueError("workspace initialization graph is incongruent")
+        return self.save(record)
+
     def save(self, record: GraphVersionRecord) -> GraphVersionRecord:
         if derive_receiver_bindings(record.workspace_id, record.graph_id,
                                     "proposed-identity", record.graph_descriptor):
@@ -734,6 +799,72 @@ class PostgresRealizedGraphProjectionStore:
         if row is None:
             return None
         return _realized_graph_projection_record(row)
+
+
+def _read_workspace_initialization(connection, workspace_id):
+    from hashlib import sha256
+    import rfc8785
+    from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
+    from control_plane_kit_operations.workspaces import _WorkspaceInitialization
+    from control_plane_kit_operations.workflows import IdempotencyKey
+    from .configuration_evidence import _EvidenceRead, _Unavailable
+
+    read = _EvidenceRead(connection, standalone=True)
+    names = ("workspace_id", "profile", "initial_graph_id", "initial_projection_id",
+        "graph_descriptor_sha256", "projection_digest", "configuration_slot_count",
+        "created_by", "creation_idempotency_key")
+    columns = tuple((name, "int" if name == "configuration_slot_count" else "text",
+        32 if name == "configuration_slot_count" else 64 if name in
+        ("profile", "graph_descriptor_sha256", "projection_digest") else 2048) for name in names)
+    rows = read.bounded_rows("cpk_workspace_initializations", columns,
+        "workspace_id=%s", (workspace_id,))
+    if len(rows) != 1:
+        raise _Unavailable
+    receipt = _WorkspaceInitialization(*rows[0])
+    IdempotencyKey(receipt.creation_idempotency_key)
+    graph_columns = (("graph_id", "text", 2048), ("workspace_id", "text", 2048),
+        ("version", "int", 32), ("graph_descriptor", "json", 1048576),
+        ("created_by", "text", 2048), ("created_at", "time", 64), ("metadata", "json", 16384))
+    graphs = read.bounded_rows("cpk_graph_versions", graph_columns,
+        "graph_id=%s", (receipt.initial_graph_id,))
+    projection_names = ("projection_id", "workspace_id", "source_authored_graph_id",
+        "projection_kind", "projection_key", "projection_digest", "graph_descriptor",
+        "created_by", "created_at")
+    projection_columns = tuple((name, "json" if name == "graph_descriptor" else
+        "time" if name == "created_at" else "text",
+        1048576 if name == "graph_descriptor" else 2048) for name in projection_names)
+    projections = read.bounded_rows("cpk_realized_graph_projections", projection_columns,
+        "projection_id=%s", (receipt.initial_projection_id,))
+    if len(graphs) != 1 or len(projections) != 1:
+        raise _Unavailable
+    graph, projection = _graph_record(graphs[0]), _realized_graph_projection_record(projections[0])
+    if (receipt.workspace_id != workspace_id or receipt.profile != "workspace-initialization.v1"
+            or type(receipt.configuration_slot_count) is not int or receipt.configuration_slot_count != 0
+            or graph.workspace_id != workspace_id or graph.version != 1
+            or DEFAULT_GRAPH_CODEC.decode(graph.graph_descriptor) != DeploymentGraph("empty")
+            or receipt.graph_descriptor_sha256 != sha256(rfc8785.dumps(graph.graph_descriptor)).hexdigest()
+            or graph.created_by != receipt.created_by
+            or graph.metadata != {"bootstrap": "empty-current-graph",
+                "idempotency_key": receipt.creation_idempotency_key}
+            or projection != RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
+            or receipt.projection_digest != projection.projection_digest):
+        raise _Unavailable
+    return receipt
+
+
+def _validate_workspace_initializations(connection):
+    """Verify retained original facts in bounded keyset pages, without repair."""
+    from .configuration_evidence import _EvidenceRead
+    cursor = ""
+    while True:
+        read = _EvidenceRead(connection, standalone=True)
+        rows = read.bounded_rows("cpk_workspace_initializations", (("workspace_id", "text", 2048),),
+            "workspace_id>%s", (cursor,), maximum=32, order="workspace_id")
+        if not rows:
+            return
+        for (workspace_id,) in rows:
+            _read_workspace_initialization(connection, workspace_id)
+        cursor = rows[-1][0]
 
 
 def _workspace_record(row: tuple[Any, ...]) -> WorkspaceRecord:

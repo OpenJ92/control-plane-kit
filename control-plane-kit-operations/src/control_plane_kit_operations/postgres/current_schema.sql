@@ -1602,3 +1602,27 @@ ALTER TABLE cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_
     FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
     REFERENCES cpk_configuration_claims(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED;
 CREATE INDEX cpk_configuration_claims_protecting ON cpk_configuration_claims(workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id);
+
+CREATE TABLE cpk_workspace_initializations (
+    workspace_id text NOT NULL,
+    profile text NOT NULL,
+    initial_graph_id text NOT NULL,
+    initial_projection_id text NOT NULL,
+    graph_descriptor_sha256 text NOT NULL,
+    projection_digest text NOT NULL,
+    configuration_slot_count integer NOT NULL,
+    created_by text NOT NULL,
+    creation_idempotency_key text NOT NULL,
+    CONSTRAINT cpk_workspace_initializations_pkey PRIMARY KEY (workspace_id),
+    CONSTRAINT cpk_workspace_initializations_profile_check CHECK (profile = 'workspace-initialization.v1'),
+    CONSTRAINT cpk_workspace_initializations_graph_digest_check CHECK (graph_descriptor_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_workspace_initializations_projection_digest_check CHECK (projection_digest ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_workspace_initializations_empty_check CHECK (configuration_slot_count = 0),
+    CONSTRAINT cpk_workspace_initializations_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id),
+    CONSTRAINT cpk_workspace_initializations_graph_fk FOREIGN KEY (workspace_id, initial_graph_id)
+        REFERENCES cpk_graph_versions(workspace_id, graph_id),
+    CONSTRAINT cpk_workspace_initializations_projection_fk FOREIGN KEY (initial_projection_id, workspace_id)
+        REFERENCES cpk_realized_graph_projections(projection_id, workspace_id),
+    CONSTRAINT cpk_workspace_initializations_projection_source_fk FOREIGN KEY (initial_projection_id, initial_graph_id)
+        REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id)
+);

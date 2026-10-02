@@ -11947,6 +11947,8 @@
         "control_plane_kit_core.topology",
         "control_plane_kit_core.types",
         "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.workspaces",
+        "control_plane_kit_operations.workflows",
         "control_plane_kit_operations.receiver_lifecycle",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.postgres.activity_history",
@@ -11958,6 +11960,7 @@
       "optional_external_dependencies": ["psycopg"],
       "motivation": "Existing workspace/graph/projection persistence; C2 public single-record writes refuse receiver-affecting changes while private primitives support complete semantic transactions and original introducing-action checks. Does not import execution history or grant receiver acceptance.",
       "protecting_tests": [
+        "tests/test_postgres_workspace_initialization.py",
         "tests/test_workspace_graph_stores.py",
         "tests/test_realized_graph_projection_store.py",
         "tests/test_receiver_admission_boundaries.py"

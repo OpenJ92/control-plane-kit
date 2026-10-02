@@ -50,3 +50,13 @@ charge both identities; optional original draft-revision witnesses also consume
 the command budget. The existing pure action-attribution validator still owns
 correctness, and budget exhaustion refuses rather than loading an uncharged
 fallback. No lifecycle permission or mutable authority is cached across UoWs.
+
+B2 E7 adds original workspace initialization to this existing store owner.
+Private creation/graph/pointer/receipt helpers require the same prepared creation
+and live lifecycle guard. The existing pointer helper supplies the sole identity
+projection. The immutable receipt is checked against the exact original empty
+graph, projection, creator and idempotency metadata, with bounded point reads;
+replay verification does not require today's current pointer to remain initial.
+No helper commits, adopts metadata as origin, backfills a missing receipt or
+grants accepted configuration membership. Source validation is pending; the
+first three creation laws have reviewed causal-red evidence on #1924.
