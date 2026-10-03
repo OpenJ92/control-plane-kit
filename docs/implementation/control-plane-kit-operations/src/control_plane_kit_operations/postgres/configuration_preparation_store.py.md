@@ -41,7 +41,8 @@ Only both original streams absent plus verified empty E7 origin can provide
 genesis authority. Existing configured nodes additionally prove requested
 source/direct birth; one pure selector compares full desired
 material with complete accepted refs before fingerprinting. Exact replay remains
-before this fresh selection path. The new universal entrance is unvalidated.
+before this fresh selection path. The reviewed universal entrance passed its
+46-test consumer/regression gate plus compilation/import.
 
 The recurrence connection now discovers complete same-runtime node history using
 the existing workspace/runtime/node slot-index prefix and a 257 sentinel, before
@@ -75,7 +76,12 @@ The positive B1 preparation fixture now uses real creation and namespaced approv
 runtime execution/acceptance before its original configuration run. A 12-test gate
 passed 11 whole tests; four corrupt-current subcases exposed the no-history
 shortcut's missing authority, while the pointer/base control already refused.
-The source now removes that shortcut; focused green, isolated missing/corrupt E7
-targets and broader converted-fixture consumers remain pending. Same-node
+The source now removes that shortcut; all six converted-fixture consumer classes
+plus recurrence/reuse passed (46 tests, compilation/import). One psycopg unclosed
+connection ResourceWarning remains an unattributed cleanup diagnostic. Three
+reviewed isolated E7 targets are unvalidated: real empty creation, one approved
+runtime-to-node plan, correlated simulated runtime success without advancement,
+then positive first birth or missing/corrupt initialization refusal before time,
+IDs or writes, retaining complete runtime outcomes. Same-node
 changed-material replacement, cross-runtime movement and configuration-free
 successor safety are not established by this same-runtime recurrence slice.
