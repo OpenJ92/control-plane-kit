@@ -121,6 +121,8 @@ class GatewayKeyRotationRetirementPreparationTests(
         for commit_number in range(1, 9):
             with self.subTest(commit_number=commit_number):
                 self.reset_truth()
+                before_counts = {table: self.count(table) for table in (
+                    "cpk_activity_plans", "cpk_execution_requests", "cpk_activity_runs")}
                 control = CrashControl(commit_number)
                 with self.assertRaises(SimulatedProcessLoss):
                     self.program(
@@ -143,9 +145,8 @@ class GatewayKeyRotationRetirementPreparationTests(
                     recovered.rotation.status,
                     GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
                 )
-                self.assertEqual(self.count("cpk_activity_plans"), 2)
-                self.assertEqual(self.count("cpk_execution_requests"), 2)
-                self.assertEqual(self.count("cpk_activity_runs"), 2)
+                for table, before in before_counts.items():
+                    self.assertEqual(self.count(table), before + 1)
 
 
 if __name__ == "__main__":

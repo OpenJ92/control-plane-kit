@@ -684,6 +684,23 @@ class GatewayKeyRotationOverlapExecutionTests(
                     )
                 )
                 accepted, action, event = self._accepted_from_advancement()
+                if identity in ("missing-action", "missing-event"):
+                    # B2 original acceptance now prevents either witness from
+                    # being deleted. Prove that stronger durable boundary and
+                    # that the preserved exact evidence still folds normally.
+                    snapshot = self._durable_acceptance_snapshot(rotations)
+                    with self.assertRaises(psycopg.errors.ForeignKeyViolation) as captured:
+                        mutate(action, event, accepted)
+                    self.assertEqual(captured.exception.diag.constraint_name,
+                        "cpk_configuration_acceptances_" +
+                        ("action_fk" if identity == "missing-action" else "event_fk"))
+                    self.assertEqual(self._durable_acceptance_snapshot(rotations), snapshot)
+                    self.assertEqual(self._accepted_from_advancement(), (accepted, action, event))
+                    folded = rotations.advance_deployment(
+                        self._accepted_fold(rotation, handoff.fence, accepted))
+                    self.assertIs(folded.status, GatewayKeyRotationStatus.OVERLAP_READY)
+                    self.assertEqual(self._workspace(), snapshot[0])
+                    continue
                 candidate = mutate(action, event, accepted)
                 snapshot = self._durable_acceptance_snapshot(rotations)
 
