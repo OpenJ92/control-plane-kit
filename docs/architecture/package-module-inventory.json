@@ -52,7 +52,12 @@
         "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_operations.postgres.activity_history",
         "control_plane_kit_operations.postgres.execution",
-        "control_plane_kit_operations.postgres.graph_store"
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.postgres.configuration_preparation_store",
+        "control_plane_kit_operations.postgres.effect_outcome_store",
+        "control_plane_kit_operations.configuration_preparation"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations"
@@ -60,9 +65,10 @@
       "optional_external_dependencies": [],
       "protecting_tests": [
         "tests/test_postgres_configuration_acceptance.py",
-        "tests/test_current_schema_installation.py"
+        "tests/test_current_schema_installation.py",
+        "tests/test_postgres_configuration_acceptance_membership.py"
       ],
-      "motivation": "Bounded original receipt discovery, explicit zero-slot acceptance and current-row verification in the advancement transaction."
+      "motivation": "Bounded original receipt discovery, complete new-node membership and current-row verification in the advancement transaction."
     },
     {
       "module": "control_plane_kit_operations.configuration_preparation",
@@ -10524,7 +10530,8 @@
         "control_plane_kit_operations.postgres.observed_state",
         "control_plane_kit_operations.postgres.schema",
         "control_plane_kit_operations.records",
-        "control_plane_kit_operations.runtime_management_targets"
+        "control_plane_kit_operations.runtime_management_targets",
+        "control_plane_kit_operations.postgres.configuration_evidence"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
@@ -10543,7 +10550,8 @@
         "tests/test_postgres_effect_outcome_store_contract.py",
         "tests/test_postgres_effect_outcome_store.py",
         "tests/test_postgres_effect_outcome_schema.py",
-        "tests/test_postgres_native_connection_fold.py"
+        "tests/test_postgres_native_connection_fold.py",
+        "tests/test_postgres_configuration_acceptance_membership.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [

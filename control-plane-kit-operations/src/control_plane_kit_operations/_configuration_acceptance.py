@@ -31,6 +31,9 @@ class _PreparedAdvancementReceipt:
     desired_projection: object
     event: object = None
     action: object = None
+    slots: tuple = ()
+    evidence_read: object = None
+    proof_footprint: object = None
 
     def with_records(self, event, action):
         return self.stores.configuration_acceptance._bind_records(self, event, action)

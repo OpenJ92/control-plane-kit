@@ -94,6 +94,7 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
             self.original = stores.effect_attempt_intents.get(identity)
             attempt = stores.effect_attempts.get(identity)
             outcome = stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id)
+            self.direct_event_id = attempt.latest_transition_event.event_id
             self.assertIs(self.original.intent.kind, RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
             self.assertIs(type(outcome.outcome), ExecutionEffectOutcome)
             self.assertIs(outcome.attempt.state.status, EffectAttemptStatus.SUCCEEDED)
@@ -123,16 +124,43 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         return self.connection.execute("SELECT * FROM cpk_configuration_claims "
             "ORDER BY run_id,activity_id,attempt,artifact_id").fetchall()
 
-    def advance(self, factory=None):
-        ids = iter(("event-advance-config", "action-advance-config"))
-        command = AdvanceCurrentGraph("workspace-a", "run-config", "plan-config", self.workspace.current_graph_id,
+    def command(self):
+        return AdvanceCurrentGraph("workspace-a", "run-config", "plan-config", self.workspace.current_graph_id,
             self.workspace.current_realized_projection_id, "graph-configured", self.workspace.desired_realized_projection_id,
             self.workspace.desired_graph_revision, self.fixture.engine.authority(), self.fence, IdempotencyKey("advance-config"))
+
+    def advance(self, factory=None):
+        ids = iter(("event-advance-config", "action-advance-config"))
         try:
             return CurrentGraphAdvancementCommandService(factory or self.fixture.unit_of_work,
-                clock=lambda: "2026-07-22T13:05:00Z", id_factory=lambda: next(ids)).execute(command)
+                clock=lambda: "2026-07-22T13:05:00Z", id_factory=lambda: next(ids)).execute(self.command())
         except CurrentGraphAdvancementConflict as error:
             self.fail("real completed configuration installation must support complete acceptance: " + str(error))
+
+    def test_direct_success_event_extra_envelope_field_refuses_before_publication(self):
+        marker = "untrusted-direct-outcome-marker"
+        self.connection.execute("UPDATE cpk_activity_events SET payload=payload || "
+            "jsonb_build_object('unexpected',%s::text) WHERE event_id=%s", (marker, self.direct_event_id))
+        before, sampled = self.fixture.retained_snapshot(), []
+        ids = iter(("event-advance-config", "action-advance-config"))
+
+        def clock():
+            sampled.append("clock")
+            return "2026-07-22T13:05:00Z"
+
+        def identity():
+            sampled.append("identity")
+            return next(ids)
+
+        with self.assertRaises(CurrentGraphAdvancementConflict) as caught:
+            CurrentGraphAdvancementCommandService(self.fixture.unit_of_work,
+                clock=clock, id_factory=identity).execute(self.command())
+        self.assertIs(type(caught.exception), CurrentGraphAdvancementConflict)
+        self.assertLessEqual(len(str(caught.exception)), 512)
+        self.assertNotIn(marker, str(caught.exception))
+        self.assertEqual(sampled, [])
+        self.assertEqual(self.fixture.retained_snapshot(), before)
+        self.assertEqual(self.protective_claims(), self.claims)
 
     def test_real_installation_accepts_complete_original_slots_and_retains_claims(self):
         result = self.advance()

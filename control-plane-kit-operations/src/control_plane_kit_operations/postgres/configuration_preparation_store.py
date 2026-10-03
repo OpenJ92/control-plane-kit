@@ -31,7 +31,8 @@ def _key(row):
     return EffectAttemptIdentity(RunId(row[0]), row[1], row[2]), row[3]
 
 
-def _decode(row, read):
+def _decode_ref(row):
+    """Exact manifest material/claim, independent of requested source history."""
     if len(row) != 19 or any(value is None for value in row):
         raise _Unavailable
     identity, artifact = _key(row)
@@ -44,13 +45,18 @@ def _decode(row, read):
             or type(row[16]) is not bool
             or row[16] != ((identity, artifact) == (birth, row[15]))):
         raise _Unavailable
+    return identity, ref, birth, row[15]
+
+
+def _decode(row, read):
+    identity, ref, birth, birth_artifact = _decode_ref(row)
     source = read_source(read.connection, identity, ref, read=read)
     if source.state == "capacity":
         raise _Capacity
     if (source.state != "complete" or source.source.request_fingerprint != row[10]
             or source.source.original_event_id != row[11]):
         raise _Unavailable
-    return ConfigurationRefEvidence(identity, ref, birth, row[15], source.source)
+    return ConfigurationRefEvidence(identity, ref, birth, birth_artifact, source.source)
 
 
 class ConfigurationPreparationStore:

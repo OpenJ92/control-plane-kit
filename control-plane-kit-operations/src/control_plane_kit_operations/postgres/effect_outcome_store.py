@@ -253,6 +253,55 @@ class EffectAttemptOutcomeStore:
         ).fetchall()
         return _decode_row(self._connection, row, memberships)
 
+    def _configuration_success(self, source, read):
+        """Complete direct result/correlation proof; no observation-membership projection."""
+        from control_plane_kit_core.operations import EffectAttemptStatus
+        from control_plane_kit_operations.effect_outcome_evidence import _require_correlated_outcome
+        from .configuration_evidence import _Unavailable
+        from .execution import _activity_event
+        identity = source.identity
+        cache_key = ("cpk_effect_attempt_outcomes", identity)
+        if cache_key not in read.sources:
+            numeric = {"attempt", "fence_generation", "prior_attempt", "original_event_ordinal", "direct_event_ordinal", "observation_count"}
+            columns = tuple((name, "bytes" if name == "preimage" else "int" if name in numeric else "text",
+                8192 if name == "preimage" else 2048) for name in _COLUMN_NAMES)
+            rows = read.bounded_rows("cpk_effect_attempt_outcomes", columns,
+                "run_id=%s AND activity_id=%s AND attempt=%s",
+                (identity.run_id.value, identity.activity_id, identity.attempt))
+            if len(rows) != 1:
+                raise _Unavailable
+            row = rows[0]
+            value = _decode_preimage(row[6], row[5])
+            events = []
+            for event_id in (row[15], row[18]):
+                selected = read.bounded_rows("cpk_activity_events", (
+                    ("event_id", "text", 2048), ("run_id", "text", 200), ("ordinal", "int", 16),
+                    ("event_type", "text", 64), ("occurred_at", "time", 64), ("payload", "json", 16384)),
+                    "event_id=%s", (event_id,))
+                if len(selected) != 1:
+                    raise _Unavailable
+                payload = selected[0][5]
+                if type(payload) is not dict or set(payload) != {"activity_id", "evidence", "failure", "recovery"}:
+                    raise _Unavailable
+                events.append(_activity_event(selected[0]))
+            outcome, attempt = _outcome_from_events(row, value, *events)
+            _require_correlated_outcome(row[3], outcome, attempt)
+            # Full result decoding retains every ordinary observation. This
+            # proof intentionally owns no observation projection memberships.
+            if (type(outcome) is not ExecutionEffectOutcome
+                    or attempt.state.status is not EffectAttemptStatus.SUCCEEDED
+                    or attempt.original_start_event.kind.value != "step_started"
+                    or row[21] != len(outcome.endpoint_observations)):
+                raise _Unavailable
+            read.sources[cache_key] = (row, outcome, attempt)
+        row, outcome, attempt = read.sources[cache_key]
+        if ((row[3], row[4], row[7], row[15], row[17]) != (
+                source.source.workspace_id, source.source.request_id, source.request_fingerprint,
+                source.original_event_id, source.original_event_ordinal)
+                or attempt.state.identity != identity):
+            raise _Unavailable
+        return outcome, attempt
+
 
 def _require_identity(value: object) -> EffectAttemptIdentity:
     if type(value) is not EffectAttemptIdentity:
@@ -410,6 +459,13 @@ def _reconstruct_row(
 
 def _record_from_events(row, value, memberships, original, direct) -> EffectAttemptOutcomeRecord:
     """Reuse the exact historical snapshot decoder after bounded retrieval."""
+    outcome, attempt = _outcome_from_events(row, value, original, direct)
+    observations = _membership_records(row, memberships)
+    return EffectAttemptOutcomeRecord(row[3], outcome, attempt, observations)
+
+
+def _outcome_from_events(row, value, original, direct):
+    """Reconstruct complete result and history without inventing memberships."""
     if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
         raise OperationsRecordError("effect attempt outcome row is invalid")
     identity = EffectAttemptIdentity(RunId(row[0]), row[1], row[2])
@@ -441,8 +497,7 @@ def _record_from_events(row, value, memberships, original, direct) -> EffectAtte
         outcome = ExecutionEffectOutcome(identity, row[7], value)
     else:
         outcome = ObservedEffectOutcome(identity, value)
-    observations = _membership_records(row, memberships)
-    return EffectAttemptOutcomeRecord(row[3], outcome, attempt, observations)
+    return outcome, attempt
 
 
 def _require_verification_membership(

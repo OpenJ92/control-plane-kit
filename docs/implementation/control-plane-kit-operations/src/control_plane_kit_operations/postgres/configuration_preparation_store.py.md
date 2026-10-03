@@ -26,3 +26,10 @@ B2's advancement evidence scope roots the existing command ledger before the
 first locator read and includes original replay. It translates closed capacity
 or unavailable failures after the handler into bounded advancement conflict;
 there is no connection wrapper, independent commit or acceptance authority.
+
+B2 extracts the existing pure complete ref/claim material check as `_decode_ref`.
+The existing `_decode` still performs the original compact source proof afterward;
+its result and callers retain their contract. Acceptance can validate complete
+manifest material before selecting source provenance work. First-start preparation
+and claim insertion remain unchanged in this initial nonempty slice; reuse is
+still refused until its corresponding current-use proof is implemented.

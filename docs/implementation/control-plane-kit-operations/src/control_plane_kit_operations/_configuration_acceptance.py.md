@@ -18,3 +18,8 @@ replay remains observational. This internal guard is not a Python sandbox.
 The focused owning acceptance class proves reconstructed private-writer refusal,
 fresh success, replay, shared accounting and retained-row verification. Additional
 issued-object lifetime/binding, rollback, budget and nonempty laws remain pending.
+
+The first nonempty slice additionally binds the complete prepared slot tuple,
+its UoW-local immutable evidence cache and measured source-proof footprint to the
+same issued object. Those fields neither grant independent mutation authority nor
+survive the existing transaction/identity guard. Pair binding preserves them.

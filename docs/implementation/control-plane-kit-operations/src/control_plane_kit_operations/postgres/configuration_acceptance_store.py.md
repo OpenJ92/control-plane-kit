@@ -4,30 +4,40 @@ Maintain this companion alongside its source.
 Owns original acceptance evidence inside the existing advancement UoW. Independent
 workspace-wide original action/event selectors use typed numeric revision ordering
 and two candidates before any source join. Bounded point reads validate the complete
-paired originals, header, destination projection and explicit empty slot digest.
+paired originals, header, destination projection and complete slot digest.
 
-This checkpoint supports only validated runtime-only zero-slot material. Nodes
-refuse until complete membership/source-outcome validation is implemented. Missing
+The current source adds first new-node configuration membership to zero-slot
+acceptance. It enumerates all selected artifacts, verifies complete full material,
+and requires direct self-birth refs/claims plus the exact advancing execution's
+qualifying original intent and successful direct outcome. Existing configured
+current membership, historical carry and reuse remain explicitly unsupported at
+this intermediate checkpoint. Missing
 initial or historical evidence refuses; no adoption, repair or synthetic header is
 performed. Original replay validates its own occurrence, not the latest pointer.
 
 All reads and scalar mutation returns share the command ledger. Before CAS,
 generated reader coordinates and PostgreSQL JSON sizes are checked and a fixed
-publication envelope is tested against remaining command capacity. Header insertion
+publication envelope is tested against remaining command capacity. Slot/header insertion
 also verifies actual consumer readability before the caller commits CAS and both
 original records. Current-schema verification keyset scans both originals and
 headers, with bounded page discovery and one closed budget per receipt. It checks
 the latest paired occurrence against each retained workspace pointer. Claims are
 retained; no cleanup or provider effect is introduced.
 
-Independent source review passed this bounded checkpoint for focused Docker
-validation. The future envelope covers four guard rechecks, three projection
-lookups, CAS/get and three writes, header/empty-slot/original pair reads, and one
-run/request/plan/session plus desired graph/projection read. Graph metadata has a
-separate 1 MiB cap alongside descriptor, projection and plan. Reevaluate the
-envelope when this tail grows; nonempty admission and maximum-budget executable
-proof are still pending. Focused Docker validation establishes the zero-slot
-receipt, shared accounting and retained-row laws, not full B2 acceptance.
+Before CAS the nonempty path measures the actual owner/projection read footprint,
+accounts complete ref/claim material and generated slot transport, and reserves
+the original pair/header envelope. The complete cold snapshot must fit 3 MiB;
+snapshot plus measured source proof and discovery allowance must fit the global
+4096-record/16 MiB limits. Publication reserves the reviewed fixed owner tail plus
+every slot insertion return, size/value pass and sentinel. Exact immutable PK caches
+avoid retransporting source evidence during in-transaction readback. All actual
+duplicate reads still count. Original intent hashing is capped at 512 distinct
+parents in the shared proof reader. Maximum-budget executable proofs remain open.
+
+The prior zero-slot, rollback, binding-lifetime and newest-selection gates passed.
+Three genuine nonempty targets reached causal red before this source change;
+concrete source review and focused green remain pending. This is not full B2,
+public forward/inverse read, carry/reuse, provider or live acceptance.
 
 The reconstructed-owner causal test exposed missing issuance identity. The store
 now registers exactly one prepared object only after full `_prepare` validation.
