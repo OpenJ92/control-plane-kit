@@ -828,29 +828,33 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
     def test_replay_rejects_run_reassigned_to_another_compatible_request(self) -> None:
         self.seed_succeeded_run()
         command = self.command()
-        self.service("event-advance", "action-advance").execute(command)
+        accepted = self.service("event-advance", "action-advance").execute(command)
         accepted_truth = self.advancement_truth()
-        self.connection.execute(
-            "UPDATE cpk_execution_requests "
-            "SET status = 'abandoned', claim_worker_id = NULL, "
-            "claim_generation = NULL, claimed_at = NULL, lease_expires_at = NULL "
-            "WHERE request_id = 'request-a'"
-        )
         from tests.receiver_scope_history_fixture import insert_recorded_request
-        insert_recorded_request(self.connection, request_id="request-b", status="claimed",
-            requested_at="2026-07-22T13:06:00Z", idempotency_key="execute-b", intent_fingerprint="fingerprint-b",
-            claim_worker_id="worker-a", claim_generation=1, claimed_at="2026-07-22T13:06:30Z",
-            lease_expires_at="2026-07-22T13:16:30Z")
-        self.connection.execute(
-            "UPDATE cpk_activity_runs SET request_id = 'request-b' "
-            "WHERE run_id = 'run-a'"
-        )
-
-        with self.assertRaises(CurrentGraphAdvancementError) as captured:
-            self.service("unused-event", "unused-action").execute(command)
-
-        self.assertIsNone(captured.exception.__cause__)
-        self.assertIsNone(captured.exception.__context__)
+        # Original acceptance now has a typed run/request FK. Reassignment is
+        # rejected at the durable boundary before replay can observe corruption.
+        with self.assertRaises(psycopg.errors.ForeignKeyViolation) as captured:
+            with self.connection.transaction():
+                self.connection.execute(
+                    "UPDATE cpk_execution_requests "
+                    "SET status = 'abandoned', claim_worker_id = NULL, "
+                    "claim_generation = NULL, claimed_at = NULL, lease_expires_at = NULL "
+                    "WHERE request_id = 'request-a'"
+                )
+                insert_recorded_request(self.connection, request_id="request-b", status="claimed",
+                    requested_at="2026-07-22T13:06:00Z", idempotency_key="execute-b", intent_fingerprint="fingerprint-b",
+                    claim_worker_id="worker-a", claim_generation=1, claimed_at="2026-07-22T13:06:30Z",
+                    lease_expires_at="2026-07-22T13:16:30Z")
+                self.connection.execute(
+                    "UPDATE cpk_activity_runs SET request_id = 'request-b' "
+                    "WHERE run_id = 'run-a'"
+                )
+        self.assertEqual(captured.exception.diag.constraint_name, "cpk_action_advancement_run_fk")
+        self.assertEqual(self.connection.execute(
+            "SELECT request_id FROM cpk_activity_runs WHERE run_id='run-a'"
+        ).fetchone(), ("request-a",))
+        self.assertEqual(self.service("unused-event", "unused-action").execute(command),
+            replace(accepted, replayed=True))
         self.assertEqual(self.advancement_truth(), accepted_truth)
 
     def test_replay_translates_malformed_persisted_action(self) -> None:
