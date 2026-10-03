@@ -45,7 +45,7 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         self.fixture.setUp()
         self.connection = self.fixture.connection
         self.fixture.advance()
-        registered = _configuration_product()
+        registered = getattr(self, "registered_product", None) or _configuration_product()
         product = registered.descriptor_document.product
         blocks = tuple(instantiate_product(product, node, ProductInstanceConfiguration.from_contract(product.runtime_contract))
             for node in self.node_ids)
@@ -116,7 +116,8 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         refs = self.refs = tuple(ref for node in self.node_ids
             for ref in self.originals[node].intent.configuration_instances.instances)
         self.assertEqual({(ref.runtime_id, ref.node_id, ref.artifact_id) for ref in refs},
-            {("runtime-a", node, artifact) for node in self.node_ids for artifact in ("limits", "settings")})
+            {("runtime-a", node, artifact.artifact_id) for node in self.node_ids
+                for artifact in product.runtime_contract.configuration_artifacts})
         raw_refs = self.connection.execute("SELECT activity_id,artifact_id,ref_preimage,birth_run_id,birth_activity_id,birth_attempt,"
             "birth_artifact_id,is_birth FROM cpk_effect_configuration_refs WHERE run_id='run-config' "
             "AND attempt=1 ORDER BY activity_id,artifact_id").fetchall()
@@ -124,7 +125,7 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         self.assertEqual(raw_refs, [("start-" + ref.node_id, ref.artifact_id, codec.encode_canonical_bytes(ref), "run-config", "start-" + ref.node_id, 1,
             ref.artifact_id, True) for ref in refs])
         self.claims = self.protective_claims()
-        self.assertEqual(len(self.claims), 2 * len(self.node_ids))
+        self.assertEqual(len(self.claims), len(product.runtime_contract.configuration_artifacts) * len(self.node_ids))
         self.expected_slots = tuple((ref.runtime_id, ref.node_id, ref.artifact_id,
             "run-config", "start-" + ref.node_id, 1, ref.artifact_id, "run-config", "start-" + ref.node_id, 1, ref.artifact_id,
             sha256(codec.encode_canonical_bytes(ref)).hexdigest()) for ref in refs)

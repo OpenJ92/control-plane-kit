@@ -61,11 +61,14 @@ root; older accepted allocations remain protected without being reselected.
 Four recurrence targets reached causal missing-birth red after genuine accepted
 removal. The reviewed source then passed all 20 selected recurrence, reuse,
 preparation, coordinator replay and carry tests plus compilation/import.
-Two focused renamed-artifact targets now await validation in that same recurrence
+Two focused renamed-artifact targets passed validation in that same recurrence
 fixture: accepted departure permits a new renamed birth with old claims retained;
 a genuine successful-but-unaccepted predecessor cannot hide behind entirely
 different desired artifact IDs. No additional fixture chain or production change
-is introduced.
+is introduced. The first gate passed ten prior tests but hit two catalog-identity
+setup errors. A distinct new test-product identity preserved the catalog policy;
+the two-test retry and compilation/import passed. Those earlier setup errors do
+not earn renamed-history evidence.
 
 All historical node claims and proposed new keys count toward 256 for the logical
 set; 64 is enforced separately per exact allocation, including the proposed claim
@@ -91,3 +94,15 @@ IDs or writes, retaining complete runtime outcomes; compilation/import passed.
 The earlier three setup errors do not earn retroactive behavioral credit. Same-node
 changed-material replacement, cross-runtime movement and configuration-free
 successor safety are not established by this same-runtime recurrence slice.
+
+The finite B2 capacity checkpoint is a candidate producer witness, not new runtime
+behavior: one node and one small artifact use real approved reconcile, start,
+outcome and acceptance owners until the first production capacity refusal.
+Pass-through observers preserve the original decisions, reservations and exceptions;
+they neither seed counters nor implement another budget. A refused fresh start must
+leave protection unchanged; an advancement refusal after a successful effect must
+retain that effect's protective claim without publishing current membership. Cold
+current/allocation reads and original replay must still succeed at the measured
+boundary. No promise that every local maximum fits the global budget is implied;
+the exact first owner/stage and rejecting decision will be recorded. This target
+is unvalidated, and sentinel/preflight/index and concurrency obligations remain.

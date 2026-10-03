@@ -35,7 +35,8 @@ from tests.receiver_scope_history_fixture import admit_fixture_plan
 class PostgresConfigurationCarryTests(unittest.TestCase):
     def setUp(self):
         self.reader = read_fixture.PostgresConfigurationCurrentReadTests()
-        self.reader.node_ids = ("api", "worker")
+        self.reader.node_ids = getattr(self, "node_ids", ("api", "worker"))
+        self.reader.registered_product = getattr(self, "registered_product", None)
         self.addCleanup(self.cleanup_fixture)
         self.reader.setUp()
         self.fixture, self.base = self.reader.fixture, self.reader.base

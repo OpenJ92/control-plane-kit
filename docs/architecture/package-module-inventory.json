@@ -112,6 +112,7 @@
       "protecting_tests": [
         "tests/test_postgres_configuration_preparation.py",
         "tests/test_postgres_configuration_genesis.py",
+        "tests/test_postgres_configuration_capacity_boundary.py",
         "tests/test_postgres_configuration_evidence.py",
         "tests/test_postgres_configuration_material_boundary.py",
         "tests/test_configuration_preparation_capacity.py",
