@@ -131,7 +131,8 @@ class PostgresConfigurationRecurrenceTests(unittest.TestCase):
         registered = _configuration_product()
         old = registered.descriptor_document.product
         settings = next(value for value in old.runtime_contract.configuration_artifacts if value.artifact_id == "settings")
-        renamed = replace(old, runtime_contract=replace(old.runtime_contract,
+        renamed = replace(old, identity=replace(old.identity, name="hello-server-renamed"),
+            runtime_contract=replace(old.runtime_contract,
             configuration_artifacts=(replace(settings, artifact_id="settings-next"),)))
         with self.base.unit_of_work() as uow:
             uow.stores.registered_products.register(workspace_id="workspace-a",
