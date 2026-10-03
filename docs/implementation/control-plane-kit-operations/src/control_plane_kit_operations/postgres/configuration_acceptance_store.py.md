@@ -35,8 +35,11 @@ duplicate reads still count. Original intent hashing is capped at 512 distinct
 parents in the shared proof reader. Maximum-budget executable proofs remain open.
 
 The prior zero-slot, rollback, binding-lifetime and newest-selection gates passed.
-Three genuine nonempty targets reached causal red before this source change;
-concrete source review and focused green remain pending. This is not full B2,
+Three genuine nonempty targets reached causal red before this source change.
+All 23 acceptance tests, including four nonempty/regression cases, passed in the
+88-test focused run. Two exact declaration failures were corrected in a separate
+three-test passing run, which also completed compilation and clean import. No
+88-test rerun is claimed. This is not full B2,
 public forward/inverse read, carry/reuse, provider or live acceptance.
 
 The reconstructed-owner causal test exposed missing issuance identity. The store

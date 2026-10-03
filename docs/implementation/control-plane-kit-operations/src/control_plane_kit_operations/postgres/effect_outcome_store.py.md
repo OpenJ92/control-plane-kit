@@ -18,4 +18,7 @@ memberships; the generic reader and current-row verifier retain all their existi
 membership obligations. Only direct execution-result SUCCEEDED with exact source
 fingerprint, effect, request/workspace, identity and event correlation qualifies.
 C/D completion profiles and protective-claim disposition are not implied. This
-source checkpoint still awaits concrete review and owning validation.
+source checkpoint passed concrete review and the focused outcome behavior and
+acceptance tests. Two exact declaration failures were then corrected and passed
+their own selected gate with compilation and clean import; PR #1926 retains the
+separate run results. Public current-use and reuse acceptance remain pending.
