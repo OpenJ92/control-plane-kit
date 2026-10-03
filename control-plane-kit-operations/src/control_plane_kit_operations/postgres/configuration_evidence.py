@@ -27,6 +27,12 @@ _COMPOSED_READ = ContextVar("cpk_configuration_composed_read", default=None)
 def _composed_read(connection):
     """Bind one command-local ledger and cache across existing evidence owners."""
     from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+    existing = _COMPOSED_READ.get()
+    if existing is not None:
+        if _active_read(connection) is not existing:
+            raise _Unavailable
+        yield existing
+        return
     with _configuration_accounting():
         read = _EvidenceRead(connection)
         token = _COMPOSED_READ.set(read)

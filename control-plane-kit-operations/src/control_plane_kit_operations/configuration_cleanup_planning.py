@@ -1,5 +1,6 @@
 """Authenticated exact cleanup inspection and atomic publication; no execution."""
 from dataclasses import dataclass
+from contextlib import contextmanager
 from hashlib import sha256
 
 import rfc8785
@@ -23,6 +24,19 @@ from control_plane_kit_operations.workflows import IdempotencyKey
 
 class ConfigurationCleanupCommandError(ValueError):
     """Redacted refusal; no partial plan or authority is returned."""
+
+
+@contextmanager
+def _command_domain_errors():
+    try:
+        yield
+    except ConfigurationCleanupCommandError:
+        raise
+    except (ValueError, KeyError):
+        pass
+    else:
+        return
+    raise ConfigurationCleanupCommandError("configuration cleanup command evidence is unavailable")
 
 
 @dataclass(frozen=True)
@@ -199,7 +213,8 @@ class ConfigurationCleanupPlanningService:
     def request_plan(self, command, *, context):
         _authorize(command, context, publish=True)
         fingerprint = _fingerprint(command, context.actor_id)
-        with self._unit_of_work_factory() as uow:
+        with (_command_domain_errors(), self._unit_of_work_factory() as uow,
+              uow.stores.configuration_cleanup.evidence()):
             history = uow.stores.activity_history
             history.lock_action_idempotency(command.session_id, command.idempotency_key.value)
             existing = history.action_for_idempotency(command.session_id, command.idempotency_key.value)
@@ -232,6 +247,7 @@ class ConfigurationCleanupPlanningService:
             plan = _plan(proposal)
             profile = PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
             encode_stored_activity_plan(plan, profile=profile, cleanup_proposal=proposal)
+            uow.stores.configuration_cleanup.preflight_tail(publication=True)
             timestamp = self._clock()
             record = ActivityPlanRecord(plan_id=self._id_factory(), session_id=command.session_id,
                 status=ActivityPlanStatus.PLANNED, created_at=timestamp, plan=plan,

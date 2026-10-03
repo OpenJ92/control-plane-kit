@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -31,6 +32,7 @@ from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
 )
+from control_plane_kit_operations.configuration_cleanup import ConfigurationCleanupContractError
 
 
 class ApprovalWorkflowError(RuntimeError):
@@ -51,6 +53,17 @@ class ApprovalStateConflict(ApprovalWorkflowError):
 
 class ApprovalTargetNotFound(ApprovalWorkflowError):
     """Raised when approval command target truth is missing."""
+
+
+@contextmanager
+def _cleanup_evidence_errors():
+    try:
+        yield
+    except ConfigurationCleanupContractError:
+        pass
+    else:
+        return
+    raise ApprovalStateConflict("cleanup approval evidence is unavailable")
 
 
 @dataclass(frozen=True)
@@ -279,12 +292,9 @@ class ApprovalCommandService:
 
     def _request(self, command: RequestApproval) -> ApprovalRequestResult:
         fingerprint = _fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work:
+        with (_cleanup_evidence_errors(), self._unit_of_work_factory() as unit_of_work,
+              unit_of_work.stores.configuration_cleanup.approval_evidence(command)):
             history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
             replay = history.approval_request_for_idempotency(
                 command.session_id,
                 command.idempotency_key.value,
@@ -324,6 +334,7 @@ class ApprovalCommandService:
                 raise ApprovalAuthorizationDenied(authority.reason)
             requirement = self._policy.requirement_for(plan.plan)
 
+            unit_of_work.stores.configuration_cleanup.preflight_tail()
             ordinal = history.next_action_ordinal(command.session_id)
             requested_at = self._clock()
             request = history.add_approval_request(
@@ -452,12 +463,9 @@ class ApprovalCommandService:
 
     def _decide(self, command: DecideApproval) -> ApprovalDecisionResult:
         fingerprint = _fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work:
+        with (_cleanup_evidence_errors(), self._unit_of_work_factory() as unit_of_work,
+              unit_of_work.stores.configuration_cleanup.approval_evidence(command)):
             history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
             replay = history.approval_decision_for_idempotency(
                 command.request_id,
                 command.idempotency_key.value,
@@ -478,10 +486,7 @@ class ApprovalCommandService:
                         raise ApprovalAuthorizationDenied(authority.reason)
                 unit_of_work.commit()
                 return result
-            try:
-                located_request = history.get_approval_request(command.request_id)
-            except (KeyError, ValueError, TypeError):
-                raise ApprovalStateConflict("approval request is unavailable") from None
+            located_request = _approval_request(history, command.request_id)
             located = None
             cleanup_workspace = None
             if isinstance(located_request.subject, ActivityPlanApprovalSubject):
@@ -525,6 +530,7 @@ class ApprovalCommandService:
             if not authority.allowed:
                 raise ApprovalAuthorizationDenied(authority.reason)
 
+            unit_of_work.stores.configuration_cleanup.preflight_tail()
             ordinal = history.next_action_ordinal(command.session_id)
             decided_at = self._clock()
             decision = history.add_approval_decision(
@@ -564,14 +570,32 @@ class ApprovalCommandService:
 
 def _approval_plan(history, plan_id):
     plan = None
+    missing = False
     try:
         plan = history.get_plan(plan_id)
         plan.__post_init__()
-    except (KeyError, ValueError, TypeError, AttributeError):
+    except KeyError:
+        missing = True
+    except (ValueError, TypeError, AttributeError):
         pass
     else:
         return plan
+    if missing:
+        raise ApprovalTargetNotFound("activity plan was not found")
     raise ApprovalStateConflict("approval plan is unavailable")
+
+
+def _approval_request(history, request_id):
+    missing = False
+    try:
+        return history.get_approval_request(request_id)
+    except KeyError:
+        missing = True
+    except (ValueError, TypeError):
+        pass
+    if missing:
+        raise ApprovalTargetNotFound("approval request was not found")
+    raise ApprovalStateConflict("approval request is unavailable")
 
 
 def _plan_subject(plan):

@@ -171,3 +171,30 @@ class ConfigurationCleanupPostgresFixture:
                 raise RuntimeError("injected commit failure")
 
         return lambda: PostgresUnitOfWork(FailingConnection)
+
+    def assert_accounted_command(self, call):
+        """Observe actual command SQL without replacing any evidence result."""
+        from unittest import mock
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+        from tests.test_postgres_configuration_evidence import _ObservedConnection
+        observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+        seen = []
+        actual = _EvidenceRead.query
+
+        def record(reader, sql, params, **kwargs):
+            result = actual(reader, sql, params, **kwargs)
+            seen.append((id(reader), id(reader.accounting), reader.used))
+            return result
+
+        factory = lambda: PostgresUnitOfWork(lambda: _ObservedConnection(psycopg.connect(self.database_url), observed))
+        with mock.patch.object(_EvidenceRead, "query", record):
+            result = call(factory)
+        self.assertTrue(seen)
+        self.assertEqual(len({(row[0], row[1]) for row in seen}), 1)
+        footprint = seen[-1][2]
+        self.assertEqual(footprint.statements, observed["statements"])
+        self.assertGreaterEqual(footprint.records, observed["rows"])
+        self.assertGreaterEqual(footprint.accounted_bytes, observed["bytes"])
+        self.assertLessEqual(footprint.records, 4096)
+        self.assertLessEqual(footprint.accounted_bytes, 16 * 1024 * 1024)
+        return result

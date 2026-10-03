@@ -1,6 +1,8 @@
 """C-N04/06: trusted intent, exact publication, replay and atomicity."""
 from dataclasses import fields, replace
 import unittest
+from unittest import mock
+
 
 from control_plane_kit_core.identity import PrincipalKind
 from control_plane_kit_core.policies import PolicyScope
@@ -38,6 +40,15 @@ class ConfigurationCleanupPlanningTests(ConfigurationCleanupPostgresFixture, uni
                 replace(command, actor_id="caller-override")
             with self.assertRaises(TypeError):
                 replace(command, actor_scopes=READ_PLAN)
+        self.assertEqual(self.sampled, [])
+        too_large = replace(request, expected_context=replace(request.expected_context,
+            desired_graph_revision=9007199254740992))
+        with self.assertRaises(self.commands.ConfigurationCleanupCommandError) as raised:
+            service.request_plan(too_large, context=command_context())
+        self.assertIsNone(raised.exception.__context__)
+        with self.assertRaises(self.commands.ConfigurationCleanupCommandError) as raised:
+            self.publish(replace(request, session_id="missing-session"))
+        self.assertIsNone(raised.exception.__context__)
         self.assertEqual(self.sampled, [])
         for kind in PrincipalKind:
             with self.subTest(kind=kind):
@@ -175,6 +186,38 @@ class ConfigurationCleanupPlanningTests(ConfigurationCleanupPostgresFixture, uni
                 self.publish(command, factory=self.failure_factory(commit=commit_failure))
             self.assertEqual(self.truth(), before)
         self.assertFalse(self.publish(command).replayed)
+
+
+    def test_publication_and_replay_share_full_budget_and_preflight_write_tail(self):
+        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+        command = self.request()
+        actual = _EvidenceRead.query
+        injected = []
+        last_ref = max(self.refs, key=lambda ref: ref.allocation_id)
+
+        def near_capacity(reader, sql, params, **kwargs):
+            rows = actual(reader, sql, params, **kwargs)
+            # This fixture's allocations share one original invocation. Its
+            # source/outcome is already cached when the final claim set returns.
+            if ("FROM cpk_configuration_claims WHERE workspace_id" in sql
+                    and params == (last_ref.workspace_id, last_ref.allocation_id) and not injected):
+                injected.append(True)
+                reader.used = ConfigurationEvidenceFootprint(4095, 0, 0, 0)
+            return rows
+
+        before = self.truth()
+        self.sampled.clear()
+        with mock.patch.object(_EvidenceRead, "query", near_capacity):
+            with self.assertRaises(self.commands.ConfigurationCleanupCommandError):
+                self.publish(command)
+        self.assertTrue(injected)
+        self.assertEqual(self.sampled, [])
+        self.assertEqual(self.truth(), before)
+        first = self.assert_accounted_command(lambda factory: self.publish(command, factory=factory))
+        replay = self.assert_accounted_command(lambda factory: self.publish(command, factory=factory))
+        self.assertEqual(first.plan_record, replay.plan_record)
+        self.assertTrue(replay.replayed)
 
 
 if __name__ == "__main__":

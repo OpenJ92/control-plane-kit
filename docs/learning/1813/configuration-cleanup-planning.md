@@ -15,22 +15,37 @@ North released concrete targets, checkpoint and causal red. Meridian accepted
 the actual missing-interface red at `c37efd65`: Core 943 tests with two expected
 failures and 941 passes; focused Operations 40 tests with 32 expected failures
 and eight passes, no errors. Compilation/import did not run after those failures.
-The initial implementation is now present but unvalidated. Accepted C1/B2
-evidence is reused; it is not new C2 behavioral evidence.
+At source checkpoint `59f07021`, the ordinary Core gate passed 943 tests and
+support/compile/import; focused Operations passed 41 tests in 524.909s and
+compile/import. See the [terminal record](https://github.com/OpenJ92/control-plane-kit/pull/1930#issuecomment-5971516602).
+This is focused C2 evidence, not full Operations or provider acceptance.
 
 The source checkpoint introduces immutable canonical proposal/inspection values,
 one composed evidence read, the dedicated read-only snapshot, exact plan/action
 publication, and conditional lifecycle locking and evidence revalidation in the
 existing approval owner. No SQL schema change is required. The publication
 receipt follows the plan/action/replayed convention without inventing the graph
-transition required by the separate graph-planning result.
+transition required by the separate graph-planning result. Its public name is
+`ConfigurationCleanupPlanningResult`.
 
 Intermediate independent review found missing reciprocal whole-selection
 consistency inside proposal syntax, a missing durable session/workspace binding,
 parser exceptions escaping the fixed redacted boundary, and an overly broad
-accepted-occurrence run ID. Bounded corrections and targets are included; their
-executable results are pending. The approved fixture-only run-ID padding fixes
+accepted-occurrence run ID. Bounded corrections and targets passed in source1.
+The approved fixture-only run-ID padding fixes
 canonical lexical order without changing any assertion or original red evidence.
+
+Consolidated review identified unbounded command-prelude reads before the shared
+inspection ledger. The follow-up extends the same read/accounting instance from
+publication's action lock and from approvals' action lock plus fixed-size exact
+target routing through replay, lifecycle lock, reloads, original evidence and
+returned write values. Contradictory or missing markers remain bounded; proven
+legacy graph/rotation bodies retain their existing behavior. Before clock/IDs,
+the caller checks the finite remaining owner reads and returned write scalars
+against the same budget. Near-capacity fault injection and actual SQL telemetry
+protect this complete boundary. Missing cleanup owners return fixed command
+errors; existing approval missing-target APIs keep `ApprovalTargetNotFound`.
+These follow-up corrections still require their owning gate and frozen review.
 
 ## Chosen boundary
 

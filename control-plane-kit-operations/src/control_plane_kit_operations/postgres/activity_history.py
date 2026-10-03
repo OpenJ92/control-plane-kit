@@ -443,8 +443,7 @@ class PostgresActivityHistoryStore:
             raise OperationsRecordError(
                 "activity plan record requires complete graph lineage"
             )
-        inserted = self._connection.execute(
-            """
+        query = """
             WITH candidate (
               plan_id, session_id, base_graph_id, desired_graph_id,
               base_realized_projection_id, desired_realized_projection_id,
@@ -478,8 +477,8 @@ class PostgresActivityHistoryStore:
               AND desired_projection.source_authored_graph_id =
                     candidate.desired_graph_id
             RETURNING plan_id
-            """,
-            (
+            """
+        values = (
                 record.plan_id,
                 record.session_id,
                 record.base_graph_id,
@@ -491,8 +490,13 @@ class PostgresActivityHistoryStore:
                 encode_postgres_timestamp(record.created_at),
                 Jsonb(encode_stored_activity_plan(record.plan, profile=record.derivation_profile,
                     cleanup_proposal=record.cleanup_proposal)),
-            ),
-        ).fetchone()
+            )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            rows = read.query(query, values, records=1, octets=2048, cells=1)
+            inserted = rows[0] if rows else None
+        else:
+            inserted = self._connection.execute(query, values).fetchone()
         if inserted is None:
             raise OperationsRecordError(
                 "activity plan record requires complete graph lineage"
@@ -647,7 +651,7 @@ class PostgresActivityHistoryStore:
         self,
         record: ApprovalRequestRecord,
     ) -> ApprovalRequestRecord:
-        self._connection.execute(
+        self._insert_approval(
             """
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, rotation_id, subject_kind,
@@ -708,6 +712,16 @@ class PostgresActivityHistoryStore:
         session_id: str,
         idempotency_key: str,
     ) -> ApprovalRequestRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("request_id", "session_id", "plan_id", "rotation_id", "subject_kind",
+                "subject_payload", "review_digest", "requested_by", "requested_at", "required_scope",
+                "max_risk", "destructive", "comment", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "json" if name == "subject_payload" else "time" if name == "requested_at"
+                else "bool" if name == "destructive" else "text", 16384) for name in names)
+            rows = read.bounded_rows("cpk_approval_requests", columns,
+                "session_id=%s AND idempotency_key=%s", (session_id, idempotency_key))
+            return _approval_request_record(rows[0]) if rows else None
         row = self._connection.execute(
             """
             SELECT request_id, session_id, plan_id, rotation_id, subject_kind,
@@ -844,7 +858,7 @@ class PostgresActivityHistoryStore:
         self,
         record: ApprovalDecisionRecord,
     ) -> ApprovalDecisionRecord:
-        self._connection.execute(
+        self._insert_approval(
             """
             INSERT INTO cpk_approval_decisions
               (decision_id, request_id, actor_id, decision, scope, decided_at,
@@ -864,6 +878,13 @@ class PostgresActivityHistoryStore:
             ),
         )
         return record
+
+    def _insert_approval(self, query, values):
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)
+        else:
+            self._connection.execute(query, values)
 
     def approval_decision_for_request(
         self,
@@ -892,6 +913,14 @@ class PostgresActivityHistoryStore:
         request_id: str,
         idempotency_key: str,
     ) -> ApprovalDecisionRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("decision_id", "request_id", "actor_id", "decision", "scope", "decided_at",
+                "comment", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "time" if name == "decided_at" else "text", 16384) for name in names)
+            rows = read.bounded_rows("cpk_approval_decisions", columns,
+                "request_id=%s AND idempotency_key=%s", (request_id, idempotency_key))
+            return _approval_decision_record(rows[0]) if rows else None
         row = self._connection.execute(
             """
             SELECT decision_id, request_id, actor_id, decision, scope, decided_at,

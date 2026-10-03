@@ -6,6 +6,7 @@ import json
 import queue
 import threading
 import unittest
+from unittest import mock
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -14,7 +15,7 @@ from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.operations import OperatorCommandKind
 from control_plane_kit_operations.approvals import (
-    ApprovalCommandService, ApprovalWorkflowError, DecideApproval, RequestApproval,
+    ApprovalCommandService, ApprovalWorkflowError, ApprovalTargetNotFound, DecideApproval, RequestApproval,
 )
 from control_plane_kit_operations.postgres import SchemaInstallationError, install_schema
 from control_plane_kit_operations.records import ApprovalDecisionKind, ApprovalRequestRecord, OperationActionRecord
@@ -303,6 +304,70 @@ class ConfigurationCleanupApprovalTests(ConfigurationCleanupPostgresFixture, uni
         with self.assertRaises(SchemaInstallationError):
             install_schema(self.connection)
         self.assertEqual(self.truth(), before)
+
+
+    def test_approval_preludes_replays_and_oversized_targets_are_bounded(self):
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        from tests.test_postgres_configuration_evidence import _ObservedConnection
+        from control_plane_kit_operations.postgres import PostgresUnitOfWork
+        plan = self.publish().plan_record
+        ask = self.ask(plan)
+        for command in (replace(ask, plan_id="absent-plan"),
+                        DecideApproval("session-config", "absent-request", "approver",
+                            (PolicyScope.PLAN_APPROVE_DESTRUCTIVE,), ApprovalDecisionKind.APPROVED,
+                            IdempotencyKey("missing-request"))):
+            with self.assertRaises(ApprovalTargetNotFound):
+                self.approvals().execute(command)
+        actual = _EvidenceRead.query
+        injected = []
+        last_ref = max(self.refs, key=lambda ref: ref.allocation_id)
+
+        def near_capacity(reader, sql, params, **kwargs):
+            rows = actual(reader, sql, params, **kwargs)
+            # All allocations share the already cached original invocation;
+            # exhaustion here leaves only the known command tail to account.
+            if ("FROM cpk_configuration_claims WHERE workspace_id" in sql
+                    and params == (last_ref.workspace_id, last_ref.allocation_id) and not injected):
+                injected.append(True)
+                reader.used = ConfigurationEvidenceFootprint(4095, 0, 0, 0)
+            return rows
+
+        before = self.truth()
+        self.sampled.clear()
+        with mock.patch.object(_EvidenceRead, "query", near_capacity):
+            with self.assertRaises(ApprovalWorkflowError):
+                self.approvals().execute(ask)
+        self.assertTrue(injected)
+        self.assertEqual(self.sampled, [])
+        self.assertEqual(self.truth(), before)
+        requested = self.assert_accounted_command(lambda factory: self.approvals(factory=factory).execute(ask))
+        decide = self.decide(requested.request)
+        for command in (ask, decide, decide):
+            self.assert_accounted_command(lambda factory: self.approvals(factory=factory).execute(command))
+        original = self.connection.execute("SELECT payload FROM cpk_activity_plans WHERE plan_id=%s",
+                                           (plan.plan_id,)).fetchone()[0]
+        try:
+            # Malformed new envelope with a contradictory legacy profile must
+            # remain bounded before the whole JSONB payload is transported.
+            malformed = original | {"derivation_profile": "structural-v1", "extra": "CANARY" * 400000}
+            nested_scalar = dict(schema="control-plane-kit.operations.activity-plan-record",
+                version=1, derivation_profile="structural-v1", plan=42)
+            for payload in (malformed, 42, nested_scalar):
+                self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id=%s",
+                                        (Jsonb(payload), plan.plan_id))
+                observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+                factory = lambda: PostgresUnitOfWork(lambda: _ObservedConnection(psycopg.connect(self.database_url), observed))
+                before = self.truth()
+                self.sampled.clear()
+                for command in (replace(ask, idempotency_key=IdempotencyKey("oversized-fresh")), ask, decide):
+                    with self.assertRaises(ApprovalWorkflowError):
+                        self.approvals(factory=factory).execute(command)
+                self.assertLess(observed["largest_cell"], 1024 * 1024)
+                self.assertEqual(self.sampled, [])
+                self.assertEqual(self.truth(), before)
+        finally:
+            self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id=%s", (Jsonb(original), plan.plan_id))
 
 
 if __name__ == "__main__":

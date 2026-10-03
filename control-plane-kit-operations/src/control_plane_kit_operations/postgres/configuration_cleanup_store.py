@@ -1,5 +1,6 @@
 """Bounded composition of retained source, claims, outcome and current owners."""
 from dataclasses import asdict
+from contextlib import contextmanager
 import rfc8785
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec, ConfigurationInstanceSelection
@@ -13,6 +14,7 @@ from control_plane_kit_operations.configuration_cleanup import (
     ConfigurationCleanupInspectionCodec, ConfigurationCleanupInspectionResult,
     ConfigurationCleanupProposalCodec, MAX_CANONICAL_REVISION,
     MAX_CLEANUP_DOCUMENT_BYTES,
+    ConfigurationCleanupContractError,
 )
 from control_plane_kit_operations.records import OperationSessionStatus
 from .configuration_evidence import _Capacity, _Unavailable, _composed_read
@@ -201,6 +203,90 @@ class ConfigurationCleanupStore:
 
     def read(self, command):
         return inspect_cleanup(self._stores, command)
+
+    @contextmanager
+    def evidence(self):
+        with _composed_read(self._stores.connection):
+            yield
+
+    @contextmanager
+    def approval_evidence(self, command):
+        """Bound A and exact routing; retain legacy bodies only when proven."""
+        failed = False
+        try:
+            with _composed_read(self._stores.connection) as read:
+                self._stores.activity_history.lock_action_idempotency(command.session_id, command.idempotency_key.value)
+                if _bounded_approval_route(read, command):
+                    yield
+                    return
+        except (ValueError, KeyError, TypeError):
+            failed = True
+        if failed:
+            raise ConfigurationCleanupContractError("configuration cleanup approval evidence is unavailable")
+        # The A lock belongs to the transaction; it survives releasing only the
+        # optional accounting context. Do not reacquire A or change legacy reads.
+        yield
+
+    def preflight_tail(self, *, publication=False):
+        from .configuration_evidence import _active_read
+        from control_plane_kit_operations.configuration_preparation import (
+            ConfigurationEvidenceFootprint, ConfigurationCapacityDecision, configuration_evidence_capacity,
+        )
+        read = _active_read(self._stores.connection)
+        if read is None:
+            return
+        # Publication includes add_plan's bounded owner recheck (64KiB metadata,
+        # bounded text), ordinal locks and returned insert scalars. Approval has
+        # only ordinal reads and request/decision + action returned scalars.
+        tail = (ConfigurationEvidenceFootprint(12, 128 * 1024, 128, 12) if publication else
+            ConfigurationEvidenceFootprint(8, 4096, 16, 8))
+        if configuration_evidence_capacity(read.used.plus(tail)) is not ConfigurationCapacityDecision.WITHIN_LIMITS:
+            raise _Capacity
+
+
+def _bounded_approval_route(read, command):
+    """Only fixed booleans cross this exact-key, nonauthorizing routing read."""
+    # An unfamiliar, partial, contradictory or absent row is bounded. A subject
+    # cannot downgrade a plan marker, nor can a submitted plan hide the original
+    # idempotency target. Missing targets proceed to existing missing-owner APIs.
+    plan_legacy = """(CASE WHEN jsonb_typeof(p.payload)='object' THEN (
+        ((p.payload->>'schema'='control-plane-kit.activity-plan'
+          AND p.payload->'version'='1'::jsonb
+          AND jsonb_typeof(p.payload->'activities')='array'
+          AND p.payload - ARRAY['schema','version','activities']::text[]='{}'::jsonb)
+         OR (p.payload->>'schema'='control-plane-kit.operations.activity-plan-record'
+             AND p.payload->'version'='1'::jsonb
+             AND p.payload->>'derivation_profile' IN ('structural-v1','management-graph-pair-v1')
+             AND p.payload - ARRAY['schema','version','derivation_profile','plan']::text[]='{}'::jsonb
+             AND CASE WHEN jsonb_typeof(p.payload->'plan')='object' THEN (
+             p.payload->'plan'->>'schema'='control-plane-kit.activity-plan'
+             AND p.payload->'plan'->'version'='1'::jsonb
+             AND jsonb_typeof(p.payload->'plan'->'activities')='array'
+             AND (p.payload->'plan') - ARRAY['schema','version','activities']::text[]='{}'::jsonb
+             ) ELSE false END))
+        AND NOT (p.payload ? 'cleanup_proposal' OR p.payload ? 'cleanup_proposal_fingerprint')
+        AND NOT jsonb_path_exists(p.payload, '$.**.operation ? (@.kind == "cleanup-configuration-instances")')
+    ) ELSE false END)"""
+    subject_legacy = """(a.subject_payload=jsonb_build_object('kind','activity-plan','plan_id',a.plan_id)
+        AND a.subject_kind='activity-plan' AND a.rotation_id IS NULL)"""
+    if hasattr(command, "plan_id"):
+        rows = read.query(f"SELECT {plan_legacy} FROM cpk_activity_plans p WHERE p.plan_id=%s",
+            (command.plan_id,), records=1, octets=1, cells=1)
+        requested_legacy = rows == [(True,)]
+        retained = read.query(f"SELECT ({plan_legacy} AND {subject_legacy}) "
+            "FROM cpk_approval_requests a LEFT JOIN cpk_activity_plans p ON p.plan_id=a.plan_id "
+            "WHERE a.session_id=%s AND a.idempotency_key=%s",
+            (command.session_id, command.idempotency_key.value), records=1, octets=1, cells=1)
+        return not (requested_legacy and (not retained or retained == [(True,)]))
+    rows = read.query(f"SELECT CASE WHEN a.subject_kind='gateway-key-rotation' "
+        "AND a.plan_id IS NULL AND a.rotation_id IS NOT NULL "
+        "AND a.subject_payload->>'kind'='gateway-key-rotation' "
+        "AND jsonb_typeof(a.subject_payload)='object' AND octet_length(a.subject_payload::text)<=16384 "
+        "AND NOT (a.subject_payload ? 'proposal_fingerprint' OR a.subject_payload ? 'profile') "
+        f"THEN true ELSE ({plan_legacy} AND {subject_legacy}) END "
+        "FROM cpk_approval_requests a LEFT JOIN cpk_activity_plans p ON p.plan_id=a.plan_id "
+        "WHERE a.request_id=%s", (command.request_id,), records=1, octets=1, cells=1)
+    return rows != [(True,)]
 
 
 def validate_cleanup_rows(connection):
