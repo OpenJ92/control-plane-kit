@@ -172,10 +172,12 @@ class ConfigurationAcceptanceStore:
                 or birth.ref != evidence.ref or birth.identity != evidence.birth_identity):
             raise _Unavailable
         source = evidence.source
+        if source.identity.run_id.value != run.run_id:
+            plan, request, run = self._original_use(read, row, source)
         activity = plan.plan.activity(ActivityId(source.identity.activity_id))
-        # The first nonempty slice accepts a new qualifying use in this exact
-        # advancing execution. Historical carry/reuse stays closed until its
-        # original-acceptance point proof is connected.
+        # The leaf use always belongs to its own verified execution. Carry
+        # needs its exact original acceptance point, never an intermediate
+        # receipt chain. Nonbirth reuse remains a separate preparation slice.
         if (source.identity.run_id.value != run.run_id
                 or source.source.workspace_id != request.identity.workspace_id
                 or source.source.request_id != request.identity.request_id
@@ -186,6 +188,33 @@ class ConfigurationAcceptanceStore:
             raise _Unavailable
         EffectAttemptOutcomeStore(self._connection)._configuration_success(source, read)
         return evidence, birth
+
+    def _original_use(self, read, row, source):
+        workspace_id = source.source.workspace_id
+        plan_key = ("configuration-source-plan", workspace_id, source.source.plan_id)
+        if plan_key not in read.sources:
+            plan = PostgresActivityHistoryStore(self._connection).get_plan(source.source.plan_id)
+            self._receipt_context(workspace_id, plan.desired_graph_revision, read)
+        context = read.sources.get(plan_key)
+        if context is None:
+            raise _Unavailable
+        header, _, _, plan, request, run, material = context
+        if (header["workspace_id"] != workspace_id or plan.plan_id != source.source.plan_id
+                or request.identity.request_id != source.source.request_id
+                or run.run_id != source.identity.run_id.value):
+            raise _Unavailable
+        slot_key = ("configuration-original-slot", workspace_id, header["pinned_revision"], *row[:3])
+        if slot_key not in read.sources:
+            rows = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
+                "workspace_id=%s AND pinned_revision=%s AND runtime_id=%s AND node_id=%s AND artifact_id=%s",
+                (workspace_id, header["pinned_revision"], *row[:3]))
+            if len(rows) != 1:
+                raise _Unavailable
+            read.sources[slot_key] = rows[0]
+        if read.sources[slot_key] != row:
+            raise _Unavailable
+        self._material_ref(read, row, material, workspace_id)
+        return plan, request, run
 
     def _manifest(self, read, header, material):
         rows = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
@@ -203,8 +232,11 @@ class ConfigurationAcceptanceStore:
         return rows
 
     @_closed_evidence
-    def _receipt_manifest(self, workspace_id, revision, read):
-        snapshot_start = read.used.accounted_bytes
+    def _receipt_context(self, workspace_id, revision, read):
+        """Original pair/header/execution point proof, without prior manifests."""
+        key = ("configuration-receipt-context", workspace_id, revision)
+        if key in read.sources:
+            return read.sources[key]
         rows = read.bounded_rows("cpk_configuration_acceptances", _columns(_HEADER),
             "workspace_id=%s AND pinned_revision=%s", (workspace_id, revision))
         if len(rows) != 1:
@@ -228,7 +260,9 @@ class ConfigurationAcceptanceStore:
                 or plan.desired_realized_projection_id != header["projection_id"]):
             raise _Unavailable
         projection, material, _ = self._projection(header["graph_id"], header["projection_id"], workspace_id)
-        if projection.projection_digest != header["projection_digest"]:
+        if (projection.projection_digest != header["projection_digest"] or len(material) != header["slot_count"]
+                or len(header["slot_digest"]) != 64
+                or any(character not in "0123456789abcdef" for character in header["slot_digest"])):
             raise _Unavailable
         historical_event, historical_action = _history_records(event, action)
         receipt = historical_advancement(workspace_id=workspace_id, session_id=plan.session_id,
@@ -239,6 +273,15 @@ class ConfigurationAcceptanceStore:
             projection_digest=projection.projection_digest, events=(historical_event,), actions=(historical_action,))
         if receipt["state"] != "accepted":
             raise _Unavailable
+        context = header, action, event, plan, request, run, material
+        read.sources[key] = context
+        read.sources[("configuration-source-plan", workspace_id, plan.plan_id)] = context
+        return context
+
+    @_closed_evidence
+    def _receipt_manifest(self, workspace_id, revision, read):
+        snapshot_start = read.used.accounted_bytes
+        header, action, event, plan, request, run, material = self._receipt_context(workspace_id, revision, read)
         slots = self._manifest(read, header, material)
         if read.used.accounted_bytes - snapshot_start > 3 * 1024 * 1024:
             raise _Capacity
@@ -293,6 +336,7 @@ class ConfigurationAcceptanceStore:
         receipt = self._current_manifest(workspace, read)
         for row in receipt[3]:
             self._prove_use(read, row, *receipt[4:])
+        return receipt
 
     def _observed_bindings(self, receipt, rows, read):
         bindings = []
@@ -375,16 +419,29 @@ class ConfigurationAcceptanceStore:
                     plan.desired_realized_projection_id, plan.desired_graph_revision)):
             raise _Unavailable
         _require_complete_success(plan.plan, run, stores.execution.events_for_run(run.run_id))
-        self._current_receipt(workspace)
+        current = self._current_receipt(workspace)
         base, base_slots, base_graph = self._projection(plan.base_graph_id, plan.base_realized_projection_id, workspace.workspace_id)
-        desired, material, _ = self._projection(plan.desired_graph_id, plan.desired_realized_projection_id, workspace.workspace_id)
-        if base != current_projection or desired != desired_projection or base_slots:
+        desired, material, desired_graph = self._projection(plan.desired_graph_id, plan.desired_realized_projection_id, workspace.workspace_id)
+        if base != current_projection or desired != desired_projection:
             raise _Unavailable
+        current_slots = {row[:3]: row for row in current[3]}
+        if set(current_slots) != set(base_slots):
+            raise _Unavailable
+        installed_nodes = {activity.operation.target.node_id for activity in plan.plan.activities
+            if type(activity.operation) in (StartNode, ReconcileNode)}
+        # The current proof's caches must not make the later cold-consumer
+        # admission underestimate desired source/receipt work. Fresh caches,
+        # same command ledger; every actual repeat remains charged.
         read, slots = _EvidenceRead(self._connection), []
         snapshot_start = read.used.accounted_bytes
         for slot in sorted(material):
-            if slot[1] in base_graph.nodes:
-                raise _Unavailable
+            if slot[1] not in installed_nodes:
+                if (slot not in current_slots or base_graph.nodes.get(slot[1]) != desired_graph.nodes[slot[1]]):
+                    raise _Unavailable
+                row = current_slots[slot]
+                self._material_ref(read, row, material, workspace.workspace_id)
+                slots.append(row)
+                continue
             # Discover only this advancing run/slot, before source joins; do not
             # turn an unrelated old successful attempt into a new installation.
             candidates = read.bounded_rows("cpk_effect_configuration_refs", _REF_KEY_COLUMNS,

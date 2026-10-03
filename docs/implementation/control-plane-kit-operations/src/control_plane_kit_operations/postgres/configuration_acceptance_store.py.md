@@ -6,11 +6,12 @@ workspace-wide original action/event selectors use typed numeric revision orderi
 and two candidates before any source join. Bounded point reads validate the complete
 paired originals, header, destination projection and complete slot digest.
 
-The current source adds first new-node configuration membership to zero-slot
-acceptance. It enumerates all selected artifacts, verifies complete full material,
-and requires direct self-birth refs/claims plus the exact advancing execution's
-qualifying original intent and successful direct outcome. Existing configured
-current membership, historical carry and reuse remain explicitly unsupported at
+The source enumerates all selected artifacts and verifies complete full material,
+direct self-birth refs/claims, qualifying original intent and successful direct
+outcome. A new installation must belong to the exact advancing execution. The
+carry connection copies the authoritative current slot/source/birth/digest only
+for unchanged nodes without new installation work. Removed slots leave desired
+membership while all claims remain. Explicit nonbirth reuse is still closed at
 this intermediate checkpoint. Missing
 initial or historical evidence refuses; no adoption, repair or synthetic header is
 performed. Original replay validates its own occurrence, not the latest pointer.
@@ -30,7 +31,22 @@ reached causal missing-method red. The first source gate passed all 38 selected
 tests (eight public reads including genesis regression coverage, 23 acceptance
 and seven pure capacity tests), compilation and clean import. Two-node
 source-isolation, universal manifest-material corruption and actual aggregate
-query-budget targets are the next unvalidated strengthening checkpoint.
+query-budget targets passed their bounded strengthening gates, with the fixture
+correction and separate eight-test retry recorded on PR #1926.
+
+Historical carried use points directly to its source plan's original accepted
+revision, congruent original pair/header/execution and one exact accepted slot.
+It does not traverse complete intermediate manifests. Complete current material
+and full-source replay/schema verification retain their separate contracts.
+Original point proofs are cached by exact immutable key within one proof reader;
+no historical mutable-parent locks are acquired. The current proof and desired
+source proof use separate caches on the same command ledger so the measured cold
+consumer footprint includes historical context/slot work before CAS. Every
+actual repeat is charged. Four carry targets reached missing-support red after
+genuine later execution; this source connection awaits focused validation. The
+removal fixtures now explicitly use high-risk destructive approval metadata;
+that strengthened premise was not established by the earlier partial-removal
+red, and later runtime-removal stages were unreached.
 
 All reads and scalar mutation returns share the command ledger. Before CAS,
 generated reader coordinates and PostgreSQL JSON sizes are checked and a fixed

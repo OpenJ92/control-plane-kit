@@ -9,10 +9,10 @@ from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityPlan, NodeTarget, PlannedActivity, RemoveNodeResource,
-    RemoveRuntimeResource, RuntimeTarget, StartRuntime,
+    ActivityId, ActivityImpact, ActivityPlan, NodeTarget, PlannedActivity, RemoveNodeResource,
+    RemoveRuntimeResource, RiskLevel, RuntimeTarget, StartRuntime,
 )
-from control_plane_kit_core.policies import ApprovalPolicy
+from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_operations.advancement import (
@@ -50,8 +50,15 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
 
     def prepare(self, label, graph_id, operation, *, graph=None):
         activity_id = "activity-" + label
-        plan = ActivityPlan((PlannedActivity(ActivityId(activity_id), operation),))
+        destructive = type(operation) in (RemoveNodeResource, RemoveRuntimeResource)
+        plan = ActivityPlan((PlannedActivity(ActivityId(activity_id), operation,
+            risk=RiskLevel.HIGH if destructive else RiskLevel.LOW,
+            impact=ActivityImpact.DESTRUCTIVE if destructive else ActivityImpact.NON_DESTRUCTIVE),))
         requirement = ApprovalPolicy().requirement_for(plan)
+        self.assertEqual(requirement.destructive, destructive)
+        self.assertIs(requirement.max_risk, RiskLevel.HIGH if destructive else RiskLevel.LOW)
+        self.assertIs(requirement.required_scope,
+            PolicyScope.PLAN_APPROVE_DESTRUCTIVE if destructive else PolicyScope.PLAN_APPROVE)
         with self.base.unit_of_work() as uow:
             stores = uow.stores
             if graph is not None:

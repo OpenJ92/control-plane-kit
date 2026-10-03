@@ -67,9 +67,10 @@
         "tests/test_postgres_configuration_acceptance.py",
         "tests/test_current_schema_installation.py",
         "tests/test_postgres_configuration_acceptance_membership.py",
-        "tests/test_postgres_configuration_current_reads.py"
+        "tests/test_postgres_configuration_current_reads.py",
+        "tests/test_postgres_configuration_carry.py"
       ],
-      "motivation": "Bounded original receipt discovery, complete new-node membership, current-row verification and read-only current-use evidence."
+      "motivation": "Bounded original receipt discovery, complete new-node and carried membership, current-row verification and read-only current-use evidence."
     },
     {
       "module": "control_plane_kit_operations.configuration_preparation",
