@@ -20,7 +20,7 @@ from control_plane_kit_operations.advancement import (
 )
 from control_plane_kit_operations.coordinator import CoordinatorStatus
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
-from control_plane_kit_operations.lifecycle import ClaimAndOpenActivityRun, ExecutionLeaseDuration, StartActivityRun
+from control_plane_kit_operations.lifecycle import ClaimAndOpenActivityRun, ExecutionLeaseDuration, RunLifecycleCommandService, StartActivityRun
 from control_plane_kit_operations.postgres import SchemaInstallationError, install_schema
 from control_plane_kit_operations.records import (
     ActivityPlanRecord, ActivityPlanStatus, ApprovalDecisionKind, ApprovalDecisionRecord,
@@ -49,13 +49,13 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
     def cleanup_fixture(self):
         self.assertTrue(self.reader.doCleanups(), "nested carry fixture cleanup failed")
 
-    def admit(self, label, graph_id, operation, *, graph=None):
+    def admit(self, label, graph_id, operation, *, graph=None, plan=None, reuse_selected_desired=False, clock=None):
         activity_id = "activity-" + label
         destructive = type(operation) in (RemoveNodeResource, RemoveRuntimeResource)
         reconcile = type(operation) is ReconcileNode
         risk = RiskLevel.HIGH if destructive else RiskLevel.MEDIUM if reconcile else RiskLevel.LOW
         impact = ActivityImpact.DESTRUCTIVE if destructive else ActivityImpact.DISRUPTIVE if reconcile else ActivityImpact.NON_DESTRUCTIVE
-        plan = ActivityPlan((PlannedActivity(ActivityId(activity_id), operation,
+        plan = plan or ActivityPlan((PlannedActivity(ActivityId(activity_id), operation,
             risk=risk, impact=impact),))
         requirement = ApprovalPolicy().requirement_for(plan)
         self.assertEqual(requirement.destructive, destructive)
@@ -68,7 +68,12 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
                 self.graph_version += 1
                 stores.graphs.save(GraphVersionRecord.from_graph(graph_id=graph_id, workspace_id="workspace-a",
                     version=self.graph_version, graph=graph, created_by="operator-a", created_at="2026-07-22T12:00:30Z"))
-            workspace = stores.workspaces.set_desired_graph("workspace-a", graph_id)
+            if reuse_selected_desired:
+                self.assertIsNone(graph, "already selected desired graph must not be replaced")
+                workspace = stores.workspaces.get("workspace-a")
+                self.assertEqual(workspace.desired_graph_id, graph_id)
+            else:
+                workspace = stores.workspaces.set_desired_graph("workspace-a", graph_id)
             stores.activity_history.add_session(OperationSessionRecord("session-" + label, "workspace-a", "operator-a",
                 "Change unrelated material or remove a node", OperationSessionStatus.OPEN, "2026-07-22T12:01:00Z"))
             stores.activity_history.add_plan(ActivityPlanRecord("plan-" + label, "session-" + label,
@@ -85,11 +90,15 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
         admit_fixture_plan(self.base, request_id="request-" + label, session_id="session-" + label,
             plan_id="plan-" + label, approval_request_id="approval-" + label, key="admit-" + label)
         engine = self.base.engine
-        opened = engine.lifecycle_with_ids("run-" + label, "open-" + label, "claim-" + label).execute(
-            ClaimAndOpenActivityRun("request-" + label, engine.authority(), ExecutionLeaseDuration(600),
+        def lifecycle(*ids):
+            return (engine.lifecycle_with_ids(*ids) if clock is None else
+                RunLifecycleCommandService(self.base.unit_of_work, clock=clock, id_factory=iter(ids).__next__))
+
+        opened = lifecycle("run-" + label, "open-" + label, "claim-" + label).execute(
+            ClaimAndOpenActivityRun("request-" + label, engine.authority(), ExecutionLeaseDuration(3600 if clock else 600),
                 IdempotencyKey("claim-" + label)))
         fence = ExecutionLeaseFence(opened.request.claim.worker_id, opened.request.claim.generation)
-        engine.lifecycle_with_ids("start-event-" + label, "start-action-" + label).execute(
+        lifecycle("start-event-" + label, "start-action-" + label).execute(
             StartActivityRun("run-" + label, engine.authority(), fence, IdempotencyKey("start-" + label)))
         return AdvanceCurrentGraph("workspace-a", "run-" + label, "plan-" + label,
             workspace.current_graph_id, workspace.current_realized_projection_id, workspace.desired_graph_id,

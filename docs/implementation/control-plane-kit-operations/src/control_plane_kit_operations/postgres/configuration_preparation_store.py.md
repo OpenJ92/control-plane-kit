@@ -95,30 +95,25 @@ The earlier three setup errors do not earn retroactive behavioral credit. Same-n
 changed-material replacement, cross-runtime movement and configuration-free
 successor safety are not established by this same-runtime recurrence slice.
 
-The finite B2 capacity checkpoint passed: one node and one small artifact use real approved reconcile, start,
-outcome and acceptance owners until the first production capacity refusal.
-Pass-through observers preserve the original decisions, reservations and exceptions;
-they neither seed counters nor implement another budget. A refused fresh start must
-leave protection unchanged; an advancement refusal after a successful effect must
-retain that effect's protective claim without publishing current membership. Cold
-current/allocation reads and original replay must still succeed at the measured
-boundary. No promise that every local maximum fits the global budget is implied;
-64 genuine uses were accepted, retaining 64 claims. Use 65 hit the production
-per-reference claim limit at guarded start, without start IDs, provider dispatch
-or mutation. All three selected tests plus compilation/import passed and received
-independent terminal review. Cold current/allocation reads and original replay
-worked at that boundary. This does not establish natural cold-budget exhaustion.
+The finite B2 capacity slice passed independent review. A compact one-node,
+one-artifact producer accepted 64 genuine uses; use 65 hit the production
+per-reference claim limit at guarded start, without IDs, provider dispatch or
+mutation. Cold current/allocation reads, direct birth and original replay worked
+with all64 claims retained. The three-test gate and compilation/import passed.
 
-The next reviewed scope adds defensive node/manifest 257 sentinels over explicitly
-invalid retained history with ordinary constraints enabled; real-query PostgreSQL
-index-prefix eligibility; isolated local tests of unchanged acceptance-envelope
-arithmetic; and a labeled failure injected after genuine owner preflight, before
-CAS. Synthetic local inputs never authorize durable mutation. These candidate
-targets are unvalidated. Two concurrency witnesses and full gates remain.
+The remaining capacity evidence is layered: isolated local tests of unchanged
+snapshot/cold-consumer/publication-envelope arithmetic, defensive node/manifest
+257 sentinels over explicitly invalid retained history with constraints enabled,
+and a labeled failure after real owner preflight proving pre-CAS refusal. Six
+whole tests passed in the mixed seven-test gate. The extra known-birth optimizer
+assertion was withdrawn after its actual allocation-index/is_birth-filter plan;
+the corrected seven required lookup paths passed an index-only retry with
+compilation/import. These witnesses do not establish naturally reachable
+cold-budget exhaustion or promise an optimizer plan/latency bound.
 
-The seven-target remainder gate passed six whole tests (all local arithmetic,
-both defensive sentinels and injected owner atomicity) but failed an optional
-known-birth EXPLAIN assertion: the optimizer chose the allocation index plus an
-`is_birth` filter. The one-line correction removes only that extra diagnostic;
-all seven required lookup paths, including actual allocation discovery, remain.
-The reviewed index-only retry is unvalidated; no source/index/hint changes.
+Two final concurrency candidates reuse this accepted history: distinct-key
+advancement must have one complete winner; a separate failed-run compensation
+binding replay must hold only its own attempts, block on advancement's workspace,
+then refuse changed lineage without IDs or SQL mutation. Live leases and normal
+admission/lifecycle/compensation owners supply the setup. No raw pointer, lease,
+status or accepted-history mutation is used. These targets are unvalidated.

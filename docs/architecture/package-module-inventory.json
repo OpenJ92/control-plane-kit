@@ -68,6 +68,7 @@
         "tests/test_current_schema_installation.py",
         "tests/test_postgres_configuration_acceptance_membership.py",
         "tests/test_configuration_acceptance_preflight.py",
+        "tests/test_postgres_configuration_concurrency.py",
         "tests/test_postgres_configuration_capacity_boundary.py",
         "tests/test_postgres_configuration_current_reads.py",
         "tests/test_postgres_configuration_carry.py",

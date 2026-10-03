@@ -430,6 +430,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         *,
         lifecycle=None,
         unit_of_work_factory=None,
+        clock=None,
     ) -> ExecutionCoordinator:
         unit_of_work_factory = unit_of_work_factory or self.unit_of_work
         fold_service = EffectAttemptFoldService(
@@ -450,7 +451,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 _ForbiddenObserver(),
                 fold_service,
             ),
-            clock=lambda: "2026-07-22T13:01:00Z",
+            clock=clock or (lambda: "2026-07-22T13:01:00Z"),
             id_factory=self.ids,
         )
 
