@@ -61,7 +61,11 @@ root; older accepted allocations remain protected without being reselected.
 Four recurrence targets reached causal missing-birth red after genuine accepted
 removal. The reviewed source then passed all 20 selected recurrence, reuse,
 preparation, coordinator replay and carry tests plus compilation/import.
-Renamed-artifact laws are not yet validation evidence.
+Two focused renamed-artifact targets now await validation in that same recurrence
+fixture: accepted departure permits a new renamed birth with old claims retained;
+a genuine successful-but-unaccepted predecessor cannot hide behind entirely
+different desired artifact IDs. No additional fixture chain or production change
+is introduced.
 
 All historical node claims and proposed new keys count toward 256 for the logical
 set; 64 is enforced separately per exact allocation, including the proposed claim
@@ -79,9 +83,11 @@ shortcut's missing authority, while the pointer/base control already refused.
 The source now removes that shortcut; all six converted-fixture consumer classes
 plus recurrence/reuse passed (46 tests, compilation/import). One psycopg unclosed
 connection ResourceWarning remains an unattributed cleanup diagnostic. Three
-reviewed isolated E7 targets are unvalidated: real empty creation, one approved
+isolated E7 targets passed after a one-line discarded context-template correction:
+real empty creation, one approved
 runtime-to-node plan, correlated simulated runtime success without advancement,
 then positive first birth or missing/corrupt initialization refusal before time,
-IDs or writes, retaining complete runtime outcomes. Same-node
+IDs or writes, retaining complete runtime outcomes; compilation/import passed.
+The earlier three setup errors do not earn retroactive behavioral credit. Same-node
 changed-material replacement, cross-runtime movement and configuration-free
 successor safety are not established by this same-runtime recurrence slice.

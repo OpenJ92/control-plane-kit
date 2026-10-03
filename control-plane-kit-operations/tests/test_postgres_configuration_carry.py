@@ -48,7 +48,7 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
     def cleanup_fixture(self):
         self.assertTrue(self.reader.doCleanups(), "nested carry fixture cleanup failed")
 
-    def prepare(self, label, graph_id, operation, *, graph=None, expected_claims=None):
+    def admit(self, label, graph_id, operation, *, graph=None):
         activity_id = "activity-" + label
         destructive = type(operation) in (RemoveNodeResource, RemoveRuntimeResource)
         reconcile = type(operation) is ReconcileNode
@@ -90,21 +90,26 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
         fence = ExecutionLeaseFence(opened.request.claim.worker_id, opened.request.claim.generation)
         engine.lifecycle_with_ids("start-event-" + label, "start-action-" + label).execute(
             StartActivityRun("run-" + label, engine.authority(), fence, IdempotencyKey("start-" + label)))
+        return AdvanceCurrentGraph("workspace-a", "run-" + label, "plan-" + label,
+            workspace.current_graph_id, workspace.current_realized_projection_id, workspace.desired_graph_id,
+            workspace.desired_realized_projection_id, workspace.desired_graph_revision, engine.authority(), fence,
+            IdempotencyKey("advance-" + label))
+
+    def prepare(self, label, graph_id, operation, *, graph=None, expected_claims=None):
+        command = self.admit(label, graph_id, operation, graph=graph)
+        engine = self.base.engine
         adapter = coordinator_fixture.RecordingAdapter(engine.tracker, lambda _context, request:
             RuntimeEffectResult.succeeded(request.effect_id, evidence={"adapter": "carry-test"}))
-        result = engine.coordinator(adapter).execute(replace(engine.command(generation=fence.generation,
+        result = engine.coordinator(adapter).execute(replace(engine.command(generation=command.fence.generation,
             idempotency_key="execute-" + label), run_id="run-" + label))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
-        self.assertEqual(adapter.calls, [activity_id])
+        self.assertEqual(adapter.calls, ["activity-" + label])
         self.assertEqual(adapter.active_during_calls, [0])
         with self.base.unit_of_work() as uow:
             self.assertIs(uow.stores.execution.get_run("run-" + label).status, ActivityRunStatus.SUCCEEDED)
         self.assertEqual(self.fixture.protective_claims(),
             self.fixture.claims if expected_claims is None else expected_claims)
-        return AdvanceCurrentGraph("workspace-a", "run-" + label, "plan-" + label,
-            workspace.current_graph_id, workspace.current_realized_projection_id, workspace.desired_graph_id,
-            workspace.desired_realized_projection_id, workspace.desired_graph_revision, engine.authority(), fence,
-            IdempotencyKey("advance-" + label))
+        return command
 
     def advance(self, command):
         identities = iter(("event-advance-" + command.run_id, "action-advance-" + command.run_id))

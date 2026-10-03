@@ -7,7 +7,7 @@ from control_plane_kit_core.configuration_instances import ConfigurationInstance
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptTransition, EffectAttemptTransitionKind, RunId
 from control_plane_kit_core.planning import NodeTarget, ReconcileNode, RemoveNodeResource, StartNode
-from control_plane_kit_core.products import ProductInstanceConfiguration, instantiate_product
+from control_plane_kit_core.products import ProductDescriptorCodec, ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
@@ -16,6 +16,7 @@ from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflic
 from control_plane_kit_operations.effect_attempt_start import ExistingAttempt, StartEffectAttempt
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.postgres import SchemaInstallationError, install_schema
+from tests import postgres_effect_attempt_coordinator_fixture as coordinator_fixture
 from tests import test_postgres_configuration_carry as carry_fixture
 from tests.test_runtime_effect_translation import _configuration_product
 
@@ -53,7 +54,7 @@ class PostgresConfigurationRecurrenceTests(unittest.TestCase):
             self.base.connection.execute("SELECT * FROM cpk_effect_configuration_refs "
                 "ORDER BY run_id,activity_id,attempt,artifact_id").fetchall())
 
-    def reenter(self):
+    def depart(self):
         graph = self.carry.graph
         self.assertEqual(graph.edges, {})
         departed = replace(graph, nodes={"worker": graph.nodes["worker"]}, runtimes={"runtime-a":
@@ -68,6 +69,9 @@ class PostgresConfigurationRecurrenceTests(unittest.TestCase):
         absent = self.reader.read_use(self.old_refs)
         self.assertEqual((absent.state, absent.bindings), ("complete", ()))
         self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
+
+    def reenter(self):
+        self.depart()
         try:
             command = self.carry.prepare("reenter", "graph-configured", StartNode(NodeTarget("api")),
                 expected_claims=self.claims)
@@ -121,6 +125,93 @@ class PostgresConfigurationRecurrenceTests(unittest.TestCase):
         self.assertTrue(all(binding.source.identity == source and binding.birth.identity == self.birth_identity
             for binding in new.bindings))
         self.assertEqual(self.fixture.protective_claims(), self.claims)
+
+    def renamed_graph(self):
+        """Drop limits and rename settings, so no desired artifact hides behind an old slot."""
+        registered = _configuration_product()
+        old = registered.descriptor_document.product
+        settings = next(value for value in old.runtime_contract.configuration_artifacts if value.artifact_id == "settings")
+        renamed = replace(old, runtime_contract=replace(old.runtime_contract,
+            configuration_artifacts=(replace(settings, artifact_id="settings-next"),)))
+        with self.base.unit_of_work() as uow:
+            uow.stores.registered_products.register(workspace_id="workspace-a",
+                descriptor_document=ProductDescriptorCodec().encode_document(renamed), source=registered.source,
+                imported_by=registered.imported_by, imported_at=registered.imported_at)
+            uow.commit()
+        graph = compile_topology(DeploymentTopology("renamed", DockerRuntime(runtime_id="runtime-a", children=(
+            instantiate_product(renamed, "api", ProductInstanceConfiguration.from_contract(renamed.runtime_contract)),
+            instantiate_product(old, "worker", ProductInstanceConfiguration.from_contract(old.runtime_contract))))))
+        self.assertEqual(graph.nodes["worker"], self.carry.graph.nodes["worker"])
+        new_ids = {artifact.artifact_id for artifact in graph.nodes["api"].configuration_artifacts}
+        self.assertEqual(new_ids, {"settings-next"})
+        self.assertTrue(new_ids.isdisjoint(ref.artifact_id for ref in self.old_refs))
+        identity = EffectAttemptIdentity(RunId("run-renamed"), "activity-renamed", 1)
+        old_ref = next(ref for ref in self.old_refs if ref.artifact_id == "settings")
+        refs = _birth_selection(identity, ConfigurationInstanceSelection((replace(old_ref, artifact_id="settings-next"),))).instances
+        self.assertTrue({ref.allocation_id for ref in refs}.isdisjoint(ref.allocation_id for ref in self.old_refs))
+        return graph, identity, refs
+
+    def test_accepted_departure_allows_renamed_birth_and_retains_omitted_artifact_claims(self):
+        self.depart()
+        graph, identity, refs = self.renamed_graph()
+        claims = sorted(self.fixture.claims + self.claim_rows(identity, refs))
+        accepted = self.carry.advance(self.carry.prepare("renamed", "graph-renamed", StartNode(NodeTarget("api")),
+            graph=graph, expected_claims=claims))
+        with self.base.unit_of_work() as uow:
+            original = uow.stores.effect_attempt_intents.get(identity)
+            attempt = uow.stores.effect_attempts.get(identity)
+            outcome = uow.stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id)
+        self.assertEqual(original.intent.configuration_instances.instances, refs)
+        self.assertEqual(outcome.outcome.identity, identity)
+        self.assertEqual(outcome.outcome.request_fingerprint, runtime_effect_intent_fingerprint(original.intent))
+        self.assertEqual(outcome.outcome.result.effect_id, original.original_start_event.event_id)
+        rows = self.base.connection.execute("SELECT artifact_id,is_birth,birth_run_id,birth_activity_id,birth_attempt,"
+            "birth_artifact_id,ref_preimage FROM cpk_effect_configuration_refs WHERE run_id=%s ORDER BY artifact_id",
+            (identity.run_id.value,)).fetchall()
+        self.assertEqual(rows, [(ref.artifact_id, True, identity.run_id.value, identity.activity_id, identity.attempt,
+            ref.artifact_id, ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)) for ref in refs])
+        current = self.reader.read_current()
+        self.assertEqual((current.state, current.pinned_revision, current.manifest_slot_count),
+            ("complete", accepted.desired_graph_revision, 3))
+        self.assertEqual(tuple(binding.ref for binding in current.bindings), refs + self.worker_refs)
+        renamed = current.bindings[0]
+        self.assertEqual((renamed.source.identity, renamed.birth.identity), (identity, identity))
+        old_use, new_use = self.reader.read_use(self.old_refs), self.reader.read_use(refs)
+        self.assertEqual((old_use.state, old_use.bindings), ("complete", ()))
+        self.assertEqual((new_use.state, tuple(binding.ref for binding in new_use.bindings)), ("complete", refs))
+        self.assertEqual(self.fixture.protective_claims(), claims)
+        before = self.retained_state()
+        install_schema(self.base.connection)
+        self.assertEqual(self.retained_state(), before)
+
+    def test_renamed_artifact_cannot_hide_a_real_unaccepted_predecessor(self):
+        self.depart()
+        # Actual successful installation, deliberately not accepted. It remains
+        # protected even though every proposed artifact now has a different ID.
+        self.carry.prepare("reenter", "graph-configured", StartNode(NodeTarget("api")), expected_claims=self.claims)
+        current, staged = self.reader.read_current(), self.reader.read_use(self.new_refs)
+        self.assertEqual((current.state, current.graph_id, current.pinned_revision),
+            ("complete", "graph-worker-only", self.middle.desired_graph_revision))
+        self.assertEqual(tuple(binding.ref for binding in current.bindings), self.worker_refs)
+        self.assertEqual((staged.state, staged.bindings), ("complete", ()))
+        self.assertEqual(self.fixture.protective_claims(), self.claims)
+        graph, identity, refs = self.renamed_graph()
+        self.assertTrue({ref.artifact_id for ref in refs}.isdisjoint(ref.artifact_id for ref in self.new_refs))
+        command = self.carry.admit("renamed", "graph-renamed", StartNode(NodeTarget("api")), graph=graph)
+        before = self.retained_state()
+        harness = coordinator_fixture.PostgresEffectAttemptCoordinatorFixture.coordinator_harness(self.base)
+        with self.assertRaises(ExecutionCoordinatorConflict):
+            harness.coordinator.execute(replace(self.base.engine.command(generation=command.fence.generation,
+                idempotency_key="execute-renamed"), run_id=command.run_id))
+        self.assertEqual(len(harness.start.commands), 1)
+        self.assertEqual(harness.start.commands[0].transition.identity, identity)
+        self.assertEqual(harness.start.commands[0].intent.configuration_instances.instances, refs)
+        self.assertEqual(harness.start_ids.calls, [])
+        self.assertEqual(harness.adapter.runtime_calls, [])
+        self.assertEqual(harness.adapter.legacy_calls, [])
+        # Coordinator command reservation is separate bookkeeping; all actual
+        # attempt/intent/outcome/ref/claim and original acceptance truth stays.
+        self.assertEqual(self.retained_state(), before)
 
     def test_return_to_same_projection_births_ref2_then_reuses_only_current_ref2(self):
         self.reenter()
