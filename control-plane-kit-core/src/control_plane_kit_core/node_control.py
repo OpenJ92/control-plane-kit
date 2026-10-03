@@ -25,7 +25,7 @@ from control_plane_kit_core._node_control_public_wire import (
     reference_violation,
 )
 from control_plane_kit_core.capabilities import CapabilityName
-from control_plane_kit_core.control_routes import ControlRouteSetName
+from control_plane_kit_core.control_routes import ControlRouteSetName, NODE_HEALTH_ROUTES
 
 
 MAX_NODE_CONTROL_STATE_ITEMS = 128
@@ -112,10 +112,18 @@ _VARIABLE_KEYS = frozenset(
     }
 )
 _SURFACE_KEYS = frozenset({"provider_socket_name", "variables"})
+_HEALTH_SURFACE_KEYS = _SURFACE_KEYS | {"health_reads"}
 
 
 class NodeControlContractError(ValueError):
     """Raised when workload node-control contract material is malformed."""
+
+
+class NodeHealthReadKind(StrEnum):
+    """Closed optional observations declared by a workload control surface."""
+
+    LIVENESS = "liveness"
+    READINESS = "readiness"
 
 
 class NodeControlOperation(StrEnum):
@@ -136,6 +144,7 @@ class NodeControlGraphReferenceRole(StrEnum):
 
     WORKSPACE = "workspace"
     GRAPH_REVISION = "graph-revision"
+    RUNTIME = "runtime"
     NODE = "node"
     PROVIDER_SOCKET = "provider-socket"
     VARIABLE = "variable"
@@ -1494,10 +1503,11 @@ class ControlPlaneVariableDescriptorCodec:
 
 @dataclass(frozen=True, order=True)
 class WorkloadNodeControlSurfaceDescriptor:
-    """Static graph-visible variables exposed through one provider socket."""
+    """Static variables and optional health reads on one HTTP provider socket."""
 
     provider_socket_name: NodeControlGraphReference
     variables: tuple[ControlPlaneVariableDescriptor, ...]
+    health_reads: tuple[NodeHealthReadKind, ...] = ()
 
     def __post_init__(self) -> None:
         _validate_graph_reference(
@@ -1509,9 +1519,15 @@ class WorkloadNodeControlSurfaceDescriptor:
             raise NodeControlContractError(
                 "node-control surface variables must be a tuple of descriptors"
             )
-        if not self.variables:
+        if not isinstance(self.health_reads, tuple) or not all(
+            isinstance(kind, NodeHealthReadKind) for kind in self.health_reads
+        ):
+            raise NodeControlContractError("health reads must be a tuple of known kinds")
+        if len(set(self.health_reads)) != len(self.health_reads):
+            raise NodeControlContractError("health read kinds must be unique")
+        if not self.variables and not self.health_reads:
             raise NodeControlContractError(
-                "node-control surface requires at least one variable"
+                "node-control surface requires at least one variable or health read"
             )
         if len(self.variables) > MAX_NODE_CONTROL_VARIABLES_PER_SURFACE:
             raise NodeControlContractError(
@@ -1533,19 +1549,29 @@ class WorkloadNodeControlSurfaceDescriptor:
                 "node-control surface variable names must be unique"
             )
         object.__setattr__(self, "variables", ordered)
+        object.__setattr__(self, "health_reads", tuple(sorted(self.health_reads)))
         _validate_descriptor_size(
             self.descriptor(),
             "node-control surface descriptor",
         )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "provider_socket_name": self.provider_socket_name.value,
             "variables": [
                 ControlPlaneVariableDescriptorCodec().encode(variable)
                 for variable in self.variables
             ],
         }
+        if self.health_reads:
+            descriptor["health_reads"] = [kind.value for kind in self.health_reads]
+        return descriptor
+
+    def health_read_path(self, kind: NodeHealthReadKind) -> str:
+        """Select a fixed health path on this surface, never from a capability name."""
+        if not isinstance(kind, NodeHealthReadKind) or kind not in self.health_reads:
+            raise NodeControlContractError("surface does not declare the health read kind")
+        return NODE_HEALTH_ROUTES.routes[0].path.replace("{health_kind}", kind.value)
 
 
 class WorkloadNodeControlSurfaceDescriptorCodec:
@@ -1568,7 +1594,16 @@ class WorkloadNodeControlSurfaceDescriptorCodec:
         descriptor: Mapping[str, object],
     ) -> WorkloadNodeControlSurfaceDescriptor:
         mapping = _mapping(descriptor, "node-control surface descriptor")
-        _require_keys(mapping, _SURFACE_KEYS, "node-control surface descriptor")
+        _require_keys(
+            mapping,
+            _HEALTH_SURFACE_KEYS if "health_reads" in mapping else _SURFACE_KEYS,
+            "node-control surface descriptor",
+        )
+        raw_health_reads = mapping.get("health_reads", [])
+        if not isinstance(raw_health_reads, list) or len(raw_health_reads) > len(NodeHealthReadKind):
+            raise NodeControlContractError("surface health reads must be a bounded list")
+        if "health_reads" in mapping and not raw_health_reads:
+            raise NodeControlContractError("surface health reads must be omitted when empty")
         raw_variables = mapping.get("variables")
         if not isinstance(raw_variables, list):
             raise NodeControlContractError(
@@ -1588,6 +1623,10 @@ class WorkloadNodeControlSurfaceDescriptorCodec:
                     _mapping(value, "node-control surface variable")
                 )
                 for value in raw_variables
+            ),
+            health_reads=tuple(
+                _enum(NodeHealthReadKind, kind, "surface health read kind")
+                for kind in raw_health_reads
             ),
         )
         _validate_descriptor_size(

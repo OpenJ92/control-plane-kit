@@ -74,16 +74,42 @@ class EffectAttemptStore:
         self,
         record: EffectAttemptRecord,
     ) -> EffectAttemptRecord | None:
+        from .effect_attempt_intent_store import EffectAttemptIntentStore
+        from .receiver_execution_scopes import _require_nonaffecting_intent
+        from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
         _require_record(record)
-        row = self._connection.execute(
-            f"""
+        try:
+            intent = EffectAttemptIntentStore(self._connection).get(record.state.identity)
+        except KeyError:
+            intent = None
+        if intent is None or intent.original_start_event != record.original_start_event:
+            raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+        _require_nonaffecting_intent(self._connection, intent)
+        return self._insert_absent(record)
+
+    def _insert_absent(self, record: EffectAttemptRecord, *, configuration_preparation=None) -> EffectAttemptRecord | None:
+        _require_record(record)
+        from .effect_attempt_intent_store import EffectAttemptIntentStore
+        from control_plane_kit_operations._configuration_preparation import _require_prepared_intent
+        try:
+            original = EffectAttemptIntentStore(self._connection).get(record.state.identity)
+        except KeyError:
+            original = None
+        if original is not None:
+            _require_prepared_intent(configuration_preparation, self._connection, record.state.identity, original.intent)
+        sql = f"""
             INSERT INTO cpk_effect_attempts ({_COLUMNS})
             VALUES ({_VALUES})
             ON CONFLICT (run_id, activity_id, attempt) DO NOTHING
-            RETURNING run_id
-            """,
-            _record_values(record),
-        ).fetchone()
+            RETURNING CASE WHEN octet_length(run_id)<=200 THEN run_id END
+            """
+        from .configuration_evidence import _active_read
+        read = _active_read(self._connection)
+        if read is None:
+            row = self._connection.execute(sql, _record_values(record)).fetchone()
+        else:
+            rows = read.query(sql, _record_values(record), records=1, octets=200, cells=1)
+            row = rows[0] if rows else None
         return None if row is None else record
 
     def compare_and_set(
@@ -94,24 +120,29 @@ class EffectAttemptStore:
         _require_replacement(current, replacement)
         replacement_values = _record_values(replacement)[3:]
         identity = current.state.identity
-        row = self._connection.execute(
-            f"""
+        sql = f"""
             UPDATE cpk_effect_attempts
             SET {', '.join(f'{name} = %s' for name in _COMPLETE_PRIOR_COLUMNS)}
             WHERE run_id = %s
               AND activity_id = %s
               AND attempt = %s
             {_COMPLETE_PRIOR}
-            RETURNING run_id
-            """,
-            (
+            RETURNING CASE WHEN octet_length(run_id)<=200 THEN run_id END
+            """
+        params = (
                 *replacement_values,
                 identity.run_id.value,
                 identity.activity_id,
                 identity.attempt,
                 *_record_values(current)[3:],
-            ),
-        ).fetchone()
+            )
+        from .configuration_evidence import _active_read
+        read = _active_read(self._connection)
+        if read is None:
+            row = self._connection.execute(sql, params).fetchone()
+        else:
+            rows = read.query(sql, params, records=1, octets=200, cells=1)
+            row = rows[0] if rows else None
         return None if row is None else replacement
 
     def _get(
@@ -121,6 +152,19 @@ class EffectAttemptStore:
         lock: bool,
     ) -> EffectAttemptRecord:
         _require_identity(identity)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            parameters = (identity.run_id.value, identity.activity_id, identity.attempt)
+            where = "run_id=%s AND activity_id=%s AND attempt=%s"
+            if lock:
+                read.query("SELECT 1 FROM cpk_effect_attempts WHERE " + where + " FOR UPDATE",
+                    parameters, records=1, octets=1, cells=1)
+            numbers = {"attempt", "fence_generation", "prior_attempt", "original_event_ordinal", "latest_event_ordinal"}
+            columns = tuple((name, "int" if name in numbers else "text", 2048) for name in _COLUMN_NAMES)
+            rows = read.bounded_rows("cpk_effect_attempts", columns, where, parameters)
+            if not rows:
+                raise KeyError("effect attempt was not found")
+            return _decode_row(self._connection, rows[0])
         suffix = " FOR UPDATE" if lock else ""
         row = self._connection.execute(
             f"""
@@ -205,6 +249,14 @@ def _decode_row(connection: _Connection, row: object) -> EffectAttemptRecord:
 def _reconstruct_row(connection: _Connection, row: object) -> EffectAttemptRecord:
     if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
         raise ValueError("effect attempt row shape is invalid")
+    event_store = PostgresExecutionStore(connection)
+    return _record_from_events(row, event_store.get_event(row[15]), event_store.get_event(row[18]))
+
+
+def _record_from_events(row, original, latest) -> EffectAttemptRecord:
+    """Decode the same owner value after a caller's bounded event retrieval."""
+    if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
+        raise ValueError("effect attempt row shape is invalid")
     identity = EffectAttemptIdentity(RunId(row[0]), row[1], row[2])
     prior = (
         None
@@ -231,9 +283,6 @@ def _reconstruct_row(connection: _Connection, row: object) -> EffectAttemptRecor
         prior_attempt=prior,
         recovery_decision=recovery,
     )
-    event_store = PostgresExecutionStore(connection)
-    original = event_store.get_event(row[15])
-    latest = event_store.get_event(row[18])
     if (
         (original.event_id, original.run_id, original.ordinal)
         != (row[15], row[16], row[17])

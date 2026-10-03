@@ -189,7 +189,7 @@ SELECT NOT EXISTS (
         AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
         AND (rotations.purpose COLLATE "C") IN (
           'gateway-probe', 'workload-node-control',
-          'workload-node-control-surface-read'
+          'workload-node-control-surface-read', 'gateway-node-control-transit'
         )
         AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
         AND rotations.clock_skew_seconds BETWEEN 0 AND 60
@@ -252,10 +252,29 @@ def validate_current_rows(connection: _Connection) -> None:
             _validate_current_rows as validate_saved_preparation_sources,
         )
 
+        from control_plane_kit_operations.postgres.health_effect_preparation_store import (
+            _validate_current_rows as validate_health_preparations,
+        )
+        from control_plane_kit_operations.postgres.receiver_lifecycle_store import (
+            validate_current_rows as validate_receiver_rows,
+        )
+        from control_plane_kit_operations.postgres.receiver_execution_scopes import (
+            validate_current_rows as validate_execution_scope_rows,
+        )
+
         validate_effect_attempt_rows(connection)
         _validate_effect_attempt_intent_rows(connection)
+        from .configuration_preparation_store import _validate_current_rows as validate_configuration
+        validate_configuration(connection)
+        from .graph_store import _validate_workspace_initializations
+        _validate_workspace_initializations(connection)
+        from .configuration_acceptance_store import validate_configuration_advancement_rows
+        validate_configuration_advancement_rows(connection)
         validate_effect_outcome_rows(connection)
         validate_saved_preparation_sources(connection)
+        validate_health_preparations(connection)
+        validate_receiver_rows(connection)
+        validate_execution_scope_rows(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()

@@ -42,7 +42,10 @@ from control_plane_kit_core.node_control import (
     MAX_NODE_CONTROL_SURFACES,
     WorkloadNodeControlSurfaceDescriptorCodec,
 )
-from control_plane_kit_core.public_ingress import NamedPublicIngressCodec
+from control_plane_kit_core.public_ingress import NamedPublicIngress, NamedPublicIngressCodec
+from control_plane_kit_core.runtime_management import (
+    GatewayTransitDeclarationCodec, RuntimeManagementCodec, RuntimeManagementError,
+)
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDeliveryCodec,
     RuntimeAuthorityReference,
@@ -120,6 +123,8 @@ class GenericBlockSpecCodec:
                 WorkloadNodeControlSurfaceDescriptorCodec().encode(surface)
                 for surface in spec.control_surfaces
             ]
+        if spec.gateway_transit is not None:
+            descriptor["gateway_transit"] = spec.gateway_transit.descriptor()
         return descriptor
 
     def decode(self, descriptor: Mapping[str, object]) -> BlockSpec:
@@ -137,6 +142,8 @@ class GenericBlockSpecCodec:
             if "control_surfaces" in descriptor
             else legacy_keys
         )
+        if "gateway_transit" in descriptor:
+            expected_keys = expected_keys | {"gateway_transit"}
         if set(descriptor) != expected_keys:
             raise UnknownGraphVariant("invalid generic block spec fields")
         raw_control_surfaces = _list(descriptor.get("control_surfaces", []))
@@ -153,6 +160,7 @@ class GenericBlockSpecCodec:
         except ValueError as error:
             raise UnknownGraphVariant(f"unknown capability: {error}") from error
         return BlockSpec(
+            gateway_transit=_decode_management_value(descriptor, "gateway_transit", GatewayTransitDeclarationCodec()),
             role_id=_text(descriptor, "role_id"),
             display_name=_optional_text(descriptor, "display_name"),
             health_path=_optional_text(descriptor, "health_path"),
@@ -293,6 +301,7 @@ class GraphDescriptorCodec:
             kind=kind,
             children=tuple(str(child) for child in _list(descriptor.get("children", []))),
             authority_ref=_runtime_authority_ref(descriptor.get("authority_ref")),
+            management=_decode_management_value(descriptor, "management", RuntimeManagementCodec()),
             metadata=_string_mapping(descriptor.get("metadata", {}), "runtime.metadata"),
             lifecycle=_lifecycle(descriptor.get("lifecycle"), "runtime.lifecycle"),
         )
@@ -435,6 +444,14 @@ class GraphDescriptorCodec:
                 raise InvalidGraphReference(
                     f"node {node_id!r} is not owned by runtime {node.runtime_id!r}"
                 )
+            transit = node.block_spec.gateway_transit
+            if transit is not None:
+                try:
+                    provider = node.provider_socket(transit.provider_socket_name)
+                except KeyError:
+                    raise InvalidGraphReference("gateway transit provider is missing") from None
+                if provider.protocol != Protocol.HTTP:
+                    raise InvalidGraphReference("gateway transit provider must use HTTP")
             for name, endpoint in node.endpoints.items():
                 provider = node.provider_socket(name)
                 if provider.protocol != endpoint.protocol:
@@ -464,6 +481,9 @@ class GraphDescriptorCodec:
                 raise InvalidGraphReference(
                     f"public ingress {ingress.ingress_id!r} connector must share target runtime"
                 )
+        for runtime_id, runtime in graph.runtimes.items():
+            if runtime.management is not None:
+                _management_ingress(graph, runtime_id)
         for binding in graph.delegation_authorities:
             try:
                 node = graph.node(binding.delegate_node_id)
@@ -489,6 +509,44 @@ class GraphDescriptorCodec:
                 raise InvalidGraphReference(
                     "delegation verifier projection requires an authored binding"
                 )
+
+
+def _decode_management_value(descriptor, key, codec):
+    if key not in descriptor:
+        return None
+    try:
+        return codec.decode(descriptor[key])
+    except RuntimeManagementError:
+        raise MalformedGraphDescriptor("runtime management declaration is malformed") from None
+
+
+def _management_ingress(graph: DeploymentGraph, runtime_id: str) -> NamedPublicIngress:
+    """Resolve the same relationship for canonical validation and selection."""
+    runtime = graph.runtimes.get(runtime_id)
+    if runtime is None or runtime.management is None:
+        raise InvalidGraphReference("runtime management selection is missing")
+    management = runtime.management
+    gateway = graph.nodes.get(management.gateway_node_id)
+    ingress = next((value for value in graph.public_ingresses
+                    if value.ingress_id == management.management_ingress_id), None)
+    if gateway is None or ingress is None:
+        raise InvalidGraphReference("runtime management infrastructure is missing")
+    connector = graph.nodes.get(ingress.connector_node_id)
+    if connector is None or gateway.runtime_id != runtime_id or connector.runtime_id != runtime_id:
+        raise InvalidGraphReference("runtime management infrastructure must share its runtime")
+    transit = gateway.block_spec.gateway_transit
+    if transit is None:
+        raise InvalidGraphReference("runtime management gateway must declare transit")
+    if (ingress.target.node_id != gateway.node_id
+            or ingress.target.provider_socket != transit.provider_socket_name):
+        raise InvalidGraphReference("management ingress must target the exact gateway transit socket")
+    try:
+        provider = gateway.provider_socket(transit.provider_socket_name)
+    except KeyError:
+        raise InvalidGraphReference("gateway transit provider is missing") from None
+    if provider.protocol != Protocol.HTTP:
+        raise InvalidGraphReference("gateway transit provider must use HTTP")
+    return ingress
 
 
 DEFAULT_GRAPH_CODEC = GraphDescriptorCodec()

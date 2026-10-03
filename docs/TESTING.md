@@ -36,6 +36,19 @@ used by CI. Establish that checkout before invoking the suite. The suite mounts
 it read-only into the test container; do not install it into host Python or
 substitute another coordinate.
 
+For focused Operations evidence, the same Docker gate accepts repeatable unittest
+name-pattern filters, for example:
+
+```bash
+./control-plane-kit-operations/test.sh -k PostgresConfigurationPreparationTests -k PostgresConfigurationEvolvedReplayTests
+```
+
+Quote patterns containing shell metacharacters. Filters are forwarded as literal
+arguments without evaluation. The gate retains integrity checks, Docker/Postgres,
+the pinned sibling, installation, cleanup, and its normal compile/import phases
+and failure exit. A selected run is focused evidence, never full package
+acceptance; no arguments retain full discovery and existing CI behavior.
+
 For the repository-owned composed backend gate, use its documented command:
 
 ```bash

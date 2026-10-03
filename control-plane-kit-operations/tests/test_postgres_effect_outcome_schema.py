@@ -122,7 +122,7 @@ class PostgresEffectOutcomeSchemaTests(
 ):
     def test_exact_current_contract_adds_two_relations_and_closed_columns(self) -> None:
         relations = tuple(value.name for value in CURRENT_POSTGRES_SCHEMA_CONTRACT.relations)
-        self.assertEqual(len(relations), 40)
+        self.assertEqual(len(relations), 49)
         self.assertIn(OUTCOME, relations)
         self.assertIn(MEMBERSHIP, relations)
         columns = {}
@@ -130,9 +130,9 @@ class PostgresEffectOutcomeSchemaTests(
             columns.setdefault(value.relation, []).append(value.name)
         self.assertEqual(tuple(columns[OUTCOME]), OUTCOME_COLUMNS)
         self.assertEqual(tuple(columns[MEMBERSHIP]), MEMBERSHIP_COLUMNS)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns), 507)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints), 382)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes), 131)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns), 624)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints), 496)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes), 162)
 
     def test_exact_candidate_keys_and_restrictive_composite_foreign_keys(self) -> None:
         constraints = {
@@ -406,7 +406,7 @@ class PostgresEffectOutcomeSchemaTests(
                 stores.execution.add_event(record.attempt.latest_transition_event)
                 self.add_record_intent(stores, record.attempt)
                 self.assertEqual(
-                    stores.effect_attempts.insert_absent(record.attempt),
+                    stores.effect_attempts._insert_absent(record.attempt),
                     record.attempt,
                 )
                 for observation in record.endpoint_observations:

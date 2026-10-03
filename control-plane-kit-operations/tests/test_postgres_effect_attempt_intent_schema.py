@@ -109,14 +109,14 @@ class PostgresEffectAttemptIntentSchemaTests(
         self.require_intent_schema()
         contract = CURRENT_POSTGRES_SCHEMA_CONTRACT
         relations = tuple(value.name for value in contract.relations)
-        self.assertEqual(len(relations), 40)
+        self.assertEqual(len(relations), 49)
         self.assertEqual(relations.count(RELATION), 1)
-        self.assertEqual(len(contract.columns), 507)
-        self.assertEqual(len(contract.constraints), 382)
-        self.assertEqual(len(contract.indexes), 131)
+        self.assertEqual(len(contract.columns), 624)
+        self.assertEqual(len(contract.constraints), 496)
+        self.assertEqual(len(contract.indexes), 162)
         self.assertEqual(
             sum(value.kind == "f" for value in contract.constraints),
-            87,
+            136,
         )
         columns = tuple(
             value.name for value in contract.columns if value.relation == RELATION
@@ -194,7 +194,7 @@ class PostgresEffectAttemptIntentSchemaTests(
                 attempt.original_start_event,
             )
             self.assertEqual(
-                stores.effect_attempt_intents.insert(evidence),
+                stores.effect_attempt_intents._insert(evidence),
                 evidence,
             )
             unit_of_work.commit()
@@ -268,26 +268,9 @@ class PostgresEffectAttemptIntentSchemaTests(
                 desired_graph_id=desired_graph_id,
             ),
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            SELECT %s, workspace_id, session_id, %s, status,
-                   requested_by, requested_at, approval_request_id,
-                   approval_decision_id, %s, %s,
-                   claim_worker_id, claim_generation, claimed_at, lease_expires_at
-            FROM cpk_execution_requests WHERE request_id='request-a'
-            """,
-            (
-                request_id,
-                plan_id,
-                "intent-max-idempotency",
-                runtime_effect_intent_fingerprint(intent),
-            ),
-        )
+        from tests.receiver_scope_history_fixture import clone_recorded_request
+        clone_recorded_request(self.connection, request_id=request_id, plan_id=plan_id,
+            idempotency_key="intent-max-idempotency", intent_fingerprint=runtime_effect_intent_fingerprint(intent))
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs
@@ -325,7 +308,7 @@ class PostgresEffectAttemptIntentSchemaTests(
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
             with self.assertRaises(ForeignKeyViolation) as caught:
-                stores.effect_attempts.insert_absent(attempt)
+                stores.effect_attempts._insert_absent(attempt)
         self.assertEqual(
             caught.exception.diag.constraint_name,
             "cpk_effect_attempts_intent_evidence_fk",
@@ -334,7 +317,7 @@ class PostgresEffectAttemptIntentSchemaTests(
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
-            stores.effect_attempt_intents.insert(evidence)
+            stores.effect_attempt_intents._insert(evidence)
             unit_of_work.commit()
         with self.assertRaises(CurrentRowDrift):
             validate_current_rows(self.connection)
@@ -414,10 +397,10 @@ class PostgresEffectAttemptIntentSchemaTests(
         )
         self.assertIn("### `cpk_effect_attempt_intents`", atlas)
         self.assertIn(
-            "sha256=6dff163cf72add13406d168d8e7389cdada4e6885e345c2534307753c5d24f4c",
+            "sha256=79111df594db6043e5bb5ef042b3934f3852675e00d1f907c38ef360ee0049f8",
             atlas,
         )
-        self.assertIn("foreign-keys=87", atlas)
+        self.assertIn("foreign-keys=136", atlas)
         for name in (*EXPECTED_KEYS, *EXPECTED_FOREIGN_KEYS):
             with self.subTest(name=name):
                 self.assertIn(name, atlas)

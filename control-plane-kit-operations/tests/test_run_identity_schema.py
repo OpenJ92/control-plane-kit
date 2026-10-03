@@ -139,10 +139,10 @@ def _capture_install_error(connection) -> BaseException:
 class RunIdentitySchemaStaticTests(unittest.TestCase):
     def test_contract_has_exact_owned_object_counts(self) -> None:
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 40)
-        self.assertEqual(len(contract.columns), 507)
-        self.assertEqual(len(contract.constraints), 382)
-        self.assertEqual(len(contract.indexes), 131)
+        self.assertEqual(len(contract.relations), 49)
+        self.assertEqual(len(contract.columns), 624)
+        self.assertEqual(len(contract.constraints), 496)
+        self.assertEqual(len(contract.indexes), 162)
 
     def test_contract_has_six_exact_direct_checks(self) -> None:
         constraints = {
@@ -490,15 +490,17 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
             VALUES ('decision-a', 'approval-a', 'reviewer-a', 'approved',
                     'plan:approve', '2026-08-14T00:05:00Z');
 
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'claimed',
-                    'operator-a', '2026-08-14T00:06:00Z', 'approval-a',
-                    'decision-a', 'execute-a', 'fingerprint-a', 'worker-a', 1,
-                    '2026-08-14T00:06:30Z', '2026-08-14T01:00:00Z');
+            """
+        )
+        from tests.receiver_scope_history_fixture import empty_plan_payload, insert_recorded_request
+        from psycopg.types.json import Jsonb
+        self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id='plan-a'",
+                                (Jsonb(empty_plan_payload()),))
+        insert_recorded_request(self.connection, status="claimed", requested_at="2026-08-14T00:06:00Z",
+            approval_request_id="approval-a", approval_decision_id="decision-a", claim_worker_id="worker-a",
+            claim_generation=1, claimed_at="2026-08-14T00:06:30Z", lease_expires_at="2026-08-14T01:00:00Z")
+        self.connection.execute(
+            """
 
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, status, created_at,

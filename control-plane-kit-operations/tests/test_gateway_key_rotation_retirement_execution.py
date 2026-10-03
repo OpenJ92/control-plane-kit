@@ -118,7 +118,7 @@ class GatewayKeyRotationRetirementExecutionTests(
             self.retirement_checkpoint.desired_realized_projection_id,
         )
         self.assertEqual(workspace.desired_graph_id, "graph-a")
-        self.assertEqual(self.authored_graph_count(), 1)
+        self.assertEqual(self.authored_graph_count(), self.origin_authored_graph_count)
         self.assertIs(
             self.old_key().status,
             RegisteredDelegationSigningKeyStatus.VERIFY_ONLY,

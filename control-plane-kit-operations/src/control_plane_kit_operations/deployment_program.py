@@ -8,6 +8,10 @@ from typing import TypeAlias
 from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.admission import ExternalReadinessAttestation
+from control_plane_kit_operations.graph_authoring import (
+    GraphAuthoringError,
+    validate_proposed_graph_id,
+)
 from control_plane_kit_operations.records import GraphProjectionLineage
 from control_plane_kit_operations.workflows import IdempotencyKey
 
@@ -56,6 +60,7 @@ class PrepareDeploymentProgram:
     title: str = field(repr=False)
     idempotency_key: IdempotencyKey
     approval_comment: str | None = field(default=None, repr=False)
+    proposed_graph_id: str | None = None
 
     def __post_init__(self) -> None:
         _context(self.context)
@@ -89,9 +94,23 @@ class PrepareDeploymentProgram:
         _idempotency_key(self.idempotency_key)
         if self.approval_comment is not None:
             _bounded_content(self.approval_comment, "approval_comment")
+        if self.proposed_graph_id is not None:
+            if type(self.desired) is SavedDesiredTopologyRevision:
+                raise InvalidDeploymentProgramContract(
+                    "proposed_graph_id requires inline desired graph"
+                )
+            invalid_proposal = False
+            try:
+                validate_proposed_graph_id(self.proposed_graph_id)
+            except GraphAuthoringError:
+                invalid_proposal = True
+            if invalid_proposal:
+                raise InvalidDeploymentProgramContract(
+                    "proposed_graph_id must be a bounded public graph reference"
+                )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        result = {
             "command": "prepare-deployment-program",
             "workspace_id": self.context.workspace_id,
             "expected_current": _lineage_descriptor(self.expected_current),
@@ -106,6 +125,9 @@ class PrepareDeploymentProgram:
             "idempotency_key": self.idempotency_key.value,
             "approval_comment_present": self.approval_comment is not None,
         }
+        if self.proposed_graph_id is not None:
+            result["proposed_graph_id"] = self.proposed_graph_id
+        return result
 
 
 @dataclass(frozen=True, slots=True)

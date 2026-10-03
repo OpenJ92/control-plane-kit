@@ -20,12 +20,13 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import (
     ActivityId,
+    CleanupConfigurationInstances,
+    ManagementObservationError,
     PlannedActivity,
     ReconcileNode,
     RiskLevel,
     StartNode,
     SwitchSocketConnection,
-    compile_activity_plan,
 )
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.topology import (
@@ -33,7 +34,6 @@ from control_plane_kit_core.topology import (
     DeploymentGraph,
     GraphDescriptorError,
     GraphValidationError,
-    diff_graphs,
     validate_graph,
 )
 from control_plane_kit_core.types import Protocol, SocketBinding
@@ -69,6 +69,8 @@ from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
 )
+from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.plan_derivation import PlanDerivationError, derive_activity_plan
 
 
 class ExecutionAdmissionError(RuntimeError):
@@ -252,6 +254,7 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionIdempotencyConflict(
                     "idempotency key is already owned by another session action"
                 )
+            lifecycle_guard = stores.graphs.lock_receiver_lifecycle(command.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
                 workspace = stores.workspaces.get_for_update(command.workspace_id)
@@ -280,6 +283,9 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionConflict(
                     "activity plan contains no executable changes"
                 )
+            if any(isinstance(activity.operation, CleanupConfigurationInstances)
+                   for activity in plan.plan.activities):
+                raise ExecutionAdmissionConflict("configuration cleanup execution is unsupported")
             if not plan.plan.ready_for_execution:
                 raise ExecutionAdmissionConflict("plan contains unresolved review blockers")
             decision = history.approval_decision_for_request(
@@ -363,6 +369,8 @@ class ExecutionAdmissionCommandService:
                 plan.desired_graph_id,
                 command.workspace_id,
             )
+            _require_receiver_execution_provenance(stores, workspace,
+                plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
             if rotation_subject is not None:
                 _require_gateway_rotation_child_authorization(
                     stores,
@@ -411,7 +419,7 @@ class ExecutionAdmissionCommandService:
 
             ordinal = history.next_action_ordinal(command.session_id)
             requested_at = self._clock()
-            request = stores.execution.add_request(
+            request = stores.execution._admit_request(
                 ExecutionRequestRecord(
                     identity=ExecutionRequestIdentity(
                         request_id=self._id_factory(),
@@ -428,7 +436,8 @@ class ExecutionAdmissionCommandService:
                         command.idempotency_key.value,
                         fingerprint,
                     ),
-                )
+                ),
+                lifecycle_guard=lifecycle_guard,
             )
             action = history.add_action(
                 OperationActionRecord(
@@ -454,8 +463,25 @@ class ExecutionAdmissionCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
+            _require_receiver_execution_provenance(stores, workspace,
+                plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
             unit_of_work.commit()
             return ExecutionAdmissionResult(request, action)
+
+
+def _require_receiver_execution_provenance(stores, workspace, base_id, base_projection,
+                                          desired_id, desired_projection):
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_reference
+    try:
+        if stores.workspaces.get(workspace.workspace_id) != workspace:
+            raise ValueError("receiver workspace changed")
+        _validate_receiver_reference(stores, workspace, base_id, base_projection)
+        _validate_receiver_reference(stores, workspace, desired_id, desired_projection)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise ExecutionAdmissionConflict("receiver execution provenance is unavailable")
 
 
 def _require_gateway_rotation_child_authorization(
@@ -495,20 +521,13 @@ def _require_gateway_rotation_child_authorization(
         )
     if rotation.new_key_id is None:
         raise ExecutionAdmissionConflict("rotation lacks replacement key identity")
-    if (
-        rotation.approval_request_id != approval.request_id
-        or rotation.approval_decision_id != decision.decision_id
-        or approval.required_scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-        or approval.max_risk is not RiskLevel.HIGH
-        or approval.destructive is not True
-        or decision.request_id != approval.request_id
-        or decision.decision is not ApprovalDecisionKind.APPROVED
-        or decision.scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-    ):
+    from control_plane_kit_operations._gateway_child_association import _require_rotation_approval
+    try:
+        _require_rotation_approval(stores.activity_history, rotation, approval, decision)
+    except ValueError as error:
         raise ExecutionAdmissionDenied(
             "rotation approval evidence does not authorize deployment child"
-        )
-    _require_rotation_approval_action(stores.activity_history, approval, subject)
+        ) from error
     if (
         rotation.workspace_id != workspace.workspace_id
         or plan.base_graph_id != plan.desired_graph_id
@@ -566,50 +585,26 @@ def _require_gateway_rotation_child_authorization(
         plan=plan,
         phase=phase,
     )
+    derivation_invalid = False
     try:
         validated_current = validate_graph(current)
         validated_current.require_valid()
         validated_desired = validate_graph(desired)
         validated_desired.require_valid()
-        canonical_plan = compile_activity_plan(
-            diff_graphs(validated_current, validated_desired)
+        canonical_plan = derive_activity_plan(
+            Deploy(validated_current, validated_desired), profile=plan.derivation_profile,
         )
     except GraphValidationError as error:
         raise ExecutionAdmissionConflict(
             "rotation child graph cannot enter canonical planning"
         ) from error
+    except (PlanDerivationError, ManagementObservationError):
+        derivation_invalid = True
+    if derivation_invalid:
+        raise ExecutionAdmissionConflict("rotation child plan derivation is invalid")
     if plan.plan != canonical_plan:
         raise ExecutionAdmissionConflict(
             "rotation child plan differs from canonical realized projection diff"
-        )
-
-
-def _require_rotation_approval_action(
-    history: Any,
-    approval: ApprovalRequestRecord,
-    subject: GatewayKeyRotationApprovalSubject,
-) -> None:
-    if approval.idempotency_key is None:
-        raise ExecutionAdmissionDenied(
-            "rotation approval request is missing durable action correlation"
-        )
-    action = history.action_for_idempotency(
-        approval.session_id,
-        approval.idempotency_key,
-    )
-    if (
-        action is None
-        or action.action_type is not OperatorCommandKind.REQUEST_APPROVAL
-        or action.payload.get("request_id") != approval.request_id
-        or action.payload.get("subject_kind") != subject.kind.value
-        or action.payload.get("subject_id") != subject.subject_id
-        or action.payload.get("review_digest") != subject.review_digest
-        or action.payload.get("required_scope") != approval.required_scope.value
-        or action.payload.get("max_risk") != approval.max_risk.value
-        or action.payload.get("destructive") is not approval.destructive
-    ):
-        raise ExecutionAdmissionDenied(
-            "rotation approval request action evidence is incomplete"
         )
 
 
@@ -620,31 +615,15 @@ def _require_rotation_publication_action(
     plan: ActivityPlanRecord,
     phase: GatewayKeyRotationDeploymentPhase,
 ) -> None:
-    actions = tuple(
-        action
-        for action in history.actions_for_session(plan.session_id)
-        if action.action_type
-        is OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION
-        and action.payload.get("desired_realized_projection_id")
-        == plan.desired_realized_projection_id
-    )
-    if len(actions) != 1:
-        raise ExecutionAdmissionDenied(
-            f"rotation {phase.value} publication evidence is missing or ambiguous"
-        )
-    evidence = actions[0].payload
-    if (
-        evidence.get("workspace_id") != rotation.workspace_id
-        or evidence.get("authored_graph_id") != plan.base_graph_id
-        or evidence.get("previous_realized_projection_id")
-        != plan.base_realized_projection_id
-        or evidence.get("desired_graph_revision") != plan.desired_graph_revision
-        or evidence.get("source_operation_id") != rotation.rotation_id
-        or evidence.get("source_operation_version") != rotation.version
-    ):
+    from control_plane_kit_operations._gateway_child_association import _rotation_publication_version
+    try:
+        version = _rotation_publication_version(history, rotation, plan)
+        if version != rotation.version:
+            raise ValueError("publication version changed")
+    except ValueError as error:
         raise ExecutionAdmissionDenied(
             f"rotation {phase.value} publication evidence does not match child lineage"
-        )
+        ) from error
 
 
 def _require_authority_use_scopes(

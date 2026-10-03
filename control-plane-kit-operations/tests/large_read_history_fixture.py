@@ -319,28 +319,14 @@ def _seed_runs(connection: object, handles: LargeReadHistoryHandles, count: int)
         """,
         (_INSTANT, count),
     )
-    connection.execute(
-        """
-        INSERT INTO cpk_execution_requests
-          (request_id, workspace_id, session_id, plan_id, status, requested_by,
-           requested_at, approval_request_id, approval_decision_id,
-           idempotency_key, intent_fingerprint)
-        SELECT 'runs-execution-' || lpad(value::text, 4, '0'), %s, %s, %s,
-               'cancelled', 'operator', %s::timestamptz,
-               'runs-approval-' || lpad(value::text, 4, '0'),
-               'runs-decision-' || lpad(value::text, 4, '0'),
-               'runs-execution-' || lpad(value::text, 4, '0'),
-               'runs-fingerprint-' || lpad(value::text, 4, '0')
-        FROM generate_series(1, %s) AS value
-        """,
-        (
-            handles.runs_workspace_id,
-            handles.runs_session_id,
-            handles.runs_plan_id,
-            _INSTANT,
-            count,
-        ),
-    )
+    from tests.receiver_scope_history_fixture import insert_recorded_requests
+    insert_recorded_requests(connection, ({
+        "request_id": f"runs-execution-{value:04d}", "workspace_id": handles.runs_workspace_id,
+        "session_id": handles.runs_session_id, "plan_id": handles.runs_plan_id,
+        "status": "cancelled", "requested_by": "operator", "requested_at": _INSTANT,
+        "approval_request_id": f"runs-approval-{value:04d}", "approval_decision_id": f"runs-decision-{value:04d}",
+        "idempotency_key": f"runs-execution-{value:04d}", "intent_fingerprint": f"runs-fingerprint-{value:04d}",
+    } for value in range(1, count + 1)))
     connection.execute(
         """
         INSERT INTO cpk_activity_runs
@@ -382,18 +368,11 @@ def _seed_events(connection: object, handles: LargeReadHistoryHandles, count: in
         """,
         (_INSTANT,),
     )
-    connection.execute(
-        """
-        INSERT INTO cpk_execution_requests
-          (request_id, workspace_id, session_id, plan_id, status, requested_by,
-           requested_at, approval_request_id, approval_decision_id,
-           idempotency_key, intent_fingerprint)
-        VALUES ('events-execution', %s, %s, %s, 'cancelled', 'operator', %s,
-                'events-approval-0001', 'events-decision', 'events-execution',
-                'events-fingerprint')
-        """,
-        (handles.events_workspace_id, session_id, plan_id, _INSTANT),
-    )
+    from tests.receiver_scope_history_fixture import insert_recorded_request
+    insert_recorded_request(connection, request_id="events-execution", workspace_id=handles.events_workspace_id,
+        session_id=session_id, plan_id=plan_id, status="cancelled", requested_by="operator", requested_at=_INSTANT,
+        approval_request_id="events-approval-0001", approval_decision_id="events-decision",
+        idempotency_key="events-execution", intent_fingerprint="events-fingerprint")
     connection.execute(
         """
         INSERT INTO cpk_activity_runs

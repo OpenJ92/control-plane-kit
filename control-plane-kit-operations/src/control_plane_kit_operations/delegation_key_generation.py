@@ -91,8 +91,7 @@ class DelegationKeyGenerationGrant:
             raise DelegationKeyGenerationError(
                 "generation grant has an unsupported secret intent"
             )
-        if not isinstance(self.purpose, DelegationKeyPurpose):
-            raise DelegationKeyGenerationError("generation purpose is unsupported")
+        _require_generation_purpose(self.purpose)
         _identifier(self.issuer, "issuer")
         _text(self.requested_at, "requested_at")
 
@@ -246,6 +245,7 @@ class DelegationKeyGenerationService:
         if not isinstance(command, GenerateDelegationSigningKey):
             raise TypeError("command must be GenerateDelegationSigningKey")
         _scope(command.actor_scopes, PolicyScope.DELEGATION_KEY_GENERATE)
+        _require_generation_purpose(command.purpose)
         with self._unit_of_work_factory() as unit_of_work:
             try:
                 provider = unit_of_work.stores.secret_providers.require_active_registration(
@@ -284,6 +284,7 @@ class DelegationKeyGenerationService:
                 "command must be AdmitGeneratedDelegationSigningKey"
             )
         _scope(command.actor_scopes, PolicyScope.DELEGATION_KEY_REGISTER)
+        _require_generation_purpose(command.grant.purpose)
         _match(command.grant, command.evidence)
         receipt = SecretCustodyReceipt(
             custody_id=command.grant.custody_grant.custody_id,
@@ -345,6 +346,18 @@ class DelegationKeyGenerationService:
             provider_version_number=command.evidence.version_number,
             replayed=command.evidence.replayed,
         )
+
+
+def _require_generation_purpose(purpose: DelegationKeyPurpose) -> None:
+    # Storage support does not grant provider-generation authority.
+    if type(purpose) is DelegationKeyPurpose and purpose in (
+        DelegationKeyPurpose.GATEWAY_PROBE,
+        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+    ):
+        return
+    raise DelegationKeyGenerationError("generation purpose is unsupported")
 
 
 def _match(

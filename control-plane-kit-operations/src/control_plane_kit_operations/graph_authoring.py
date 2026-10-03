@@ -5,12 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from control_plane_kit_core.node_control import (
+    NodeControlContractError,
+    NodeControlGraphReference,
+    NodeControlGraphReferenceRole,
+)
 from control_plane_kit_core.products import (
     ProductDescriptorDigest,
     ProductIdentity,
     ProductReference,
 )
-from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_core.topology import DeploymentGraph, Node
 from control_plane_kit_operations.products import (
     ProductRegistrationError,
     ProductRegistrationNotFound,
@@ -21,10 +26,30 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.receiver_lifecycle import (
+    ReceiverLifecycleStorageError, _retained_receiver_material, derive_receiver_bindings,
+)
 
 
 class GraphAuthoringError(ValueError):
     """Raised when desired graph authoring violates operations policy."""
+
+
+class GraphIdentityConflict(GraphAuthoringError):
+    """Raised when immutable graph identity cannot be freshly admitted."""
+
+
+def validate_proposed_graph_id(value: str) -> None:
+    """Admit a public graph-revision name without granting graph authority."""
+
+    if type(value) is str:
+        try:
+            NodeControlGraphReference(NodeControlGraphReferenceRole.GRAPH_REVISION, value)
+        except NodeControlContractError:
+            pass
+        else:
+            return
+    raise GraphAuthoringError("proposed_graph_id must be a bounded public graph reference")
 
 
 @dataclass(frozen=True)
@@ -99,9 +124,13 @@ class GraphAuthoringService:
         if not isinstance(command, SetDesiredGraphCommand):
             raise GraphAuthoringError("set_desired_graph requires SetDesiredGraphCommand")
         with self._unit_of_work_factory() as unit_of_work:
+            lifecycle_guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(
+                command.workspace_id
+            )
             result = set_desired_graph_in_unit_of_work(
                 unit_of_work,
                 command,
+                lifecycle_guard=lifecycle_guard,
                 graph_id=self._graph_id_factory(),
                 created_at=self._clock(),
             )
@@ -126,6 +155,7 @@ def set_desired_graph_in_unit_of_work(
     unit_of_work: Any,
     command: SetDesiredGraphCommand,
     *,
+    lifecycle_guard: object,
     graph_id: str,
     created_at: str,
 ) -> SetDesiredGraphResult:
@@ -133,12 +163,27 @@ def set_desired_graph_in_unit_of_work(
 
     if not isinstance(command, SetDesiredGraphCommand):
         raise GraphAuthoringError("set_desired_graph requires SetDesiredGraphCommand")
+    if not unit_of_work.stores.graphs.owns_receiver_lifecycle(
+        lifecycle_guard, command.workspace_id
+    ):
+        raise GraphAuthoringError("desired graph requires its transaction workspace guard")
     _validate_text(graph_id, "graph_id")
     _validate_text(created_at, "created_at")
     product_references = product_references_in_graph(command.graph)
     workspace = unit_of_work.stores.workspaces.get_for_update(
         command.workspace_id,
     )
+    try:
+        receiver_material = derive_receiver_bindings(command.workspace_id, graph_id,
+            "proposed-identity", command.graph.descriptor())
+        for graph, projection in ((workspace.current_graph_id, workspace.current_realized_projection_id),
+                                  (workspace.desired_graph_id, workspace.desired_realized_projection_id)):
+            receiver_material += _retained_receiver_material(unit_of_work.stores,
+                command.workspace_id, graph, projection)
+        if receiver_material:
+            raise ReceiverLifecycleStorageError("receiver authoring requires its complete operation")
+    except (ValueError, KeyError):
+        raise GraphAuthoringError("receiver authoring requires its complete operation") from None
     if (
         workspace.desired_graph_id != command.expected_desired_graph_id
         or workspace.desired_realized_projection_id
@@ -191,6 +236,23 @@ def set_desired_graph_in_unit_of_work(
     )
 
 
+def product_reference_in_node(node: Node) -> ProductReference | None:
+    """Extract one node's normalized, pinned product reference when present."""
+
+    identity_value = node.metadata.get("product_identity")
+    digest_value = node.metadata.get("product_descriptor_digest")
+    if identity_value is None and digest_value is None:
+        return None
+    if not isinstance(identity_value, str) or not isinstance(digest_value, str):
+        raise GraphAuthoringError(
+            f"node {node.node_id!r} has malformed product reference metadata"
+        )
+    return ProductReference(
+        identity=_product_identity_from_key(identity_value),
+        descriptor_sha256=ProductDescriptorDigest(digest_value),
+    )
+
+
 def product_references_in_graph(graph: DeploymentGraph) -> tuple[ProductReference, ...]:
     """Extract pinned product references from product-instantiated graph nodes."""
 
@@ -198,20 +260,9 @@ def product_references_in_graph(graph: DeploymentGraph) -> tuple[ProductReferenc
         raise GraphAuthoringError("product references require DeploymentGraph")
     references: set[ProductReference] = set()
     for node in graph.nodes.values():
-        identity_value = node.metadata.get("product_identity")
-        digest_value = node.metadata.get("product_descriptor_digest")
-        if identity_value is None and digest_value is None:
-            continue
-        if not isinstance(identity_value, str) or not isinstance(digest_value, str):
-            raise GraphAuthoringError(
-                f"node {node.node_id!r} has malformed product reference metadata"
-            )
-        references.add(
-            ProductReference(
-                identity=_product_identity_from_key(identity_value),
-                descriptor_sha256=ProductDescriptorDigest(digest_value),
-            )
-        )
+        reference = product_reference_in_node(node)
+        if reference is not None:
+            references.add(reference)
     return tuple(sorted(references))
 
 

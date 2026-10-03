@@ -1,0 +1,19 @@
+Source: [_health_receiver_trust.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/_health_receiver_trust.py).
+Maintain this companion alongside its source.
+
+The common first-start/reload owner joins original approved graph pins to receiver node/runtime/socket, then retrieves the exact registered canonical descriptor by workspace/reference. This is immutable provenance; no ACTIVE-only revocation policy or product-status lock is added. Store exceptions remain outside pure-refusal catches.
+
+For WORKLOAD_NODE_HEALTH_READ, the shared Core selector resolves the registered descriptor's public binding/artifacts/surface and separately resolves actual node artifacts plus all effective public/socket-derived bindings and surfaces. Their complete id/path/media/mode slots must match. The actual selected artifact alone supplies receiver target/runtime/declaration and health verifier issuer/keys through Core's shared codec. The declared/default bytes are validated as protocol data for slot selection but never replace actual bytes. Thus separately valid A/default and B/selected still refuse when redirected. No product name/path allowlist, own-health decoder registry or old-format fallback exists.
+
+Gateway transit retains the existing exact product/transit-purpose binding and declared/actual slot selection, then its separate trusted decoder. This distinction applies to protocol semantics, not the gateway product's own-health: that always follows the common workload branch.
+
+Transit produces the existing closed transit fact; own-health uses the Core configuration directly. Coverage checks exact family/purpose/issuer/runtime, independent expected gateway or target/declaration/audience, and full public identity of the current signer. Rotation overlap is allowed without whole-keyset equality. Core shared failures map to the caller's fixed refusal outside caught contexts; unexpected transit decoder/store errors preserve identity and are not display-safe payloads.
+
+First-start calls live coverage after original graph/current-key checks and before time/IDs/durable writes. Reload uses original selected pins before returning protected resolution references, without clock renewal, new history or repair. Replay bypasses live coverage and transit decoding; V2 original common decoding remains a historical integrity check. Existing UoW, concurrency, rollback, temporal validity, retry/uncertainty and signing authority remain their original owners. No schema, provider call, material resolution or external effect is introduced.
+
+## O2 / #1883 current boundary
+
+The shared selector now consumes Core common receiver V2 configuration for both the workload and the gateway's own control surface. original_receiver_health_configurations is pure original-byte reconstruction, also used by historical persistence. It joins workspace/runtime/node/control socket and declaration without consulting stores, current pins, keys, lifecycle or a transit registry. Live coverage separately joins each declared/selected common slot and verifies the workload signer plus the existing product-specific gateway transit facts. The transit socket may differ from the gateway own-control socket. The public legacy workload fact type is unchanged.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

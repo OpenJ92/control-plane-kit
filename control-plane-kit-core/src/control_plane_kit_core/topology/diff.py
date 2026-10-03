@@ -26,6 +26,7 @@ from control_plane_kit_core.topology.changes import (
     PublicIngressValue,
     RemovedChange,
     RuntimeValue,
+    RuntimeManagementValue,
     SocketContractValue,
     StringTupleValue,
     StructuralChange,
@@ -134,6 +135,14 @@ def _diff_runtimes(
                     FieldSubject(subject, StructuralField.RUNTIME_AUTHORITY),
                     MetadataValue(_runtime_authority_value(before)),
                     MetadataValue(_runtime_authority_value(after)),
+                )
+            )
+        if before.management != after.management:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.RUNTIME_MANAGEMENT),
+                    RuntimeManagementValue(before.management),
+                    RuntimeManagementValue(after.management),
                 )
             )
         if before.metadata != after.metadata:

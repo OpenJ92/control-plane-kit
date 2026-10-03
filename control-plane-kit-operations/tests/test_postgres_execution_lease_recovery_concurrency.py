@@ -185,7 +185,7 @@ class PostgresExecutionLeaseRecoveryConcurrencyTests(
                     "takeover-c": "worker-c",
                 }[kind]
                 self.assertEqual(after_operations[0][0], "claimed")
-                self.assertEqual(after_operations[0][1:3], (worker, 8))
+                self.assertEqual(after_operations[0][1:3], (worker, before_operations[0][2] + 1))
             expected_run_status = (
                 "claimed" if kind == "renew-active" else "failed"
             )
@@ -331,7 +331,7 @@ class PostgresExecutionLeaseRecoveryConcurrencyTests(
                     loser_kind=loser_kind,
                     case=case,
                     approval_subject=(
-                        "gateway-rotation"
+                        "gateway-key-rotation"
                         if case in gateway_approval_cases
                         else "activity-plan"
                     ),

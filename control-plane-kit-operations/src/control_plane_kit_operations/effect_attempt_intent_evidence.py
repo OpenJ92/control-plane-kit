@@ -7,6 +7,8 @@ import json
 
 import rfc8785
 
+from control_plane_kit_core.configuration_instances import ConfigurationInstanceSelectionCodec
+
 from control_plane_kit_core.operations import (
     ActivityEventKind,
     EffectAttemptIdentity,
@@ -37,6 +39,7 @@ from control_plane_kit_operations.records import (
     ActivityEventRecord,
     OperationsRecordError,
 )
+from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
 
 
 _INTENT_ERROR = "effect attempt intent evidence is invalid"
@@ -68,6 +71,8 @@ def _canonical_runtime_effect_intent(
         event_kind is not None
         and event_kind is not ActivityEventKind.STEP_STARTED
         and event_kind is not ActivityEventKind.STEP_COMPENSATION_STARTED
+        and not (event_kind is ActivityEventKind.STEP_OBSERVATION_RESTARTED
+            and is_native_connection_operation(intent.operation))
     ):
         return b""
     return rfc8785.dumps(descriptor)
@@ -140,7 +145,7 @@ def _decode_runtime_effect_intent(document: bytes) -> RuntimeEffectIntent:
                 "operation": {**operation_descriptor},
                 "products": [*product_descriptors],
                 **extra,
-                } if not source_extra and not extra:
+                } if not source_extra and (not extra or len(extra) == 1 and "configuration_instances" in extra):
                     intent = RuntimeEffectIntent(
                     kind=RuntimeEffectKind(kind),
                     runtime_kind=RuntimeKind(runtime_kind),
@@ -178,6 +183,11 @@ def _decode_runtime_effect_intent(document: bytes) -> RuntimeEffectIntent:
                             RuntimeProductMaterial.from_descriptor(item)
                             for item in product_descriptors
                         ],
+                    ),
+                    configuration_instances=(
+                        ConfigurationInstanceSelectionCodec.decode(
+                            ConfigurationInstanceSelectionCodec(), extra["configuration_instances"])
+                        if "configuration_instances" in extra else None
                     ),
                 )
                     canonical = _canonical_runtime_effect_intent(intent)
@@ -245,6 +255,8 @@ class EffectAttemptIntentRecord:
                 or identity.activity_id != intent.activity_id.value
                 or event.run_id != identity.run_id.value
                 or event.activity_id != identity.activity_id
+                or (event.kind is ActivityEventKind.STEP_OBSERVATION_RESTARTED
+                    and identity.attempt <= 1)
             )
         if invalid:
             _raise_intent_error()

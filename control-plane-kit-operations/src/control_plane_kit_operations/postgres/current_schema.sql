@@ -5,9 +5,9 @@ CREATE TABLE cpk_activity_events (
     event_type text NOT NULL,
     occurred_at timestamp with time zone NOT NULL,
     payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT cpk_activity_events_kind_check CHECK ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'step_started'::text, 'step_succeeded'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_uncertainty_abandoned'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'step_compensation_uncertainty_abandoned'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text]))),
+    CONSTRAINT cpk_activity_events_kind_check CHECK ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'step_started'::text, 'step_succeeded'::text, 'step_observation_not_ready'::text, 'step_observation_restarted'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_uncertainty_abandoned'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'step_compensation_uncertainty_abandoned'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text]))),
     CONSTRAINT cpk_activity_events_ordinal_check CHECK ((ordinal > 0)),
-    CONSTRAINT cpk_activity_events_shape_check CHECK (((((event_type = ANY (ARRAY['step_started'::text, 'step_succeeded'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_uncertainty_abandoned'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'step_compensation_uncertainty_abandoned'::text])) AND (NULLIF((payload ->> 'activity_id'::text), ''::text) IS NOT NULL)) OR ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text])) AND ((payload ->> 'activity_id'::text) IS NULL))) AND (((event_type = 'recovery_decision_recorded'::text) AND (payload ? 'recovery'::text) AND (jsonb_typeof((payload -> 'recovery'::text)) = 'object'::text)) OR ((event_type <> 'recovery_decision_recorded'::text) AND ((NOT (payload ? 'recovery'::text)) OR ((payload -> 'recovery'::text) = 'null'::jsonb))))))
+    CONSTRAINT cpk_activity_events_shape_check CHECK (((((event_type = ANY (ARRAY['step_started'::text, 'step_succeeded'::text, 'step_observation_not_ready'::text, 'step_observation_restarted'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_uncertainty_abandoned'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'step_compensation_uncertainty_abandoned'::text])) AND (NULLIF((payload ->> 'activity_id'::text), ''::text) IS NOT NULL)) OR ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text])) AND ((payload ->> 'activity_id'::text) IS NULL))) AND (((event_type = 'recovery_decision_recorded'::text) AND (payload ? 'recovery'::text) AND (jsonb_typeof((payload -> 'recovery'::text)) = 'object'::text)) OR ((event_type <> 'recovery_decision_recorded'::text) AND ((NOT (payload ? 'recovery'::text)) OR ((payload -> 'recovery'::text) = 'null'::jsonb))))))
 );
 
 CREATE INDEX cpk_activity_events_current_graph_advancement ON cpk_activity_events USING btree (run_id, event_id) WHERE (event_type = 'current_graph_advanced'::text);
@@ -58,6 +58,8 @@ CREATE TABLE cpk_execution_command_receipts (
     receipt_status text NOT NULL,
     completed_at timestamp with time zone,
     result jsonb,
+    managed_intent jsonb,
+    CONSTRAINT cpk_execution_command_receipts_managed_intent_check CHECK (((managed_intent IS NULL) OR ((jsonb_typeof(managed_intent) = 'object'::text) AND (octet_length((managed_intent)::text) <= 8192)))),
     CONSTRAINT cpk_execution_command_receipts_idempotency_key_check CHECK (((char_length(idempotency_key) >= 1) AND (char_length(idempotency_key) <= 200))),
     CONSTRAINT cpk_execution_command_receipts_intent_fingerprint_check CHECK (((intent_fingerprint COLLATE "C") ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_execution_command_receipts_worker_id_check CHECK (((char_length(worker_id) >= 1) AND (char_length(worker_id) <= 512))),
@@ -168,7 +170,7 @@ CREATE TABLE cpk_effect_attempts (
     CONSTRAINT cpk_effect_attempts_fence_check CHECK (((fence_generation > 0) AND (char_length(fence_worker_id) >= 1) AND (char_length(fence_worker_id) <= 256))),
     CONSTRAINT cpk_effect_attempts_fingerprint_check CHECK (((request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND ((outcome_fingerprint IS NULL) OR (outcome_fingerprint ~ '^[0-9a-f]{64}$'::text)) AND ((recovery_uncertain_fingerprint IS NULL) OR (recovery_uncertain_fingerprint ~ '^[0-9a-f]{64}$'::text)) AND ((recovery_evidence_fingerprint IS NULL) OR (recovery_evidence_fingerprint ~ '^[0-9a-f]{64}$'::text)))),
     CONSTRAINT cpk_effect_attempts_prior_check CHECK ((((prior_run_id IS NULL) AND (prior_activity_id IS NULL) AND (prior_attempt IS NULL) AND (attempt = 1)) OR ((prior_run_id IS NOT NULL) AND (prior_activity_id IS NOT NULL) AND (prior_attempt IS NOT NULL) AND (prior_run_id = run_id) AND (prior_activity_id = activity_id) AND (prior_attempt = (attempt - 1)) AND (attempt > 1)))),
-    CONSTRAINT cpk_effect_attempts_state_check CHECK (((status = ANY (ARRAY['started'::text, 'succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text, 'abandoned'::text])) AND (((status = 'started'::text) AND (outcome_fingerprint IS NULL)) OR ((status <> 'started'::text) AND (outcome_fingerprint IS NOT NULL))))),
+    CONSTRAINT cpk_effect_attempts_state_check CHECK (((status = ANY (ARRAY['started'::text, 'succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text, 'not_ready'::text, 'abandoned'::text])) AND (((status = 'started'::text) AND (outcome_fingerprint IS NULL)) OR ((status <> 'started'::text) AND (outcome_fingerprint IS NOT NULL))))),
     CONSTRAINT cpk_effect_attempts_recovery_check CHECK ((((recovery_decision_id IS NULL) AND (recovery_resolution IS NULL) AND (recovery_uncertain_fingerprint IS NULL) AND (recovery_evidence_fingerprint IS NULL) AND (status <> 'abandoned'::text)) OR ((recovery_decision_id IS NOT NULL) AND (recovery_resolution IS NOT NULL) AND (char_length(recovery_decision_id) >= 1) AND (char_length(recovery_decision_id) <= 256) AND (((recovery_resolution = 'succeeded'::text) AND (status = 'succeeded'::text)) OR ((recovery_resolution = 'failed'::text) AND (status = 'failed'::text)) OR ((recovery_resolution = 'abandoned'::text) AND (status = 'abandoned'::text))) AND (recovery_uncertain_fingerprint IS NOT NULL) AND (recovery_evidence_fingerprint IS NOT NULL) AND (outcome_fingerprint = recovery_evidence_fingerprint)))),
     CONSTRAINT cpk_effect_attempts_event_progression_check CHECK (((original_event_run_id = run_id) AND (latest_event_run_id = run_id) AND (original_event_ordinal > 0) AND (latest_event_ordinal > 0) AND (char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (char_length(latest_event_id) >= 1) AND (char_length(latest_event_id) <= 512) AND (((status = 'started'::text) AND ((latest_event_id, latest_event_run_id, latest_event_ordinal) = (original_event_id, original_event_run_id, original_event_ordinal))) OR ((status <> 'started'::text) AND (latest_event_ordinal > original_event_ordinal)))))
 );
@@ -198,11 +200,11 @@ CREATE TABLE cpk_effect_attempt_outcomes (
     observation_count integer NOT NULL,
     CONSTRAINT cpk_effect_attempt_outcomes_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_effect_attempt_outcomes_fence_check CHECK (((fence_generation > 0) AND (char_length(fence_worker_id) >= 1) AND (char_length(fence_worker_id) <= 256))),
-    CONSTRAINT cpk_effect_attempt_outcomes_profile_check CHECK ((profile = ANY (ARRAY['execution-result'::text, 'provider-observation'::text]))),
+    CONSTRAINT cpk_effect_attempt_outcomes_profile_check CHECK ((profile = ANY (ARRAY['execution-result'::text, 'provider-observation'::text, 'native-connection'::text]))),
     CONSTRAINT cpk_effect_attempt_outcomes_preimage_check CHECK (((octet_length(preimage) >= 1) AND (octet_length(preimage) <= 8192))),
     CONSTRAINT cpk_effect_attempt_outcomes_fingerprint_check CHECK (((request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (outcome_fingerprint ~ '^[0-9a-f]{64}$'::text))),
     CONSTRAINT cpk_effect_attempt_outcomes_prior_check CHECK ((((attempt = 1) AND (prior_run_id IS NULL) AND (prior_activity_id IS NULL) AND (prior_attempt IS NULL)) OR ((attempt > 1) AND (prior_run_id IS NOT NULL) AND (prior_activity_id IS NOT NULL) AND (prior_attempt IS NOT NULL) AND (prior_run_id = run_id) AND (prior_activity_id = activity_id) AND (prior_attempt = (attempt - 1))))),
-    CONSTRAINT cpk_effect_attempt_outcomes_state_check CHECK ((status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text]))),
+    CONSTRAINT cpk_effect_attempt_outcomes_state_check CHECK ((((profile = 'native-connection'::text) AND (status = ANY (ARRAY['succeeded'::text, 'not_ready'::text])) AND (observation_count = 0)) OR ((profile <> 'native-connection'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text]))))),
     CONSTRAINT cpk_effect_attempt_outcomes_event_progression_check CHECK (((original_event_run_id = run_id) AND (direct_event_run_id = run_id) AND (original_event_ordinal > 0) AND (direct_event_ordinal > original_event_ordinal) AND (char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (char_length(direct_event_id) >= 1) AND (char_length(direct_event_id) <= 512))),
     CONSTRAINT cpk_effect_attempt_outcomes_observation_count_check CHECK (((observation_count >= 0) AND (observation_count <= 8192)))
 );
@@ -313,7 +315,7 @@ CREATE TABLE cpk_delegation_signing_keys (
     CONSTRAINT cpk_delegation_signing_keys_issuer_check CHECK ((issuer ~ '^[a-z][a-z0-9._-]{0,127}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_key_id_check CHECK ((key_id ~ '^[a-z][a-z0-9._-]{0,127}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_private_reference_check CHECK ((private_key_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
-    CONSTRAINT cpk_delegation_signing_keys_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text]))),
+    CONSTRAINT cpk_delegation_signing_keys_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text, 'workload-node-health-read'::text, 'gateway-node-health-read-transit'::text]))),
     CONSTRAINT cpk_delegation_signing_keys_registration_check CHECK ((registration_id ~ '^dkey_[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_retirement_evidence_check CHECK (((retired_by IS NULL) = (retired_at IS NULL))),
     CONSTRAINT cpk_delegation_signing_keys_revocation_evidence_check CHECK (((revoked_by IS NULL) = (revoked_at IS NULL))),
@@ -336,6 +338,10 @@ CREATE TABLE cpk_execution_requests (
     claim_generation bigint,
     claimed_at timestamp with time zone,
     lease_expires_at timestamp with time zone,
+    receiver_scope_count integer NOT NULL,
+    receiver_scope_digest text NOT NULL,
+    CONSTRAINT cpk_execution_requests_receiver_scope_count_check CHECK (((receiver_scope_count >= 0) AND (receiver_scope_count <= 1024))),
+    CONSTRAINT cpk_execution_requests_receiver_scope_digest_check CHECK (((receiver_scope_digest COLLATE "C") ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_execution_requests_claim_check CHECK ((((status = 'claimed'::text) AND (claim_worker_id IS NOT NULL) AND (claim_generation IS NOT NULL) AND (claimed_at IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR ((status <> 'claimed'::text) AND (claim_worker_id IS NULL) AND (claim_generation IS NULL) AND (claimed_at IS NULL) AND (lease_expires_at IS NULL)))),
     CONSTRAINT cpk_execution_requests_claim_generation_check CHECK (((claim_generation >= 1) AND (claim_generation <= 9223372036854775807))),
     CONSTRAINT cpk_execution_requests_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'claimed'::text, 'cancelled'::text, 'abandoned'::text])))
@@ -573,6 +579,7 @@ CREATE TABLE cpk_operation_actions (
 );
 
 CREATE INDEX cpk_operation_actions_current_graph_advancement ON cpk_operation_actions USING btree (session_id, (payload ->> 'run_id'::text), action_id) WHERE (action_type = 'advance-current-graph'::text);
+CREATE INDEX cpk_operation_actions_receiver_cancel ON cpk_operation_actions USING btree (session_id, (payload ->> 'run_id'::text), action_id) WHERE (action_type = 'cancel-run'::text);
 
 CREATE TABLE cpk_operation_sessions (
     session_id text NOT NULL,
@@ -783,7 +790,7 @@ CREATE TABLE cpk_secret_use_authorizations (
     CONSTRAINT cpk_secret_use_authorizations_effect_check CHECK (((effect_id IS NULL) OR (effect_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_fingerprint_check CHECK ((intent_fingerprint ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_secret_use_authorizations_id_check CHECK ((authorization_id ~ '^suse_[0-9a-f]{64}$'::text)),
-    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text, 'secrets.custody-root-key'::text, 'secrets.provider-credentials-document'::text]))),
+    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text, 'secrets.custody-root-key'::text, 'secrets.provider-credentials-document'::text, 'workload.node-health-read-signing-key'::text, 'gateway.node-health-read-transit-signing-key'::text]))),
     CONSTRAINT cpk_secret_use_authorizations_operation_check CHECK (((operation_id IS NULL) OR (operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_probe_check CHECK (((probe_id IS NULL) OR (probe_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_reference_check CHECK ((secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
@@ -1397,3 +1404,339 @@ CREATE TABLE cpk_saved_preparation_sources (
     CONSTRAINT cpk_saved_preparation_sources_revision_fkey FOREIGN KEY (workspace_id, draft_id, revision) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, revision)
 );
 CREATE INDEX cpk_saved_preparation_sources_revision ON cpk_saved_preparation_sources (workspace_id, draft_id, revision, session_id);
+
+CREATE TABLE cpk_health_effect_preparations (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    logical_request_id text NOT NULL,
+    request_fingerprint text NOT NULL,
+    original_event_id text NOT NULL,
+    base_realized_projection_id text NOT NULL,
+    desired_realized_projection_id text NOT NULL,
+    transit_key_registration_id text NOT NULL,
+    workload_key_registration_id text NOT NULL,
+    transit_authorization_id text NOT NULL,
+    workload_authorization_id text NOT NULL,
+    transit_issuer text NOT NULL,
+    transit_jti text NOT NULL,
+    workload_issuer text NOT NULL,
+    workload_jti text NOT NULL,
+    preimage bytea NOT NULL,
+    CONSTRAINT cpk_health_effect_preparations_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_health_effect_preparations_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_preimage_check CHECK (((octet_length(preimage) >= 1) AND (octet_length(preimage) <= 16384))),
+    CONSTRAINT cpk_health_effect_preparations_workspace_id_check CHECK (((char_length(workspace_id) >= 1) AND (char_length(workspace_id) <= 512) AND (workspace_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_original_event_id_check CHECK (((char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (original_event_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_base_projection_check CHECK (((char_length(base_realized_projection_id) >= 1) AND (char_length(base_realized_projection_id) <= 512) AND (base_realized_projection_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_desired_projection_check CHECK (((char_length(desired_realized_projection_id) >= 1) AND (char_length(desired_realized_projection_id) <= 512) AND (desired_realized_projection_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_logical_request_id_check CHECK (((logical_request_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_issuer_check CHECK (((transit_issuer COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_jti_check CHECK (((transit_jti COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_issuer_check CHECK (((workload_issuer COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_jti_check CHECK (((workload_jti COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_key_check CHECK ((transit_key_registration_id ~ '^dkey_[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_authorization_id_check CHECK ((transit_authorization_id ~ '^suse_[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_key_check CHECK ((workload_key_registration_id ~ '^dkey_[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_authorization_id_check CHECK ((workload_authorization_id ~ '^suse_[0-9a-f]{64}$'::text))
+);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_pkey PRIMARY KEY (run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_request_key UNIQUE (workspace_id, logical_request_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_transit_jti_key UNIQUE (transit_issuer, transit_jti);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_workload_jti_key UNIQUE (workload_issuer, workload_jti);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_attempt_fk FOREIGN KEY (run_id, activity_id, attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_intent_fk FOREIGN KEY (run_id, activity_id, attempt, request_fingerprint, original_event_id) REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt, request_fingerprint, original_event_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_base_projection_fk FOREIGN KEY (base_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_desired_projection_fk FOREIGN KEY (desired_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_transit_key_fk FOREIGN KEY (transit_key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys(registration_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_transit_authorization_fk FOREIGN KEY (transit_authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_workload_key_fk FOREIGN KEY (workload_key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys(registration_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_workload_authorization_fk FOREIGN KEY (workload_authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id);
+
+CREATE TABLE cpk_graph_receiver_introductions (
+    workspace_id text NOT NULL,
+    receiver_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    provider_socket_name text NOT NULL,
+    introducing_graph_id text NOT NULL,
+    introducing_realized_projection_id text NOT NULL,
+    introducing_action_id text NOT NULL,
+    introducing_session_id text NOT NULL,
+    introducing_draft_id text,
+    first_accepted_action_id text,
+    first_accepted_session_id text,
+    retired_action_id text,
+    retired_session_id text
+);
+
+CREATE TABLE cpk_graph_receiver_bindings (
+    workspace_id text NOT NULL,
+    graph_id text NOT NULL,
+    realized_projection_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    provider_socket_name text NOT NULL,
+    receiver_id text NOT NULL,
+    selected_configuration_digest text NOT NULL,
+    declaration_identity text NOT NULL
+);
+
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_pkey PRIMARY KEY (workspace_id, receiver_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_receiver_key UNIQUE (receiver_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_scope_key UNIQUE (workspace_id, receiver_id, runtime_id, node_id, provider_socket_name);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_pkey PRIMARY KEY (workspace_id, graph_id, realized_projection_id, node_id, provider_socket_name);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_receiver_key UNIQUE (workspace_id, graph_id, realized_projection_id, receiver_id);
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_operation_actions_action_session_key UNIQUE (action_id, session_id);
+ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_draft_graph_key UNIQUE (workspace_id, draft_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_receiver_check CHECK ((receiver_id ~ '^[0-9a-f]{32}$'::text));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_acceptance_pair_check CHECK (((first_accepted_action_id IS NULL) = (first_accepted_session_id IS NULL)));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retirement_pair_check CHECK (((retired_action_id IS NULL) = (retired_session_id IS NULL)));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retirement_accepted_check CHECK (((retired_action_id IS NULL) OR (first_accepted_action_id IS NOT NULL)));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retirement_action_check CHECK (((retired_action_id IS NULL) OR (retired_action_id <> first_accepted_action_id)));
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_configuration_digest_check CHECK ((selected_configuration_digest ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_declaration_identity_check CHECK ((declaration_identity ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_graph_fkey FOREIGN KEY (workspace_id, introducing_graph_id) REFERENCES cpk_graph_versions(workspace_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_projection_workspace_fkey FOREIGN KEY (introducing_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_projection_source_fkey FOREIGN KEY (introducing_realized_projection_id, introducing_graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_origin_action_fkey FOREIGN KEY (introducing_action_id, introducing_session_id) REFERENCES cpk_operation_actions(action_id, session_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_origin_workspace_fkey FOREIGN KEY (introducing_session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_accepted_action_fkey FOREIGN KEY (first_accepted_action_id, first_accepted_session_id) REFERENCES cpk_operation_actions(action_id, session_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_accepted_workspace_fkey FOREIGN KEY (first_accepted_session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retired_action_fkey FOREIGN KEY (retired_action_id, retired_session_id) REFERENCES cpk_operation_actions(action_id, session_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retired_workspace_fkey FOREIGN KEY (retired_session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_draft_fkey FOREIGN KEY (workspace_id, introducing_draft_id, introducing_graph_id) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_original_binding_fkey FOREIGN KEY (workspace_id, introducing_graph_id, introducing_realized_projection_id, receiver_id) REFERENCES cpk_graph_receiver_bindings(workspace_id, graph_id, realized_projection_id, receiver_id) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_graph_fkey FOREIGN KEY (workspace_id, graph_id) REFERENCES cpk_graph_versions(workspace_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_projection_workspace_fkey FOREIGN KEY (realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_projection_source_fkey FOREIGN KEY (realized_projection_id, graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_scope_fkey FOREIGN KEY (workspace_id, receiver_id, runtime_id, node_id, provider_socket_name) REFERENCES cpk_graph_receiver_introductions(workspace_id, receiver_id, runtime_id, node_id, provider_socket_name);
+
+CREATE TABLE cpk_execution_receiver_scopes (
+    request_id text NOT NULL,
+    workspace_id text NOT NULL,
+    scope_ordinal integer NOT NULL,
+    scope_kind text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text,
+    CONSTRAINT cpk_execution_receiver_scopes_pkey PRIMARY KEY (request_id, scope_ordinal),
+    CONSTRAINT cpk_execution_receiver_scopes_request_workspace_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id),
+    CONSTRAINT cpk_execution_receiver_scopes_position_check CHECK (((scope_ordinal >= 0) AND (scope_ordinal <= 1023))),
+    CONSTRAINT cpk_execution_receiver_scopes_kind_check CHECK ((scope_kind = ANY (ARRAY['node'::text, 'runtime'::text]))),
+    CONSTRAINT cpk_execution_receiver_scopes_runtime_check CHECK (((btrim(runtime_id) <> ''::text) AND (octet_length(runtime_id) <= 2048))),
+    CONSTRAINT cpk_execution_receiver_scopes_node_check CHECK ((((scope_kind = 'runtime'::text) AND (node_id IS NULL)) OR ((scope_kind = 'node'::text) AND (node_id IS NOT NULL) AND (btrim(node_id) <> ''::text) AND (octet_length(node_id) <= 2048)))),
+    CONSTRAINT cpk_execution_receiver_scopes_key_bytes_check CHECK (((btrim(request_id) <> ''::text) AND (btrim(workspace_id) <> ''::text) AND ((((octet_length(workspace_id) + octet_length(runtime_id)) + octet_length(request_id)) + octet_length(COALESCE(node_id, ''::text))) <= 1024)))
+);
+CREATE UNIQUE INDEX cpk_execution_receiver_scopes_runtime_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, request_id) WHERE (scope_kind = 'runtime'::text);
+CREATE UNIQUE INDEX cpk_execution_receiver_scopes_node_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, node_id, request_id) WHERE (scope_kind = 'node'::text);
+CREATE INDEX cpk_execution_receiver_scopes_runtime_nodes_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, request_id, node_id) WHERE (scope_kind = 'node'::text);
+
+CREATE TABLE cpk_effect_configuration_refs (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    artifact_id text NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    ref_preimage bytea NOT NULL,
+    ref_digest text NOT NULL,
+    request_fingerprint text NOT NULL,
+    original_event_id text NOT NULL,
+    birth_run_id text NOT NULL,
+    birth_activity_id text NOT NULL,
+    birth_attempt integer NOT NULL,
+    birth_artifact_id text NOT NULL,
+    is_birth boolean NOT NULL,
+    CONSTRAINT cpk_configuration_refs_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id),
+    CONSTRAINT cpk_configuration_refs_intent_fk FOREIGN KEY (run_id, activity_id, attempt, request_fingerprint, original_event_id)
+        REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt, request_fingerprint, original_event_id),
+    CONSTRAINT cpk_configuration_refs_birth_fk FOREIGN KEY (birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id)
+        REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT cpk_configuration_refs_birth_check CHECK (is_birth = ((run_id = birth_run_id) AND (activity_id = birth_activity_id) AND (attempt = birth_attempt) AND (artifact_id = birth_artifact_id))),
+    CONSTRAINT cpk_configuration_refs_preimage_check CHECK ((octet_length(ref_preimage) >= 1) AND (octet_length(ref_preimage) <= 65536)),
+    CONSTRAINT cpk_configuration_refs_digest_check CHECK (ref_digest ~ '^[0-9a-f]{64}$')
+);
+CREATE UNIQUE INDEX cpk_configuration_refs_birth ON cpk_effect_configuration_refs(workspace_id, allocation_id) WHERE is_birth;
+CREATE INDEX cpk_configuration_refs_allocation ON cpk_effect_configuration_refs(workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id);
+CREATE INDEX cpk_configuration_refs_slot ON cpk_effect_configuration_refs(workspace_id, runtime_id, node_id, artifact_id, run_id, activity_id, attempt);
+
+CREATE TABLE cpk_configuration_claims (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    artifact_id text NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL,
+    CONSTRAINT cpk_configuration_claims_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id),
+    CONSTRAINT cpk_configuration_claims_ref_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
+        REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED
+);
+ALTER TABLE cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_claim_fk
+    FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
+    REFERENCES cpk_configuration_claims(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX cpk_configuration_claims_protecting ON cpk_configuration_claims(workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id);
+
+CREATE TABLE cpk_workspace_initializations (
+    workspace_id text NOT NULL,
+    profile text NOT NULL,
+    initial_graph_id text NOT NULL,
+    initial_projection_id text NOT NULL,
+    graph_descriptor_sha256 text NOT NULL,
+    projection_digest text NOT NULL,
+    configuration_slot_count integer NOT NULL,
+    created_by text NOT NULL,
+    creation_idempotency_key text NOT NULL,
+    CONSTRAINT cpk_workspace_initializations_pkey PRIMARY KEY (workspace_id),
+    CONSTRAINT cpk_workspace_initializations_profile_check CHECK (profile = 'workspace-initialization.v1'),
+    CONSTRAINT cpk_workspace_initializations_graph_digest_check CHECK (graph_descriptor_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_workspace_initializations_projection_digest_check CHECK (projection_digest ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_workspace_initializations_empty_check CHECK (configuration_slot_count = 0),
+    CONSTRAINT cpk_workspace_initializations_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id),
+    CONSTRAINT cpk_workspace_initializations_graph_fk FOREIGN KEY (workspace_id, initial_graph_id)
+        REFERENCES cpk_graph_versions(workspace_id, graph_id),
+    CONSTRAINT cpk_workspace_initializations_projection_fk FOREIGN KEY (initial_projection_id, workspace_id)
+        REFERENCES cpk_realized_graph_projections(projection_id, workspace_id),
+    CONSTRAINT cpk_workspace_initializations_projection_source_fk FOREIGN KEY (initial_projection_id, initial_graph_id)
+        REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id)
+);
+
+ALTER TABLE ONLY cpk_activity_plans ADD CONSTRAINT cpk_plan_revision_identity UNIQUE (plan_id, desired_graph_revision);
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_workspace_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_request_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_plan_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_run_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_revision bigint;
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_locator CHECK ((((action_type = 'advance-current-graph'::text) AND (advancement_workspace_id IS NOT NULL) AND (advancement_request_id IS NOT NULL) AND (advancement_plan_id IS NOT NULL) AND (advancement_run_id IS NOT NULL) AND (advancement_revision IS NOT NULL) AND (advancement_revision >= 0)) OR ((action_type <> 'advance-current-graph'::text) AND (advancement_workspace_id IS NULL) AND (advancement_request_id IS NULL) AND (advancement_plan_id IS NULL) AND (advancement_run_id IS NULL) AND (advancement_revision IS NULL))));
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_run_fk FOREIGN KEY (advancement_run_id, advancement_request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_request_plan_fk FOREIGN KEY (advancement_request_id, advancement_plan_id) REFERENCES cpk_execution_requests(request_id, plan_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_request_workspace_fk FOREIGN KEY (advancement_request_id, advancement_workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_plan_session_fk FOREIGN KEY (advancement_plan_id, session_id) REFERENCES cpk_activity_plans(plan_id, session_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_revision_fk FOREIGN KEY (advancement_plan_id, advancement_revision) REFERENCES cpk_activity_plans(plan_id, desired_graph_revision);
+
+CREATE INDEX cpk_action_advancement_workspace_revision ON cpk_operation_actions USING btree (advancement_workspace_id, advancement_revision DESC, action_id) WHERE (action_type = 'advance-current-graph'::text);
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_workspace_id text;
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_request_id text;
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_plan_id text;
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_revision bigint;
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_locator CHECK ((((event_type = 'current_graph_advanced'::text) AND (advancement_workspace_id IS NOT NULL) AND (advancement_request_id IS NOT NULL) AND (advancement_plan_id IS NOT NULL) AND (advancement_revision IS NOT NULL) AND (advancement_revision >= 0)) OR ((event_type <> 'current_graph_advanced'::text) AND (advancement_workspace_id IS NULL) AND (advancement_request_id IS NULL) AND (advancement_plan_id IS NULL) AND (advancement_revision IS NULL))));
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_run_fk FOREIGN KEY (run_id, advancement_request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_request_plan_fk FOREIGN KEY (advancement_request_id, advancement_plan_id) REFERENCES cpk_execution_requests(request_id, plan_id);
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_request_workspace_fk FOREIGN KEY (advancement_request_id, advancement_workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_revision_fk FOREIGN KEY (advancement_plan_id, advancement_revision) REFERENCES cpk_activity_plans(plan_id, desired_graph_revision);
+
+CREATE INDEX cpk_event_advancement_workspace_revision ON cpk_activity_events USING btree (advancement_workspace_id, advancement_revision DESC, event_id) WHERE (event_type = 'current_graph_advanced'::text);
+
+CREATE TABLE cpk_configuration_acceptances (
+    workspace_id text NOT NULL,
+    pinned_revision bigint NOT NULL,
+    graph_id text NOT NULL,
+    projection_id text NOT NULL,
+    projection_digest text NOT NULL,
+    action_id text NOT NULL,
+    event_id text NOT NULL,
+    run_id text NOT NULL,
+    request_id text NOT NULL,
+    plan_id text NOT NULL,
+    slot_count integer NOT NULL,
+    slot_digest text NOT NULL
+);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_pkey PRIMARY KEY (workspace_id, pinned_revision);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_action_key UNIQUE (action_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_event_key UNIQUE (event_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_revision_check CHECK ((pinned_revision >= 0));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_count_check CHECK (((slot_count >= 0) AND (slot_count <= 256)));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_slot_digest_check CHECK ((slot_digest ~ '^[0-9a-f]{64}$'::text));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_projection_digest_check CHECK ((projection_digest ~ '^[0-9a-f]{64}$'::text));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_action_fk FOREIGN KEY (action_id) REFERENCES cpk_operation_actions(action_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_event_fk FOREIGN KEY (event_id) REFERENCES cpk_activity_events(event_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_projection_workspace_fk FOREIGN KEY (projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_projection_source_fk FOREIGN KEY (projection_id, graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
+
+CREATE TABLE cpk_configuration_accepted_slots (
+    workspace_id text NOT NULL,
+    pinned_revision bigint NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    artifact_id text NOT NULL,
+    source_run_id text NOT NULL,
+    source_activity_id text NOT NULL,
+    source_attempt integer NOT NULL,
+    source_artifact_id text NOT NULL,
+    birth_run_id text NOT NULL,
+    birth_activity_id text NOT NULL,
+    birth_attempt integer NOT NULL,
+    birth_artifact_id text NOT NULL,
+    full_ref_digest text NOT NULL
+);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_pkey PRIMARY KEY (workspace_id, pinned_revision, runtime_id, node_id, artifact_id);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_digest_check CHECK ((full_ref_digest ~ '^[0-9a-f]{64}$'::text));
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_acceptance_fk FOREIGN KEY (workspace_id, pinned_revision) REFERENCES cpk_configuration_acceptances(workspace_id, pinned_revision);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_source_fk FOREIGN KEY (source_run_id, source_activity_id, source_attempt, source_artifact_id) REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_birth_fk FOREIGN KEY (birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id) REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_outcome_fk FOREIGN KEY (source_run_id, source_activity_id, source_attempt) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt);
+
+CREATE INDEX cpk_configuration_slots_inverse ON cpk_configuration_accepted_slots USING btree (workspace_id, pinned_revision, full_ref_digest);

@@ -14,6 +14,10 @@ from control_plane_kit_core.delegation_keys import (
     DelegationPublicKey,
 )
 from control_plane_kit_core.operations import EffectResultKind
+from control_plane_kit_core.planning import (
+    ActivityDependency, ActivityId, ActivityPlan, NodeTarget, PlannedActivity,
+    RuntimeTarget, StartNode, StartRuntime,
+)
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -82,9 +86,10 @@ from control_plane_kit_operations.records import (
     GraphVersionRecord,
     RealizedGraphProjectionKind,
     RealizedGraphProjectionRecord,
-    WorkspaceRecord,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
+from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+from tests.accepted_graph_origin_fixture import accept_selected_fixture_origin
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     OperationCommandService,
@@ -289,6 +294,9 @@ class GatewayRotationOverlapFixture:
         *,
         include_replacement_key: bool = True,
     ) -> None:
+        WorkspaceCommandService(self.unit_of_work,
+            clock=lambda: "2026-08-02T00:59:58Z", id_factory=lambda: "rotation-origin-graph").create(
+                CreateWorkspace("workspace-a", "Workspace A", "operator-a", IdempotencyKey("rotation-origin-create")))
         authored = self.authored_graph()
         realized_a = materialize_delegation_verifiers(
             authored,
@@ -308,7 +316,7 @@ class GatewayRotationOverlapFixture:
         authored_record = GraphVersionRecord.from_graph(
             graph_id="graph-a",
             workspace_id="workspace-a",
-            version=1,
+            version=2,
             graph=authored,
             created_by="operator-a",
             created_at="2026-08-02T01:00:00Z",
@@ -325,7 +333,6 @@ class GatewayRotationOverlapFixture:
         )
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
             registered_product = stores.registered_products.register(
                 workspace_id="workspace-a",
                 descriptor_document=GATEWAY_PRODUCT_DOCUMENT,
@@ -341,9 +348,6 @@ class GatewayRotationOverlapFixture:
             )
             stores.graphs.save(authored_record)
             stores.realized_graphs.save(projection_a)
-            stores.workspaces.set_current_graph(
-                "workspace-a", "graph-a", "projection-a"
-            )
             stores.workspaces.set_desired_graph(
                 "workspace-a", "graph-a", "projection-a"
             )
@@ -363,8 +367,18 @@ class GatewayRotationOverlapFixture:
                     self.signing_key("key-b", PUBLIC_KEY_B)
                 )
             unit_of_work.commit()
+        runtime = PlannedActivity(ActivityId("rotation-origin-runtime"), StartRuntime(RuntimeTarget("docker")))
+        plan = ActivityPlan((runtime, *(
+            PlannedActivity(ActivityId(f"rotation-origin-{node_id}"), StartNode(NodeTarget(node_id)),
+                dependencies=(ActivityDependency(runtime.activity_id),))
+            for node_id in ("gateway-a", "gateway-other"))))
+        self.rotation_origin = accept_selected_fixture_origin(self, plan,
+            prefix="rotation-origin", timestamp="2026-08-02T01:00:02Z")
+        self.origin_authored_graph_count = self.connection.execute(
+            "SELECT count(*) FROM cpk_graph_versions").fetchone()[0]
 
-    def seed_rotation_approval(self) -> None:
+    def seed_rotation_approval(self, *, approval_request_id="rotation-approval-request",
+                               approval_decision_id="rotation-approval-decision") -> None:
         OperationCommandService(
             self.unit_of_work,
             clock=lambda: "2026-08-02T01:01:00Z",
@@ -401,10 +415,10 @@ class GatewayRotationOverlapFixture:
             self.unit_of_work,
             clock=lambda: "2026-08-02T01:01:02Z",
             id_factory=Sequence(
-                "rotation-approval-request",
-                "rotation-approval-request-action",
-                "rotation-approval-decision",
-                "rotation-approval-decision-action",
+                approval_request_id,
+                approval_request_id + "-action",
+                approval_decision_id,
+                approval_decision_id + "-action",
             ),
         )
         approval = approvals.execute(

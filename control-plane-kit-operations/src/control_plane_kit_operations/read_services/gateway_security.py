@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from typing import Callable
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.wrapper_configuration import (
+    NodeControlVerificationConfiguration,
+    WrapperConfigurationError,
+)
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyNotFound,
     RegisteredDelegationSigningKey,
@@ -20,6 +25,14 @@ from control_plane_kit_operations.records import WorkspaceRecord
 from .errors import ReadModelError
 from .models import FocusedDetailReadModel
 from .protocols import DelegationSigningKeyStore, GatewayProbeStore
+
+
+_WORKLOAD_PURPOSES = (
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+    DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+)
+_WORKLOAD_UNAVAILABLE = "workload verifier configuration is unavailable"
 
 
 class _GatewaySecurityReadProjection:
@@ -135,6 +148,90 @@ class _GatewaySecurityReadProjection:
                 }
             },
         )
+
+    def workload_verifier_configuration(
+        self,
+        workspace_id: str,
+        purposes: tuple[DelegationKeyPurpose, ...],
+    ) -> FocusedDetailReadModel:
+        if (
+            type(purposes) is not tuple
+            or not 1 <= len(purposes) <= 3
+            or any(
+                type(value) is not DelegationKeyPurpose or value not in _WORKLOAD_PURPOSES
+                for value in purposes
+            )
+            or len(set(purposes)) != len(purposes)
+            or DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ not in purposes
+        ):
+            raise ReadModelError("workload verifier purposes are malformed")
+        self._require_workspace(workspace_id)
+        store = self._delegation_signing_key_store
+        if store is None:
+            raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+        try:
+            # Acquire every purpose lock in a fixed order before reading any set.
+            # The caller's read UoW holds them through the complete observation.
+            selected = tuple(
+                (purpose, store.require_unambiguous_active(workspace_id, purpose))
+                for purpose in sorted(purposes, key=lambda value: value.value)
+            )
+            families = []
+            for purpose, active in selected:
+                if (
+                    not isinstance(active, RegisteredDelegationSigningKey)
+                    or active.workspace_id != workspace_id
+                    or active.purpose is not purpose
+                    or active.status is not RegisteredDelegationSigningKeyStatus.ACTIVE
+                ):
+                    raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+                keys = store.list_for_verification(
+                    workspace_id, purpose, active.issuer, limit=17,
+                )
+                if (
+                    not 1 <= len(keys) <= 16
+                    or any(
+                        not isinstance(value, RegisteredDelegationSigningKey)
+                        or value.workspace_id != workspace_id
+                        or value.purpose is not purpose
+                        or value.issuer != active.issuer
+                        or value.status not in (
+                            RegisteredDelegationSigningKeyStatus.ACTIVE,
+                            RegisteredDelegationSigningKeyStatus.VERIFY_ONLY,
+                        )
+                        for value in keys
+                    )
+                    or active not in keys
+                ):
+                    raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+                families.append(NodeControlVerificationConfiguration(
+                    purpose, active.issuer, tuple(value.public_key for value in keys),
+                ))
+        except (DelegationSigningKeyNotFound, WrapperConfigurationError):
+            unavailable = True
+        else:
+            unavailable = False
+        if unavailable:
+            raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+        model = FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="workload-verifier-configuration",
+            payload={"workload_verifier_configuration": {"verifiers": [
+                {
+                    "purpose": family.purpose.value,
+                    "issuer": family.issuer,
+                    "public_keys": [
+                        {"key_id": key.key_id, "algorithm": key.algorithm.value,
+                         "public_key_pem": key.public_key_pem}
+                        for key in family.public_keys
+                    ],
+                }
+                for family in families
+            ]}},
+        )
+        if len(json.dumps(model.descriptor()).encode("utf-8")) > 65_536:
+            raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+        return model
 
 
 def _public_delegation_signing_key(

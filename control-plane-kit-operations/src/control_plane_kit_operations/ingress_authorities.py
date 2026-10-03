@@ -17,7 +17,10 @@ from control_plane_kit_core.public_ingress import (
 )
 from control_plane_kit_core.secrets import (
     SecretCustodyReceipt,
-    SecretEnvironmentDelivery,
+    SecretDelivery,
+    SecretFileDelivery,
+    SecretFileMode,
+    SecretFilePathBinding,
     SecretReference,
     SecretUseIntent,
 )
@@ -325,7 +328,7 @@ class CloudflareTunnelTokenDeliveryPlan:
 
     resource: CloudflareOwnedIngressResource
     connector_node_id: str
-    secret_delivery: SecretEnvironmentDelivery
+    secret_delivery: SecretFileDelivery
     ordering: tuple[CloudflareTunnelTokenDeliveryStep, ...] = (
         CloudflareTunnelTokenDeliveryStep.ALLOCATE_NAMED_INGRESS,
         CloudflareTunnelTokenDeliveryStep.RECORD_TUNNEL_TOKEN_SECRET,
@@ -509,17 +512,19 @@ def cloudflare_tunnel_token_delivery_plan(
     return CloudflareTunnelTokenDeliveryPlan(
         resource=resource,
         connector_node_id=connector_node_id,
-        secret_delivery=SecretEnvironmentDelivery(
-            "TUNNEL_TOKEN",
+        secret_delivery=SecretFileDelivery(
+            "/run/secrets/cloudflare-tunnel-token",
             tunnel_token_ref,
             SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            SecretFileMode.OWNER_READ_ONLY,
+            SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
         ),
     )
 
 
 def require_cloudflared_tunnel_token_delivery(
-    deliveries: tuple[SecretEnvironmentDelivery, ...],
-) -> SecretEnvironmentDelivery:
+    deliveries: tuple[SecretDelivery, ...],
+) -> SecretFileDelivery:
     """Return the explicit tunnel-token delivery or fail before connector start."""
 
     if not isinstance(deliveries, tuple):
@@ -529,15 +534,23 @@ def require_cloudflared_tunnel_token_delivery(
     matches = tuple(
         delivery
         for delivery in deliveries
-        if isinstance(delivery, SecretEnvironmentDelivery)
-        and delivery.environment_name == "TUNNEL_TOKEN"
+        if _uses_cloudflared_token_slot(delivery)
     )
     if len(matches) != 1:
         raise IngressAuthorityRegistrationError(
-            "cloudflared connector requires exactly one TUNNEL_TOKEN delivery"
+            "cloudflared connector requires exactly one protected tunnel-token delivery"
         )
     _validate_tunnel_token_delivery(matches[0])
     return matches[0]
+
+
+def _uses_cloudflared_token_slot(delivery: SecretDelivery) -> bool:
+    return (getattr(delivery, "intent", None) is SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN
+        or getattr(delivery, "environment_name", None) in ("TUNNEL_TOKEN", "TUNNEL_TOKEN_FILE")
+        or (type(delivery) is SecretFileDelivery and (
+            delivery.target_path == "/run/secrets/cloudflare-tunnel-token"
+            or (delivery.path_binding is not None
+                and delivery.path_binding.environment_name in ("TUNNEL_TOKEN", "TUNNEL_TOKEN_FILE")))))
 
 
 def _validate_ingress_resource_against_authority(
@@ -564,13 +577,16 @@ def _validate_ingress_resource_against_authority(
 
 
 def _validate_tunnel_token_delivery(delivery: object) -> None:
-    if not isinstance(delivery, SecretEnvironmentDelivery):
+    if type(delivery) is not SecretFileDelivery:
         raise IngressAuthorityRegistrationError(
-            "cloudflared tunnel token delivery must use SecretEnvironmentDelivery"
+            "cloudflared tunnel token delivery must use SecretFileDelivery"
         )
-    if delivery.environment_name != "TUNNEL_TOKEN":
+    if (delivery.target_path != "/run/secrets/cloudflare-tunnel-token"
+            or delivery.intent is not SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN
+            or delivery.file_mode is not SecretFileMode.OWNER_READ_ONLY
+            or delivery.path_binding != SecretFilePathBinding("TUNNEL_TOKEN_FILE")):
         raise IngressAuthorityRegistrationError(
-            "cloudflared tunnel token delivery must target TUNNEL_TOKEN"
+            "cloudflared tunnel token delivery must use the protected token-file contract"
         )
     _require_secret_reference(delivery.reference, "tunnel_token_ref")
 

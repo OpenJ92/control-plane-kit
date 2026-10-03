@@ -49,23 +49,10 @@ class PostgresExecutionLeaseRecoveryScopedRunTests(
             WHERE plan_id = 'plan-a'
             """
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            SELECT 'request-b', workspace_id, session_id, 'plan-b', status,
-                   requested_by, requested_at, approval_request_id,
-                   approval_decision_id, 'execute-b', intent_fingerprint,
-                   claim_worker_id, claim_generation, claimed_at, lease_expires_at
-            FROM cpk_execution_requests
-            WHERE request_id = 'request-a'
-            """
-        )
+        from tests.receiver_scope_history_fixture import clone_recorded_request
+        clone_recorded_request(self.connection, request_id="request-b", plan_id="plan-b", idempotency_key="execute-b")
         with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.execution.add_run(
+            unit_of_work.stores.execution._add_run(
                 ActivityRunRecord(
                     "run-b",
                     "plan-b",

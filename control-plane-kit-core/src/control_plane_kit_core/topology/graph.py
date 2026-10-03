@@ -28,6 +28,7 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.runtime_management import RuntimeManagement
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference, RuntimeAuthorityAccessDelivery,
     normalize_runtime_authority_deliveries,
@@ -232,6 +233,8 @@ class Node:
                 surface.descriptor()
                 for surface in self.block_spec.control_surfaces
             ]
+        if self.block_spec.gateway_transit is not None:
+            block_spec_descriptor["gateway_transit"] = self.block_spec.gateway_transit.descriptor()
         descriptor: dict[str, object] = {
             "node_id": self.node_id,
             "block_family": self.block_family.value,
@@ -337,9 +340,14 @@ class RuntimeRecord:
     metadata: Mapping[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     authority_ref: RuntimeAuthorityReference | None = None
+    management: RuntimeManagement | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if self.management is not None and not isinstance(self.management, RuntimeManagement):
+            raise TypeError("runtime management must be a typed selection")
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "kind": self.kind.value,
             "children": list(self.children),
             "authority_ref": None
@@ -348,6 +356,9 @@ class RuntimeRecord:
             "metadata": dict(self.metadata),
             "lifecycle": self.lifecycle.descriptor(),
         }
+        if self.management is not None:
+            descriptor["management"] = self.management.descriptor()
+        return descriptor
 
 
 class GraphConstructionCode(StrEnum):

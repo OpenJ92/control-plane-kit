@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import SecretProviderId
@@ -341,6 +342,15 @@ class InstanceReadService:
         return self._gateway_security.gateway_verifier_configuration(
             workspace_id,
             gateway_node_id,
+        )
+
+    def workload_verifier_configuration(
+        self,
+        workspace_id: str,
+        purposes: tuple[DelegationKeyPurpose, ...],
+    ) -> FocusedDetailReadModel:
+        return self._gateway_security.workload_verifier_configuration(
+            workspace_id, purposes,
         )
 
     def control_surface(

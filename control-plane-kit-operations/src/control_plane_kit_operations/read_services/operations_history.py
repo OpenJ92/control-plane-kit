@@ -327,7 +327,7 @@ def _approval_descriptor(
 
 
 def _plan_summary_descriptor(plan: ActivityPlanRecord) -> dict[str, object]:
-    return {
+    descriptor = {
         "plan_id": plan.plan_id,
         "session_id": plan.session_id,
         "base_graph_id": plan.base_graph_id,
@@ -339,6 +339,9 @@ def _plan_summary_descriptor(plan: ActivityPlanRecord) -> dict[str, object]:
         "created_at": plan.created_at,
         "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),
     }
+    if plan.derivation_profile is not None:
+        descriptor["derivation_profile"] = plan.derivation_profile.value
+    return descriptor
 
 
 def _run_summary_descriptor(run: ActivityRunRecord) -> dict[str, object]:

@@ -81,11 +81,24 @@ class EffectAttemptIntentStore:
     def __init__(self, connection: object) -> None:
         self._connection = connection
 
+    def read_configuration_source(self, identity, exact_ref):
+        """Observe a compact exact original source; grants no dispatch authority."""
+        from .configuration_source import read_source
+        return read_source(self._connection, identity, exact_ref)
+
     def insert(
         self,
         record: EffectAttemptIntentRecord,
     ) -> EffectAttemptIntentRecord:
+        from .receiver_execution_scopes import _require_nonaffecting_intent
+        _require_record(record)
+        _require_nonaffecting_intent(self._connection, record)
+        return self._insert(record)
+
+    def _insert(self, record: EffectAttemptIntentRecord, *, configuration_preparation=None) -> EffectAttemptIntentRecord:
         admitted, preimage = _require_record(record)
+        from control_plane_kit_operations._configuration_preparation import _require_prepared_intent
+        _require_prepared_intent(configuration_preparation, self._connection, admitted.identity, admitted.intent)
         identity = admitted.identity
         event = admitted.original_start_event
         self._connection.execute(
@@ -108,6 +121,22 @@ class EffectAttemptIntentStore:
 
     def get(self, identity: EffectAttemptIdentity) -> EffectAttemptIntentRecord:
         admitted = _require_identity(identity)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            columns = tuple((name, "bytes" if name == "preimage" else "int" if name in
+                ("attempt", "original_event_ordinal") else "text", 1048576 if name == "preimage" else 2048)
+                for name in _COLUMN_NAMES)
+            rows = read.bounded_rows("cpk_effect_attempt_intents", columns,
+                "run_id=%s AND activity_id=%s AND attempt=%s",
+                (admitted.run_id.value, admitted.activity_id, admitted.attempt))
+            if not rows:
+                raise KeyError(_MISS_ERROR)
+            events = read.bounded_rows("cpk_activity_events",
+                (("event_type", "text", 128), ("occurred_at AT TIME ZONE 'UTC'", "time", 64),
+                 ("payload", "json", 16384)), "event_id=%s AND run_id=%s AND ordinal=%s", rows[0][6:9])
+            if len(events) != 1:
+                raise OperationsRecordError(_ROW_ERROR)
+            return _decode_row((*rows[0], *events[0]))
         row = self._connection.execute(
             _SELECT
             + """
@@ -238,7 +267,13 @@ def _validate_current_rows(connection: object) -> None:
         if not rows:
             break
         for row in rows:
-            _decode_row(row)
+            record = _decode_row(row)
+            from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+            if record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+                from .configuration_evidence import _EvidenceRead
+                from .configuration_preparation_store import ConfigurationPreparationStore
+                ConfigurationPreparationStore(connection)._require_original(record,
+                    read=_EvidenceRead(connection, standalone=True))
             cursor = (row[0], row[1], row[2])
         if len(rows) < _BATCH_SIZE:
             break

@@ -14,6 +14,7 @@ from control_plane_kit_core._activity_identity import (
     _is_canonical_activity_identity,
 )
 from control_plane_kit_core._run_identity import _is_canonical_run_identity
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 
 
 _PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
@@ -66,6 +67,21 @@ class SecretUseIntent(StrEnum):
     WORKLOAD_NODE_CONTROL_SIGNING_KEY = "workload.node-control-signing-key"
     SECRETS_CUSTODY_ROOT_KEY = "secrets.custody-root-key"
     SECRETS_PROVIDER_CREDENTIALS_DOCUMENT = "secrets.provider-credentials-document"
+    WORKLOAD_NODE_HEALTH_READ_SIGNING_KEY = "workload.node-health-read-signing-key"
+    GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY = (
+        "gateway.node-health-read-transit-signing-key"
+    )
+
+
+def health_signing_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
+    """Name the exact health signing use, without granting signing authority."""
+
+    if type(purpose) is DelegationKeyPurpose:
+        if purpose is DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ:
+            return SecretUseIntent.WORKLOAD_NODE_HEALTH_READ_SIGNING_KEY
+        if purpose is DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT:
+            return SecretUseIntent.GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY
+    raise SecretProviderContractError("health signing purpose is unsupported")
 
 
 class SecretCustodyStatus(StrEnum):

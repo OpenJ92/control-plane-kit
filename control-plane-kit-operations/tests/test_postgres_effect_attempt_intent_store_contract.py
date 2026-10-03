@@ -82,7 +82,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
                 for name, value in vars(EffectAttemptIntentStore).items()
                 if callable(value) and not name.startswith("_")
             ),
-            frozenset(("insert", "get")),
+            frozenset(("insert", "get", "read_configuration_source")),
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptIntentStore).parameters),
@@ -95,6 +95,10 @@ class PostgresEffectAttemptIntentStoreContractTests(
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptIntentStore.get).parameters),
             ("self", "identity"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(EffectAttemptIntentStore.read_configuration_source).parameters),
+            ("self", "identity", "exact_ref"),
         )
         self.assertIn(
             "effect_attempt_intents",
@@ -168,7 +172,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
         connection = _RecordingConnection()
         store = EffectAttemptIntentStore(connection)
 
-        self.assertEqual(store.insert(record), record)
+        self.assertEqual(store._insert(record), record)
         insert_query = " ".join(str(connection.calls[0][0]).split())
         self.assertIn("INSERT INTO cpk_effect_attempt_intents", insert_query)
         self.assertNotIn("ON CONFLICT", insert_query)
@@ -220,8 +224,14 @@ class PostgresEffectAttemptIntentStoreContractTests(
             {
                 "__future__",
                 "control_plane_kit_core.operations",
+                "control_plane_kit_core.runtime_effects",
+                "control_plane_kit_operations._configuration_preparation",
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 "control_plane_kit_operations.records",
+                "configuration_evidence",
+                "configuration_preparation_store",
+                "configuration_source",
+                "receiver_execution_scopes",
             },
         )
         forbidden = {

@@ -16,6 +16,7 @@ from control_plane_kit_core.environment import (
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityAccessDelivery
+from control_plane_kit_core.runtime_management import RuntimeManagement
 from control_plane_kit_core.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit_core.topology.graph import (
     Edge,
@@ -49,6 +50,7 @@ class StructuralField(StrEnum):
     RUNTIME_KIND = "runtime-kind"
     RUNTIME_CONTAINMENT = "runtime-containment"
     RUNTIME_AUTHORITY = "runtime-authority"
+    RUNTIME_MANAGEMENT = "runtime-management"
     RUNTIME_METADATA = "runtime-metadata"
     BLOCK_FAMILY = "block-family"
     BLOCK_SPECIFICATION = "block-specification"
@@ -273,17 +275,32 @@ class BlockSpecValue:
 
 
 @dataclass(frozen=True)
+class RuntimeManagementValue:
+    management: RuntimeManagement | None
+
+    def __post_init__(self) -> None:
+        if self.management is not None and not isinstance(self.management, RuntimeManagement):
+            raise TypeError("runtime management change requires a typed selection")
+
+    def descriptor(self) -> dict[str, str] | None:
+        return None if self.management is None else self.management.descriptor()
+
+
+@dataclass(frozen=True)
 class RuntimeValue:
     runtime: RuntimeRecord
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "runtime_id": self.runtime.runtime_id,
             "kind": self.runtime.kind.value,
             "children": list(self.runtime.children),
             "metadata": _redact_mapping(self.runtime.metadata),
             "lifecycle": self.runtime.lifecycle.descriptor(),
         }
+        if self.runtime.management is not None:
+            descriptor["management"] = self.runtime.management.descriptor()
+        return descriptor
 
 
 @dataclass(frozen=True)
@@ -369,6 +386,7 @@ DiffValue: TypeAlias = (
     | SocketContractValue
     | BlockSpecValue
     | RuntimeValue
+    | RuntimeManagementValue
     | NodeValue
     | EdgeValue
     | PublicIngressValue
