@@ -1,6 +1,6 @@
 """Authenticated exact cleanup inspection and atomic publication; no execution."""
 from dataclasses import dataclass
-from contextlib import contextmanager
+from functools import wraps
 from hashlib import sha256
 
 import rfc8785
@@ -26,17 +26,19 @@ class ConfigurationCleanupCommandError(ValueError):
     """Redacted refusal; no partial plan or authority is returned."""
 
 
-@contextmanager
-def _command_domain_errors():
-    try:
-        yield
-    except ConfigurationCleanupCommandError:
-        raise
-    except (ValueError, KeyError):
-        pass
-    else:
-        return
-    raise ConfigurationCleanupCommandError("configuration cleanup command evidence is unavailable")
+def _command_domain_errors(command):
+    @wraps(command)
+    def invoke(*args, **kwargs):
+        try:
+            return command(*args, **kwargs)
+        except ConfigurationCleanupCommandError:
+            raise
+        except (ValueError, KeyError):
+            pass
+        # A normal call boundary leaves the owner's exception context before
+        # raising; a generator context manager is resumed inside __exit__.
+        raise ConfigurationCleanupCommandError("configuration cleanup command evidence is unavailable")
+    return invoke
 
 
 @dataclass(frozen=True)
@@ -210,10 +212,11 @@ class ConfigurationCleanupPlanningService:
         with self._unit_of_work_factory().configuration_cleanup_snapshot() as snapshot:
             return snapshot.inspect(command)
 
+    @_command_domain_errors
     def request_plan(self, command, *, context):
         _authorize(command, context, publish=True)
         fingerprint = _fingerprint(command, context.actor_id)
-        with (_command_domain_errors(), self._unit_of_work_factory() as uow,
+        with (self._unit_of_work_factory() as uow,
               uow.stores.configuration_cleanup.evidence()):
             history = uow.stores.activity_history
             history.lock_action_idempotency(command.session_id, command.idempotency_key.value)
