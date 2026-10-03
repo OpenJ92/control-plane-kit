@@ -132,12 +132,20 @@
       "session_rule": "requires OPEN after lock"
     },
     {
+      "command": "request-configuration-cleanup-plan",
+      "service": "ConfigurationCleanupPlanningService.request_plan",
+      "writer": "configuration_cleanup_planning.py:ConfigurationCleanupPlanningService.request_plan",
+      "source": "configuration_cleanup_planning.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "action-ordinal"],
+      "session_rule": "A precedes exact immutable replay; fresh publication takes receiver lifecycle L before session then workspace and ordinal; requires OPEN under lock; exact proposal, plan and action commit atomically; replay recovers the original receipt without renewed cleanup authority"
+    },
+    {
       "command": "request-approval",
       "service": "ApprovalCommandService._request",
       "writer": "approvals.py:ApprovalCommandService._request",
       "source": "approvals.py",
-      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
-      "session_rule": "requires OPEN after lock"
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "approval_evidence acquires A unconditionally before routing, replay or yielding; fresh cleanup uses nonauthorizing locator then receiver lifecycle L before session and workspace; workspace role is conditional on cleanup; requires OPEN under lock and fresh exact evidence; request and action commit atomically"
     },
     {
       "command": "request-gateway-key-rotation-approval",
@@ -152,8 +160,8 @@
       "service": "ApprovalCommandService._decide",
       "writer": "approvals.py:ApprovalCommandService._decide",
       "source": "approvals.py",
-      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
-      "session_rule": "requires OPEN after lock"
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "approval_evidence acquires A unconditionally before routing, replay or yielding; fresh cleanup uses nonauthorizing locators then receiver lifecycle L before session and workspace; workspace role is conditional on cleanup; requires OPEN under lock and fresh exact evidence; decision and action commit atomically"
     },
     {
       "command": "admit-execution",
