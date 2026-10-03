@@ -95,8 +95,7 @@ The earlier three setup errors do not earn retroactive behavioral credit. Same-n
 changed-material replacement, cross-runtime movement and configuration-free
 successor safety are not established by this same-runtime recurrence slice.
 
-The finite B2 capacity checkpoint is a candidate producer witness, not new runtime
-behavior: one node and one small artifact use real approved reconcile, start,
+The finite B2 capacity checkpoint passed: one node and one small artifact use real approved reconcile, start,
 outcome and acceptance owners until the first production capacity refusal.
 Pass-through observers preserve the original decisions, reservations and exceptions;
 they neither seed counters nor implement another budget. A refused fresh start must
@@ -104,5 +103,15 @@ leave protection unchanged; an advancement refusal after a successful effect mus
 retain that effect's protective claim without publishing current membership. Cold
 current/allocation reads and original replay must still succeed at the measured
 boundary. No promise that every local maximum fits the global budget is implied;
-the exact first owner/stage and rejecting decision will be recorded. This target
-is unvalidated, and sentinel/preflight/index and concurrency obligations remain.
+64 genuine uses were accepted, retaining 64 claims. Use 65 hit the production
+per-reference claim limit at guarded start, without start IDs, provider dispatch
+or mutation. All three selected tests plus compilation/import passed and received
+independent terminal review. Cold current/allocation reads and original replay
+worked at that boundary. This does not establish natural cold-budget exhaustion.
+
+The next reviewed scope adds defensive node/manifest 257 sentinels over explicitly
+invalid retained history with ordinary constraints enabled; real-query PostgreSQL
+index-prefix eligibility; isolated local tests of unchanged acceptance-envelope
+arithmetic; and a labeled failure injected after genuine owner preflight, before
+CAS. Synthetic local inputs never authorize durable mutation. These candidate
+targets are unvalidated. Two concurrency witnesses and full gates remain.

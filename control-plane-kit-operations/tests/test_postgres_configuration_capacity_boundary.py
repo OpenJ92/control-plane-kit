@@ -8,7 +8,7 @@ from unittest import mock
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptTransition, EffectAttemptTransitionKind, RunId
-from control_plane_kit_core.planning import NodeTarget, ReconcileNode
+from control_plane_kit_core.planning import NodeTarget, ReconcileNode, RemoveNodeResource, RuntimeTarget, StartNode, StartRuntime
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.topology import compile_topology
@@ -18,10 +18,26 @@ from control_plane_kit_operations.coordinator import CoordinatorStatus, Executio
 from control_plane_kit_operations.effect_attempt_start import ExistingAttempt, StartEffectAttempt
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.postgres import configuration_evidence as evidence_reads
+from control_plane_kit_operations.postgres import configuration_acceptance_store as acceptance_store
+from control_plane_kit_operations.postgres.graph_store import PostgresWorkspaceStore
 from control_plane_kit_operations.products import RegisteredProduct
 from tests import postgres_effect_attempt_coordinator_fixture as coordinator_fixture
 from tests import test_postgres_configuration_carry as carry_fixture
 from tests.test_runtime_effect_translation import _configuration_product
+from tests.test_receiver_execution_scope_queries import plan_paths
+
+
+@contextmanager
+def observe_queries(queries):
+    original = evidence_reads._EvidenceRead.query
+
+    def query(reader, statement, params=(), **kwargs):
+        rows = original(reader, statement, params, **kwargs)
+        queries.append((statement, params, len(rows)))
+        return rows
+
+    with mock.patch.object(evidence_reads._EvidenceRead, "query", query):
+        yield
 
 
 @contextmanager
@@ -104,6 +120,169 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
         self.assertEqual((current.state, current.manifest_slot_count), ("complete", 1))
         self.assertEqual(tuple(binding.ref for binding in current.bindings), self.refs)
         self.assertEqual((current.bindings[0].source.identity, current.bindings[0].birth.identity), (source, self.birth))
+
+    def assert_sentinel(self, queries, rejections, table, prefix):
+        selected = [(sql, params, count) for sql, params, count in queries
+            if " FROM " + table + " WHERE " + prefix in sql]
+        self.assertEqual(len(selected), 1, selected)
+        sql, params, count = selected[0]
+        self.assertTrue(sql.startswith("SELECT octet_length("), sql)
+        self.assertEqual((params[-1], count), (257, 257))
+        self.assertTrue(any(item.get("owner") == "bounded-read" and item.get("table") == table
+            for item in rejections), rejections)
+
+    def test_defensive_node_257_refuses_before_history_material_and_new_start(self):
+        empty = replace(self.carry.graph, nodes={}, runtimes={"runtime-a": replace(
+            self.carry.graph.runtimes["runtime-a"], children=())})
+        self.carry.advance(self.carry.prepare("depart", "graph-departed",
+            RemoveNodeResource(NodeTarget("api")), graph=empty))
+        command = self.carry.admit("return", "graph-configured", StartNode(NodeTarget("api")))
+        # Explicit invalid retained history: copied index/protection rows are
+        # NOT genuine uses. Ordinary constraints and original FKs stay enabled.
+        with self.base.connection.transaction():
+            self.base.connection.execute("INSERT INTO cpk_effect_configuration_refs "
+                "SELECT run_id,activity_id,attempt,'copied-' || n,workspace_id,allocation_id,runtime_id,node_id,"
+                "ref_preimage,ref_digest,request_fingerprint,original_event_id,birth_run_id,birth_activity_id,"
+                "birth_attempt,birth_artifact_id,false FROM cpk_effect_configuration_refs "
+                "CROSS JOIN generate_series(1,256) n WHERE artifact_id=%s", (self.refs[0].artifact_id,))
+            self.base.connection.execute("INSERT INTO cpk_configuration_claims "
+                "SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id "
+                "FROM cpk_effect_configuration_refs WHERE artifact_id LIKE 'copied-%%'")
+        self.assertEqual(self.base.connection.execute("SELECT count(*) FROM cpk_effect_configuration_refs "
+            "WHERE workspace_id='workspace-a' AND runtime_id='runtime-a' AND node_id='api'").fetchone(), (257,))
+        before, queries, rejections = self.retained_state(), [], []
+        harness = coordinator_fixture.PostgresEffectAttemptCoordinatorFixture.coordinator_harness(self.base)
+        with observe_queries(queries), observe_capacity(rejections), self.assertRaises(ExecutionCoordinatorConflict):
+            harness.coordinator.execute(replace(self.base.engine.command(generation=command.fence.generation,
+                idempotency_key="execute-return"), run_id=command.run_id))
+        self.assert_sentinel(queries, rejections, "cpk_effect_configuration_refs",
+            "workspace_id=%s AND runtime_id=%s AND node_id=%s")
+        self.assertEqual(len(harness.start.commands), 1)
+        self.assertEqual(harness.start_ids.calls, [])
+        self.assertEqual(harness.adapter.runtime_calls, [])
+        self.assertEqual(self.retained_state(), before)
+
+    def test_defensive_manifest_257_refuses_advancement_before_ids_and_cas(self):
+        extra = compile_topology(DeploymentTopology("extra", DockerRuntime(runtime_id="runtime-b")))
+        command = self.carry.prepare("extra", "graph-extra", StartRuntime(RuntimeTarget("runtime-b")),
+            graph=self.carry.graph.add_runtime(extra.runtimes["runtime-b"]))
+        revision = self.carry.original_acceptance.desired_graph_revision
+        # Only slot PK names change. Real receipt/source/birth/outcome FKs and
+        # the genuine header/count/digest survive; this is invalid history.
+        self.base.connection.execute("INSERT INTO cpk_configuration_accepted_slots "
+            "SELECT workspace_id,pinned_revision,runtime_id,node_id,'copied-' || n,source_run_id,"
+            "source_activity_id,source_attempt,source_artifact_id,birth_run_id,birth_activity_id,"
+            "birth_attempt,birth_artifact_id,full_ref_digest FROM cpk_configuration_accepted_slots "
+            "CROSS JOIN generate_series(1,256) n WHERE pinned_revision=%s", (revision,))
+        self.assertEqual(self.base.connection.execute("SELECT count(*) FROM cpk_configuration_accepted_slots "
+            "WHERE pinned_revision=%s", (revision,)).fetchone(), (257,))
+        before, queries, rejections = self.retained_state(), [], []
+        service = CurrentGraphAdvancementCommandService(self.base.unit_of_work,
+            clock=lambda: self.fail("early manifest refusal read clock"),
+            id_factory=lambda: self.fail("early manifest refusal allocated ID"))
+        with observe_queries(queries), observe_capacity(rejections), self.assertRaises(CurrentGraphAdvancementConflict):
+            service.execute(command)
+        self.assert_sentinel(queries, rejections, "cpk_configuration_accepted_slots",
+            "workspace_id=%s AND pinned_revision=%s")
+        self.assertEqual(self.retained_state(), before)
+        self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
+
+    def test_actual_configuration_queries_have_indexed_lookup_prefixes(self):
+        queries = []
+        with observe_queries(queries):
+            self.assert_cold_current(self.birth)
+            self.assertEqual(self.reader.read_use(self.refs).state, "complete")
+            with self.base.unit_of_work() as uow:
+                self.assertEqual(uow.stores.configuration_preparation.read_allocation_evidence(self.refs[0]).state,
+                    "complete")
+            command = self.carry.admit("indexed", "graph-indexed", ReconcileNode(NodeTarget("api")),
+                graph=self.changed_graph("indexed"))
+            harness = coordinator_fixture.PostgresEffectAttemptCoordinatorFixture.coordinator_harness(self.base)
+            self.assertIs(harness.coordinator.execute(replace(self.base.engine.command(
+                generation=command.fence.generation, idempotency_key="execute-indexed"),
+                run_id=command.run_id)).status, CoordinatorStatus.COMPLETED)
+        prefixes = {
+            "actions": ("cpk_operation_actions", ("advancement_workspace_id",)),
+            "events": ("cpk_activity_events", ("advancement_workspace_id",)),
+            "header": ("cpk_configuration_acceptances", ("workspace_id", "pinned_revision")),
+            "manifest": ("cpk_configuration_accepted_slots", ("workspace_id", "pinned_revision")),
+            "node": ("cpk_effect_configuration_refs", ("workspace_id", "runtime_id", "node_id")),
+            "birth": ("cpk_effect_configuration_refs", ("workspace_id", "allocation_id")),
+            "claims": ("cpk_configuration_claims", ("workspace_id", "allocation_id")),
+        }
+        # This proves eligibility of real owner SQL on PostgreSQL, not a bound
+        # on heap/index work or latency and not an optimizer-choice promise.
+        with self.base.connection.transaction():
+            self.base.connection.execute("SET LOCAL enable_seqscan=off")
+            for label, (table, columns) in prefixes.items():
+                with self.subTest(prefix=label):
+                    candidates = [(sql, params) for sql, params, _ in queries
+                        if " FROM " + table + " WHERE " in sql and all(
+                            column + "=%s" in sql.partition(" WHERE ")[2] for column in columns)]
+                    self.assertTrue(candidates, label)
+                    sql, params = candidates[0]
+                    self.assertIn("LIMIT", sql)
+                    plan = self.base.connection.execute("EXPLAIN (FORMAT JSON, COSTS FALSE) " + sql,
+                        params).fetchone()[0][0]["Plan"]
+                    paths = [(node, parents) for node, parents in plan_paths(plan)
+                        if node.get("Index Name") and all(column in node.get("Index Cond", "") for column in columns)]
+                    self.assertTrue(paths, {"prefix": label, "query": sql, "plan": plan})
+                    if label in ("actions", "events"):
+                        kind, value, index = (("action_type", "advance-current-graph", "cpk_action_advancement_workspace_revision")
+                            if label == "actions" else ("event_type", "current_graph_advanced", "cpk_event_advancement_workspace_revision"))
+                        self.assertIn(kind + "=%s ORDER BY advancement_revision DESC,", sql)
+                        self.assertEqual(params, ("workspace-a", value))
+                        self.assertTrue(any(node["Index Name"] == index for node, _ in paths), plan)
+                    self.assertTrue(any(any(parent["Node Type"] == "Limit" for parent in parents)
+                        for _, parents in paths), plan)
+                    for node, _ in plan_paths(plan):
+                        self.assertNotIn(node["Node Type"], ("Seq Scan", "Parallel Seq Scan"), plan)
+                        self.assertNotIn("Filter", node, plan)
+                        self.assertNotIn("Join Filter", node, plan)
+            # Actual allocation discovery is a bounded ref-prefix query plus
+            # reciprocal point-key join, not the separate known-birth lookup.
+            sql, params = next((sql, params) for sql, params, _ in queries
+                if " FROM cpk_effect_configuration_refs r LEFT JOIN cpk_configuration_claims c " in sql
+                and " WHERE r.workspace_id=%s AND r.allocation_id=%s" in sql)
+            self.assertTrue(sql.endswith("ORDER BY r.run_id,r.activity_id,r.attempt,r.artifact_id LIMIT 65"))
+            plan = self.base.connection.execute("EXPLAIN (FORMAT JSON, COSTS FALSE) " + sql,
+                params).fetchone()[0][0]["Plan"]
+            for alias, columns in (("r", ("workspace_id", "allocation_id")),
+                    ("c", ("run_id", "activity_id", "attempt", "artifact_id"))):
+                paths = [(node, parents) for node, parents in plan_paths(plan) if node.get("Alias") == alias
+                    and node.get("Index Name") and all(column in node.get("Index Cond", "") for column in columns)]
+                self.assertTrue(paths, {"alias": alias, "plan": plan})
+                self.assertTrue(any(any(parent["Node Type"] == "Limit" for parent in parents)
+                    for _, parents in paths), plan)
+            for node, _ in plan_paths(plan):
+                self.assertNotIn(node["Node Type"], ("Seq Scan", "Parallel Seq Scan"), plan)
+                self.assertNotIn("Filter", node, plan)
+                self.assertNotIn("Join Filter", node, plan)
+
+    def test_injected_post_preflight_failure_preserves_nonempty_owner_truth_before_cas(self):
+        extra = compile_topology(DeploymentTopology("extra", DockerRuntime(runtime_id="runtime-b")))
+        command = self.carry.prepare("preflight", "graph-preflight", StartRuntime(RuntimeTarget("runtime-b")),
+            graph=self.carry.graph.add_runtime(extra.runtimes["runtime-b"]))
+        original = acceptance_store.ConfigurationAcceptanceStore._preflight
+        calls = []
+
+        def inject_after_real_preflight(store, prepared):
+            original(store, prepared)
+            calls.append((prepared.workspace.workspace_id, len(prepared.slots)))
+            # Fault injection proves owner ordering/atomicity, not natural
+            # capacity exhaustion. The owner-issued prepared value is unchanged.
+            raise evidence_reads._Capacity
+
+        before = self.retained_state()
+        with mock.patch.object(acceptance_store.ConfigurationAcceptanceStore, "_preflight", inject_after_real_preflight), \
+                mock.patch.object(PostgresWorkspaceStore, "_compare_and_set_current_graph", side_effect=AssertionError(
+                    "preflight refusal reached current CAS")), self.assertRaises(CurrentGraphAdvancementConflict):
+            CurrentGraphAdvancementCommandService(self.base.unit_of_work,
+                clock=lambda: "2026-07-22T13:05:00Z", id_factory=iter(("event-preflight", "action-preflight")).__next__
+            ).execute(command)
+        self.assertEqual(calls, [("workspace-a", 1)])
+        self.assertEqual(self.retained_state(), before)
+        self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
 
     def test_compact_accepted_uses_reach_a_measured_owner_boundary_without_partial_publication(self):
         # Explicit simulated total installation of the one selected artifact.
