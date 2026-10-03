@@ -1,6 +1,6 @@
 # C1 #1927: configuration invocation completion
 
-Status: target-only checkpoint; no application implementation or validation yet.
+Status: bounded implementation ready for source review; owning green pending.
 Parent #1920; follows accepted B2 `441a06b6c300ed2d92f0c3bb9553a5f8ae3a97f7`;
 blocks C2 #1928. PR destination is `roadmap/1813-runtime-control`.
 
@@ -49,4 +49,23 @@ provider truth nor non-use evidence; FAILED can leave attached resources. No
 claim is released. C2 consumes the eventual accepted C1 contract before adding
 verified inspection and exact plans/approval. D and I177 remain separate.
 
-Validation: pending. This checkpoint is not implementation acceptance.
+## Validation and implementation checkpoint
+
+Target-only commit `c659fb5e0a18100a9e7e1cc99ba8fec38ba1db99` passed independent
+target review. The unchanged Core Docker gate exited 1: support 21 passed;
+integrity 941 methods, zero mocks/skips; main suite 941 tests in 56.049 seconds,
+12 intended missing-language failures and zero errors. Other 929 methods passed.
+Compile/import phases did not run after expected red. Log SHA256:
+`215d43cc8bc57dee9237f912cc020c8ecf33445b6a95f2d6fb3296d99fd0c95c`.
+[Durable red evidence](https://github.com/OpenJ92/control-plane-kit/pull/1929#issuecomment-5969645209).
+Meridian independently verified the terminal evidence and released minimal source.
+
+The new module uses the existing full-selection codec, original intent helper,
+bounded identity validation and full-result fingerprint. The correlation value
+checks closed operation/kind/scope; result interpretation never rewrites the
+result. The inventory records its existing Core dependencies and the README
+shows the real-request/result reader. No existing application module, target,
+gate, pin, durable owner or provider changed.
+
+Owning green and final independent source review are pending. This checkpoint
+is not implementation acceptance or a release of C2/D/provider activity.
