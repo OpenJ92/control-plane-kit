@@ -29,6 +29,16 @@ _EVENT_BYTES = 16384
 _COMPACT_BYTES = 80000
 
 
+def read_original_selection(connection, identity, exact_ref, *, read):
+    """Expose all projections from the original proof, without reconstructing a request."""
+    result = read_source(connection, identity, exact_ref, read=read)
+    if result.state == "capacity":
+        raise _Capacity
+    if result.state != "complete":
+        raise _Unavailable
+    return read.sources[("cpk_effect_attempt_intents", identity)]
+
+
 def _preflight_source(read, canonical_intent, transition, source, fence):
     """Check the retained source domain before allocating an event or writing.
 
@@ -176,6 +186,7 @@ def read_source(connection, identity, exact_ref, *, read=None):
                 EffectAttemptStatus.STARTED, prior_attempt=prior)
             if not _event_commits_to(event, started, ActivityEventKind.STEP_STARTED):
                 raise _Unavailable
+            read.sources[("cpk_activity_events", event.event_id)] = event
             # Validate every ref before selecting the requested point. Foreign
             # siblings, duplicate slots and unknown selection fields cannot hide.
             projections = tuple(ConfigurationSourceProjection(identity, row[3], row[4], row[5],

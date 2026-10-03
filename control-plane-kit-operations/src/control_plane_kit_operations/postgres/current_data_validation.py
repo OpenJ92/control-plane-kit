@@ -159,13 +159,19 @@ SELECT NOT EXISTS (
         AND octet_length(approvals.plan_id) BETWEEN 1 AND 200
         AND (approvals.plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
         AND (approvals.plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
-        AND approvals.subject_payload = jsonb_build_object(
+        AND ((approvals.subject_payload = jsonb_build_object(
           'kind', 'activity-plan', 'plan_id', approvals.plan_id
         )
         AND (approvals.review_digest COLLATE "C") = encode(
           sha256(convert_to('activity-plan:' || approvals.plan_id, 'UTF8')),
           'hex'
-        )
+        )) OR (
+          approvals.subject_payload = jsonb_build_object(
+            'kind', 'activity-plan', 'plan_id', approvals.plan_id,
+            'profile', 'configuration-cleanup-approval.v1',
+            'proposal_fingerprint', approvals.subject_payload->>'proposal_fingerprint')
+          AND (approvals.subject_payload->>'proposal_fingerprint' COLLATE "C") ~ '^[0-9a-f]{64}$'
+        ))
       )
       WHEN (approvals.subject_kind COLLATE "C") =
            'gateway-key-rotation' THEN NOT (
@@ -275,6 +281,8 @@ def validate_current_rows(connection: _Connection) -> None:
         validate_health_preparations(connection)
         validate_receiver_rows(connection)
         validate_execution_scope_rows(connection)
+        from .configuration_cleanup_store import validate_cleanup_rows
+        validate_cleanup_rows(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()

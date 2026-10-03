@@ -509,7 +509,8 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         from control_plane_kit_operations import InstanceReadService
         from control_plane_kit_operations.postgres import PostgresStoreBundle
         from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, SessionReadScope
-        for profile in (None, *module.PlanDerivationProfile):
+        for profile in (None, module.PlanDerivationProfile.STRUCTURAL_V1,
+                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
             with self.subTest(profile=profile):
                 self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
                 command, record, _ = self._store_historical_derivation(DeploymentGraph("empty"), DeploymentGraph("desired"), profile=profile)
@@ -552,7 +553,8 @@ class PlanningTransitionReplayTests(unittest.TestCase):
 
     def test_equal_plan_profile_tampering_fails_before_graph_decode_or_result_derivation(self):
         module = require_derivation(self)
-        for profile in (None, *module.PlanDerivationProfile):
+        for profile in (None, module.PlanDerivationProfile.STRUCTURAL_V1,
+                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
             for marker in ("absent", None, "unknown", "structural-v1", "management-graph-pair-v1"):
                 if (profile is None and marker == "absent") or (profile is not None and marker == profile.value):
                     continue

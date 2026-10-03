@@ -80,6 +80,11 @@ class PostgresStoreBundle:
     connection and cannot commit independently through the bundle.
     """
 
+    @property
+    def configuration_cleanup(self):
+        from .configuration_cleanup_store import ConfigurationCleanupStore
+        return ConfigurationCleanupStore(self)
+
     desired_topology_drafts: PostgresDesiredTopologyDraftStore = field(init=False)
     saved_preparation_sources: PostgresSavedPreparationSourceStore = field(init=False)
     revision_history: PostgresRevisionHistoryStore = field(init=False)
