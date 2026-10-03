@@ -35,10 +35,13 @@ The existing `_decode` still performs the original compact source proof afterwar
 its result and callers retain their contract. Acceptance can validate complete
 manifest material before selecting source provenance work.
 
-For an existing configured node, both optimistic and under-lock proposal paths
-verify authoritative current/base agreement, complete manifest and requested
-source/direct-birth proof. One pure selector compares full desired material with
-the complete accepted refs before fingerprinting.
+Both optimistic and under-lock proposal paths verify authoritative current/base
+agreement and complete manifest for every fresh configuration start, including a never-used node.
+Only both original streams absent plus verified empty E7 origin can provide
+genesis authority. Existing configured nodes additionally prove requested
+source/direct birth; one pure selector compares full desired
+material with complete accepted refs before fingerprinting. Exact replay remains
+before this fresh selection path. The new universal entrance is unvalidated.
 
 The recurrence connection now discovers complete same-runtime node history using
 the existing workspace/runtime/node slot-index prefix and a 257 sentinel, before
@@ -55,8 +58,9 @@ allocation must be distinct from every historical allocation and self-birth unde
 the new attempt. Later reuse selects only the exact current allocation/direct
 root; older accepted allocations remain protected without being reselected.
 Four recurrence targets reached causal missing-birth red after genuine accepted
-removal. This source connection awaits concrete review and focused green; later
-assertions and renamed-artifact laws are not yet validation evidence.
+removal. The reviewed source then passed all 20 selected recurrence, reuse,
+preparation, coordinator replay and carry tests plus compilation/import.
+Renamed-artifact laws are not yet validation evidence.
 
 All historical node claims and proposed new keys count toward 256 for the logical
 set; 64 is enforced separately per exact allocation, including the proposed claim
@@ -67,10 +71,11 @@ claims remain protective. No new lock, independent transaction or provider call
 is introduced. Allocation proof caches stay inside the same UoW and count actual
 repeat queries. Current observations alone never authorize release or cleanup.
 
-Required remaining B2 work: the inherited node-absent/no-history shortcut still
-lacks universal authoritative current/E7 verification. Every fresh start must
-eventually prove that authority before IDs/writes, with positive B1 fixtures
-translated through real creation/lawful transitions. Original replay must remain
-before today's selection. Same-node changed-material replacement, cross-runtime
-movement and configuration-free successor safety are not established by this
-same-runtime recurrence slice.
+The positive B1 preparation fixture now uses real creation and namespaced approved
+runtime execution/acceptance before its original configuration run. A 12-test gate
+passed 11 whole tests; four corrupt-current subcases exposed the no-history
+shortcut's missing authority, while the pointer/base control already refused.
+The source now removes that shortcut; focused green, isolated missing/corrupt E7
+targets and broader converted-fixture consumers remain pending. Same-node
+changed-material replacement, cross-runtime movement and configuration-free
+successor safety are not established by this same-runtime recurrence slice.

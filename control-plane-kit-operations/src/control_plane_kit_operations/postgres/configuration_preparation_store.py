@@ -184,10 +184,8 @@ class ConfigurationPreparationStore:
             return proposed, ()
         node_id = intent.operation.target.node_id
         base = DEFAULT_GRAPH_CODEC.decode(material.base_graph.graph_descriptor)
-        if node_id not in base.nodes and not self._node_history(proposed.configuration_instances.instances[0], read):
-            # The inherited never-used-slot path remains a separate B2
-            # current/E7 authority obligation, with its fixture conversion.
-            return proposed, ()
+        # No historical refs is not authority: every fresh selection needs
+        # the exact accepted current occurrence or verified empty E7 origin.
         acceptance = stores.configuration_acceptance
         workspace = stores.workspaces.get(intent.source.workspace_id)
         receipt = acceptance._current_manifest(workspace, read)
@@ -197,8 +195,10 @@ class ConfigurationPreparationStore:
         rows = tuple(row for row in receipt[3] if row[1] == node_id)
         if node_id not in base.nodes:
             # Historical recreation requires a real accepted departure, not
-            # desired-only omission or a missing membership row.
-            if receipt[0]["pinned_revision"] is None or rows:
+            # desired-only omission or a missing membership row. E7 can only
+            # admit a never-used node after its current/base proof above.
+            if rows or (receipt[0]["pinned_revision"] is None
+                    and self._node_history(proposed.configuration_instances.instances[0], read)):
                 raise _Unavailable
             return proposed, ()
         if not rows or len(rows) > 32:
