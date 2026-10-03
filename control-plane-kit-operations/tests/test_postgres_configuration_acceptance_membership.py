@@ -85,6 +85,8 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         # This test producer promises total installation of the exact requested
         # selection. It is simulated evidence, not native/provider verification.
         def installed(_context, request):
+            if (producer := getattr(self, "configuration_result_for_request", None)) is not None:
+                return producer(request)
             return RuntimeEffectResult.succeeded(request.effect_id,
                 evidence={"adapter": "total-selected-configuration-test"})
 

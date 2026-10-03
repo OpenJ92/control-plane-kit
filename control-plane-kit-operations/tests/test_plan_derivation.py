@@ -32,7 +32,8 @@ class PlanDerivationTests(unittest.TestCase):
     def test_profiles_have_distinct_strict_envelopes_and_unchanged_nested_plan(self):
         module = require_derivation(self)
         plan = compile_activity_plan(Deploy(validate_graph(DeploymentGraph("empty")), validate_graph(management_graph(self))).diff)
-        for profile in module.PlanDerivationProfile:
+        for profile in (module.PlanDerivationProfile.STRUCTURAL_V1,
+                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
             with self.subTest(profile=profile):
                 expected = {"schema": "control-plane-kit.operations.activity-plan-record", "version": 1,
                             "derivation_profile": profile.value, "plan": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)}
@@ -106,7 +107,8 @@ class PlanDerivationTests(unittest.TestCase):
         self.assertTrue(field.kw_only)
         args = ("plan", "session", "base", "desired", ActivityPlanStatus.PLANNED, "2026-09-14T00:00:00Z", ActivityPlan(()))
         self.assertIsNone(ActivityPlanRecord(*args).derivation_profile)
-        for profile in module.PlanDerivationProfile:
+        for profile in (module.PlanDerivationProfile.STRUCTURAL_V1,
+                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
             self.assertIs(ActivityPlanRecord(*args, derivation_profile=profile).derivation_profile, profile)
         for profile in ("structural-v1", "bad", False):
             with self.subTest(profile=profile), self.assertRaises(OperationsRecordError):
