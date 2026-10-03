@@ -132,7 +132,16 @@ class ReceiverAcceptedContinuationTests(ReceiverAdmissionFixture, unittest.TestC
         with self.unit_of_work() as uow:
             witness = replace(accepted, action_id="recorded-retirement-marker",
                 ordinal=uow.stores.activity_history.next_action_ordinal(accepted.session_id))
-            uow.stores.activity_history.add_action(witness)
+            # Copy only this explicitly recorded negative history; the guarded
+            # production writer must not publish a fabricated advancement.
+            uow.stores.connection.execute(
+                "INSERT INTO cpk_operation_actions (action_id,session_id,ordinal,action_type,actor_id,payload,"
+                "created_at,idempotency_key,intent_fingerprint,advancement_workspace_id,advancement_request_id,"
+                "advancement_plan_id,advancement_run_id,advancement_revision) "
+                "SELECT %s,session_id,%s,action_type,actor_id,payload,created_at,idempotency_key,intent_fingerprint,"
+                "advancement_workspace_id,advancement_request_id,advancement_plan_id,advancement_run_id,"
+                "advancement_revision FROM cpk_operation_actions WHERE action_id=%s",
+                (witness.action_id, witness.ordinal, accepted.action_id))
             uow.stores.connection.execute("UPDATE cpk_graph_receiver_introductions SET retired_action_id=%s, "
                 "retired_session_id=%s WHERE workspace_id='workspace-a' AND receiver_id=%s",
                 (witness.action_id, witness.session_id, RECEIVER))
