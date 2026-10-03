@@ -42,11 +42,11 @@ Original point proofs are cached by exact immutable key within one proof reader;
 no historical mutable-parent locks are acquired. The current proof and desired
 source proof use separate caches on the same command ledger so the measured cold
 consumer footprint includes historical context/slot work before CAS. Every
-actual repeat is charged. Four carry targets reached missing-support red after
-genuine later execution; this source connection awaits focused validation. The
-removal fixtures now explicitly use high-risk destructive approval metadata;
-that strengthened premise was not established by the earlier partial-removal
-red, and later runtime-removal stages were unreached.
+actual repeat is charged. The reviewed carry source passed all 41 selected carry,
+acceptance, current-read and isolation tests, compilation and clean import. The
+removal fixtures explicitly use high-risk destructive approval metadata; this
+green establishes that strengthened premise, which the earlier partial-removal
+red did not. Nonbirth reuse and complete B2 validation remain pending.
 
 All reads and scalar mutation returns share the command ledger. Before CAS,
 generated reader coordinates and PostgreSQL JSON sizes are checked and a fixed

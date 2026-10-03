@@ -9,7 +9,7 @@ from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityImpact, ActivityPlan, NodeTarget, PlannedActivity, RemoveNodeResource,
+    ActivityId, ActivityImpact, ActivityPlan, NodeTarget, PlannedActivity, ReconcileNode, RemoveNodeResource,
     RemoveRuntimeResource, RiskLevel, RuntimeTarget, StartRuntime,
 )
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
@@ -48,15 +48,17 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
     def cleanup_fixture(self):
         self.assertTrue(self.reader.doCleanups(), "nested carry fixture cleanup failed")
 
-    def prepare(self, label, graph_id, operation, *, graph=None):
+    def prepare(self, label, graph_id, operation, *, graph=None, expected_claims=None):
         activity_id = "activity-" + label
         destructive = type(operation) in (RemoveNodeResource, RemoveRuntimeResource)
+        reconcile = type(operation) is ReconcileNode
+        risk = RiskLevel.HIGH if destructive else RiskLevel.MEDIUM if reconcile else RiskLevel.LOW
+        impact = ActivityImpact.DESTRUCTIVE if destructive else ActivityImpact.DISRUPTIVE if reconcile else ActivityImpact.NON_DESTRUCTIVE
         plan = ActivityPlan((PlannedActivity(ActivityId(activity_id), operation,
-            risk=RiskLevel.HIGH if destructive else RiskLevel.LOW,
-            impact=ActivityImpact.DESTRUCTIVE if destructive else ActivityImpact.NON_DESTRUCTIVE),))
+            risk=risk, impact=impact),))
         requirement = ApprovalPolicy().requirement_for(plan)
         self.assertEqual(requirement.destructive, destructive)
-        self.assertIs(requirement.max_risk, RiskLevel.HIGH if destructive else RiskLevel.LOW)
+        self.assertIs(requirement.max_risk, risk)
         self.assertIs(requirement.required_scope,
             PolicyScope.PLAN_APPROVE_DESTRUCTIVE if destructive else PolicyScope.PLAN_APPROVE)
         with self.base.unit_of_work() as uow:
@@ -97,7 +99,8 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
         self.assertEqual(adapter.active_during_calls, [0])
         with self.base.unit_of_work() as uow:
             self.assertIs(uow.stores.execution.get_run("run-" + label).status, ActivityRunStatus.SUCCEEDED)
-        self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
+        self.assertEqual(self.fixture.protective_claims(),
+            self.fixture.claims if expected_claims is None else expected_claims)
         return AdvanceCurrentGraph("workspace-a", "run-" + label, "plan-" + label,
             workspace.current_graph_id, workspace.current_realized_projection_id, workspace.desired_graph_id,
             workspace.desired_realized_projection_id, workspace.desired_graph_revision, engine.authority(), fence,
