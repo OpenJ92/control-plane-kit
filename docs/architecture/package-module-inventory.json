@@ -47,6 +47,7 @@
         "control_plane_kit_operations._configuration_acceptance",
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.records",
         "control_plane_kit_operations.revision_history",
         "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_operations.postgres.activity_history",

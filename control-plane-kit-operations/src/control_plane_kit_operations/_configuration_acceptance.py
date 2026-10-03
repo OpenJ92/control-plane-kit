@@ -33,6 +33,9 @@ class _PreparedAdvancementReceipt:
     action: object = None
 
     def with_records(self, event, action):
+        return self.stores.configuration_acceptance._bind_records(self, event, action)
+
+    def _validate_records(self, event, action):
         from control_plane_kit_operations.revision_history import historical_advancement
         historical_event, historical_action = _history_records(event, action)
         expected = historical_advancement(workspace_id=self.workspace.workspace_id,
@@ -44,9 +47,9 @@ class _PreparedAdvancementReceipt:
             projection_digest=self.desired_projection.projection_digest, events=(historical_event,), actions=(historical_action,))
         if expected["state"] != "accepted":
             raise OperationsRecordError("advancement requires exact original receipt")
-        return replace(self, event=event, action=action)
 
     def require(self, connection, workspace_id, *, after_cas=False):
+        self.stores.configuration_acceptance._require_issued(self)
         if (self.stores.connection is not connection or self.workspace.workspace_id != workspace_id
                 or self.event is None or self.action is None):
             raise OperationsRecordError("advancement requires prepared original owner")
@@ -59,8 +62,7 @@ class _PreparedAdvancementReceipt:
                 or self.stores.execution.get_request(self.request.identity.request_id) != self.request
                 or self.stores.execution.get_run(self.run.run_id) != self.run):
             raise OperationsRecordError("advancement owner truth changed")
-        if self.with_records(self.event, self.action) != self:
-            raise OperationsRecordError("advancement original receipt changed")
+        self._validate_records(self.event, self.action)
 
 
 def _require_prepared_advancement(prepared, connection, workspace_id, *, after_cas=False):

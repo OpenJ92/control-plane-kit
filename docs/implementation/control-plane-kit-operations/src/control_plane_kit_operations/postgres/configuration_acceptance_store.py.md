@@ -27,3 +27,11 @@ run/request/plan/session plus desired graph/projection read. Graph metadata has 
 separate 1 MiB cap alongside descriptor, projection and plan. Reevaluate the
 envelope when this tail grows; nonempty admission and maximum-budget executable
 proof are still pending. Focused Docker validation has not run yet.
+
+The reconstructed-owner causal test exposed missing issuance identity. The store
+now registers exactly one prepared object only after full `_prepare` validation.
+Successful pure pair validation may bind it once, replacing its identity. Private
+mutation checks require that exact issued object plus the existing live UoW/L and
+truth checks. No global registry, public token, durable row or replay mutation is
+added. Closed/rolled-back physical transactions cannot reuse the lifecycle guard.
+The corresponding source correction is pending independent review and validation.

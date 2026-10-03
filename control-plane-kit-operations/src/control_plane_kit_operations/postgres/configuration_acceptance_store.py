@@ -1,5 +1,6 @@
 """Original accepted membership in the advancement owner's transaction."""
 from hashlib import sha256
+from dataclasses import replace
 from functools import wraps
 import json
 
@@ -9,6 +10,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting
 from control_plane_kit_operations.revision_history import historical_advancement
+from control_plane_kit_operations.records import OperationsRecordError
 from .configuration_evidence import _EvidenceRead, _Unavailable, _Capacity
 from .activity_history import PostgresActivityHistoryStore, _action_record
 from .execution import PostgresExecutionStore, _activity_event
@@ -45,6 +47,22 @@ def _closed_evidence(method):
 class ConfigurationAcceptanceStore:
     def __init__(self, connection):
         self._connection = connection
+        self._issued = None
+
+    def _require_issued(self, prepared):
+        if (self._issued is not prepared or prepared.stores.configuration_acceptance is not self
+                or prepared.stores.connection is not self._connection):
+            raise OperationsRecordError("advancement requires owner-issued preparation")
+
+    def _bind_records(self, prepared, event, action):
+        self._require_issued(prepared)
+        if prepared.event is not None or prepared.action is not None:
+            raise OperationsRecordError("advancement original records are already bound")
+        prepared.stores.graphs._require_receiver_lifecycle(prepared.guard, prepared.workspace.workspace_id)
+        prepared._validate_records(event, action)
+        bound = replace(prepared, event=event, action=action)
+        self._issued = bound
+        return bound
 
     def _originals(self, read, action_id, event_id):
         action_names = _ACTION + _LOCATOR + ("advancement_run_id",)
@@ -164,7 +182,10 @@ class ConfigurationAcceptanceStore:
         if (self._zero_projection(plan.base_graph_id, plan.base_realized_projection_id, workspace.workspace_id) != current_projection
                 or self._zero_projection(plan.desired_graph_id, plan.desired_realized_projection_id, workspace.workspace_id) != desired_projection):
             raise _Unavailable
-        return _PreparedAdvancementReceipt(stores, guard, workspace, request, run, plan, current_projection, desired_projection)
+        prepared = _PreparedAdvancementReceipt(stores, guard, workspace, request, run, plan,
+            current_projection, desired_projection)
+        self._issued = prepared
+        return prepared
 
     def _insert(self, prepared):
         workspace_id = prepared.workspace.workspace_id
