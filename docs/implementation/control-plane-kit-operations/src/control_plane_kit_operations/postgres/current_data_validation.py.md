@@ -25,3 +25,17 @@ refs/claims, including exact source commitments and self-rooted birth evidence.
 Missing whole protection sets cannot disappear from verification merely because
 there are no ref rows to enumerate. Reads use bounded pages and never repair,
 backfill or release retained protection.
+
+B2 E7 also verifies every retained original workspace initialization in bounded
+keyset pages, checking its original graph/projection and commitments without
+following today's current pointer. Legacy workspaces are not backfilled. A
+missing receipt cannot establish configuration genesis through the creation
+owner, even when empty-graph metadata appears plausible. The exact schema adds
+the immutable initialization relation; its source and owning proof are pending
+on draft PR #1926.
+
+B2 original acceptance verification scans both original history streams and
+headers independently. Each source is bounded, each receipt uses a closed evidence
+budget, and each workspace's latest paired occurrence must agree with its current
+pointer. Unsupported nonempty membership refuses at this interim checkpoint;
+there is no inferred genesis or header backfill.

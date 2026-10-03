@@ -7,4 +7,11 @@ The first-start owner rederives selected material under the existing lifecycle l
 
 Transport reservations include statements, scalar markers, returned values and relational identities. Failed reads retain their reservation. Caches stay within one UoW; command accounting can span the coordinator and nested start while fresh mutable authority is reread.
 
-B1 source integration is implemented. The full owning Docker gate and independent whole-B1 review remain pending. B2 current-use evidence and provider behavior are outside this module's authority.
+B2 extends the same pure selector with a complete accepted-ref tuple. It compares
+every scope/material field before retaining original allocation IDs; unsupported
+material drift refuses. Without accepted refs, deterministic birth derivation is
+unchanged. The private start value now carries exact direct birth coordinates
+and must be the identical value issued by the active store owner, so a copied or
+caller-constructed provenance value cannot authorize insertion. Initial reuse
+passed concrete review and its focused correction/control gate; complete B2
+hardening and provider behavior remain separate.

@@ -187,7 +187,7 @@ def _writer_call_sequences() -> dict[str, tuple[str, ...]]:
                         key=lambda item: (item.lineno, item.col_offset),
                     )
                 )
-                if "add_action" in calls:
+                if {"add_action", "_add_advancement_action"}.intersection(calls):
                     owner = ".".join((*class_names, node.name))
                     writers[f"{relative}:{owner}"] = calls
 

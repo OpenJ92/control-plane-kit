@@ -430,6 +430,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         *,
         lifecycle=None,
         unit_of_work_factory=None,
+        clock=None,
     ) -> ExecutionCoordinator:
         unit_of_work_factory = unit_of_work_factory or self.unit_of_work
         fold_service = EffectAttemptFoldService(
@@ -450,7 +451,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 _ForbiddenObserver(),
                 fold_service,
             ),
-            clock=lambda: "2026-07-22T13:01:00Z",
+            clock=clock or (lambda: "2026-07-22T13:01:00Z"),
             id_factory=self.ids,
         )
 
@@ -1027,31 +1028,15 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], 0)
 
     def prepare_managed_teardown(self):
-        from tests.managed_teardown_fixture import PROFILE, managed_teardown, seed_owned_ingress
+        from tests.managed_teardown_fixture import managed_teardown, prepare_recorded_managed_origin
         from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval, ApprovalAuthorizationDenied
         from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, RequestPlanExecution, ExecutionAdmissionDenied
         from control_plane_kit_operations.records import ApprovalDecisionKind
-        from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 
         current, desired, plan, products = managed_teardown(self)
-        self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
-            product_document=products[0].descriptor_document, derivation_profile=PROFILE, source_only=True)
+        workspace = prepare_recorded_managed_origin(self, current, desired, plan, products)
         # Source preparation is separate: the following real approval/admission
         # commands own this destructive plan and its explicit denial cases.
-        with self.unit_of_work() as uow:
-            stores = uow.stores
-            stores.workspaces.set_current_graph("workspace-a", "graph-current")
-            workspace = stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
-            for product in products[1:]:
-                stores.registered_products.register(workspace_id="workspace-a", descriptor_document=product.descriptor_document,
-                    source=product.source, imported_by=product.imported_by, imported_at=product.imported_at)
-            stores.runtime_authorities.register(workspace_id="workspace-a", authority_ref=current.runtimes["docker"].authority_ref,
-                runtime_kind=RuntimeKind.DOCKER, authority=LocalDockerSocketAuthority(),
-                admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
-            seed_owned_ingress(stores, current)
-            uow.commit()
-        self.connection.execute("UPDATE cpk_activity_plans SET desired_graph_revision=%s WHERE plan_id='plan-a'",
-                                (workspace.desired_graph_revision,))
         approvals = ApprovalCommandService(self.unit_of_work, clock=lambda: "2026-07-22T12:03:00Z",
             id_factory=Sequence("approval-request-a", "approval-action", "approval-decision-a", "decision-action"))
         approval = approvals.execute(RequestApproval("session-a", "plan-a", "operator-a",

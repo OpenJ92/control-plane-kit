@@ -1602,3 +1602,141 @@ ALTER TABLE cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_
     FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
     REFERENCES cpk_configuration_claims(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED;
 CREATE INDEX cpk_configuration_claims_protecting ON cpk_configuration_claims(workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id);
+
+CREATE TABLE cpk_workspace_initializations (
+    workspace_id text NOT NULL,
+    profile text NOT NULL,
+    initial_graph_id text NOT NULL,
+    initial_projection_id text NOT NULL,
+    graph_descriptor_sha256 text NOT NULL,
+    projection_digest text NOT NULL,
+    configuration_slot_count integer NOT NULL,
+    created_by text NOT NULL,
+    creation_idempotency_key text NOT NULL,
+    CONSTRAINT cpk_workspace_initializations_pkey PRIMARY KEY (workspace_id),
+    CONSTRAINT cpk_workspace_initializations_profile_check CHECK (profile = 'workspace-initialization.v1'),
+    CONSTRAINT cpk_workspace_initializations_graph_digest_check CHECK (graph_descriptor_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_workspace_initializations_projection_digest_check CHECK (projection_digest ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_workspace_initializations_empty_check CHECK (configuration_slot_count = 0),
+    CONSTRAINT cpk_workspace_initializations_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id),
+    CONSTRAINT cpk_workspace_initializations_graph_fk FOREIGN KEY (workspace_id, initial_graph_id)
+        REFERENCES cpk_graph_versions(workspace_id, graph_id),
+    CONSTRAINT cpk_workspace_initializations_projection_fk FOREIGN KEY (initial_projection_id, workspace_id)
+        REFERENCES cpk_realized_graph_projections(projection_id, workspace_id),
+    CONSTRAINT cpk_workspace_initializations_projection_source_fk FOREIGN KEY (initial_projection_id, initial_graph_id)
+        REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id)
+);
+
+ALTER TABLE ONLY cpk_activity_plans ADD CONSTRAINT cpk_plan_revision_identity UNIQUE (plan_id, desired_graph_revision);
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_workspace_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_request_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_plan_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_run_id text;
+
+ALTER TABLE ONLY cpk_operation_actions ADD COLUMN advancement_revision bigint;
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_locator CHECK ((((action_type = 'advance-current-graph'::text) AND (advancement_workspace_id IS NOT NULL) AND (advancement_request_id IS NOT NULL) AND (advancement_plan_id IS NOT NULL) AND (advancement_run_id IS NOT NULL) AND (advancement_revision IS NOT NULL) AND (advancement_revision >= 0)) OR ((action_type <> 'advance-current-graph'::text) AND (advancement_workspace_id IS NULL) AND (advancement_request_id IS NULL) AND (advancement_plan_id IS NULL) AND (advancement_run_id IS NULL) AND (advancement_revision IS NULL))));
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_run_fk FOREIGN KEY (advancement_run_id, advancement_request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_request_plan_fk FOREIGN KEY (advancement_request_id, advancement_plan_id) REFERENCES cpk_execution_requests(request_id, plan_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_request_workspace_fk FOREIGN KEY (advancement_request_id, advancement_workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_plan_session_fk FOREIGN KEY (advancement_plan_id, session_id) REFERENCES cpk_activity_plans(plan_id, session_id);
+
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_action_advancement_revision_fk FOREIGN KEY (advancement_plan_id, advancement_revision) REFERENCES cpk_activity_plans(plan_id, desired_graph_revision);
+
+CREATE INDEX cpk_action_advancement_workspace_revision ON cpk_operation_actions USING btree (advancement_workspace_id, advancement_revision DESC, action_id) WHERE (action_type = 'advance-current-graph'::text);
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_workspace_id text;
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_request_id text;
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_plan_id text;
+
+ALTER TABLE ONLY cpk_activity_events ADD COLUMN advancement_revision bigint;
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_locator CHECK ((((event_type = 'current_graph_advanced'::text) AND (advancement_workspace_id IS NOT NULL) AND (advancement_request_id IS NOT NULL) AND (advancement_plan_id IS NOT NULL) AND (advancement_revision IS NOT NULL) AND (advancement_revision >= 0)) OR ((event_type <> 'current_graph_advanced'::text) AND (advancement_workspace_id IS NULL) AND (advancement_request_id IS NULL) AND (advancement_plan_id IS NULL) AND (advancement_revision IS NULL))));
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_run_fk FOREIGN KEY (run_id, advancement_request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_request_plan_fk FOREIGN KEY (advancement_request_id, advancement_plan_id) REFERENCES cpk_execution_requests(request_id, plan_id);
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_request_workspace_fk FOREIGN KEY (advancement_request_id, advancement_workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_activity_events ADD CONSTRAINT cpk_event_advancement_revision_fk FOREIGN KEY (advancement_plan_id, advancement_revision) REFERENCES cpk_activity_plans(plan_id, desired_graph_revision);
+
+CREATE INDEX cpk_event_advancement_workspace_revision ON cpk_activity_events USING btree (advancement_workspace_id, advancement_revision DESC, event_id) WHERE (event_type = 'current_graph_advanced'::text);
+
+CREATE TABLE cpk_configuration_acceptances (
+    workspace_id text NOT NULL,
+    pinned_revision bigint NOT NULL,
+    graph_id text NOT NULL,
+    projection_id text NOT NULL,
+    projection_digest text NOT NULL,
+    action_id text NOT NULL,
+    event_id text NOT NULL,
+    run_id text NOT NULL,
+    request_id text NOT NULL,
+    plan_id text NOT NULL,
+    slot_count integer NOT NULL,
+    slot_digest text NOT NULL
+);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_pkey PRIMARY KEY (workspace_id, pinned_revision);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_action_key UNIQUE (action_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_event_key UNIQUE (event_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_revision_check CHECK ((pinned_revision >= 0));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_count_check CHECK (((slot_count >= 0) AND (slot_count <= 256)));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_slot_digest_check CHECK ((slot_digest ~ '^[0-9a-f]{64}$'::text));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_projection_digest_check CHECK ((projection_digest ~ '^[0-9a-f]{64}$'::text));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_action_fk FOREIGN KEY (action_id) REFERENCES cpk_operation_actions(action_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_event_fk FOREIGN KEY (event_id) REFERENCES cpk_activity_events(event_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_projection_workspace_fk FOREIGN KEY (projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_projection_source_fk FOREIGN KEY (projection_id, graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
+
+CREATE TABLE cpk_configuration_accepted_slots (
+    workspace_id text NOT NULL,
+    pinned_revision bigint NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    artifact_id text NOT NULL,
+    source_run_id text NOT NULL,
+    source_activity_id text NOT NULL,
+    source_attempt integer NOT NULL,
+    source_artifact_id text NOT NULL,
+    birth_run_id text NOT NULL,
+    birth_activity_id text NOT NULL,
+    birth_attempt integer NOT NULL,
+    birth_artifact_id text NOT NULL,
+    full_ref_digest text NOT NULL
+);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_pkey PRIMARY KEY (workspace_id, pinned_revision, runtime_id, node_id, artifact_id);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_digest_check CHECK ((full_ref_digest ~ '^[0-9a-f]{64}$'::text));
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_acceptance_fk FOREIGN KEY (workspace_id, pinned_revision) REFERENCES cpk_configuration_acceptances(workspace_id, pinned_revision);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_source_fk FOREIGN KEY (source_run_id, source_activity_id, source_attempt, source_artifact_id) REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_birth_fk FOREIGN KEY (birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id) REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id);
+
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_outcome_fk FOREIGN KEY (source_run_id, source_activity_id, source_attempt) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt);
+
+CREATE INDEX cpk_configuration_slots_inverse ON cpk_configuration_accepted_slots USING btree (workspace_id, pinned_revision, full_ref_digest);

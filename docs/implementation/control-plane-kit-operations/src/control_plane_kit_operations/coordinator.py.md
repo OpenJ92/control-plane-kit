@@ -127,3 +127,16 @@ history fixture therefore reloads each selected activity through the same
 material owner and translator in one shared accounting scope and UoW. Its
 canonical graph also registers its declared runtime through the real owner.
 These are test premises, not configuration allocation, provider or health proof.
+
+B2 constructs the selected Start/Reconcile configuration proposal while the
+optimistic context UoW is open, before fingerprinting. The context retains only
+the immutable intent. The first-start owner invokes the same selection again
+with fresh evidence under the existing lifecycle lock, and refuses complete
+intent/fingerprint drift. Original replay remains first and catalog-free;
+unrelated operation translation keeps its existing execution path. This reuse
+connection awaits concrete review and focused validation. Unsupported, failed,
+uncertain and non-running contexts retain their existing classification before
+proposal selection. The corrected regression pairs real uncertainty with
+independently ready configuration work; after real failure Core blocks the
+pending work, so that subcase protects disposition only. Both forbid fresh
+proposal selection while checking public status and unchanged protection.

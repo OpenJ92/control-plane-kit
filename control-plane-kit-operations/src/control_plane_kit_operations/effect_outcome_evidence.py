@@ -737,6 +737,105 @@ class NativeConnectionEffectOutcome(_EffectOutcomeValue):
 EffectAttemptOutcome = ExecutionEffectOutcome | ObservedEffectOutcome | NativeConnectionEffectOutcome
 
 
+def _require_correlated_outcome(workspace_id, outcome, attempt_value):
+    """Validate complete result and original/direct history, independently of projection memberships."""
+    valid = (
+        workspace_id.__class__ is str
+        and workspace_id
+        and not workspace_id[512:]
+        and outcome.__class__
+        in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
+        and outcome._admitted
+    )
+    for character in workspace_id if valid else ():
+        if character < " " or "\ud800" <= character <= "\udfff":
+            valid = False
+
+    attempt = None
+    if valid:
+        attempt = _validated_attempt(attempt_value, _OutcomeError.RECORD)
+        state = attempt.state
+        original = attempt.original_start_event
+        latest = attempt.latest_transition_event
+        valid = (
+            state.identity == outcome.identity
+            and state.request_fingerprint == outcome.request_fingerprint
+            and state.status is outcome.status
+            and state.outcome_fingerprint == outcome.outcome_fingerprint
+            and state.recovery_decision is None
+            and original.event_id == outcome.effect_id
+            and original.event_id != latest.event_id
+            and original.run_id == state.identity.run_id.value
+            and latest.run_id == state.identity.run_id.value
+            and original.activity_id == state.identity.activity_id
+            and latest.activity_id == state.identity.activity_id
+            and 1 <= original.ordinal < latest.ordinal <= 2_147_483_647
+            and original.failure is None
+            and original.recovery is None
+            and latest.recovery is None
+        )
+
+    if valid:
+        start_kind = original.kind.value
+        compensation = start_kind == "step_compensation_started"
+        native = outcome.__class__ is NativeConnectionEffectOutcome
+        if native:
+            expected_start = "step_started" if state.identity.attempt == 1 else "step_observation_restarted"
+            valid = start_kind == expected_start and outcome.accepted_at == latest.occurred_at
+        else:
+            valid = (start_kind in ("step_started", "step_compensation_started")
+                or (start_kind == "step_observation_restarted"
+                    and outcome.__class__ is ExecutionEffectOutcome
+                    and outcome.status in (EffectAttemptStatus.UNSUPPORTED, EffectAttemptStatus.UNCERTAIN)
+                    and not outcome.endpoint_observations))
+        expected_latest_kind = (
+            "step_compensation_" if compensation else "step_"
+        ) + outcome.status.value
+        if native and outcome.status is EffectAttemptStatus.NOT_READY:
+            expected_latest_kind = "step_observation_not_ready"
+        valid = valid and latest.kind.value == expected_latest_kind
+
+    if valid:
+        for value in (
+            original.event_id,
+            latest.event_id,
+            original.run_id,
+            latest.run_id,
+            original.occurred_at,
+            latest.occurred_at,
+            original.activity_id,
+            latest.activity_id,
+        ):
+            if value.__class__ is not str or not value or value[512:]:
+                valid = False
+                break
+            for character in value:
+                if character < " " or "\ud800" <= character <= "\udfff":
+                    valid = False
+                    break
+            if not valid:
+                break
+
+    if valid:
+        failure = latest.failure
+        row = outcome.failure_row
+        if row is None:
+            valid = failure is None
+        else:
+            current_failure = effect_outcome_failure(outcome)
+            legacy_failure = _legacy_effect_outcome_failure(outcome)
+            valid = (
+                failure.__class__ is FailureEvidence
+                and failure.details.__class__ is BoundedEvidence
+                and failure.details.canonical_json.__class__ is str
+                and failure in (current_failure, legacy_failure)
+            )
+
+    if not valid:
+        _OutcomeError.RECORD.raised
+    return attempt
+
+
 @dataclass(frozen=True)
 class EffectAttemptOutcomeRecord:
     """A direct outcome bound to its exact historical attempt snapshot."""
@@ -747,98 +846,9 @@ class EffectAttemptOutcomeRecord:
     endpoint_observations: tuple[ObservationRecord, ...] = field(repr=False)
 
     def __post_init__(self) -> None:
-        valid = (
-            self.workspace_id.__class__ is str
-            and self.workspace_id
-            and not self.workspace_id[512:]
-            and self.outcome.__class__
-            in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
-            and self.outcome._admitted
-            and self.endpoint_observations.__class__ is tuple
-        )
-        for character in self.workspace_id if valid else ():
-            if character < " " or "\ud800" <= character <= "\udfff":
-                valid = False
-
-        attempt = None
-        if valid:
-            attempt = _validated_attempt(self.attempt, _OutcomeError.RECORD)
-            state = attempt.state
-            original = attempt.original_start_event
-            latest = attempt.latest_transition_event
-            valid = (
-                state.identity == self.outcome.identity
-                and state.request_fingerprint == self.outcome.request_fingerprint
-                and state.status is self.outcome.status
-                and state.outcome_fingerprint == self.outcome.outcome_fingerprint
-                and state.recovery_decision is None
-                and original.event_id == self.outcome.effect_id
-                and original.event_id != latest.event_id
-                and original.run_id == state.identity.run_id.value
-                and latest.run_id == state.identity.run_id.value
-                and original.activity_id == state.identity.activity_id
-                and latest.activity_id == state.identity.activity_id
-                and 1 <= original.ordinal < latest.ordinal <= 2_147_483_647
-                and original.failure is None
-                and original.recovery is None
-                and latest.recovery is None
-            )
-
-        if valid:
-            start_kind = original.kind.value
-            compensation = start_kind == "step_compensation_started"
-            native = self.outcome.__class__ is NativeConnectionEffectOutcome
-            if native:
-                expected_start = "step_started" if state.identity.attempt == 1 else "step_observation_restarted"
-                valid = start_kind == expected_start and self.outcome.accepted_at == latest.occurred_at
-            else:
-                valid = (start_kind in ("step_started", "step_compensation_started")
-                    or (start_kind == "step_observation_restarted"
-                        and self.outcome.__class__ is ExecutionEffectOutcome
-                        and self.outcome.status in (EffectAttemptStatus.UNSUPPORTED, EffectAttemptStatus.UNCERTAIN)
-                        and not self.outcome.endpoint_observations))
-            expected_latest_kind = (
-                "step_compensation_" if compensation else "step_"
-            ) + self.outcome.status.value
-            if native and self.outcome.status is EffectAttemptStatus.NOT_READY:
-                expected_latest_kind = "step_observation_not_ready"
-            valid = valid and latest.kind.value == expected_latest_kind
-
-        if valid:
-            for value in (
-                original.event_id,
-                latest.event_id,
-                original.run_id,
-                latest.run_id,
-                original.occurred_at,
-                latest.occurred_at,
-                original.activity_id,
-                latest.activity_id,
-            ):
-                if value.__class__ is not str or not value or value[512:]:
-                    valid = False
-                    break
-                for character in value:
-                    if character < " " or "\ud800" <= character <= "\udfff":
-                        valid = False
-                        break
-                if not valid:
-                    break
-
-        if valid:
-            failure = latest.failure
-            row = self.outcome.failure_row
-            if row is None:
-                valid = failure is None
-            else:
-                current_failure = effect_outcome_failure(self.outcome)
-                legacy_failure = _legacy_effect_outcome_failure(self.outcome)
-                valid = (
-                    failure.__class__ is FailureEvidence
-                    and failure.details.__class__ is BoundedEvidence
-                    and failure.details.canonical_json.__class__ is str
-                    and failure in (current_failure, legacy_failure)
-                )
+        attempt = _require_correlated_outcome(self.workspace_id, self.outcome, self.attempt)
+        latest = attempt.latest_transition_event
+        valid = self.endpoint_observations.__class__ is tuple
 
         if valid:
             endpoints = self.outcome.endpoint_observations

@@ -2,6 +2,81 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations._configuration_acceptance",
+      "destination": "control_plane_kit_operations._configuration_acceptance",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_acceptance.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations._temporal",
+        "control_plane_kit_operations.revision_history"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_acceptance.py",
+        "tests/test_current_schema_installation.py"
+      ],
+      "motivation": "Transaction-bound original advancement preparation and complete paired payload validation."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_acceptance_store",
+      "destination": "control_plane_kit_operations.postgres.configuration_acceptance_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_acceptance_store.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations._configuration_acceptance",
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.postgres.configuration_preparation_store",
+        "control_plane_kit_operations.postgres.effect_outcome_store",
+        "control_plane_kit_operations.configuration_preparation"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_acceptance.py",
+        "tests/test_current_schema_installation.py",
+        "tests/test_postgres_configuration_acceptance_membership.py",
+        "tests/test_configuration_acceptance_preflight.py",
+        "tests/test_postgres_configuration_concurrency.py",
+        "tests/test_postgres_configuration_capacity_boundary.py",
+        "tests/test_postgres_configuration_current_reads.py",
+        "tests/test_postgres_configuration_carry.py",
+        "tests/test_postgres_configuration_reuse.py"
+      ],
+      "motivation": "Bounded original receipt discovery, complete new-node, carried and reused membership, current-row verification and read-only current-use evidence."
+    },
+    {
       "module": "control_plane_kit_operations.configuration_preparation",
       "destination": "control_plane_kit_operations.configuration_preparation",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_preparation.py",
@@ -20,6 +95,8 @@
         "ConfigurationSourceEvidence",
         "ConfigurationRefEvidence",
         "ConfigurationAllocationEvidence",
+        "ConfigurationAcceptedBinding",
+        "ConfigurationCurrentEvidence",
         "configuration_evidence_capacity",
         "configuration_preparation_capacity"
       ],
@@ -37,9 +114,12 @@
       "optional_external_dependencies": [],
       "protecting_tests": [
         "tests/test_postgres_configuration_preparation.py",
+        "tests/test_postgres_configuration_genesis.py",
+        "tests/test_postgres_configuration_capacity_boundary.py",
         "tests/test_postgres_configuration_evidence.py",
         "tests/test_postgres_configuration_material_boundary.py",
-        "tests/test_configuration_preparation_capacity.py"
+        "tests/test_configuration_preparation_capacity.py",
+        "tests/test_postgres_configuration_current_reads.py"
       ],
       "motivation": "Closed provenance evidence and capacity values; complete evidence never grants reuse or release authority."
     },
@@ -73,7 +153,7 @@
         "tests/test_postgres_configuration_material_boundary.py",
         "tests/test_configuration_preparation_capacity.py"
       ],
-      "motivation": "Private first-start preparation guard, deterministic proposal construction and one logical command's accounting scope."
+      "motivation": "Store-issued first-start preparation with direct birth links, shared pure birth/reuse proposal and one logical command's accounting scope."
     },
     {
       "module": "control_plane_kit_operations.postgres.configuration_evidence",
@@ -152,6 +232,9 @@
       "internal_dependencies": [
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.configuration_preparation",
         "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_operations.postgres.configuration_source",
@@ -169,7 +252,7 @@
         "tests/test_postgres_configuration_material_boundary.py",
         "tests/test_configuration_preparation_capacity.py"
       ],
-      "motivation": "Own original configuration refs and protective claims inside the existing first-start transaction."
+      "motivation": "Own original configuration refs, bounded complete node-history protection, distinct births after accepted departure and current-only reuse inside the existing first-start transaction."
     },
     {
       "module": "control_plane_kit_core.configuration_instances",
@@ -10460,7 +10543,8 @@
         "control_plane_kit_operations.postgres.observed_state",
         "control_plane_kit_operations.postgres.schema",
         "control_plane_kit_operations.records",
-        "control_plane_kit_operations.runtime_management_targets"
+        "control_plane_kit_operations.runtime_management_targets",
+        "control_plane_kit_operations.postgres.configuration_evidence"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
@@ -10479,7 +10563,8 @@
         "tests/test_postgres_effect_outcome_store_contract.py",
         "tests/test_postgres_effect_outcome_store.py",
         "tests/test_postgres_effect_outcome_schema.py",
-        "tests/test_postgres_native_connection_fold.py"
+        "tests/test_postgres_native_connection_fold.py",
+        "tests/test_postgres_configuration_acceptance_membership.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -11943,10 +12028,15 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations._configuration_acceptance",
+        "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.topology",
         "control_plane_kit_core.types",
         "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.workspaces",
+        "control_plane_kit_operations.workflows",
         "control_plane_kit_operations.receiver_lifecycle",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.postgres.activity_history",
@@ -11958,6 +12048,7 @@
       "optional_external_dependencies": ["psycopg"],
       "motivation": "Existing workspace/graph/projection persistence; C2 public single-record writes refuse receiver-affecting changes while private primitives support complete semantic transactions and original introducing-action checks. Does not import execution history or grant receiver acceptance.",
       "protecting_tests": [
+        "tests/test_postgres_workspace_initialization.py",
         "tests/test_workspace_graph_stores.py",
         "tests/test_realized_graph_projection_store.py",
         "tests/test_receiver_admission_boundaries.py"
@@ -11987,7 +12078,8 @@
         "control_plane_kit_operations.postgres.activity_history",
         "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.revision_history",
-        "control_plane_kit_operations.receiver_lifecycle"
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations._configuration_acceptance"
       ],
       "known_package_consumers": ["control_plane_kit_operations.postgres.stores"],
       "optional_external_dependencies": [],

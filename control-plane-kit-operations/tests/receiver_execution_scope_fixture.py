@@ -56,8 +56,8 @@ class ReceiverExecutionScopeFixture:
     product_graph = admission_tests.ExecutionAdmissionTests.product_graph
     empty_graph = admission_tests.ExecutionAdmissionTests.empty_graph
 
-    def setUp(self):
-        admission_tests.ExecutionAdmissionTests.setUp(self)
+    def setUp(self, *, accepted_origin=None):
+        admission_tests.ExecutionAdmissionTests.setUp(self, accepted_origin=accepted_origin)
         # The scope default describes node work only. The inherited structural
         # example also reconciles its runtime and remains separate stored truth.
         self.seed_plan_truth(plan_id="scope-plan-a", approval_request_id="scope-approval-a",
@@ -244,3 +244,10 @@ class ReceiverExecutionScopeFixture:
             guard = uow.stores.graphs.lock_receiver_lifecycle(workspace)
             evidence = uow.stores.execution.receiver_scope_evidence(workspace, tuple(scopes), guard)
         return module.classify_receiver_scope_evidence(evidence)
+
+
+class ReceiverAcceptedExecutionScopeFixture(ReceiverExecutionScopeFixture):
+    """Opt-in for laws that actually accept a run from the bare runtime."""
+
+    def setUp(self):
+        super().setUp(accepted_origin="runtime")

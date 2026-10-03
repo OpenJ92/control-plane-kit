@@ -50,3 +50,39 @@ charge both identities; optional original draft-revision witnesses also consume
 the command budget. The existing pure action-attribution validator still owns
 correctness, and budget exhaustion refuses rather than loading an uncharged
 fallback. No lifecycle permission or mutable authority is cached across UoWs.
+
+B2 E7 adds original workspace initialization to this existing store owner.
+Private creation/graph/pointer/receipt helpers require the same prepared creation
+and live lifecycle guard. The existing pointer helper supplies the sole identity
+projection. The immutable receipt is checked against the exact original empty
+graph, projection, creator and idempotency metadata, with bounded point reads;
+replay verification does not require today's current pointer to remain initial.
+No helper commits, adopts metadata as origin, backfills a missing receipt or
+grants accepted configuration membership. The focused owning gate at bf8d8b64
+passes nine initialization and nine schema targets, compile and clean import;
+broader E7/B2 validation remains pending on #1924.
+
+The E7 command evidence scope roots/joins the existing ledger before the initial
+workspace lookup. It covers guarded creation writes as scalar returns, lifecycle
+checks, original receipt and response reads. Identity projection discovery and
+conflict lookup use bounded owner reads. Under that ledger, projection INSERT
+reserves only its bounded ID return, then retrieves the complete immutable row
+through the existing bounded getter; zero-row conflicts retain statement cost.
+Standalone roots are used only outside an active command, such as current-data
+verification. The review-found metadata transport and missing-ledger defects
+have focused causal-red evidence and pass their unchanged assertions in that
+green gate. The E1/E2 accounting source now charges and bounds explicit-projection
+selection. Active current CAS reserves a scalar return and then retrieves the
+complete workspace through its bounded getter; misses still consume statement
+cost. These advancement changes await their focused gate and prepared-owner
+integration before acceptance.
+
+B2 private current CAS requires the same live prepared original advancement
+owner as the paired history writers. Every source/destination graph, projection
+and pinned revision must match preparation before the existing conditional update.
+The owning UoW rolls back CAS if history or acceptance preflight fails.
+
+The no-prepared legacy current setter/CAS retains its material-only behavior for
+receiver-free, configuration-free graphs. It validates both authored and realized
+material under the existing lifecycle guard and creates no acceptance authority.
+Desired-only material writes retain their prior contract.

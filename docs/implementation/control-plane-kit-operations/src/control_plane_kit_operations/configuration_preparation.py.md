@@ -7,4 +7,11 @@ The first-start owner rederives selected material under the existing lifecycle l
 
 Transport reservations include statements, scalar markers, returned values and relational identities. Failed reads retain their reservation. Caches stay within one UoW; command accounting can span the coordinator and nested start while fresh mutable authority is reread.
 
-B1 source integration is implemented. The full owning Docker gate and independent whole-B1 review remain pending. B2 current-use evidence and provider behavior are outside this module's authority.
+B1 provenance is integrated. B2 adds `ConfigurationAcceptedBinding` and
+`ConfigurationCurrentEvidence`: immutable observations of complete current
+membership and requested direct source/birth proofs. The manifest count may
+exceed returned bindings for a narrowed request. Non-complete states contain no
+partial coordinates or proofs. These values confer no mutation or cleanup
+authority. The first public-read focused gate passed all 38 selected tests plus
+compilation/import; complete B2 validation remains pending. Provider behavior
+remains outside this module's authority.

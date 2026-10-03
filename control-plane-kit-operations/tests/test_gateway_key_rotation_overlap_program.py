@@ -65,6 +65,9 @@ class GatewayKeyRotationOverlapPreparationTests(
     def reset_truth(self) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.seed_graph_and_keys()
+        self._origin_counts = {table: self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in ("cpk_activity_events", "cpk_activity_plans", "cpk_activity_runs",
+                "cpk_execution_requests", "cpk_observations", "cpk_operation_sessions")}
         self.seed_rotation_approval()
 
     def unit_of_work(self) -> PostgresUnitOfWork:
@@ -323,7 +326,8 @@ class GatewayKeyRotationOverlapPreparationTests(
         }
         if table not in allowed:
             raise AssertionError("test table is not allowlisted")
-        return self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        # Exact child delta; retain the independently accepted bootstrap history.
+        return self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0] - self._origin_counts[table]
 
     def _child_counts(self) -> tuple[int, ...]:
         return tuple(

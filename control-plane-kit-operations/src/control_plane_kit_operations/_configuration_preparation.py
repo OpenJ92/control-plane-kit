@@ -56,6 +56,7 @@ class _PreparedConfigurationStart:
     guard: object
     identity: object
     intent: object
+    births: tuple
 
 
 def _require_prepared(value, connection, identity, intent):
@@ -64,6 +65,7 @@ def _require_prepared(value, connection, identity, intent):
             or value.identity != identity or value.intent != intent):
         raise OperationsRecordError("configuration start requires owner preparation")
     value.stores.graphs._require_receiver_lifecycle(value.guard, intent.source.workspace_id)
+    value.stores.configuration_preparation._require_issued(value)
 
 
 def _require_prepared_intent(value, connection, identity, intent):
@@ -71,7 +73,7 @@ def _require_prepared_intent(value, connection, identity, intent):
         _require_prepared(value, connection, identity, intent)
 
 
-def _propose_configuration(identity, intent):
+def _propose_configuration(identity, intent, accepted_refs=None):
     if (type(intent.operation) not in (StartNode, ReconcileNode)
             or not any(material.product.runtime_contract.configuration_artifacts for material in intent.products)):
         return intent
@@ -81,7 +83,13 @@ def _propose_configuration(identity, intent):
         for material in intent.products for artifact in material.product.runtime_contract.configuration_artifacts)
     # Derive each slot before constructing the selection: placeholder allocation
     # IDs are intentionally not a valid multi-slot ordinary selection.
-    selected = tuple(_birth_selection(identity, ConfigurationInstanceSelection((ref,))).instances[0]
-        for ref in refs)
+    if accepted_refs is None:
+        selected = tuple(_birth_selection(identity, ConfigurationInstanceSelection((ref,))).instances[0]
+            for ref in refs)
+    else:
+        selected = ConfigurationInstanceSelection(accepted_refs).instances
+        material = lambda ref: replace(ref, allocation_id="proposal")
+        if tuple(map(material, selected)) != tuple(sorted(refs, key=lambda ref: ref.artifact_id)):
+            raise OperationsRecordError("accepted configuration material is unavailable")
     return replace(intent, kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
         configuration_instances=ConfigurationInstanceSelection(selected))

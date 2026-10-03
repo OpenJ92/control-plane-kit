@@ -31,3 +31,24 @@ six indexes for immutable configuration protection. The current totals are
 46 relations, 580 columns, 458 constraints and 153 indexes, including 115 foreign
 keys. The SQL, contract hashes, table atlas and schema tests move together;
 these counts do not authorize migration or reset of a retained namespace.
+
+B2 E7 adds the original workspace-initialization leaf: one relation, nine
+columns, nine constraints (including four restrictive foreign keys) and one
+primary index. Prospective totals are 47 relations, 589 columns, 467 constraints,
+154 indexes and 119 foreign keys. The exact literal/SQL and owning assertions
+move together. Literal metadata hashing is source authoring only; independent
+owning Docker catalog/hash verification remains pending on draft PR #1926.
+
+The E1/E2 typed-original and acceptance schema adds two relations, 35 columns,
+29 constraints and eight indexes. Prospective totals are 49 relations, 624
+columns, 496 constraints, 162 indexes and 136 foreign keys. Both fixed hashes and
+metadata assertions move with the literal. This checkpoint remains unvalidated
+until the owning PostgreSQL catalog and static-law tests run.
+
+The first owning run exposed a literal-ordering defect: the verifier compares
+ordered arrays, while the new entries were initially prepended. The correction
+orders relations by name, columns by relation and physical SQL position, and
+constraints/indexes by relation and name. Counts and SQL are unchanged; the
+literal fingerprint and expected table atlas move with that source correction.
+The failed run provides no database-backed behavior credit. A focused rerun is
+required to establish actual catalog equality and detect any further mismatch.

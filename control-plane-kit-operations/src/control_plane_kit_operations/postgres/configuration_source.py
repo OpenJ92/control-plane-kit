@@ -133,6 +133,8 @@ def read_source(connection, identity, exact_ref, *, read=None):
     key = ("cpk_effect_attempt_intents", identity)
     try:
         if key not in read.sources:
+            if sum(item[0] == "cpk_effect_attempt_intents" for item in read.sources) >= 512:
+                raise _Capacity
             # A savepoint contains malformed UTF8/JSON without poisoning the
             # caller's read transaction. Its SQL overhead is explicitly charged.
             read.query("SAVEPOINT cpk_configuration_source_read", (), records=0, octets=0, cells=0)

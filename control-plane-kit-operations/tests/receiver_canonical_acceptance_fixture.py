@@ -9,7 +9,7 @@ from control_plane_kit_core.products import (
     ProductIdentity, ProductRuntimeContract, ProviderRuntimePort,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, validate_graph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations.approvals import ApprovalCommandService, DecideApproval, RequestApproval
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService
 from control_plane_kit_operations.deployment_transitions import Deploy
@@ -17,7 +17,7 @@ from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, 
 from control_plane_kit_operations.planning import ActivityPlanningCommandService, RequestActivityPlan
 from control_plane_kit_operations.postgres.temporal import decode_postgres_timestamp
 from control_plane_kit_operations.products import InlineDescriptorSource
-from control_plane_kit_operations.records import ApprovalDecisionKind, GraphVersionRecord
+from control_plane_kit_operations.records import ApprovalDecisionKind
 from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from control_plane_kit_operations.lifecycle import CompleteActivityRun
@@ -32,7 +32,7 @@ from tests.test_execution_admission import Sequence
 
 class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
     def setUp(self):
-        super().setUp()
+        super().setUp(accepted_origin="empty")
         graph, _, _, products = managed_teardown(self)
         receiver_node = self.receiver_graph(node_id="api")[0].node("api")
         product = ContainerServerProduct(ProductIdentity("test", "receiver-api", 1),
@@ -61,13 +61,8 @@ class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
                 "product_descriptor_digest": registered.reference.descriptor_sha256.value})
             self.canonical_receiver_graph = replace(graph, nodes={**graph.nodes, "api": receiver_node})
             validate_graph(self.canonical_receiver_graph).require_valid()
-            # Before any receiver introduction, establish structurally empty
-            # current truth. This is not the target current pointer or acceptance.
-            empty = GraphVersionRecord.from_graph(graph_id="canonical-empty",
-                workspace_id="workspace-a", version=uow.stores.graphs.next_version_for_workspace("workspace-a"),
-                graph=DeploymentGraph("empty"), created_by="operator-a", created_at=self.now())
-            uow.stores.graphs.save(empty)
-            uow.stores.workspaces.set_current_graph("workspace-a", empty.graph_id)
+            # Keep the actual WorkspaceCommandService empty origin and receipt.
+            # Receiver acceptance itself is still produced by real advancement.
             seed_owned_ingress(uow.stores, self.canonical_receiver_graph)
             uow.commit()
 

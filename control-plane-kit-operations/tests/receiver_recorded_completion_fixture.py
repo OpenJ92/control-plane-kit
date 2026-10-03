@@ -1,9 +1,9 @@
 """Assumed completion inputs for advancement; no upstream health/provider proof.
 
-This composer uses existing typed records/folds in the canonical plan's own
-order. It does not implement scheduling, authorization, health preparation,
-dispatch, acceptance, or retirement. Its records are synthetic premises for
-the advancement/C1 consumer contracts, per #1904 comment 5904298267.
+Native/health records are synthetic premises for the advancement/C1 consumer
+contracts, per #1904 comment 5904298267. Configured node installation uses real
+B1 preparation/start/fold owners with a simulated success. Neither establishes
+provider effects or successor health; acceptance remains the real owner's job.
 """
 
 from control_plane_kit_core.operations import (
@@ -12,10 +12,16 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.planning import (
     AddSocketConnection, AllocatePublicIngress, RemovePublicIngress,
-    RemoveSocketConnection, SwitchSocketConnection,
+    RemoveSocketConnection, SwitchSocketConnection, StartNode, ReconcileNode,
 )
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+from control_plane_kit_operations.coordinator import ExecuteActivityRun
+from control_plane_kit_operations.effect_attempt_start import StartEffectAttempt
+from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
+from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
+from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
 from control_plane_kit_operations.effect_attempts import (
     EffectAttemptEventEvidence, EffectAttemptRecord, effect_attempt_state_fingerprint,
@@ -30,6 +36,8 @@ from control_plane_kit_operations._configuration_preparation import _configurati
 from control_plane_kit_operations.records import ActivityEventRecord, BoundedEvidence
 from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_material
 from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
+from control_plane_kit_operations.workflows import IdempotencyKey
+from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
 
 
 LEGACY_EVENT_ONLY = (AddSocketConnection, SwitchSocketConnection, RemoveSocketConnection,
@@ -39,6 +47,45 @@ LEGACY_EVENT_ONLY = (AddSocketConnection, SwitchSocketConnection, RemoveSocketCo
 def retain_completion_inputs(case, context, *, activities=None):
     """Retain only the selected prefix/all of the plan, never target current truth."""
     selected = context.plan.activities if activities is None else activities
+    desired = DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
+    for activity in selected:
+        if (type(activity.operation) in (StartNode, ReconcileNode)
+                and desired.node(activity.operation.target.node_id).configuration_artifacts):
+            # Each preceding recorded activity has committed before the real
+            # start owner reads readiness and prepares its immutable refs/claims.
+            _install_configuration_premise(case, context, activity)
+        else:
+            _retain_recorded_completion_inputs(case, context, (activity,))
+
+
+def _install_configuration_premise(case, context, activity):
+    from tests.receiver_fresh_execution_fixture import load_execution_context
+    suffix = context.run.run_id + "-" + activity.activity_id.value
+    command = ExecuteActivityRun(context.run.run_id, context.authority, context.fence,
+        IdempotencyKey("premise-configuration"), max_effects=1)
+    actual = load_execution_context(
+        case.coordinator(case.unit_of_work, RecordingRuntimeAdapter(), suffix), command)
+    intent = actual.configuration_intent
+    case.assertIsNotNone(intent)
+    case.assertIs(intent.kind, RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
+    case.assertEqual(intent.activity_id, activity.activity_id)
+    identity = EffectAttemptIdentity(intent.source.run_id, activity.activity_id.value, 1)
+    transition = EffectAttemptTransition(EffectAttemptTransitionKind.STARTED, identity,
+        request_fingerprint=runtime_effect_intent_fingerprint(intent))
+    started = EffectAttemptStartService(case.unit_of_work,
+        id_factory=GeneratedIds("premise-start-" + suffix)).execute(StartEffectAttempt(
+            context.request.identity.request_id, transition, intent, context.authority, context.fence))
+    attempt = started.attempt
+    outcome = ExecutionEffectOutcome(attempt.state.identity, attempt.state.request_fingerprint,
+        RuntimeEffectResult.succeeded(attempt.original_start_event.event_id,
+            evidence={"fixture_premise": "simulated-configuration-installation"}))
+    EffectAttemptFoldService(case.unit_of_work,
+        id_factory=GeneratedIds("premise-fold-" + suffix)).execute(FoldEffectAttempt(
+            context.request.identity.request_id, effect_outcome_transition(outcome),
+            context.authority, context.fence, failure=None, outcome=outcome))
+
+
+def _retain_recorded_completion_inputs(case, context, selected):
     with _configuration_accounting(context.run.run_id, join=True), case.unit_of_work() as uow:
         stores = uow.stores
         stores.configuration_preparation._configure_run(context.run.run_id)

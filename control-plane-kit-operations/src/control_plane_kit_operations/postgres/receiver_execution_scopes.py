@@ -66,7 +66,7 @@ scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
                 for expression, cap in columns)
             rows = self.configuration_read.bounded_rows(table, declared, where, params,
                 maximum=1 if point else maximum, order=order, point=point or page)
-            if unique and len(rows) > 1:
+            if unique and len(rows) > (1 if point else maximum):
                 raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
             if cache:
                 self.cache[key] = rows
@@ -283,6 +283,15 @@ class _ExecutionScopeStorage:
             limit = min(MAX_CANDIDATE_ROWS - raw + 1, self.transport.remaining // 4096)
             if kind != "all-nodes":
                 limit = min(limit, MAX_REQUESTS + 1)
+            if self.transport.configuration_read is not None:
+                from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+                used = self.transport.configuration_read.used
+                row_bytes = ConfigurationEvidenceFootprint(1, 4096, 3, 0).accounted_bytes
+                statement_bytes = ConfigurationEvidenceFootprint(0, 0, 0, 1).accounted_bytes
+                # The same ledger reserves markers/records as well as values.
+                # A full shortened prefix still refuses below, before dedup.
+                limit = min(limit, max(0, 4096 - used.records),
+                    max(0, (16 * 1024 * 1024 - used.accounted_bytes - statement_bytes) // row_bytes))
             _capacity(limit > 0)
             reserved = limit * 4096
             self.transport.reserve(reserved)
@@ -627,8 +636,9 @@ def read_receiver_scope_evidence(connection, workspace_id, requested_scopes, gua
     from psycopg import Error
     from control_plane_kit_operations.advancement import CurrentGraphAdvancementError
     from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeEvidence
+    from .configuration_evidence import _active_read
     try:
-        return _ExecutionScopeStorage(connection).evidence(workspace_id, requested_scopes, guard)
+        return _ExecutionScopeStorage(connection, _active_read(connection)).evidence(workspace_id, requested_scopes, guard)
     except ReceiverScopeCapacity:
         return ReceiverScopeEvidence("capacity")
     except (ValueError, TypeError, AttributeError, KeyError, OverflowError, RecursionError, Error, CurrentGraphAdvancementError):

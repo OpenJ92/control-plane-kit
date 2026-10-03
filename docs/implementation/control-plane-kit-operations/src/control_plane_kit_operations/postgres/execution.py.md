@@ -16,3 +16,13 @@ existing typed receipt decoder validates reconstructed fields. This prevents a
 small mutation acknowledgement from spending the remaining budget before a
 second unreserved full receipt read. A zero-row CAS still costs one statement;
 no store commits independently, and outcome retention limits are unchanged.
+
+Event insertion joins an active configuration ledger and reserves a scalar
+RETURNING value before SQL. Existing bounded event/run readers and ordinal
+allocation share it. This accounting change does not authorize standalone
+advancement events; their B2 prepared writer boundary is a subsequent change.
+
+B2 advancement events now require the private prepared owner and exact original
+record. Typed workspace/request/plan/revision locators derive from that owner;
+public standalone advancement insertion refuses. Unrelated kinds retain NULL
+locators. The event and paired action/header remain in the caller's transaction.

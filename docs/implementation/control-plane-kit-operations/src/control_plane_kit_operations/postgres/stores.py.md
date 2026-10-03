@@ -12,3 +12,7 @@ The B1 configuration preparation/provenance store shares this bundle's exact
 connection. It grants no independent transaction or provider capability; its
 private prepared value is valid only for this bundle, original intent/identity
 and held lifecycle guard.
+
+The B2 configuration acceptance store shares this same connection and caller UoW.
+It prepares original advancement evidence and validates retained receipts; it
+introduces no independent transaction or provider capability.

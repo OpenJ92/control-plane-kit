@@ -117,7 +117,9 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
             self.assert_advisory_available("execution-admission:workspace-a:execute-a", available=False)
         self.assertFalse(future.result(timeout=1).replayed)
 
-    def setUp(self) -> None:
+    def setUp(self, *, accepted_origin=None) -> None:
+        if accepted_origin not in (None, "empty", "runtime"):
+            raise ValueError("unknown fixture origin")
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
             raise RuntimeError(
@@ -131,9 +133,15 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
         self.document = ProductDescriptorCodec().encode_document(
             self.product("hello-server")
         )
+        if accepted_origin is not None:
+            from tests.accepted_graph_origin_fixture import initialize_receiver_fixture_origin
+            self.database_url = database_url
+            initialize_receiver_fixture_origin(self, runtime_graph=(
+                self.empty_graph("current") if accepted_origin == "runtime" else None))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
+            if accepted_origin is None:
+                stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
             current = GraphVersionRecord.from_graph(
                 graph_id="graph-current",
                 workspace_id="workspace-a",
@@ -145,14 +153,16 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
             desired = GraphVersionRecord.from_graph(
                 graph_id="graph-desired",
                 workspace_id="workspace-a",
-                version=2,
+                version=3 if accepted_origin == "runtime" else 2,
                 graph=self.product_graph(),
                 created_by="operator-a",
                 created_at="2026-07-22T12:00:30Z",
             )
-            stores.graphs.save(current)
+            if accepted_origin is None:
+                stores.graphs.save(current)
             stores.graphs.save(desired)
-            stores.workspaces.set_current_graph("workspace-a", current.graph_id)
+            if accepted_origin is None:
+                stores.workspaces.set_current_graph("workspace-a", current.graph_id)
             stores.workspaces.set_desired_graph("workspace-a", desired.graph_id)
             unit_of_work.commit()
         self.operation_service("session-a", "action-start").execute(

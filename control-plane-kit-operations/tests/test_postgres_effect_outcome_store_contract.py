@@ -357,6 +357,7 @@ class PostgresEffectOutcomeStoreContractTests(
                 "tests/test_postgres_effect_outcome_store.py",
                 "tests/test_postgres_effect_outcome_schema.py",
                 "tests/test_postgres_native_connection_fold.py",
+                "tests/test_postgres_configuration_acceptance_membership.py",
             ),
         )
         self.assertEqual(
@@ -374,6 +375,7 @@ class PostgresEffectOutcomeStoreContractTests(
                 "control_plane_kit_operations.postgres.schema",
                 "control_plane_kit_operations.records",
                 "control_plane_kit_operations.runtime_management_targets",
+                "control_plane_kit_operations.postgres.configuration_evidence",
             ),
         )
         self.assertNotIn("dependencies", row)

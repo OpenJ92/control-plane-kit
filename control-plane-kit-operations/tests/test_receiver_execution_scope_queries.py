@@ -10,6 +10,10 @@ from control_plane_kit_core.planning import ActivityId, ActivityPlan, NodeTarget
 from control_plane_kit_core.products import ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.topology import compile_topology
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
+from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
 from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture, SCOPES
 
 
@@ -33,6 +37,60 @@ def plan_paths(plan, parents=()):
 
 
 class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_shared_accounting_reads_small_runtime_wide_candidates_after_prior_transport(self):
+        module = self.require_scopes()
+        self.admit()
+        with _configuration_accounting("candidate-query"):
+            recording = QueryRecorder(self.connection)
+            read = _EvidenceRead(recording)
+            read.query("SELECT 'prior'::text", (), records=1, octets=5, cells=1)
+            before = read.used
+            found = _ExecutionScopeStorage(recording, read).candidates(
+                "workspace-a", (module.ExecutionReceiverScope("docker", None),))
+            self.assertEqual(found, ("execution-a",))
+            self.assertGreater(read.used.records, before.records)
+            self.assertGreater(read.used.accounted_bytes, before.accounted_bytes)
+            self.assertLessEqual(read.used.records, 4096)
+            self.assertLessEqual(read.used.accounted_bytes, 16 * 1024 * 1024)
+
+    def test_shared_exhausted_record_or_byte_allowance_refuses_before_candidate_transport(self):
+        module = self.require_scopes()
+        self.admit()
+        # Explicit local ledger boundaries, not evidence of a naturally huge
+        # application history. Actual candidate reads still use PostgreSQL.
+        for used in (ConfigurationEvidenceFootprint(4096, 0, 0, 0),
+                     ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024, 0, 0)):
+            with self.subTest(used=used), _configuration_accounting("candidate-query"):
+                recording = QueryRecorder(self.connection)
+                read = _EvidenceRead(recording)
+                read.used = used
+                with self.assertRaises(module.ReceiverScopeCapacity):
+                    _ExecutionScopeStorage(recording, read).candidates(
+                        "workspace-a", (module.ExecutionReceiverScope("docker", None),))
+                self.assertEqual(recording.calls, [])
+                self.assertEqual(read.used, used)
+
+    def test_shared_full_shortened_prefix_refuses_before_duplicate_request_deduplication(self):
+        module = self.require_scopes()
+        self.seed_fanout(groups=1, nodes=2, copies=1)
+        # Two scope rows share one real admitted request. Both independent
+        # reservation ceilings shorten the page to two, which cannot prove
+        # exhaustion even though deduplication would yield only one request.
+        for used in (ConfigurationEvidenceFootprint(4094, 0, 0, 0),
+                     ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024 - 8800, 0, 0)):
+            with self.subTest(used=used), _configuration_accounting("candidate-query"):
+                recording = QueryRecorder(self.connection)
+                read = _EvidenceRead(recording)
+                read.used = used
+                with self.assertRaises(module.ReceiverScopeCapacity):
+                    _ExecutionScopeStorage(recording, read).candidates(
+                        "workspace-a", (module.ExecutionReceiverScope("runtime-0", None),))
+                self.assertEqual(len(recording.calls), 1)
+                self.assertEqual(recording.calls[0][1][-1], 2)
+                self.assertEqual(read.used.records, used.records + 2)
+                self.assertLessEqual(read.used.records, 4096)
+                self.assertLessEqual(read.used.accounted_bytes, 16 * 1024 * 1024)
+
     def seed_fanout(self, *, groups, nodes, copies):
         runtimes = tuple(DockerRuntime(runtime_id="runtime-" + str(group), children=tuple(
             instantiate_product(self.document.product, f"node-{group}-{node}", ProductInstanceConfiguration())

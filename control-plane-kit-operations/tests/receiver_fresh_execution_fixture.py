@@ -46,8 +46,8 @@ class ReceiverFreshExecutionFixture(ReceiverExecutionScopeFixture):
     assert_competing_refused = ReceiverAdmissionExecutionEvidenceTests.assert_refused
     truth = ReceiverAdmissionExecutionEvidenceTests.truth
 
-    def setUp(self):
-        super().setUp()
+    def setUp(self, *, accepted_origin=None):
+        super().setUp(accepted_origin=accepted_origin)
         self.database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
 
     def desired_service(self, factory=None):

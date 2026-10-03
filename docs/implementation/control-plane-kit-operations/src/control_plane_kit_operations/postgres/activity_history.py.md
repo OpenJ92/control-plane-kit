@@ -39,3 +39,14 @@ B1 configuration commands use bounded complete-row reads for pinned plans,
 sessions and approvals, with the existing decoders and lock semantics. Each
 read joins the logical command's budget. Legacy callers keep their original
 path; history is not replaced by a compact or fabricated execution context.
+
+During an active configuration ledger, action idempotency locking, original
+lookup, ordinal allocation and action INSERT returns are charged before SQL.
+Original payload and text lookup cells are bounded; writes return a scalar.
+Inactive callers retain their existing behavior. B2's separate prepared
+advancement writer boundary is still pending at this accounting checkpoint.
+
+B2 advancement actions now require the private prepared owner and exact original
+record. Typed workspace/request/plan/run/revision locators derive from that owner;
+public standalone advancement insertion refuses. Unrelated kinds retain NULL
+locators. The action and paired event/header remain in the caller's transaction.

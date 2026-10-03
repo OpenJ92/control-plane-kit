@@ -60,3 +60,19 @@ workspace/allocation. Indexed ref identities must agree with the canonical
 preimage and digest under current-row verification. The owning start transaction
 writes this aggregate; installation still accepts only empty or exactly current
 namespaces, with no automatic migration, deletion or backfill.
+
+B2 E7 adds `cpk_workspace_initializations`, keyed by workspace with the exact
+original graph/projection pair, canonical graph commitment, existing projection
+digest, explicit zero configuration membership and original creator/key. Four
+restrictive FKs preserve the workspace and graph/projection composition. Only
+the guarded creation owner writes it, atomically with the existing creation
+transaction. Missing original evidence refuses the new authority path; the
+installer does not fabricate receipts for legacy workspaces. Source validation
+is pending on draft PR #1926.
+
+B2 E1/E2 adds nullable typed original-history locators with closed kind checks,
+compositional own-run/request/plan/workspace/revision FKs and partial numeric
+revision indexes. Acceptance headers retain paired originals and explicit complete
+membership count/digest. Slot rows reference immutable source/birth refs and
+outcomes; no historical mutable lock tail is introduced. This is still an exact
+fresh-store contract; no migration or retained-data repair is authorized.

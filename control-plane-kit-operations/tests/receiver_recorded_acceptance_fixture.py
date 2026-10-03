@@ -6,7 +6,11 @@ real admission refuses. Its typed receipt association and empty success journal
 are checked by existing owners. No provider ran and no deployment is claimed.
 C3 owns production atomic advancement/receiver acceptance. C1 consumption uses
 separate genuine affecting-run fixtures, not this empty-history premise.
+Typed original action/event rows below remain explicit SQL history premises;
+they do not create B2 initialization, acceptance headers, slots or claims.
 """
+
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind, ActivityRunStatus, LifecycleOperationKind
@@ -66,8 +70,24 @@ def record_accepted_current(case):
             stores.activity_history.next_action_ordinal(session), LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
             "worker-a", payload=evidence.descriptor() | dict(execution_request_id="recorded-request",
                 claim_generation=1, event_id=event.event_id), created_at=at)
-        stores.execution.add_event(event)
-        stores.activity_history.add_action(action)
+        # Generic writers correctly reject original advancement publication.
+        # This deliberately unsupported legacy history is a reader premise,
+        # just like the recorded request above, not an owner-produced receipt.
+        stores.connection.execute(
+            "INSERT INTO cpk_activity_events (event_id,run_id,ordinal,event_type,occurred_at,payload,"
+            "advancement_workspace_id,advancement_request_id,advancement_plan_id,advancement_revision) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (event.event_id, event.run_id, event.ordinal, event.kind.value, event.occurred_at,
+             Jsonb({"activity_id": None, "evidence": event.evidence.descriptor(), "failure": None, "recovery": None}),
+             "workspace-a", "recorded-request", plan.plan_id, plan.desired_graph_revision))
+        stores.connection.execute(
+            "INSERT INTO cpk_operation_actions (action_id,session_id,ordinal,action_type,actor_id,payload,"
+            "created_at,idempotency_key,intent_fingerprint,advancement_workspace_id,advancement_request_id,"
+            "advancement_plan_id,advancement_run_id,advancement_revision) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (action.action_id, action.session_id, action.ordinal, action.action_type.value, action.actor_id,
+             Jsonb(action.payload), action.created_at, action.idempotency_key, action.intent_fingerprint,
+             "workspace-a", "recorded-request", plan.plan_id, run.run_id, plan.desired_graph_revision))
         receipt = historical_advancement(workspace_id="workspace-a", session_id=session, plan_id=plan.plan_id,
             plan=dict(base_graph_id=plan.base_graph_id, base_realized_projection_id=plan.base_realized_projection_id,
                 desired_graph_id=plan.desired_graph_id, desired_realized_projection_id=plan.desired_realized_projection_id,

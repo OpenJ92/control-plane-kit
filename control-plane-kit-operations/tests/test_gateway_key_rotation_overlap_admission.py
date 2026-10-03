@@ -46,14 +46,13 @@ class GatewayKeyRotationOverlapAdmissionTests(
             raise RuntimeError("run through control-plane-kit-operations/test.sh")
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.addCleanup(self.connection.execute, "TRUNCATE TABLE cpk_workspaces CASCADE")
         self.seed_graph_and_keys()
         self.seed_rotation_approval()
         self._publish_and_plan_overlap()
-
-    def tearDown(self) -> None:
-        self.connection.close()
 
     def unit_of_work(self) -> PostgresUnitOfWork:
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
@@ -152,6 +151,9 @@ class GatewayKeyRotationOverlapAdmissionTests(
         self.assertFalse(result.replayed)
 
     def test_exact_rotation_approval_admits_only_the_overlap_child_plan(self) -> None:
+        approval_count = self.connection.execute(
+            "SELECT count(*) FROM cpk_approval_requests"
+        ).fetchone()[0]
         result = self.service("execution-a", "action-admit").execute(self.command())
 
         self.assertFalse(result.replayed)
@@ -170,7 +172,7 @@ class GatewayKeyRotationOverlapAdmissionTests(
             self.connection.execute(
                 "SELECT count(*) FROM cpk_approval_requests"
             ).fetchone()[0],
-            1,
+            approval_count,
         )
 
         replay = self.service("unused", "unused").execute(self.command())
