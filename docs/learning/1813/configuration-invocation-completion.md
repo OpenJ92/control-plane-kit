@@ -1,6 +1,6 @@
 # C1 #1927: configuration invocation completion
 
-Status: bounded implementation ready for source review; owning green pending.
+Status: source review and owning Core green passed; final integration pending.
 Parent #1920; follows accepted B2 `441a06b6c300ed2d92f0c3bb9553a5f8ae3a97f7`;
 blocks C2 #1928. PR destination is `roadmap/1813-runtime-control`.
 
@@ -67,5 +67,16 @@ result. The inventory records its existing Core dependencies and the README
 shows the real-request/result reader. No existing application module, target,
 gate, pin, durable owner or provider changed.
 
-Owning green and final independent source review are pending. This checkpoint
-is not implementation acceptance or a release of C2/D/provider activity.
+Source review found one exhaustive inventory expectation missing the new module.
+The single literal was added without weakening its equality assertion or any
+behavioral target. Meridian rechecked `9cac363005fd6807897c5fcb044334298ef0c400`
+and passed the source boundary. The 12-target file stayed unchanged from red.
+
+The unchanged owning Core gate at that exact commit exited **0**: support 21
+passed; integrity 941 methods, zero mocks/skips; main suite **941 passed in
+55.339 seconds**, followed by successful compilation and import. Log SHA256:
+`4f24faa4d0b556435e1ed6c1c8a903da99b5d0637535a3189fcd0af62ab21286`.
+The checkout remained clean during the run and its test containers were absent
+afterward. No Operations, composed-backend, provider or live acceptance is
+claimed by this Core-only evidence. Final evidence review and North's integration
+are separate; C2 waits the actual accepted merge.
