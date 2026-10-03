@@ -84,8 +84,11 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
             StartActivityRun("run-config", engine.authority(), self.fence, IdempotencyKey("start-config")))
         # This test producer promises total installation of the exact requested
         # selection. It is simulated evidence, not native/provider verification.
-        adapter = coordinator_fixture.RecordingAdapter(engine.tracker, lambda _context, request:
-            RuntimeEffectResult.succeeded(request.effect_id, evidence={"adapter": "total-selected-configuration-test"}))
+        def installed(_context, request):
+            return RuntimeEffectResult.succeeded(request.effect_id,
+                evidence={"adapter": "total-selected-configuration-test"})
+
+        adapter = coordinator_fixture.RecordingAdapter(engine.tracker, *(installed for _ in self.node_ids))
         result = engine.coordinator(adapter).execute(replace(engine.command(generation=self.fence.generation,
             idempotency_key="execute-config", max_effects=len(self.node_ids)), run_id="run-config"))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
