@@ -255,6 +255,31 @@
       "motivation": "Own original configuration refs, bounded complete node-history protection, distinct births after accepted departure and current-only reuse inside the existing first-start transaction."
     },
     {
+      "module": "control_plane_kit_core.configuration_invocation",
+      "destination": "control_plane_kit_core.configuration_invocation",
+      "source": "control-plane-kit-core/src/control_plane_kit_core/configuration_invocation.py",
+      "owner": "core",
+      "role": "pure-contract",
+      "semantic_roles": ["values", "validation", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": ["#1927"],
+      "canonical_public_exports": [
+        "ConfigurationInvocationCompletion", "ConfigurationInvocationCorrelation",
+        "configuration_invocation_selection_fingerprint",
+        "decode_configuration_invocation_completion",
+        "configuration_invocation_correlation_for_request",
+        "configuration_invocation_completion_for_result"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances", "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effect_observation", "control_plane_kit_core.runtime_effects"
+      ],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_configuration_invocation.py"],
+      "motivation": "Shared pure configuration invocation completion syntax and full-selection correlation, using existing original intent/result commitments without durable state, provider truth or cleanup authority."
+    },
+    {
       "module": "control_plane_kit_core.configuration_instances",
       "destination": "control_plane_kit_core.configuration_instances",
       "source": "control-plane-kit-core/src/control_plane_kit_core/configuration_instances.py",

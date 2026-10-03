@@ -102,6 +102,31 @@ operations:
   ActivityJournal x RuntimeEffectResult -> ActivityJournal'
 ```
 
+Configuration-aware `StartNode` and `ReconcileNode` invocations have an optional
+closed `configuration-invocation-completion.v1` result profile. It binds the
+original intent fingerprint and the canonical **whole** selection fingerprint:
+
+```python
+from control_plane_kit_core.configuration_invocation import (
+    configuration_invocation_correlation_for_request,
+    configuration_invocation_completion_for_result,
+)
+
+# request is the actual validated invocation; result is its unchanged result.
+context = configuration_invocation_correlation_for_request(request)
+completion = configuration_invocation_completion_for_result(context, result)
+```
+
+The reader validates the entire result, including ordinary evidence, failure and
+observations, within the existing 8192-byte limit. An absent profile returns
+`None`; a present malformed or miscorrelated profile refuses. A valid profile
+requires a succeeded or failed terminal result. A producer may assert completion
+only when all invoked mutations have finished, with no outstanding calls,
+background work or delayed retries. These pure values do not prove that condition.
+Failed invocations may leave attached resources, and completion never grants
+cleanup permission. Operations must construct context from verified original
+history; partial selections and fabricated requests cannot replace that proof.
+
 ### Policy And Public Contracts
 
 Core also owns pure contracts for:
