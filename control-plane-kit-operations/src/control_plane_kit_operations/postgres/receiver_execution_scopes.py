@@ -66,7 +66,7 @@ scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
                 for expression, cap in columns)
             rows = self.configuration_read.bounded_rows(table, declared, where, params,
                 maximum=1 if point else maximum, order=order, point=point or page)
-            if unique and len(rows) > 1:
+            if unique and len(rows) > (1 if point else maximum):
                 raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
             if cache:
                 self.cache[key] = rows
