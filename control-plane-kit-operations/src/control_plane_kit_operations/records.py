@@ -45,6 +45,7 @@ from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+from control_plane_kit_operations.configuration_cleanup import ConfigurationCleanupProposal
 
 
 class OperationsRecordError(ValueError):
@@ -572,6 +573,7 @@ class ActivityPlanRecord:
     desired_realized_projection_id: str | None = None
     desired_graph_revision: int = 0
     derivation_profile: PlanDerivationProfile | None = field(default=None, kw_only=True)
+    cleanup_proposal: ConfigurationCleanupProposal | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _validate_text(self.plan_id, "plan_id")
@@ -600,6 +602,16 @@ class ActivityPlanRecord:
             raise OperationsRecordError(
                 "activity plan desired_graph_revision must be nonnegative"
             )
+        if self.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+            from control_plane_kit_operations.plan_derivation import validate_cleanup_activity_plan
+            validate_cleanup_activity_plan(self.plan, self.cleanup_proposal)
+            context = self.cleanup_proposal.descriptor()["context"]
+            if any(context[name] != getattr(self, name) for name in (
+                "session_id", "base_graph_id", "base_realized_projection_id", "desired_graph_id",
+                "desired_realized_projection_id", "desired_graph_revision")):
+                raise OperationsRecordError("cleanup plan context is inconsistent")
+        elif self.cleanup_proposal is not None:
+            raise OperationsRecordError("cleanup plan profile is inconsistent")
 
     @property
     def base_lineage(self) -> GraphProjectionLineage | None:

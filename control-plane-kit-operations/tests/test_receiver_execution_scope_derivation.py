@@ -94,7 +94,8 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
     def test_all_stored_profiles_preserve_literal_scope_and_legacy_original_identity_rule(self):
         module = self.require_scopes()
         identity, plan, base, desired = self.source()
-        for profile in (None, *PlanDerivationProfile):
+        for profile in (None, PlanDerivationProfile.STRUCTURAL_V1,
+                        PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
             with self.subTest(profile=profile):
                 original = replace(plan, derivation_profile=profile)
                 self.assertEqual(module.derive_execution_receiver_scopes(identity, original, base, desired).scopes,

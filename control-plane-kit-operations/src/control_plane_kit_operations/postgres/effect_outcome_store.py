@@ -254,11 +254,18 @@ class EffectAttemptOutcomeStore:
         return _decode_row(self._connection, row, memberships)
 
     def _configuration_success(self, source, read):
-        """Complete direct result/correlation proof; no observation-membership projection."""
+        """B consumes only success, including when C populated the shared cache."""
         from control_plane_kit_core.operations import EffectAttemptStatus
+        from .configuration_evidence import _Unavailable
+        outcome, attempt = self._configuration_terminal(source, read)
+        if attempt.state.status is not EffectAttemptStatus.SUCCEEDED:
+            raise _Unavailable
+        return outcome, attempt
+
+    def _configuration_terminal(self, source, read):
+        """Complete direct result/correlation proof; no observation-membership projection."""
         from control_plane_kit_operations.effect_outcome_evidence import _require_correlated_outcome
         from .configuration_evidence import _Unavailable
-        from .execution import _activity_event
         identity = source.identity
         cache_key = ("cpk_effect_attempt_outcomes", identity)
         if cache_key not in read.sources:
@@ -272,24 +279,12 @@ class EffectAttemptOutcomeStore:
                 raise _Unavailable
             row = rows[0]
             value = _decode_preimage(row[6], row[5])
-            events = []
-            for event_id in (row[15], row[18]):
-                selected = read.bounded_rows("cpk_activity_events", (
-                    ("event_id", "text", 2048), ("run_id", "text", 200), ("ordinal", "int", 16),
-                    ("event_type", "text", 64), ("occurred_at", "time", 64), ("payload", "json", 16384)),
-                    "event_id=%s", (event_id,))
-                if len(selected) != 1:
-                    raise _Unavailable
-                payload = selected[0][5]
-                if type(payload) is not dict or set(payload) != {"activity_id", "evidence", "failure", "recovery"}:
-                    raise _Unavailable
-                events.append(_activity_event(selected[0]))
+            events = tuple(_configuration_event(read, event_id) for event_id in (row[15], row[18]))
             outcome, attempt = _outcome_from_events(row, value, *events)
             _require_correlated_outcome(row[3], outcome, attempt)
             # Full result decoding retains every ordinary observation. This
             # proof intentionally owns no observation projection memberships.
             if (type(outcome) is not ExecutionEffectOutcome
-                    or attempt.state.status is not EffectAttemptStatus.SUCCEEDED
                     or attempt.original_start_event.kind.value != "step_started"
                     or row[21] != len(outcome.endpoint_observations)):
                 raise _Unavailable
@@ -301,6 +296,24 @@ class EffectAttemptOutcomeStore:
                 or attempt.state.identity != identity):
             raise _Unavailable
         return outcome, attempt
+
+
+def _configuration_event(read, event_id):
+    from .configuration_evidence import _Unavailable
+    from .execution import _activity_event
+    key = ("cpk_activity_events", event_id)
+    if key not in read.sources:
+        rows = read.bounded_rows("cpk_activity_events", (
+            ("event_id", "text", 2048), ("run_id", "text", 200), ("ordinal", "int", 16),
+            ("event_type", "text", 64), ("occurred_at", "time", 64), ("payload", "json", 16384)),
+            "event_id=%s", (event_id,))
+        if len(rows) != 1:
+            raise _Unavailable
+        payload = rows[0][5]
+        if type(payload) is not dict or set(payload) != {"activity_id", "evidence", "failure", "recovery"}:
+            raise _Unavailable
+        read.sources[key] = _activity_event(rows[0])
+    return read.sources[key]
 
 
 def _require_identity(value: object) -> EffectAttemptIdentity:
