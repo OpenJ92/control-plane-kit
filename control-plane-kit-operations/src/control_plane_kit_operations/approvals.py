@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
-from contextlib import contextmanager
+from functools import wraps
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -55,15 +55,15 @@ class ApprovalTargetNotFound(ApprovalWorkflowError):
     """Raised when approval command target truth is missing."""
 
 
-@contextmanager
-def _cleanup_evidence_errors():
-    try:
-        yield
-    except ConfigurationCleanupContractError:
-        pass
-    else:
-        return
-    raise ApprovalStateConflict("cleanup approval evidence is unavailable")
+def _cleanup_evidence_errors(command):
+    @wraps(command)
+    def invoke(*args, **kwargs):
+        try:
+            return command(*args, **kwargs)
+        except ConfigurationCleanupContractError:
+            pass
+        raise ApprovalStateConflict("cleanup approval evidence is unavailable")
+    return invoke
 
 
 @dataclass(frozen=True)
@@ -290,9 +290,10 @@ class ApprovalCommandService:
             return self._decide(command)
         raise InvalidOperationCommand("unsupported approval command")
 
+    @_cleanup_evidence_errors
     def _request(self, command: RequestApproval) -> ApprovalRequestResult:
         fingerprint = _fingerprint(command)
-        with (_cleanup_evidence_errors(), self._unit_of_work_factory() as unit_of_work,
+        with (self._unit_of_work_factory() as unit_of_work,
               unit_of_work.stores.configuration_cleanup.approval_evidence(command)):
             history = unit_of_work.stores.activity_history
             replay = history.approval_request_for_idempotency(
@@ -461,9 +462,10 @@ class ApprovalCommandService:
             unit_of_work.commit()
             return ApprovalRequestResult(request, action)
 
+    @_cleanup_evidence_errors
     def _decide(self, command: DecideApproval) -> ApprovalDecisionResult:
         fingerprint = _fingerprint(command)
-        with (_cleanup_evidence_errors(), self._unit_of_work_factory() as unit_of_work,
+        with (self._unit_of_work_factory() as unit_of_work,
               unit_of_work.stores.configuration_cleanup.approval_evidence(command)):
             history = unit_of_work.stores.activity_history
             replay = history.approval_decision_for_idempotency(

@@ -336,8 +336,9 @@ class ConfigurationCleanupApprovalTests(ConfigurationCleanupPostgresFixture, uni
         before = self.truth()
         self.sampled.clear()
         with mock.patch.object(_EvidenceRead, "query", near_capacity):
-            with self.assertRaises(ApprovalWorkflowError):
+            with self.assertRaises(ApprovalWorkflowError) as raised:
                 self.approvals().execute(ask)
+        self.assertIsNone(raised.exception.__context__)
         self.assertTrue(injected)
         self.assertEqual(self.sampled, [])
         self.assertEqual(self.truth(), before)
@@ -361,8 +362,9 @@ class ConfigurationCleanupApprovalTests(ConfigurationCleanupPostgresFixture, uni
                 before = self.truth()
                 self.sampled.clear()
                 for command in (replace(ask, idempotency_key=IdempotencyKey("oversized-fresh")), ask, decide):
-                    with self.assertRaises(ApprovalWorkflowError):
+                    with self.assertRaises(ApprovalWorkflowError) as raised:
                         self.approvals(factory=factory).execute(command)
+                    self.assertIsNone(raised.exception.__context__)
                 self.assertLess(observed["largest_cell"], 1024 * 1024)
                 self.assertEqual(self.sampled, [])
                 self.assertEqual(self.truth(), before)
