@@ -103,7 +103,7 @@ class PostgresConfigurationConcurrencyTests(unittest.TestCase):
             workspace = uow.stores.workspaces.get("workspace-a")
         self.assertEqual((workspace.current_graph_id, workspace.current_realized_projection_id,
             workspace.desired_graph_revision), (command.desired_graph_id,
-                command.desired_realized_projection_id, command.desired_graph_revision))
+                command.desired_realized_projection_id, command.expected_desired_graph_revision))
         after = dict(self.base.retained_snapshot())
         for table, rows in before:
             if table == "cpk_workspaces":
@@ -214,7 +214,7 @@ class PostgresConfigurationConcurrencyTests(unittest.TestCase):
         successful = self.carry.admit("successful", "graph-overlap", StartRuntime(RuntimeTarget("runtime-b")),
             plan=self.plan("successful"), reuse_selected_desired=True, clock=live_clock)
         for name in ("expected_current_graph_id", "expected_current_realized_projection_id", "desired_graph_id",
-                "desired_realized_projection_id", "desired_graph_revision"):
+                "desired_realized_projection_id", "expected_desired_graph_revision"):
             self.assertEqual(getattr(successful, name), getattr(failed, name), name)
         self.execute_plan(successful)
         before, protected, failed_before = self.base.retained_snapshot(), self.protection(), self.failed_snapshot()

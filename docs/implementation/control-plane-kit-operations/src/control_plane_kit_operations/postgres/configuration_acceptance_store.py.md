@@ -11,8 +11,8 @@ direct self-birth refs/claims, qualifying original intent and successful direct
 outcome. A new installation must belong to the exact advancing execution. The
 carry connection copies the authoritative current slot/source/birth/digest only
 for unchanged nodes without new installation work. Removed slots leave desired
-membership while all claims remain. Explicit nonbirth reuse is still closed at
-this intermediate checkpoint. Missing
+membership while all claims remain. Nonbirth reuse requires its own qualifying
+successful original use and an identical full ref linked directly to self-birth. Missing
 initial or historical evidence refuses; no adoption, repair or synthetic header is
 performed. Original replay validates its own occurrence, not the latest pointer.
 
@@ -68,7 +68,13 @@ snapshot plus measured source proof and discovery allowance must fit the global
 every slot insertion return, size/value pass and sentinel. Exact immutable PK caches
 avoid retransporting source evidence during in-transaction readback. All actual
 duplicate reads still count. Original intent hashing is capped at 512 distinct
-parents in the shared proof reader. Maximum-budget executable proofs remain open.
+parents in the shared proof reader. The finite capacity slice has independent
+reviewed evidence: real 64 accepted uses and guarded refusal of use65, cold
+current/allocation/replay, isolated production-envelope edges, defensive257
+sentinels, and an explicitly injected post-preflight owner refusal before CAS.
+No naturally occurring owner-valid cold-budget exhaustion or arbitrary maximum
+combination is claimed. PostgreSQL plans demonstrate seven actual query-prefix
+paths, not universal optimizer choices or latency bounds.
 
 The prior zero-slot, rollback, binding-lifetime and newest-selection gates passed.
 Three genuine nonempty targets reached causal red before this source change.
@@ -85,5 +91,13 @@ mutation checks require that exact issued object plus the existing live UoW/L an
 truth checks. No global registry, public token, durable row or replay mutation is
 added. Closed/rolled-back physical transactions cannot reuse the lifecycle guard.
 The reviewed issuance correction passes the eight-test owning acceptance class,
-including the unchanged reconstructed-owner refusal target. Remaining lifecycle,
-rollback, newest-stream, budget and nonempty obligations are tracked on PR #1926.
+including the unchanged reconstructed-owner refusal target. Lifecycle, rollback,
+newest-stream, budget and nonempty laws have focused evidence on PR #1926;
+final concurrency and whole-package acceptance are tracked there separately.
+
+B2 grants neither claim release nor writer quiescence. C owns pure completion
+and correlation values plus inspectable claim/closure planning. D owns exact
+admitted completion linkage, dispositions, reservation/retirement and guarded
+cleanup. I177 owns terminal producer/fresh non-use proof and provider activation.
+No closed read absence, accepted membership or ambiguous provider observation
+crosses those authority boundaries.

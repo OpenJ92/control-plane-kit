@@ -17,7 +17,9 @@ Existing physical transaction/lifecycle and current truth checks still apply;
 replay remains observational. This internal guard is not a Python sandbox.
 The focused owning acceptance class proves reconstructed private-writer refusal,
 fresh success, replay, shared accounting and retained-row verification. Additional
-issued-object lifetime/binding, rollback, budget and nonempty laws remain pending.
+issued-object lifetime/binding, rollback, budget and nonempty laws have focused
+evidence on PR #1926. Final concurrency and whole-package results remain separately
+tracked there; focused evidence alone is not complete B2 acceptance.
 
 The first nonempty slice additionally binds the complete prepared slot tuple,
 its UoW-local immutable evidence cache and measured source-proof footprint to the
