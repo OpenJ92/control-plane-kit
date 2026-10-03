@@ -136,6 +136,7 @@ intent/fingerprint drift. Original replay remains first and catalog-free;
 unrelated operation translation keeps its existing execution path. This reuse
 connection awaits concrete review and focused validation. Unsupported, failed,
 uncertain and non-running contexts retain their existing classification before
-proposal selection. A focused regression combines real failed/uncertain direct
-outcomes with independently ready configuration work and forbids fresh proposal
-selection while the public coordinator preserves the correct disposition.
+proposal selection. The corrected regression pairs real uncertainty with
+independently ready configuration work; after real failure Core blocks the
+pending work, so that subcase protects disposition only. Both forbid fresh
+proposal selection while checking public status and unchanged protection.

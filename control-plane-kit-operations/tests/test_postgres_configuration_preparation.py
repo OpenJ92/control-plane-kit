@@ -98,6 +98,17 @@ class PostgresConfigurationPreparationTests(ConfigurationPreparationFixture, uni
     def test_existing_configured_node_without_b2_truth_cannot_fall_back_to_birth(self):
         self.configuration_existing_node = True
         self.reset_start_truth()
+        # Explicit malformed snapshot, not evidence of a lawful configured
+        # genesis. Keep the direct guarded-start refusal and zero-ID law.
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            graph = uow.stores.realized_graphs.get(workspace.current_realized_projection_id)
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+        self.assertEqual(workspace.current_graph_id, "graph-current")
+        self.assertTrue(DEFAULT_GRAPH_CODEC.decode(graph.graph_descriptor).nodes["api"].configuration_artifacts)
+        for table in ("cpk_workspace_initializations", "cpk_configuration_acceptances", "cpk_configuration_accepted_slots"):
+            self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {table} WHERE workspace_id=%s",
+                ("workspace-a",)).fetchone(), (0,))
         command = self.configuration_command()
         before = self.complete_start_snapshot()
         service, ids = self.start_service_with_sequence("must-not-be-used")

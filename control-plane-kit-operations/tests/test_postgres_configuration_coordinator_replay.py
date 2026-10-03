@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
-from control_plane_kit_core.planning.saga import derive_schedule, project_activity_journal
+from control_plane_kit_core.planning.saga import BlockReason, derive_schedule, project_activity_journal
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.coordinator import CoordinatorStatus
 from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
@@ -17,7 +17,7 @@ class PostgresConfigurationCoordinatorReplayTests(ConfigurationPreparationFixtur
     coordinator_harness = coordinator_fixture.PostgresEffectAttemptCoordinatorFixture.coordinator_harness
     fold_direct_outcome = evolved_fixture.PostgresConfigurationEvolvedReplayTests.fold_direct_outcome
 
-    def test_nonactionable_history_precedes_independent_ready_configuration_proposal(self):
+    def test_nonactionable_history_precedes_fresh_configuration_proposal(self):
         for status in ("uncertain", "failed"):
             with self.subTest(status=status):
                 self.configuration_history_count = 2
@@ -32,7 +32,14 @@ class PostgresConfigurationCoordinatorReplayTests(ConfigurationPreparationFixtur
                 self.assertIs(run.status, ActivityRunStatus.RUNNING)
                 projection = project_activity_journal(plan.plan, activity_journal_events(events))
                 schedule = derive_schedule(plan.plan, projection.state)
-                self.assertEqual(tuple(value.activity_id.value for value in schedule.ready), ("history-use-001",))
+                if status == "uncertain":
+                    self.assertEqual(tuple(value.activity_id.value for value in schedule.ready), ("history-use-001",))
+                else:
+                    # Failed sagas block pending work. This subcase protects
+                    # disposition, not a competing-ready/running premise.
+                    self.assertEqual(schedule.ready, ())
+                    self.assertEqual(tuple((value.activity.activity_id.value, value.reason)
+                        for value in schedule.blocked), (("history-use-001", BlockReason.SAGA_FAILED),))
                 self.assertTrue(projection.uncertain if status == "uncertain" else schedule.failed)
                 harness = self.coordinator_harness()
                 with mock.patch.object(ConfigurationPreparationStore, "_proposal",

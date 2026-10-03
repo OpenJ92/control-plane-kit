@@ -63,7 +63,15 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
             lineage = seed_identity_graphs(stores, workspace_id="workspace-a",
                 graph_ids=("graph-current", "graph-desired"),
                 graphs={"graph-current": base, "graph-desired": desired})
-            stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            if existing:
+                # Defensive legacy/corrupt snapshot ONLY. The public pointer
+                # owner correctly forbids configured current without accepted
+                # provenance. This branch tests refusal, not valid bootstrap.
+                stores.connection.execute("UPDATE cpk_workspaces SET current_graph_id=%s, "
+                    "current_realized_projection_id=%s WHERE workspace_id=%s",
+                    ("graph-current", lineage["graph-current"], "workspace-a"))
+            else:
+                stores.workspaces.set_current_graph("workspace-a", "graph-current")
             stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             stores.activity_history.add_session(OperationSessionRecord(
                 "session-a", "workspace-a", "operator-a", "Deploy configuration",

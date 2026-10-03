@@ -129,7 +129,7 @@ class PostgresConfigurationReuseTests(unittest.TestCase):
                 return getattr(self.connection, name)
 
             def execute(self, query, parameters=None):
-                statements.append(str(query))
+                statements.append((str(query), tuple(parameters or ())))
                 return self.connection.execute(query, parameters)
 
         start = StartEffectAttempt("request-reuse", EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
@@ -138,10 +138,26 @@ class PostgresConfigurationReuseTests(unittest.TestCase):
             ObservedConnection(psycopg.connect(self.base.database_url))), id_factory=lambda: self.fail("replay allocated an ID"))
         replay = service.execute(start)
         self.assertEqual(replay, ExistingAttempt(attempt))
-        self.assertFalse(any(re.search(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|CREATE|DROP)\b", query,
-            re.IGNORECASE) for query in statements))
-        self.assertFalse(any("cpk_registered_products" in query for query in statements))
+        allowed_locks = {
+            ("SELECT 1 FROM cpk_execution_requests WHERE request_id=%s FOR UPDATE", ("request-reuse",)),
+            ("SELECT 1 FROM cpk_activity_runs WHERE request_id=%s AND run_id=%s LIMIT 1 FOR UPDATE",
+                ("request-reuse", "run-reuse")),
+            ("SELECT 1 FROM cpk_effect_attempts WHERE run_id=%s AND activity_id=%s AND attempt=%s FOR UPDATE",
+                ("run-reuse", "activity-reuse", 1)),
+        }
+        observed_locks = set()
+        for query, parameters in statements:
+            normalized = " ".join(query.split())
+            if re.search(r"\bFOR\s+(UPDATE|SHARE|KEY|NO)\b", normalized, re.IGNORECASE):
+                self.assertIn((normalized, parameters), allowed_locks)
+                observed_locks.add((normalized, parameters))
+                normalized = normalized.removesuffix(" FOR UPDATE")
+            self.assertFalse(re.search(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|CREATE|DROP|LOCK)\b",
+                normalized, re.IGNORECASE), "replay dispatched mutation or unexpected locking SQL")
+            self.assertNotIn("pg_advisory", normalized.lower(), "replay acquired a fresh lifecycle lock")
+        self.assertEqual(observed_locks, allowed_locks)
+        self.assertFalse(any("cpk_registered_products" in query for query, _ in statements))
         self.assertFalse(any(re.search(r"CURRENT_TIMESTAMP|clock_timestamp|statement_timestamp|transaction_timestamp|\bnow\s*\(",
-            query, re.IGNORECASE) for query in statements))
+            query, re.IGNORECASE) for query, _ in statements))
         self.assertEqual(self.retained_state(), before)
         self.assert_accepted_reuse(result, original)
