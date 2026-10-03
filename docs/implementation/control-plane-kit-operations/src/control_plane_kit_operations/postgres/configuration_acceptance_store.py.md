@@ -26,7 +26,8 @@ lookups, CAS/get and three writes, header/empty-slot/original pair reads, and on
 run/request/plan/session plus desired graph/projection read. Graph metadata has a
 separate 1 MiB cap alongside descriptor, projection and plan. Reevaluate the
 envelope when this tail grows; nonempty admission and maximum-budget executable
-proof are still pending. Focused Docker validation has not run yet.
+proof are still pending. Focused Docker validation establishes the zero-slot
+receipt, shared accounting and retained-row laws, not full B2 acceptance.
 
 The reconstructed-owner causal test exposed missing issuance identity. The store
 now registers exactly one prepared object only after full `_prepare` validation.
@@ -34,4 +35,6 @@ Successful pure pair validation may bind it once, replacing its identity. Privat
 mutation checks require that exact issued object plus the existing live UoW/L and
 truth checks. No global registry, public token, durable row or replay mutation is
 added. Closed/rolled-back physical transactions cannot reuse the lifecycle guard.
-The corresponding source correction is pending independent review and validation.
+The reviewed issuance correction passes the eight-test owning acceptance class,
+including the unchanged reconstructed-owner refusal target. Remaining lifecycle,
+rollback, newest-stream, budget and nonempty obligations are tracked on PR #1926.

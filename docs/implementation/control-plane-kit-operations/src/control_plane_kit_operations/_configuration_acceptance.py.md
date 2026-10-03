@@ -15,4 +15,6 @@ the unbound object with its exact bound successor; predecessor and reconstructed
 copies lose authority. `require` checks records purely, without issuing or binding.
 Existing physical transaction/lifecycle and current truth checks still apply;
 replay remains observational. This internal guard is not a Python sandbox.
-Focused validation of this correction remains pending.
+The focused owning acceptance class proves reconstructed private-writer refusal,
+fresh success, replay, shared accounting and retained-row verification. Additional
+issued-object lifetime/binding, rollback, budget and nonempty laws remain pending.
