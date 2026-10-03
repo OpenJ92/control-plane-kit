@@ -10,13 +10,19 @@ from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import ActivityId, StartNode, ReconcileNode
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records
-from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+from control_plane_kit_operations._configuration_preparation import _configuration_accounting, _ACCOUNTING, _execution_context
+from control_plane_kit_operations.configuration_preparation import (
+    ConfigurationAcceptedBinding, ConfigurationCurrentEvidence, _ref as _validate_ref,
+)
 from control_plane_kit_operations.revision_history import historical_advancement
 from control_plane_kit_operations.records import OperationsRecordError
 from .configuration_evidence import _EvidenceRead, _Unavailable, _Capacity
 from .activity_history import PostgresActivityHistoryStore, _action_record
 from .execution import PostgresExecutionStore, _activity_event
-from .graph_store import PostgresGraphTopologyStore, PostgresRealizedGraphProjectionStore, PostgresWorkspaceStore
+from .graph_store import (
+    PostgresGraphTopologyStore, PostgresRealizedGraphProjectionStore, PostgresWorkspaceStore,
+    _read_workspace_initialization,
+)
 from .configuration_preparation_store import _SELECT as _REF_SELECT, _decode_ref, _decode
 from .effect_outcome_store import EffectAttemptOutcomeStore
 
@@ -29,6 +35,8 @@ _EVENT = ("event_id", "run_id", "ordinal", "event_type", "occurred_at", "payload
 _LOCATOR = ("advancement_workspace_id", "advancement_request_id", "advancement_plan_id", "advancement_revision")
 _SLOT = ("runtime_id", "node_id", "artifact_id", "source_run_id", "source_activity_id", "source_attempt",
     "source_artifact_id", "birth_run_id", "birth_activity_id", "birth_attempt", "birth_artifact_id", "full_ref_digest")
+_REF_KEY_COLUMNS = (("run_id", "text", 2048), ("activity_id", "text", 2048),
+    ("attempt", "int", 16), ("artifact_id", "text", 2048))
 
 
 def _membership_digest(slots):
@@ -55,6 +63,31 @@ def _closed_evidence(method):
         except (ValueError, TypeError, KeyError, AttributeError, IndexError, OperationsRecordError):
             raise _Unavailable from None
     return read
+
+
+def _public_read(method):
+    @wraps(method)
+    def observe(self, *args, **kwargs):
+        try:
+            current = _ACCOUNTING.get()
+            if current is not None:
+                if not current.active or current.execution_context != _execution_context():
+                    raise _Unavailable
+                # A nested observation cannot reset its caller's logical budget.
+                return method(self, *args, **kwargs)
+            with _configuration_accounting(("configuration-current-read", method.__name__)):
+                return method(self, *args, **kwargs)
+        except _Capacity:
+            return ConfigurationCurrentEvidence("capacity")
+        except (_Unavailable, ValueError, TypeError, KeyError, AttributeError, IndexError, OperationsRecordError):
+            return ConfigurationCurrentEvidence("unavailable")
+    return observe
+
+
+def _read_identifier(value):
+    if (type(value) is not str or not value.strip() or len(value.encode("utf-8")) > 2048
+            or any(ord(character) < 32 for character in value)):
+        raise _Unavailable
 
 
 class ConfigurationAcceptanceStore:
@@ -152,6 +185,7 @@ class ConfigurationAcceptanceStore:
                 or source.operation != activity.operation):
             raise _Unavailable
         EffectAttemptOutcomeStore(self._connection)._configuration_success(source, read)
+        return evidence, birth
 
     def _manifest(self, read, header, material):
         rows = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
@@ -160,13 +194,16 @@ class ConfigurationAcceptanceStore:
         if (len(rows) != header["slot_count"] or _membership_digest(rows) != header["slot_digest"]
                 or tuple(row[:3] for row in rows) != tuple(sorted(material))):
             raise _Unavailable
+        allocations = []
         for row in rows:
-            self._material_ref(read, row, material, header["workspace_id"])
+            original = self._material_ref(read, row, material, header["workspace_id"])
+            allocations.append(_decode_ref(original)[1].allocation_id)
+        if len(set(allocations)) != len(allocations):
+            raise _Unavailable
         return rows
 
     @_closed_evidence
-    def _receipt(self, workspace_id, revision, *, read=None):
-        read = _EvidenceRead(self._connection) if read is None else read
+    def _receipt_manifest(self, workspace_id, revision, read):
         snapshot_start = read.used.accounted_bytes
         rows = read.bounded_rows("cpk_configuration_acceptances", _columns(_HEADER),
             "workspace_id=%s AND pinned_revision=%s", (workspace_id, revision))
@@ -205,9 +242,16 @@ class ConfigurationAcceptanceStore:
         slots = self._manifest(read, header, material)
         if read.used.accounted_bytes - snapshot_start > 3 * 1024 * 1024:
             raise _Capacity
-        for row in slots:
-            self._prove_use(read, row, plan, request, run)
-        return header, action, event
+        return header, action, event, slots, plan, request, run
+
+    @_closed_evidence
+    def _receipt(self, workspace_id, revision, *, read=None):
+        """Full-proof contract retained for replay and current-row verification."""
+        read = _EvidenceRead(self._connection) if read is None else read
+        receipt = self._receipt_manifest(workspace_id, revision, read)
+        for row in receipt[3]:
+            self._prove_use(read, row, *receipt[4:])
+        return receipt[:3]
 
     def _latest(self, read, *, action, workspace_id):
         table, key, kind, value = (("cpk_operation_actions", "action_id", "action_type", "advance-current-graph")
@@ -223,22 +267,100 @@ class ConfigurationAcceptanceStore:
             raise _Unavailable
         return rows[0] if rows else None
 
-    def _current_receipt(self, workspace):
-        read = _EvidenceRead(self._connection)
+    def _current_manifest(self, workspace, read):
         action = self._latest(read, action=True, workspace_id=workspace.workspace_id)
         event = self._latest(read, action=False, workspace_id=workspace.workspace_id)
         if action is None and event is None:
-            origin = PostgresWorkspaceStore(self._connection)._require_workspace_initialization(workspace.workspace_id)
+            origin = _read_workspace_initialization(self._connection, workspace.workspace_id)
             if (workspace.current_graph_id, workspace.current_realized_projection_id) != (
                     origin.initial_graph_id, origin.initial_projection_id):
                 raise _Unavailable
-            return
+            return ({"workspace_id": workspace.workspace_id, "graph_id": origin.initial_graph_id,
+                "projection_id": origin.initial_projection_id, "pinned_revision": None, "slot_count": 0},
+                None, None, (), None, None, None)
         if action is None or event is None or action[1:] != event[1:]:
             raise _Unavailable
-        header, _, _ = self._receipt(workspace.workspace_id, action[-1])
+        receipt = self._receipt_manifest(workspace.workspace_id, action[-1], read)
+        header = receipt[0]
         if (header["action_id"], header["event_id"], header["graph_id"], header["projection_id"]) != (
                 action[0], event[0], workspace.current_graph_id, workspace.current_realized_projection_id):
             raise _Unavailable
+        return receipt
+
+    def _current_receipt(self, workspace):
+        """Advancement and schema current validation retain every source proof."""
+        read = _EvidenceRead(self._connection)
+        receipt = self._current_manifest(workspace, read)
+        for row in receipt[3]:
+            self._prove_use(read, row, *receipt[4:])
+
+    def _observed_bindings(self, receipt, rows, read):
+        bindings = []
+        for row in rows:
+            source, birth = self._prove_use(read, row, *receipt[4:])
+            bindings.append(ConfigurationAcceptedBinding(source.ref, source, birth))
+        header = receipt[0]
+        return ConfigurationCurrentEvidence("complete", header["workspace_id"], header["graph_id"],
+            header["projection_id"], header["pinned_revision"], header["slot_count"], tuple(bindings))
+
+    @_public_read
+    def read_current_configuration(self, workspace_id, *, node_id=None):
+        """Prove the complete manifest, then only the requested original sources."""
+        _read_identifier(workspace_id)
+        if node_id is not None:
+            _read_identifier(node_id)
+        read = _EvidenceRead(self._connection)
+        receipt = self._current_manifest(PostgresWorkspaceStore(self._connection).get(workspace_id), read)
+        rows = tuple(row for row in receipt[3] if node_id is None or row[1] == node_id)
+        counts = {}
+        for row in rows:
+            counts[row[1]] = counts.get(row[1], 0) + 1
+        if any(count > 32 for count in counts.values()):
+            raise _Capacity
+        return self._observed_bindings(receipt, rows, read)
+
+    def _known_birth(self, read, exact_ref):
+        candidates = read.bounded_rows("cpk_effect_configuration_refs", _REF_KEY_COLUMNS,
+            "workspace_id=%s AND allocation_id=%s AND is_birth", (exact_ref.workspace_id, exact_ref.allocation_id),
+            maximum=2, point=True, order="run_id,activity_id,attempt,artifact_id")
+        if len(candidates) != 1:
+            raise _Unavailable
+        row = self._ref(read, candidates[0])
+        birth = _decode(row, read)
+        if row[16] is not True or birth.identity != birth.birth_identity or birth.ref != exact_ref:
+            raise _Unavailable
+        # Known pending/failed/staged allocations need no successful outcome
+        # merely to be observed absent. Their reciprocal claim remains protective.
+        return birth
+
+    @_public_read
+    def read_configuration_use(self, workspace_id, exact_refs):
+        """Exact current membership only; empty matches never grant cleanup."""
+        _read_identifier(workspace_id)
+        if type(exact_refs) is not tuple:
+            raise _Unavailable
+        if len(exact_refs) > 32:
+            raise _Capacity
+        for ref in exact_refs:
+            _validate_ref(ref)
+            if ref.workspace_id != workspace_id:
+                raise _Unavailable
+        if len({ref.allocation_id for ref in exact_refs}) != len(exact_refs):
+            raise _Unavailable
+        read = _EvidenceRead(self._connection)
+        receipt = self._current_manifest(PostgresWorkspaceStore(self._connection).get(workspace_id), read)
+        for ref in exact_refs:
+            self._known_birth(read, ref)
+        requested = {ref.allocation_id: ref for ref in exact_refs}
+        rows = []
+        for row in receipt[3]:
+            ref = _decode_ref(self._ref(read, row[3:7]))[1]
+            candidate = requested.get(ref.allocation_id)
+            if candidate is not None:
+                if ref != candidate:
+                    raise _Unavailable
+                rows.append(row)
+        return self._observed_bindings(receipt, rows, read)
 
     @_closed_evidence
     def _prepare(self, stores, workspace, request, run, plan, guard, current_projection, desired_projection):
@@ -265,9 +387,7 @@ class ConfigurationAcceptanceStore:
                 raise _Unavailable
             # Discover only this advancing run/slot, before source joins; do not
             # turn an unrelated old successful attempt into a new installation.
-            candidates = read.bounded_rows("cpk_effect_configuration_refs",
-                _columns(("run_id", "activity_id"))
-                + (("attempt", "int", 16), ("artifact_id", "text", 2048)),
+            candidates = read.bounded_rows("cpk_effect_configuration_refs", _REF_KEY_COLUMNS,
                 "run_id=%s AND workspace_id=%s AND runtime_id=%s AND node_id=%s AND artifact_id=%s",
                 (run.run_id, workspace.workspace_id, *slot), maximum=2, point=True, order="activity_id,attempt")
             if len(candidates) != 1:

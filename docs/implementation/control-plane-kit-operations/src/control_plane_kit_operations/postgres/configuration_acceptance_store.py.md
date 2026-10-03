@@ -15,6 +15,19 @@ this intermediate checkpoint. Missing
 initial or historical evidence refuses; no adoption, repair or synthetic header is
 performed. Original replay validates its own occurrence, not the latest pointer.
 
+`read_current_configuration` validates the authoritative complete current
+manifest and all raw ref/claim material, then proves requested node sources (all
+sources when no node is specified). `read_configuration_use` additionally proves
+each exact candidate's original birth/source before reporting present or absent
+membership. Unknown or conflicting refs are unavailable even for an empty
+manifest. Known staged/failed allocations need no successful outcome merely to
+be absent; every claim remains protective. Both APIs share one bounded ledger,
+perform no writes or row locking, and return closed observations without partial
+proofs on unavailable/capacity. Genuine E7 initialization is complete and empty
+with no accepted revision. Full-source receipt validation remains mandatory for
+advancement, replay and current-schema verification. The five public-read targets
+reached causal missing-method red; this source connection is not yet validated.
+
 All reads and scalar mutation returns share the command ledger. Before CAS,
 generated reader coordinates and PostgreSQL JSON sizes are checked and a fixed
 publication envelope is tested against remaining command capacity. Slot/header insertion

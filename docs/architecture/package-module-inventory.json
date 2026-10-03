@@ -66,9 +66,10 @@
       "protecting_tests": [
         "tests/test_postgres_configuration_acceptance.py",
         "tests/test_current_schema_installation.py",
-        "tests/test_postgres_configuration_acceptance_membership.py"
+        "tests/test_postgres_configuration_acceptance_membership.py",
+        "tests/test_postgres_configuration_current_reads.py"
       ],
-      "motivation": "Bounded original receipt discovery, complete new-node membership and current-row verification in the advancement transaction."
+      "motivation": "Bounded original receipt discovery, complete new-node membership, current-row verification and read-only current-use evidence."
     },
     {
       "module": "control_plane_kit_operations.configuration_preparation",
@@ -89,6 +90,8 @@
         "ConfigurationSourceEvidence",
         "ConfigurationRefEvidence",
         "ConfigurationAllocationEvidence",
+        "ConfigurationAcceptedBinding",
+        "ConfigurationCurrentEvidence",
         "configuration_evidence_capacity",
         "configuration_preparation_capacity"
       ],
@@ -108,7 +111,8 @@
         "tests/test_postgres_configuration_preparation.py",
         "tests/test_postgres_configuration_evidence.py",
         "tests/test_postgres_configuration_material_boundary.py",
-        "tests/test_configuration_preparation_capacity.py"
+        "tests/test_configuration_preparation_capacity.py",
+        "tests/test_postgres_configuration_current_reads.py"
       ],
       "motivation": "Closed provenance evidence and capacity values; complete evidence never grants reuse or release authority."
     },

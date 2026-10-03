@@ -201,6 +201,58 @@ class ConfigurationAllocationEvidence:
         _require(keys == sorted(set(keys)) and self.birth in self.claims)
 
 
+@dataclass(frozen=True)
+class ConfigurationAcceptedBinding:
+    """Exact observed accepted use and direct birth; no mutation authority."""
+    ref: ConfigurationInstanceRef
+    source: ConfigurationRefEvidence
+    birth: ConfigurationRefEvidence
+
+    def __post_init__(self) -> None:
+        _ref(self.ref)
+        for value in (self.source, self.birth):
+            _require(type(value) is ConfigurationRefEvidence)
+            ConfigurationRefEvidence.__post_init__(value)
+        _require(self.source.ref == self.ref == self.birth.ref
+            and self.source.birth_identity == self.birth.identity == self.birth.birth_identity
+            and self.source.birth_artifact_id == self.birth.ref.artifact_id)
+
+
+@dataclass(frozen=True)
+class ConfigurationCurrentEvidence:
+    """Closed current snapshot observation with only requested proven bindings."""
+    state: str
+    workspace_id: str | None = None
+    graph_id: str | None = None
+    projection_id: str | None = None
+    pinned_revision: int | None = None
+    manifest_slot_count: int | None = None
+    bindings: tuple[ConfigurationAcceptedBinding, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require(type(self.state) is str and self.state in ("complete", "unavailable", "capacity"))
+        _require(type(self.bindings) is tuple)
+        if self.state != "complete":
+            _require(all(value is None for value in (self.workspace_id, self.graph_id,
+                self.projection_id, self.pinned_revision, self.manifest_slot_count)) and not self.bindings)
+            return
+        for value in (self.workspace_id, self.graph_id, self.projection_id):
+            _require(type(value) is str and bool(value.strip()) and len(value.encode("utf-8")) <= 2048
+                and all(ord(character) >= 32 for character in value))
+        _require(type(self.manifest_slot_count) is int and 0 <= self.manifest_slot_count <= 256)
+        _require(self.pinned_revision is None or (type(self.pinned_revision) is int and self.pinned_revision >= 0))
+        _require(self.pinned_revision is not None or self.manifest_slot_count == 0)
+        _require(len(self.bindings) <= self.manifest_slot_count)
+        slots, allocations = [], []
+        for binding in self.bindings:
+            _require(type(binding) is ConfigurationAcceptedBinding)
+            ConfigurationAcceptedBinding.__post_init__(binding)
+            _require(binding.ref.workspace_id == self.workspace_id)
+            slots.append((binding.ref.runtime_id, binding.ref.node_id, binding.ref.artifact_id))
+            allocations.append(binding.ref.allocation_id)
+        _require(slots == sorted(set(slots)) and len(set(allocations)) == len(allocations))
+
+
 def _birth_selection(identity: EffectAttemptIdentity,
         selection: ConfigurationInstanceSelection) -> ConfigurationInstanceSelection:
     """Derive identity only; the transactional preparation owner grants admission."""

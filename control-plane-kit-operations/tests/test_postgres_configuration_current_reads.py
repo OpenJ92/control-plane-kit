@@ -9,6 +9,7 @@ from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
 from tests import test_postgres_configuration_acceptance_membership as membership_fixture
+from tests.test_postgres_configuration_evidence import _ObservedConnection as TransportObservedConnection
 
 
 class PostgresConfigurationCurrentReadTests(unittest.TestCase):
@@ -28,7 +29,7 @@ class PostgresConfigurationCurrentReadTests(unittest.TestCase):
     def read_use(self, refs):
         return self.read("read_configuration_use", "workspace-a", refs)
 
-    def read(self, name, *args, **kwargs):
+    def read(self, name, *args, observations=None, **kwargs):
         statements = []
 
         class ObservedConnection:
@@ -42,7 +43,11 @@ class PostgresConfigurationCurrentReadTests(unittest.TestCase):
                 statements.append(str(query))
                 return self.connection.execute(query, parameters)
 
-        with PostgresUnitOfWork(lambda: ObservedConnection(psycopg.connect(self.base.database_url))) as uow:
+        def connection():
+            raw = psycopg.connect(self.base.database_url)
+            return ObservedConnection(raw if observations is None else TransportObservedConnection(raw, observations))
+
+        with PostgresUnitOfWork(connection) as uow:
             reader = getattr(uow.stores.configuration_acceptance, name, None)
             self.assertTrue(callable(reader), "mapped configuration read boundary is missing: " + name)
             result = reader(*args, **kwargs)
@@ -66,7 +71,10 @@ class PostgresConfigurationCurrentReadTests(unittest.TestCase):
             self.assertEqual(binding.birth.identity, binding.birth.birth_identity)
 
     def assert_unavailable(self, evidence):
-        self.assertEqual(evidence.state, "unavailable")
+        self.assert_closed(evidence, "unavailable")
+
+    def assert_closed(self, evidence, state):
+        self.assertEqual(evidence.state, state)
         self.assertEqual(evidence.bindings, ())
         for field in ("workspace_id", "graph_id", "projection_id", "pinned_revision", "manifest_slot_count"):
             self.assertIsNone(getattr(evidence, field), "unavailable result retained partial proof")
@@ -121,10 +129,55 @@ class PostgresConfigurationCurrentReadTests(unittest.TestCase):
                 self.assertEqual(self.base.retained_snapshot(), before)
                 self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
 
-    def test_original_initialization_is_an_explicit_complete_empty_snapshot(self):
-        created = WorkspaceCommandService(self.base.unit_of_work, clock=lambda: "2026-07-22T14:00:00Z",
+    def create_empty(self):
+        return WorkspaceCommandService(self.base.unit_of_work, clock=lambda: "2026-07-22T14:00:00Z",
             id_factory=lambda: "graph-empty").create(CreateWorkspace("workspace-empty", "Empty", "operator-a",
                 IdempotencyKey("create-empty")))
+
+    def empty_reads(self, *, observations=None):
+        return (self.read("read_current_configuration", "workspace-empty", observations=observations),
+            self.read("read_configuration_use", "workspace-empty", (), observations=observations))
+
+    def test_missing_initialization_returns_closed_unavailable_for_both_reads(self):
+        self.create_empty()
+        self.assertTrue(all(value.state == "complete" for value in self.empty_reads()))
+        self.base.connection.execute("DELETE FROM cpk_workspace_initializations WHERE workspace_id='workspace-empty'")
+        before = self.base.retained_snapshot()
+        for value in self.empty_reads():
+            self.assert_unavailable(value)
+        self.assertEqual(self.base.retained_snapshot(), before)
+        self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
+
+    def test_corrupt_initialization_returns_closed_unavailable_for_both_reads(self):
+        self.create_empty()
+        self.assertTrue(all(value.state == "complete" for value in self.empty_reads()))
+        self.base.connection.execute("UPDATE cpk_workspace_initializations SET graph_descriptor_sha256=%s "
+            "WHERE workspace_id='workspace-empty'", ("0" * 64,))
+        before = self.base.retained_snapshot()
+        for value in self.empty_reads():
+            self.assert_unavailable(value)
+        self.assertEqual(self.base.retained_snapshot(), before)
+        self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
+
+    def test_oversized_initialization_material_returns_capacity_before_transport(self):
+        self.create_empty()
+        self.assertTrue(all(value.state == "complete" for value in self.empty_reads()))
+        # Defensive committed corruption, not owner-valid initialization growth.
+        marker = "private-origin-canary"
+        self.base.connection.execute("UPDATE cpk_graph_versions SET metadata=jsonb_build_object('padding',%s::text) "
+            "WHERE graph_id='graph-empty'", (marker * 2000,))
+        before = self.base.retained_snapshot()
+        observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+        for value in self.empty_reads(observations=observed):
+            self.assert_closed(value, "capacity")
+            self.assertNotIn(marker, repr(value))
+        self.assertGreater(observed["statements"], 0)
+        self.assertLessEqual(observed["largest_cell"], 16384)
+        self.assertEqual(self.base.retained_snapshot(), before)
+        self.assertEqual(self.fixture.protective_claims(), self.fixture.claims)
+
+    def test_original_initialization_is_an_explicit_complete_empty_snapshot(self):
+        created = self.create_empty()
         before = self.base.retained_snapshot()
         evidence = self.read_current(workspace_id="workspace-empty")
         self.assertEqual(evidence.state, "complete")
