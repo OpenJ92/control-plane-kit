@@ -25,6 +25,30 @@ from tests import test_execution_coordinator as coordinator_fixture
 from tests.receiver_scope_history_fixture import admit_fixture_plan
 
 
+def initialize_receiver_fixture_origin(case, *, runtime_graph=None):
+    """Create real empty authority, optionally accept the original bare runtime."""
+    from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedActivity, RuntimeTarget, StartRuntime
+    from control_plane_kit_operations.records import GraphVersionRecord
+    from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+    initial_id = "graph-current" if runtime_graph is None else "scope-origin-empty"
+    WorkspaceCommandService(case.unit_of_work,
+        clock=lambda: "2026-07-22T11:59:00Z", id_factory=lambda: initial_id).create(
+            CreateWorkspace("workspace-a", "Workspace A", "operator-a", IdempotencyKey("scope-origin-create")))
+    if runtime_graph is None:
+        return
+    with case.unit_of_work() as uow:
+        uow.stores.graphs.save(GraphVersionRecord.from_graph(
+            graph_id="graph-current", workspace_id="workspace-a", version=2,
+            graph=runtime_graph, created_by="operator-a", created_at="2026-07-22T12:00:00Z"))
+        uow.stores.workspaces.set_desired_graph("workspace-a", "graph-current")
+        uow.commit()
+    case.assertEqual(tuple(runtime_graph.runtimes), ("docker",))
+    case.assertEqual(runtime_graph.nodes, {})
+    accept_selected_fixture_origin(case, ActivityPlan((PlannedActivity(
+        ActivityId("scope-origin-start-runtime"), StartRuntime(RuntimeTarget("docker"))),)),
+        prefix="scope-origin", timestamp="2026-07-22T12:00:15Z")
+
+
 def accept_selected_fixture_origin(case, plan, *, workspace_id="workspace-a",
                                    prefix="fixture-origin", timestamp="2026-07-22T11:00:00Z"):
     """Approve, admit, execute, and accept the caller's explicit zero-slot plan."""

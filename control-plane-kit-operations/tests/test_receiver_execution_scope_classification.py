@@ -20,7 +20,7 @@ from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority, PauseActivityRun, ResumeActivityRun, StartActivityRun
 from control_plane_kit_operations.records import FailureEvidence
 from control_plane_kit_operations.workflows import IdempotencyKey
-from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture
+from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture, ReceiverAcceptedExecutionScopeFixture
 from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
 
 
@@ -159,22 +159,6 @@ class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, u
         self.assertEqual(result.disposition, "conflict")
         self.assertIn("run-dispatched", result.run_ids)
 
-    def test_later_accepted_retry_does_not_account_for_older_run_of_same_request(self):
-        module = self.require_scopes()
-        self.admit_operations("same-request", StartNode(NodeTarget("app")))
-        adapter = RecordingRuntimeAdapter(lambda context, request: RuntimeEffectResult.failed(
-            request.effect_id, RuntimeEffectFailure("first-failed", "bounded earlier failure")))
-        claimed, first = self.execute_effects("same-request", adapter)
-        self.assertEqual(first.run.status, ActivityRunStatus.FAILED)
-        retried = self.retry(claimed, "same-request")
-        _, completed = self.execute_claimed_effects(retried, "same-request-retry")
-        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
-        self.advance(retried, "same-request-retry")
-        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
-        self.assertEqual(result.disposition, "conflict")
-        self.assertEqual(result.request_ids, ("execution-same-request",))
-        self.assertIn(claimed.run.run_id, result.run_ids)
-
     def test_successful_inverse_does_not_invent_whole_run_disposal(self):
         module = self.require_scopes()
         self.admit_operations("inverse", StartNode(NodeTarget("app")), StartNode(NodeTarget("app")))
@@ -248,57 +232,6 @@ class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, u
         self.assertIn("run-recovered", result.run_ids)
         self.assertNotIn("uncertain", result.reason)
 
-    def test_complete_affecting_success_is_conflict_until_exact_acceptance(self):
-        module = self.require_scopes()
-        self.admit_operations("success", StartNode(NodeTarget("app")))
-        claimed, completed = self.execute_effects("success")
-        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
-        scope = module.ExecutionReceiverScope("docker", "app")
-        before = self.evidence(scope)
-        self.assertEqual(before.disposition, "conflict")
-        self.assertEqual(before.run_ids, ("run-success",))
-        self.advance(claimed, "success")
-        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
-        # Exact historical accounting survives later pointers; it is not a
-        # fresh eligibility decision derived from today's graph selection.
-        with self.unit_of_work() as uow:
-            uow.stores.workspaces.set_desired_graph("workspace-a", "graph-current")
-            uow.commit()
-        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
-
-    def test_mixed_effect_and_journal_only_operations_retain_exact_acceptance(self):
-        module = self.require_scopes()
-        self.admit_operations("mixed", StartNode(NodeTarget("app")),
-                              SwitchSocketConnection(SocketConnectionTarget("edge-a")))
-        adapter = RecordingRuntimeAdapter(
-            lambda context, request: RuntimeEffectResult.succeeded(request.effect_id),
-            ActivityExecutionOutcome.succeeded())
-        claimed, completed = self.execute_effects("mixed", adapter)
-        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
-        self.assertEqual(len(adapter.runtime_calls), 1)
-        self.assertEqual(len(adapter.legacy_calls), 1)
-        scope = module.ExecutionReceiverScope("docker", "app")
-        self.assertEqual(self.evidence(scope).disposition, "conflict")
-        self.advance(claimed, "mixed")
-        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
-
-    def test_acceptance_receipt_requires_its_original_complete_success_journal(self):
-        module = self.require_scopes()
-        self.admit_operations("accepted-history", StartNode(NodeTarget("app")))
-        claimed, completed = self.execute_effects("accepted-history")
-        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
-        self.advance(claimed, "accepted-history")
-        scope = module.ExecutionReceiverScope("docker", "app")
-        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
-        with self.unit_of_work() as uow:
-            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
-            self.assertEqual(uow.stores.connection.execute(
-                "UPDATE cpk_activity_events SET event_type='run_resumed' "
-                "WHERE run_id='run-accepted-history' AND event_type='run_succeeded'").rowcount, 1)
-            evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
-            self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "unavailable")
-        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
-
     def test_known_failure_is_conflict_without_generic_disposal(self):
         module = self.require_scopes()
         self.admit_operations("failed", StartNode(NodeTarget("app")))
@@ -310,20 +243,6 @@ class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, u
         self.assertEqual(result.disposition, "conflict")
         self.assertEqual(result.run_ids, ("run-failed",))
         self.assertNotIn("uncertain", result.reason)
-
-    def test_newer_acceptance_does_not_account_for_older_failed_request(self):
-        module = self.require_scopes()
-        self.admit_operations("old", StartNode(NodeTarget("app")))
-        adapter = RecordingRuntimeAdapter(lambda context, request: RuntimeEffectResult.failed(
-            request.effect_id, RuntimeEffectFailure("old-failure", "bounded old failure")))
-        self.execute_effects("old", adapter)
-        self.admit_operations("new", StartNode(NodeTarget("app")))
-        claimed, completed = self.execute_effects("new")
-        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
-        self.advance(claimed, "new")
-        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
-        self.assertEqual(result.disposition, "conflict")
-        self.assertIn("run-old", result.run_ids)
 
     def test_runtime_wide_original_request_overlaps_any_node_on_that_runtime(self):
         module = self.require_scopes()
@@ -439,3 +358,86 @@ class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, u
         result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
         self.assertEqual(result.disposition, "conflict")
         self.assertIn("execution-pending", result.request_ids)
+
+
+class ReceiverAcceptedExecutionScopeClassificationTests(ReceiverAcceptedExecutionScopeFixture, unittest.TestCase):
+    def test_later_accepted_retry_does_not_account_for_older_run_of_same_request(self):
+        module = self.require_scopes()
+        self.admit_operations("same-request", StartNode(NodeTarget("app")))
+        adapter = RecordingRuntimeAdapter(lambda context, request: RuntimeEffectResult.failed(
+            request.effect_id, RuntimeEffectFailure("first-failed", "bounded earlier failure")))
+        claimed, first = self.execute_effects("same-request", adapter)
+        self.assertEqual(first.run.status, ActivityRunStatus.FAILED)
+        retried = self.retry(claimed, "same-request")
+        _, completed = self.execute_claimed_effects(retried, "same-request-retry")
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.advance(retried, "same-request-retry")
+        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
+        self.assertEqual(result.disposition, "conflict")
+        self.assertEqual(result.request_ids, ("execution-same-request",))
+        self.assertIn(claimed.run.run_id, result.run_ids)
+
+    def test_complete_affecting_success_is_conflict_until_exact_acceptance(self):
+        module = self.require_scopes()
+        self.admit_operations("success", StartNode(NodeTarget("app")))
+        claimed, completed = self.execute_effects("success")
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        scope = module.ExecutionReceiverScope("docker", "app")
+        before = self.evidence(scope)
+        self.assertEqual(before.disposition, "conflict")
+        self.assertEqual(before.run_ids, ("run-success",))
+        self.advance(claimed, "success")
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+        # Exact historical accounting survives later pointers; it is not a
+        # fresh eligibility decision derived from today's graph selection.
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.set_desired_graph("workspace-a", "graph-current")
+            uow.commit()
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+
+    def test_mixed_effect_and_journal_only_operations_retain_exact_acceptance(self):
+        module = self.require_scopes()
+        self.admit_operations("mixed", StartNode(NodeTarget("app")),
+                              SwitchSocketConnection(SocketConnectionTarget("edge-a")))
+        adapter = RecordingRuntimeAdapter(
+            lambda context, request: RuntimeEffectResult.succeeded(request.effect_id),
+            ActivityExecutionOutcome.succeeded())
+        claimed, completed = self.execute_effects("mixed", adapter)
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.assertEqual(len(adapter.runtime_calls), 1)
+        self.assertEqual(len(adapter.legacy_calls), 1)
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "conflict")
+        self.advance(claimed, "mixed")
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+
+    def test_acceptance_receipt_requires_its_original_complete_success_journal(self):
+        module = self.require_scopes()
+        self.admit_operations("accepted-history", StartNode(NodeTarget("app")))
+        claimed, completed = self.execute_effects("accepted-history")
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.advance(claimed, "accepted-history")
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            self.assertEqual(uow.stores.connection.execute(
+                "UPDATE cpk_activity_events SET event_type='run_resumed' "
+                "WHERE run_id='run-accepted-history' AND event_type='run_succeeded'").rowcount, 1)
+            evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
+            self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "unavailable")
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+
+    def test_newer_acceptance_does_not_account_for_older_failed_request(self):
+        module = self.require_scopes()
+        self.admit_operations("old", StartNode(NodeTarget("app")))
+        adapter = RecordingRuntimeAdapter(lambda context, request: RuntimeEffectResult.failed(
+            request.effect_id, RuntimeEffectFailure("old-failure", "bounded old failure")))
+        self.execute_effects("old", adapter)
+        self.admit_operations("new", StartNode(NodeTarget("app")))
+        claimed, completed = self.execute_effects("new")
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.advance(claimed, "new")
+        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
+        self.assertEqual(result.disposition, "conflict")
+        self.assertIn("run-old", result.run_ids)

@@ -9,7 +9,7 @@ from control_plane_kit_operations import receiver_lifecycle
 from control_plane_kit_operations.planning import DesiredGraphCommandError, DesiredGraphCommandService, SetDesiredGraph
 from control_plane_kit_operations.postgres.temporal import decode_postgres_timestamp
 from control_plane_kit_operations.workflows import IdempotencyKey
-from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture
+from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture, ReceiverAcceptedExecutionScopeFixture
 from tests.receiver_storage_fixture import ReceiverStorageFixture
 
 
@@ -108,6 +108,12 @@ class ReceiverAdmissionExecutionEvidenceTests(ReceiverExecutionScopeFixture, uni
             bindings = uow.stores.graphs.receiver_bindings("workspace-a",
                 result.graph_version_id, result.desired_realized_projection_id)
         self.assertEqual(tuple(binding.node_id for binding in bindings), ("other",))
+
+
+class ReceiverAcceptedAdmissionExecutionEvidenceTests(ReceiverAcceptedExecutionScopeFixture, unittest.TestCase):
+    receiver_graph = ReceiverStorageFixture.receiver_graph
+    receiver_command = ReceiverAdmissionExecutionEvidenceTests.receiver_command
+    desired_service = ReceiverAdmissionExecutionEvidenceTests.desired_service
 
     def test_genuine_legacy_acceptance_accounts_for_only_its_original_run(self):
         # This is genuine existing legacy advancement, not C3 receiver
