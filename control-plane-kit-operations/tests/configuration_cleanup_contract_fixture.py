@@ -26,7 +26,7 @@ def require_cleanup(test):
 
 
 def source_identity(number=0, *, maximum=False):
-    return {"run_id": ("r" * 196 + f"{number:04d}") if maximum else f"run-{number}",
+    return {"run_id": ("r" * 196 + f"{number:04d}") if maximum else f"run-{number:04d}",
             "activity_id": "a" * 200 if maximum else "start-api", "attempt": 1}
 
 

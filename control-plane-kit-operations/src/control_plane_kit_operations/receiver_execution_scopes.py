@@ -223,7 +223,8 @@ def _derive(identity, plan, base_projection, desired_projection):
         _capacity(sum(len(value.encode("utf-8")) for value in (
             identity.workspace_id, scope.runtime_id, identity.request_id, scope.node_id or "",
         )) <= 1024)
-    payload = rfc8785.dumps(encode_stored_activity_plan(plan.plan, profile=plan.derivation_profile))
+    payload = rfc8785.dumps(encode_stored_activity_plan(plan.plan, profile=plan.derivation_profile,
+        cleanup_proposal=plan.cleanup_proposal))
     _capacity(len(payload) <= MAX_DOCUMENT_BYTES)
     witness = {
         "profile": "receiver-execution-scopes.v1",

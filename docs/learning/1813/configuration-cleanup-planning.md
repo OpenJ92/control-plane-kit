@@ -11,10 +11,26 @@ Accepted base: C1 merge `7f1ac6235d40203819165305784d4aee8841b9f9`, tree
 The final field, authority, capacity and target design received independent
 Meridian and Kepler PASS. See the [complete contract](https://github.com/OpenJ92/control-plane-kit/issues/1928#issuecomment-5970580636)
 and [accepted refinements](https://github.com/OpenJ92/control-plane-kit/issues/1928#issuecomment-5970619807).
-North released concrete targets, checkpoint and causal red. This document
-currently records target-stage work only: application implementation and
-executable C2 evidence are pending. Accepted C1/B2 evidence is reused, not rerun
-as a claim of new behavior.
+North released concrete targets, checkpoint and causal red. Meridian accepted
+the actual missing-interface red at `c37efd65`: Core 943 tests with two expected
+failures and 941 passes; focused Operations 40 tests with 32 expected failures
+and eight passes, no errors. Compilation/import did not run after those failures.
+The initial implementation is now present but unvalidated. Accepted C1/B2
+evidence is reused; it is not new C2 behavioral evidence.
+
+The source checkpoint introduces immutable canonical proposal/inspection values,
+one composed evidence read, the dedicated read-only snapshot, exact plan/action
+publication, and conditional lifecycle locking and evidence revalidation in the
+existing approval owner. No SQL schema change is required. The publication
+receipt follows the plan/action/replayed convention without inventing the graph
+transition required by the separate graph-planning result.
+
+Intermediate independent review found missing reciprocal whole-selection
+consistency inside proposal syntax, a missing durable session/workspace binding,
+parser exceptions escaping the fixed redacted boundary, and an overly broad
+accepted-occurrence run ID. Bounded corrections and targets are included; their
+executable results are pending. The approved fixture-only run-ID padding fixes
+canonical lexical order without changing any assertion or original red evidence.
 
 ## Chosen boundary
 
@@ -90,6 +106,35 @@ Application source starts only after the concrete missing-behavior red is review
 The same targets must become green. Full owning package and pinned current-backend
 evidence follow at the issue's required review boundary. No harness, dependency pin,
 skip, xfail or schema/reset change is part of this target stage.
+
+## Inspect, review, publish
+
+The caller obtains exact original attempt/artifact refs and the five current
+pins through authenticated Operations composition. The authenticated command
+context is supplied separately from those values:
+
+```python
+query = InspectConfigurationCleanup(session_id, workspace_id, pins, selectors)
+result = cleanup_service.inspect(query, context=trusted_context)
+if result.state == "complete":
+    review = result.inspection.descriptor()
+    blockers = [row["blockers"] for row in review["candidates"]]
+    # Present all candidates and blockers to the operator. A partial selection
+    # can report "incomplete-invocation-selection"; never add siblings silently.
+    if not any(blockers):
+        command = RequestConfigurationCleanupPlan(
+            session_id, workspace_id, IdempotencyKey("reviewed-cleanup"),
+            pins, selectors, result.inspection.evidence_digest,
+        )
+        receipt = cleanup_service.request_plan(command, context=trusted_context)
+        # Existing RequestApproval then DecideApproval bind the exact proposal.
+        # The destructive approver must be distinct from the requester.
+```
+
+This creates reviewable durable intent. Neither the receipt nor approval opens
+the retained admission and runtime-effect cleanup refusals. If inspection is
+unavailable/capacity, no partial candidate set is returned. If current truth
+changes before publication or approval, the caller must inspect and review again.
 
 ## Security, data and handoff
 

@@ -100,6 +100,17 @@ class ConfigurationCleanupPlanningTests(ConfigurationCleanupPostgresFixture, uni
                          {ref.allocation_id for ref in self.refs})
         self.assertEqual(self.member.protective_claims(), self.member.claims)
         self.assertEqual(result.action.actor_id, command_context().actor_id)
+        # Deliberately forged syntax: the durable owner must bind workspace,
+        # independently of the service's verified provenance boundary.
+        from tests.configuration_cleanup_contract_fixture import proposal_wire, cleanup_plan
+        foreign = proposal_wire(refs=tuple(replace(ref, workspace_id="workspace-b") for ref in self.refs))
+        foreign["context"] = proposal["context"] | {"workspace_id": "workspace-b",
+            "current_occurrence": proposal["context"]["current_occurrence"] | {"workspace_id": "workspace-b"}}
+        forged = replace(record, plan_id="foreign-cleanup", plan=cleanup_plan(foreign),
+            cleanup_proposal=self.values.ConfigurationCleanupProposalCodec().decode(foreign))
+        with self.unit_of_work() as uow:
+            with self.assertRaises(ValueError):
+                uow.stores.activity_history.add_plan(forged)
 
     def test_stale_occurrence_desired_revision_aba_or_claim_outcome_change_requires_replan(self):
         original = self.request()

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from contextlib import contextmanager
+from contextvars import ContextVar
 import json
 
 from control_plane_kit_operations.configuration_preparation import (
@@ -18,12 +20,33 @@ class _Unavailable(ValueError):
     pass
 
 
+_COMPOSED_READ = ContextVar("cpk_configuration_composed_read", default=None)
+
+
+@contextmanager
+def _composed_read(connection):
+    """Bind one command-local ledger and cache across existing evidence owners."""
+    from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+    with _configuration_accounting():
+        read = _EvidenceRead(connection)
+        token = _COMPOSED_READ.set(read)
+        try:
+            yield read
+        finally:
+            _COMPOSED_READ.reset(token)
+
+
 def _active_read(connection):
     from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
     current = _ACCOUNTING.get()
     if current is not None and current.active:
         if current.execution_context != _execution_context():
             raise _Unavailable
+        composed = _COMPOSED_READ.get()
+        if composed is not None:
+            if composed.connection is not connection or composed.accounting is not current:
+                raise _Unavailable
+            return composed
         return _EvidenceRead(connection)
     return None
 

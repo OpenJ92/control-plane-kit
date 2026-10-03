@@ -1,7 +1,10 @@
 """Declared plan semantics and their Operations-owned persistence format."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import StrEnum
+
+import rfc8785
 
 from control_plane_kit_core.planning import (
     ActivityPlan,
@@ -21,11 +24,16 @@ from control_plane_kit_operations.deployment_transitions import (
     TeardownDeployment,
     UpdateDeployment,
 )
+from control_plane_kit_operations.configuration_cleanup import (
+    ConfigurationCleanupProposal, ConfigurationCleanupProposalCodec,
+    MAX_CLEANUP_DOCUMENT_BYTES, configuration_cleanup_proposal_fingerprint,
+)
 
 
 class PlanDerivationProfile(StrEnum):
     STRUCTURAL_V1 = "structural-v1"
     MANAGEMENT_GRAPH_PAIR_V1 = "management-graph-pair-v1"
+    CONFIGURATION_CLEANUP_V1 = "configuration-cleanup-v1"
 
 
 class PlanDerivationError(ValueError):
@@ -48,6 +56,8 @@ def derive_activity_plan(
 ) -> ActivityPlan:
     """Select exactly one declared interpretation, before any comparison."""
     _require_profile(profile)
+    if profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+        raise PlanDerivationError("cleanup planning requires original allocation evidence")
     if type(transition) not in (
         InitialDeployment, UpdateDeployment, TeardownDeployment, NoOpDeployment,
     ):
@@ -74,8 +84,20 @@ def encode_stored_activity_plan(
     plan: ActivityPlan,
     *,
     profile: PlanDerivationProfile | None,
+    cleanup_proposal: ConfigurationCleanupProposal | None = None,
 ) -> dict[str, object]:
     _require_profile(profile)
+    if profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+        validate_cleanup_activity_plan(plan, cleanup_proposal)
+        descriptor = {"schema": _STORED_PLAN_SCHEMA, "version": 2,
+            "derivation_profile": profile.value, "plan": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan),
+            "cleanup_proposal": ConfigurationCleanupProposalCodec().encode(cleanup_proposal),
+            "cleanup_proposal_fingerprint": configuration_cleanup_proposal_fingerprint(cleanup_proposal)}
+        if len(rfc8785.dumps(descriptor)) > MAX_CLEANUP_DOCUMENT_BYTES:
+            raise PlanDerivationError("stored cleanup plan exceeds its capacity")
+        return descriptor
+    if cleanup_proposal is not None:
+        raise PlanDerivationError("stored activity plan profile is inconsistent")
     encoded = None
     try:
         encoded = DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)
@@ -130,6 +152,61 @@ def _decode_stored_activity_plan(
         (value for value in PlanDerivationProfile if value.value == descriptor["derivation_profile"]),
         None,
     )
-    if profile is None:
+    if profile is None or profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
         raise PlanDerivationError("stored activity plan is malformed")
     return DEFAULT_ACTIVITY_PLAN_CODEC.decode(descriptor["plan"]), profile
+
+
+@dataclass(frozen=True)
+class StoredActivityPlan:
+    plan: ActivityPlan
+    profile: PlanDerivationProfile | None
+    cleanup_proposal: ConfigurationCleanupProposal | None = None
+
+
+def validate_cleanup_activity_plan(plan, proposal):
+    """The new profile generates one exact destructive resource-removal activity."""
+    from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
+    from control_plane_kit_core.planning import (
+        ActivityImpact, CleanupConfigurationInstances, NonCompensatable, NonCompensatableReason, RiskLevel,
+    )
+    valid = False
+    try:
+        document = ConfigurationCleanupProposalCodec().encode(proposal)
+        DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)
+        if type(plan) is ActivityPlan and len(plan.activities) == 1:
+            activity = plan.activities[0]
+            expected = tuple(ConfigurationInstanceRefCodec().decode(row["ref"]) for row in document["candidates"])
+            valid = (type(activity.operation) is CleanupConfigurationInstances
+                and activity.operation.instances == expected and not activity.dependencies
+                and activity.risk is RiskLevel.CRITICAL and activity.impact is ActivityImpact.DESTRUCTIVE
+                and activity.compensation == NonCompensatable(NonCompensatableReason.RESOURCE_REMOVAL))
+    except (TypeError, ValueError, KeyError, AttributeError):
+        pass
+    if not valid:
+        raise PlanDerivationError("stored cleanup plan is malformed")
+
+
+def decode_stored_activity_plan_record(descriptor: object) -> StoredActivityPlan:
+    """Full stored meaning; unlike the old pair decoder, retains cleanup proof."""
+    if not (isinstance(descriptor, Mapping) and descriptor.get("schema") == _STORED_PLAN_SCHEMA
+            and descriptor.get("version") == 2):
+        plan, profile = decode_stored_activity_plan(descriptor)
+        return StoredActivityPlan(plan, profile)
+    result = None
+    try:
+        if (type(descriptor) is dict and type(descriptor["version"]) is int
+                and set(descriptor) == _STORED_PLAN_KEYS | {"cleanup_proposal", "cleanup_proposal_fingerprint"}
+                and type(descriptor["derivation_profile"]) is str
+                and descriptor["derivation_profile"] == PlanDerivationProfile.CONFIGURATION_CLEANUP_V1.value
+                and len(rfc8785.dumps(descriptor)) <= MAX_CLEANUP_DOCUMENT_BYTES):
+            proposal = ConfigurationCleanupProposalCodec().decode(descriptor["cleanup_proposal"])
+            plan = DEFAULT_ACTIVITY_PLAN_CODEC.decode(descriptor["plan"])
+            validate_cleanup_activity_plan(plan, proposal)
+            if descriptor["cleanup_proposal_fingerprint"] == configuration_cleanup_proposal_fingerprint(proposal):
+                result = StoredActivityPlan(plan, PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, proposal)
+    except (TypeError, ValueError, KeyError, AttributeError, RecursionError, OverflowError):
+        pass
+    if result is None:
+        raise PlanDerivationError("stored activity plan is malformed")
+    return result

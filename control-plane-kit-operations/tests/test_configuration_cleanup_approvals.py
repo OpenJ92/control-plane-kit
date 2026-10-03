@@ -53,6 +53,20 @@ class ConfigurationCleanupApprovalTests(ConfigurationCleanupPostgresFixture, uni
             self.values.configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal)})
         self.assertTrue(requested.request.destructive)
         self.assertIs(requested.request.required_scope, PolicyScope.PLAN_APPROVE_DESTRUCTIVE)
+        try:
+            self.connection.execute("UPDATE cpk_approval_requests SET destructive=false,required_scope=%s "
+                "WHERE request_id=%s", (PolicyScope.PLAN_APPROVE.value, requested.request.request_id))
+            corrupted = self.truth()
+            self.sampled.clear()
+            with self.assertRaises(ApprovalWorkflowError):
+                self.approvals().execute(self.decide(requested.request, scope=PolicyScope.PLAN_APPROVE))
+            with self.assertRaises(SchemaInstallationError):
+                install_schema(self.connection)
+            self.assertEqual(self.truth(), corrupted)
+            self.assertEqual(self.sampled, [])
+        finally:
+            self.connection.execute("UPDATE cpk_approval_requests SET destructive=true,required_scope=%s "
+                "WHERE request_id=%s", (PolicyScope.PLAN_APPROVE_DESTRUCTIVE.value, requested.request.request_id))
         before = self.truth()
         self.sampled.clear()
         for command in (self.decide(requested.request, scope=PolicyScope.PLAN_APPROVE),
@@ -208,6 +222,11 @@ class ConfigurationCleanupApprovalTests(ConfigurationCleanupPostgresFixture, uni
         self.assertTrue(replay.replayed)
         self.assertEqual(replay.decision, receipt.decision)
         self.assertEqual(self.truth(), before)
+        self.sampled.clear()
+        with self.assertRaises(ApprovalWorkflowError):
+            self.approvals().execute(replace(decide, actor_scopes=()))
+        self.assertEqual(self.truth(), before)
+        self.assertEqual(self.sampled, [])
         legacy = ActivityPlanApprovalSubject(plan.plan_id)
         self.connection.execute("UPDATE cpk_approval_requests SET subject_payload=%s,review_digest=%s WHERE request_id=%s",
                                 (Jsonb(legacy.descriptor()), legacy.review_digest, request.request_id))

@@ -15,7 +15,7 @@ from control_plane_kit_core.approval_subjects import (
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import LifecycleOperationKind
 from control_plane_kit_operations.plan_derivation import (
-    decode_stored_activity_plan,
+    decode_stored_activity_plan_record,
     encode_stored_activity_plan,
 )
 from control_plane_kit_core.planning import RiskLevel
@@ -431,6 +431,11 @@ class PostgresActivityHistoryStore:
         return ReadPage.from_candidates(request, candidates)
 
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
+        record.__post_init__()
+        if record.cleanup_proposal is not None:
+            context = record.cleanup_proposal.descriptor()["context"]
+            if self.get_session(record.session_id).workspace_id != context["workspace_id"]:
+                raise OperationsRecordError("cleanup plan workspace is inconsistent")
         if (
             record.base_realized_projection_id is None
             or record.desired_realized_projection_id is None
@@ -484,7 +489,8 @@ class PostgresActivityHistoryStore:
                 record.desired_graph_revision,
                 record.status.value,
                 encode_postgres_timestamp(record.created_at),
-                Jsonb(encode_stored_activity_plan(record.plan, profile=record.derivation_profile)),
+                Jsonb(encode_stored_activity_plan(record.plan, profile=record.derivation_profile,
+                    cleanup_proposal=record.cleanup_proposal)),
             ),
         ).fetchone()
         if inserted is None:
@@ -939,7 +945,7 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
 
 
 def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
-    plan, profile = decode_stored_activity_plan(row[9])
+    stored = decode_stored_activity_plan_record(row[9])
     return ActivityPlanRecord(
         plan_id=row[0],
         session_id=row[1],
@@ -950,8 +956,9 @@ def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
         desired_graph_revision=row[6],
         status=ActivityPlanStatus(row[7]),
         created_at=decode_postgres_timestamp(row[8]),
-        plan=plan,
-        derivation_profile=profile,
+        plan=stored.plan,
+        derivation_profile=stored.profile,
+        cleanup_proposal=stored.cleanup_proposal,
     )
 
 

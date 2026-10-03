@@ -122,11 +122,35 @@ class ConfigurationCleanupContractTests(unittest.TestCase):
         second = replace(first, allocation_id="allocation-b", artifact_id="second", target_path="/etc/second.json")
         original = proposal_wire(refs=(first, second))
         self.assertEqual(codec.encode(codec.decode(original)), original)
+        missing = deepcopy(original)
+        independent = proposal_wire(refs=(second,))
+        row = independent["candidates"][0]
+        for field in ("protecting_uses", "proposed_closures"):
+            row[field][0]["run_id"] = "run-independent"
+        for field in ("seed", "birth"):
+            row[field]["source_identity"]["run_id"] = "run-independent"
+        row["completion_witnesses"][0]["source_identity"]["run_id"] = "run-independent"
+        missing["candidates"][1] = row
+        self.assert_refused(codec, missing)
         for key, value in (("request_fingerprint", "e" * 64), ("outcome_fingerprint", "f" * 64),
                            ("direct_event_id", "another-event"), ("original_event_ordinal", 3)):
             changed = deepcopy(original)
             changed["candidates"][1]["completion_witnesses"][0][key] = value
             self.assert_refused(codec, changed)
+
+    def test_canonical_values_redact_parser_failures_and_occurrence_run_ids(self):
+        module = require_cleanup(self)
+        for cls in (module.ConfigurationCleanupProposal, module.ConfigurationCleanupInspection):
+            for malformed in (b'{"CANARY":', b'\xff', b'[' * 2000):
+                with self.subTest(cls=cls, malformed=malformed[:10]):
+                    with self.assertRaises(module.ConfigurationCleanupContractError) as raised:
+                        cls(malformed)
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertNotIn("CANARY", str(raised.exception))
+        for invalid in ("bad run", "r" * 201, "\U0001f680"):
+            document = proposal_wire(accepted=True)
+            document["context"]["current_occurrence"]["run_id"] = invalid
+            self.assert_refused(self.codec(), document)
 
     def test_stored_cleanup_envelope_preserves_proposal_and_refuses_legacy_fallback(self):
         proposal = self.codec().decode(proposal_wire())

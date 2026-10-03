@@ -61,6 +61,18 @@ class PostgresUnitOfWork:
     @contextmanager
     def read_snapshot(self):
         """Fresh, one-use receiver read transaction; ordinary UoWs are unchanged."""
+        with self._read_snapshot() as stores:
+            yield stores.graphs.receiver_authoring_snapshot()
+
+    @contextmanager
+    def configuration_cleanup_snapshot(self):
+        """A fresh read-only snapshot exposing only cleanup inspection."""
+        from .configuration_cleanup_store import ConfigurationCleanupSnapshot
+        with self._read_snapshot() as stores:
+            yield ConfigurationCleanupSnapshot(stores)
+
+    @contextmanager
+    def _read_snapshot(self):
         if self._entered or self._connection is not None:
             raise UnitOfWorkStateError("snapshot requires a fresh unit of work")
         self._entered = True
@@ -70,7 +82,7 @@ class PostgresUnitOfWork:
                 raise UnitOfWorkStateError("snapshot requires an unused transaction")
             self._connection.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             self._stores = PostgresStoreBundle(self._connection)
-            yield self._stores.graphs.receiver_authoring_snapshot()
+            yield self._stores
         finally:
             # __enter__ failures also reach this cleanup. Read snapshots never
             # request a physical commit, including after successful projection.
