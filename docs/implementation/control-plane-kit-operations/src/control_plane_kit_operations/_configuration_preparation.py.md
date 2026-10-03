@@ -12,5 +12,6 @@ every scope/material field before retaining original allocation IDs; unsupported
 material drift refuses. Without accepted refs, deterministic birth derivation is
 unchanged. The private start value now carries exact direct birth coordinates
 and must be the identical value issued by the active store owner, so a copied or
-caller-constructed provenance value cannot authorize insertion. Concrete reuse
-source review and focused validation are pending; provider behavior is separate.
+caller-constructed provenance value cannot authorize insertion. Initial reuse
+passed concrete review and its focused correction/control gate; complete B2
+hardening and provider behavior remain separate.

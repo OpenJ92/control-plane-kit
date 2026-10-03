@@ -184,7 +184,9 @@ class ConfigurationPreparationStore:
             return proposed, ()
         node_id = intent.operation.target.node_id
         base = DEFAULT_GRAPH_CODEC.decode(material.base_graph.graph_descriptor)
-        if node_id not in base.nodes:
+        if node_id not in base.nodes and not self._node_history(proposed.configuration_instances.instances[0], read):
+            # The inherited never-used-slot path remains a separate B2
+            # current/E7 authority obligation, with its fixture conversion.
             return proposed, ()
         acceptance = stores.configuration_acceptance
         workspace = stores.workspaces.get(intent.source.workspace_id)
@@ -193,24 +195,43 @@ class ConfigurationPreparationStore:
                 material.base_graph.source_authored_graph_id, material.base_graph.projection_id):
             raise _Unavailable
         rows = tuple(row for row in receipt[3] if row[1] == node_id)
+        if node_id not in base.nodes:
+            # Historical recreation requires a real accepted departure, not
+            # desired-only omission or a missing membership row.
+            if receipt[0]["pinned_revision"] is None or rows:
+                raise _Unavailable
+            return proposed, ()
         if not rows or len(rows) > 32:
             raise _Unavailable
         observed = acceptance._observed_bindings(receipt, rows, read)
         refs = tuple(binding.ref for binding in observed.bindings)
         return _propose_configuration(identity, intent, refs), observed.bindings
 
-    def _reuse_protection(self, stores, refs, read):
-        """Conservative accepted-only subset; later births after departure pending."""
+    def _node_history(self, ref, read):
+        """Complete bounded same-runtime node candidates, before any joins."""
+        columns = tuple((name, "int" if name == "attempt" else "text", 2048)
+            for name in ("run_id", "activity_id", "attempt", "artifact_id", "allocation_id"))
+        return read.bounded_rows("cpk_effect_configuration_refs", columns,
+            "workspace_id=%s AND runtime_id=%s AND node_id=%s",
+            (ref.workspace_id, ref.runtime_id, ref.node_id),
+            maximum=256, point=False, order="artifact_id,run_id,activity_id,attempt")
+
+    def _historical_protection(self, stores, refs, read):
+        """Every historical allocation retains its own material and protection."""
         allocations = []
         acceptance = stores.configuration_acceptance
-        for ref in refs:
-            columns = tuple((name, "int" if name == "attempt" else "text", 2048)
-                for name in ("run_id", "activity_id", "attempt", "artifact_id", "allocation_id"))
-            candidates = read.bounded_rows("cpk_effect_configuration_refs", columns,
-                "workspace_id=%s AND runtime_id=%s AND node_id=%s AND artifact_id=%s",
-                (ref.workspace_id, ref.runtime_id, ref.node_id, ref.artifact_id),
-                maximum=64, point=False, order="run_id,activity_id,attempt,artifact_id")
-            if not candidates or any(row[4] != ref.allocation_id for row in candidates):
+        candidates = self._node_history(refs[0], read)
+        if len(candidates) + len(refs) > 256:
+            raise _Capacity
+        groups = {}
+        for candidate in candidates:
+            groups.setdefault(candidate[4], []).append(candidate)
+        for allocation_id, rows in groups.items():
+            original = acceptance._ref(read, rows[0][:4])
+            _, ref, _, _ = _decode_ref(original)
+            if (ref.allocation_id != allocation_id
+                    or (ref.workspace_id, ref.runtime_id, ref.node_id) != (
+                        refs[0].workspace_id, refs[0].runtime_id, refs[0].node_id)):
                 raise _Unavailable
             allocation = self._allocation_evidence(ref, read)
             if allocation.state == "capacity":
@@ -219,7 +240,7 @@ class ConfigurationPreparationStore:
                 raise _Unavailable
             keys = tuple((claim.identity.run_id.value, claim.identity.activity_id,
                 claim.identity.attempt, claim.ref.artifact_id) for claim in allocation.claims)
-            if keys != tuple(row[:4] for row in candidates):
+            if keys != tuple(row[:4] for row in rows):
                 raise _Unavailable
             allocations.append(allocation)
             if sum(len(value.claims) for value in allocations) + len(refs) > 256:
@@ -257,8 +278,19 @@ class ConfigurationPreparationStore:
         from .configuration_source import _preflight_source
         _preflight_source(read, _encode_runtime_effect_intent(expected), command.transition, expected.source, command.fence)
         refs = expected.configuration_instances.instances
-        allocations = self._reuse_protection(stores, refs, read) if bindings else ()
-        if allocations and tuple(value.birth for value in allocations) != tuple(binding.birth for binding in bindings):
+        allocations = self._historical_protection(stores, refs, read)
+        if any(claim.identity == command.transition.identity for value in allocations for claim in value.claims):
+            # Exact originals use the earlier replay entrance. Fresh ownership
+            # cannot recreate an already retained claim under the same key.
+            raise _Unavailable
+        by_allocation = {value.birth.ref.allocation_id: value for value in allocations}
+        selected = tuple(by_allocation.get(ref.allocation_id) for ref in refs)
+        if bindings:
+            if (any(value is None for value in selected)
+                    or tuple(value.birth for value in selected) != tuple(binding.birth for binding in bindings)):
+                raise _Unavailable
+        elif any(value is not None for value in selected):
+            # A fresh birth must never silently adopt a historical allocation.
             raise _Unavailable
         total_claims = sum(len(value.claims) for value in allocations)
         # Fixed future envelope includes complete source context, both original
@@ -270,24 +302,15 @@ class ConfigurationPreparationStore:
             envelope - 128 * records - 16 * markers - 256 * statements, markers, statements)
         for index, ref in enumerate(refs):
             claim_keys = ()
-            if allocations:
-                claim_keys = tuple((claim.identity, claim.ref.artifact_id) for claim in allocations[index].claims)
-            else:
-                # Fresh births after historical departure are a later B2 slice;
-                # never remint an unresolved or unsupported prior slot here.
-                prior = read.query("SELECT 1 FROM cpk_effect_configuration_refs WHERE workspace_id=%s "
-                    "AND runtime_id=%s AND node_id=%s AND artifact_id=%s LIMIT 1",
-                    (ref.workspace_id, ref.runtime_id, ref.node_id, ref.artifact_id),
-                    records=1, octets=1, cells=1)
-                if prior:
-                    raise _Unavailable
+            if selected[index] is not None:
+                claim_keys = tuple((claim.identity, claim.ref.artifact_id) for claim in selected[index].claims)
             decision = configuration_preparation_capacity(current=read.used, reserved_future=future,
                 existing_claim_keys=claim_keys, proposed_claim_key=(command.transition.identity, ref.artifact_id),
                 existing_total_claims=total_claims + count - 1)
             if decision is not ConfigurationCapacityDecision.WITHIN_LIMITS:
                 raise _Capacity
-        births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in allocations)
-            if allocations else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
+        births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in selected)
+            if bindings else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
         prepared = _PreparedConfigurationStart(stores, guard, command.transition.identity, expected, births)
         self._issued = prepared
         return prepared

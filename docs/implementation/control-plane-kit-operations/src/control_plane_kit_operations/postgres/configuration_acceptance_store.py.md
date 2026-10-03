@@ -48,8 +48,8 @@ removal fixtures explicitly use high-risk destructive approval metadata; this
 green establishes that strengthened premise, which the earlier partial-removal
 red did not. The new reuse connection permits a nonbirth source only with its
 own qualifying original success and a direct self-birth root with the identical
-full ref. Concrete source review, focused reuse validation and complete B2
-validation remain pending.
+full ref. Concrete review and focused initial reuse validation passed; complete
+B2 validation remains pending.
 
 All reads and scalar mutation returns share the command ledger. Before CAS,
 generated reader coordinates and PostgreSQL JSON sizes are checked and a fixed

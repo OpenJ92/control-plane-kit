@@ -8,7 +8,9 @@ The first-start owner rederives selected material under the existing lifecycle l
 Transport reservations include statements, scalar markers, returned values and relational identities. Failed reads retain their reservation. Caches stay within one UoW; command accounting can span the coordinator and nested start while fresh mutable authority is reread.
 
 B1's accepted integration is the baseline. B2's initial exact accepted-ref reuse
-connection is implemented locally and awaits concrete review/focused validation.
+connection passed independent review and focused validation: 48 whole passes in
+the mixed 51-test gate, then five corrected/control tests plus compilation/import.
+The mixed result and fixture corrections remain separate evidence.
 
 The future read reservation keeps the full 8,192-byte outcome domain. Per ref,
 192 KiB includes an 80,032-byte compact-source fetch, a 32,768-byte ref row,
@@ -36,17 +38,39 @@ manifest material before selecting source provenance work.
 For an existing configured node, both optimistic and under-lock proposal paths
 verify authoritative current/base agreement, complete manifest and requested
 source/direct-birth proof. One pure selector compares full desired material with
-the complete accepted refs before fingerprinting. The locked owner additionally
-discovers complete same-slot history with a bounded sentinel, refuses other
-allocations, and validates reciprocal claims plus every neighbor's own original
-accepted successful use. This conservative subset refuses unaccepted/uncertain
-neighbors. Historical departure/new-birth transitions remain a later B2 obligation,
-not a permanent law forbidding lawful replacement.
+the complete accepted refs before fingerprinting.
 
-All selected claims and proposed new keys count toward 64 per ref and 256 for the
-logical set, alongside the shared ledger and future envelope. Exact root links
+The recurrence connection now discovers complete same-runtime node history using
+the existing workspace/runtime/node slot-index prefix and a 257 sentinel, before
+any source joins or grouping. It includes historical artifact IDs omitted from
+the desired selection. The locked owner groups bounded candidates by allocation,
+requires exact agreement with complete reciprocal allocation evidence, and proves
+each historical use against its OWN original accepted material and direct success.
+Unknown/unaccepted/uncertain neighbors remain refused. Every actual repeat query
+is charged; no candidate set or live guard crosses UoWs.
+
+After historical node removal, a fresh proposal requires a complete accepted Q
+and exact current/base graph/projection agreement with the node absent. A new
+allocation must be distinct from every historical allocation and self-birth under
+the new attempt. Later reuse selects only the exact current allocation/direct
+root; older accepted allocations remain protected without being reselected.
+Four recurrence targets reached causal missing-birth red after genuine accepted
+removal. This source connection awaits concrete review and focused green; later
+assertions and renamed-artifact laws are not yet validation evidence.
+
+All historical node claims and proposed new keys count toward 256 for the logical
+set; 64 is enforced separately per exact allocation, including the proposed claim
+on a reused allocation. The shared ledger and future envelope also apply. Exact root links
 come only from this proof and are bound to the identical store-issued start value.
 Insertion adds a nonbirth ref and reciprocal claim for each reuse; all previous
 claims remain protective. No new lock, independent transaction or provider call
 is introduced. Allocation proof caches stay inside the same UoW and count actual
 repeat queries. Current observations alone never authorize release or cleanup.
+
+Required remaining B2 work: the inherited node-absent/no-history shortcut still
+lacks universal authoritative current/E7 verification. Every fresh start must
+eventually prove that authority before IDs/writes, with positive B1 fixtures
+translated through real creation/lawful transitions. Original replay must remain
+before today's selection. Same-node changed-material replacement, cross-runtime
+movement and configuration-free successor safety are not established by this
+same-runtime recurrence slice.
