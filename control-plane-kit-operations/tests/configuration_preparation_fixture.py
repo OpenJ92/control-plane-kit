@@ -176,7 +176,7 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
         with self.unit_of_work() as uow:
             stores = uow.stores
             plan = stores.activity_history.get_plan("plan-a")
-            context = replace(_context(activity=self.configuration_activity),
+            context = replace(_context(),
                 request=stores.execution.get_request("request-a"),
                 run=stores.execution.get_run("run-a"), plan_record=plan,
                 base_graph=stores.realized_graphs.get(plan.base_realized_projection_id),
