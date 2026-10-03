@@ -269,7 +269,7 @@ class GatewayKeyRotationOverlapExecutionTests(
             self.checkpoint.desired_realized_projection_id,
         )
         self.assertEqual(workspace.desired_graph_id, "graph-a")
-        self.assertEqual(self._authored_graph_count(), 1)
+        self.assertEqual(self._authored_graph_count(), self.origin_authored_graph_count)
 
         replay = self.program(adapter, prefix="replay").progress(command)
 

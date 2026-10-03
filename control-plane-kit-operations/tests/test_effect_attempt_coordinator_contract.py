@@ -196,6 +196,7 @@ def _exact_imports(*rows: tuple[str, str | None, str | None]):
 
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
+    ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectIntent", None),
     ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
     ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
     ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
@@ -476,6 +477,13 @@ def _exact_calls(*rows: tuple[str | None, int]):
 
 
 EXACT_COORDINATOR_CALLS = _exact_calls(
+    # B2 retains the reviewed proposal in the immutable coordinator context.
+    ("dataclasses.replace", 1),
+    ("control_plane_kit_core.operations.RunId", 1),
+    ("control_plane_kit_core.operations.EffectAttemptIdentity", 1),
+    ("stores.configuration_preparation._proposal", 1),
+    ("control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported", 1),
+    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 2),
     # B1 adds private material/original-context and cumulative accounting calls.
     (None, 1),
     ("type", 6),

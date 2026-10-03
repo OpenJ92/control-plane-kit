@@ -24,7 +24,9 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     LifecycleOperationKind,
 )
-from control_plane_kit_core.planning import ActivityId, ActivityPlan, NodeTarget
+from control_plane_kit_core.planning import (
+    ActivityDependency, ActivityId, ActivityPlan, NodeTarget, RuntimeTarget, StartRuntime,
+)
 from control_plane_kit_core.planning import PlannedActivity, StartNode
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
@@ -43,6 +45,8 @@ from control_plane_kit_operations.advancement import (
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+from tests.accepted_graph_origin_fixture import accept_selected_fixture_origin
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -64,7 +68,6 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     RealizedGraphProjectionKind,
     RetryIdentity,
-    WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
     CloseOperationSession,
@@ -1087,22 +1090,22 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
         plan = ActivityPlan(
             (PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api"))),)
         )
+        WorkspaceCommandService(self.unit_of_work,
+            clock=lambda: "2026-07-22T10:00:00Z", id_factory=lambda: "stable-origin-graph").create(
+                CreateWorkspace("workspace-rotation", "Rotation", "operator-a", IdempotencyKey("stable-origin-create")))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.create(
-                WorkspaceRecord("workspace-rotation", "Rotation")
-            )
+            reference = self.register_origin_product(stores, "workspace-rotation")
             authored = stores.graphs.save(
                 GraphVersionRecord.from_graph(
                     graph_id="graph-stable",
                     workspace_id="workspace-rotation",
-                    version=1,
+                    version=2,
                     graph=DeploymentGraph("stable-authored"),
                     created_by="operator-a",
-                    created_at="2026-07-22T12:00:00Z",
+                    created_at="2026-07-22T10:00:00Z",
                 )
             )
-            from tests.graph_lineage_fixture import execution_graph
             projections = tuple(
                 stores.realized_graphs.save(
                     RealizedGraphProjectionRecord.from_graph(
@@ -1113,18 +1116,22 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
                             RealizedGraphProjectionKind.DELEGATION_VERIFIER
                         ),
                         projection_key=key,
-                        graph=execution_graph(f"realized-{key}", node_ids=("api",)),
+                        graph=self.origin_graph(f"realized-{key}", reference),
                         created_by="rotation-program",
-                        created_at="2026-07-22T12:00:30Z",
+                        created_at="2026-07-22T10:00:30Z",
                     )
                 )
                 for key in ("a", "a-plus-b", "b")
             )
-            stores.workspaces.set_current_graph(
+            stores.workspaces.set_desired_graph(
                 "workspace-rotation",
                 authored.graph_id,
                 projections[0].projection_id,
             )
+            unit_of_work.commit()
+        accept_selected_fixture_origin(self, self.origin_plan(), workspace_id="workspace-rotation", prefix="stable-origin")
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
             workspace = stores.workspaces.set_desired_graph(
                 "workspace-rotation",
                 authored.graph_id,
@@ -1279,38 +1286,66 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             1,
         )
 
-    def seed_truth(self) -> None:
+    def origin_plan(self):
+        runtime = PlannedActivity(ActivityId("advancement-origin-runtime"), StartRuntime(RuntimeTarget("runtime-a")))
+        return ActivityPlan((runtime, PlannedActivity(ActivityId("advancement-origin-api"), StartNode(NodeTarget("api")),
+            dependencies=(ActivityDependency(runtime.activity_id),))))
+
+    def register_origin_product(self, stores, workspace_id="workspace-a"):
+        from control_plane_kit_core.products import (
+            ContainerServerProduct, OciImageReference, ProductDescriptorCodec, ProductIdentity, ProductRuntimeContract,
+        )
+        from control_plane_kit_operations.products import InlineDescriptorSource
+        document = ProductDescriptorCodec().encode_document(ContainerServerProduct(
+            identity=ProductIdentity("control-plane-kit", "advancement-fixture", 1),
+            image=OciImageReference("ghcr.io", "openj92/advancement-fixture", "sha256:" + "a" * 64),
+            runtime_contract=ProductRuntimeContract()))
+        return stores.registered_products.register(workspace_id=workspace_id, descriptor_document=document,
+            source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-07-22T10:00:00Z").reference
+
+    def origin_graph(self, name, reference):
         from tests.graph_lineage_fixture import execution_graph
+        graph = execution_graph(name, node_ids=("api",))
+        return replace(graph, nodes={"api": replace(graph.nodes["api"], metadata={
+            "product_identity": reference.identity.key,
+            "product_descriptor_digest": reference.descriptor_sha256.value})})
+
+    def seed_truth(self) -> None:
         from tests.receiver_scope_history_fixture import admit_fixture_plan
         plan = ActivityPlan(
             (PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api"))),)
         )
+        WorkspaceCommandService(self.unit_of_work,
+            clock=lambda: "2026-07-22T10:00:00Z", id_factory=lambda: "advancement-origin-graph").create(
+                CreateWorkspace("workspace-a", "Workspace A", "operator-a", IdempotencyKey("advancement-origin-create")))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.create(
-                WorkspaceRecord("workspace-a", "Workspace A")
-            )
+            reference = self.register_origin_product(stores)
             stores.graphs.save(
                 GraphVersionRecord.from_graph(
                     graph_id="graph-current",
                     workspace_id="workspace-a",
-                    version=1,
-                    graph=execution_graph("current", node_ids=("api",)),
+                    version=2,
+                    graph=self.origin_graph("current", reference),
                     created_by="operator-a",
-                    created_at="2026-07-22T12:00:00Z",
+                    created_at="2026-07-22T10:00:30Z",
                 )
             )
+            stores.workspaces.set_desired_graph("workspace-a", "graph-current")
+            unit_of_work.commit()
+        self.origin_acceptance = accept_selected_fixture_origin(self, self.origin_plan(), prefix="advancement-origin")
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
             stores.graphs.save(
                 GraphVersionRecord.from_graph(
                     graph_id="graph-desired",
                     workspace_id="workspace-a",
-                    version=2,
-                    graph=execution_graph("desired", node_ids=("api",)),
+                    version=3,
+                    graph=self.origin_graph("desired", reference),
                     created_by="operator-a",
                     created_at="2026-07-22T12:00:30Z",
                 )
             )
-            stores.workspaces.set_current_graph("workspace-a", "graph-current")
             stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             workspace = stores.workspaces.get("workspace-a")
             self.current_projection = stores.realized_graphs.get(
@@ -1429,9 +1464,9 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
         return self.connection.execute(
             "SELECT current_graph_id, current_realized_projection_id, "
             "(SELECT COUNT(*) FROM cpk_activity_events "
-            " WHERE event_type = 'current_graph_advanced'), "
+            " WHERE event_type = 'current_graph_advanced' AND run_id = 'run-a'), "
             "(SELECT COUNT(*) FROM cpk_operation_actions "
-            " WHERE action_type = 'advance_current_graph') "
+            " WHERE action_type = 'advance-current-graph' AND session_id = 'session-a') "
             "FROM cpk_workspaces WHERE workspace_id = 'workspace-a'"
         ).fetchone()
 

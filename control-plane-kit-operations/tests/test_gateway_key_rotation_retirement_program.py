@@ -61,7 +61,7 @@ class GatewayKeyRotationRetirementPreparationTests(
         other = realized.node("gateway-other").delegation_verifier_projection
         self.assertEqual(tuple(key.key_id for key in target.public_keys), ("key-b",))
         self.assertEqual(tuple(key.key_id for key in other.public_keys), ("key-other",))
-        self.assertEqual(self.authored_graph_count(), 1)
+        self.assertEqual(self.authored_graph_count(), self.origin_authored_graph_count)
         self.assertEqual(self.count("cpk_observations"), 0)
 
         replay = self.program(prefix="replay").prepare(self.command())
