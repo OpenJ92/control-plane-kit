@@ -12,5 +12,6 @@ B1 provenance is integrated. B2 adds `ConfigurationAcceptedBinding` and
 membership and requested direct source/birth proofs. The manifest count may
 exceed returned bindings for a narrowed request. Non-complete states contain no
 partial coordinates or proofs. These values confer no mutation or cleanup
-authority. First public-read source validation is pending; provider behavior
+authority. The first public-read focused gate passed all 38 selected tests plus
+compilation/import; complete B2 validation remains pending. Provider behavior
 remains outside this module's authority.

@@ -37,6 +37,8 @@ from tests.test_runtime_effect_translation import _configuration_product
 
 
 class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
+    node_ids = ("api",)
+
     def setUp(self):
         self.fixture = acceptance_fixture.PostgresConfigurationAcceptanceTests()
         self.addCleanup(self.cleanup_fixture)
@@ -45,9 +47,11 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         self.fixture.advance()
         registered = _configuration_product()
         product = registered.descriptor_document.product
-        block = instantiate_product(product, "api", ProductInstanceConfiguration.from_contract(product.runtime_contract))
-        desired = compile_topology(DeploymentTopology("configured", DockerRuntime(runtime_id="runtime-a", children=(block,))))
-        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api"))),))
+        blocks = tuple(instantiate_product(product, node, ProductInstanceConfiguration.from_contract(product.runtime_contract))
+            for node in self.node_ids)
+        desired = compile_topology(DeploymentTopology("configured", DockerRuntime(runtime_id="runtime-a", children=blocks)))
+        plan = ActivityPlan(tuple(PlannedActivity(ActivityId("start-" + node), StartNode(NodeTarget(node)))
+            for node in self.node_ids))
         requirement = ApprovalPolicy().requirement_for(plan)
         with self.fixture.unit_of_work() as uow:
             stores = uow.stores
@@ -83,38 +87,43 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         adapter = coordinator_fixture.RecordingAdapter(engine.tracker, lambda _context, request:
             RuntimeEffectResult.succeeded(request.effect_id, evidence={"adapter": "total-selected-configuration-test"}))
         result = engine.coordinator(adapter).execute(replace(engine.command(generation=self.fence.generation,
-            idempotency_key="execute-config"), run_id="run-config"))
+            idempotency_key="execute-config", max_effects=len(self.node_ids)), run_id="run-config"))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
-        self.assertEqual(adapter.calls, ["start-api"])
-        self.assertEqual(adapter.active_during_calls, [0])
-        identity = EffectAttemptIdentity(RunId("run-config"), "start-api", 1)
+        self.assertEqual(adapter.calls, ["start-" + node for node in self.node_ids])
+        self.assertEqual(adapter.active_during_calls, [0] * len(self.node_ids))
+        self.originals, self.direct_events = {}, {}
         with self.fixture.unit_of_work() as uow:
             stores = uow.stores
             self.assertIs(stores.execution.get_run("run-config").status, ActivityRunStatus.SUCCEEDED)
-            self.original = stores.effect_attempt_intents.get(identity)
-            attempt = stores.effect_attempts.get(identity)
-            outcome = stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id)
-            self.direct_event_id = attempt.latest_transition_event.event_id
-            self.assertIs(self.original.intent.kind, RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
-            self.assertIs(type(outcome.outcome), ExecutionEffectOutcome)
-            self.assertIs(outcome.attempt.state.status, EffectAttemptStatus.SUCCEEDED)
-            self.assertEqual(outcome.attempt, attempt)
-            self.assertEqual(outcome.outcome.request_fingerprint, runtime_effect_intent_fingerprint(self.original.intent))
-            self.assertEqual(outcome.outcome.result.effect_id, self.original.original_start_event.event_id)
-            self.assertEqual(outcome.outcome.identity, self.original.identity)
-        refs = self.original.intent.configuration_instances.instances
+            for node in self.node_ids:
+                identity = EffectAttemptIdentity(RunId("run-config"), "start-" + node, 1)
+                original = stores.effect_attempt_intents.get(identity)
+                attempt = stores.effect_attempts.get(identity)
+                outcome = stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id)
+                self.originals[node] = original
+                self.direct_events[node] = attempt.latest_transition_event.event_id
+                self.assertIs(original.intent.kind, RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
+                self.assertIs(type(outcome.outcome), ExecutionEffectOutcome)
+                self.assertIs(outcome.attempt.state.status, EffectAttemptStatus.SUCCEEDED)
+                self.assertEqual(outcome.attempt, attempt)
+                self.assertEqual(outcome.outcome.request_fingerprint, runtime_effect_intent_fingerprint(original.intent))
+                self.assertEqual(outcome.outcome.result.effect_id, original.original_start_event.event_id)
+                self.assertEqual(outcome.outcome.identity, original.identity)
+        self.original, self.direct_event_id = self.originals["api"], self.direct_events["api"]
+        refs = self.refs = tuple(ref for node in self.node_ids
+            for ref in self.originals[node].intent.configuration_instances.instances)
         self.assertEqual({(ref.runtime_id, ref.node_id, ref.artifact_id) for ref in refs},
-            {("runtime-a", "api", "limits"), ("runtime-a", "api", "settings")})
-        raw_refs = self.connection.execute("SELECT artifact_id,ref_preimage,birth_run_id,birth_activity_id,birth_attempt,"
+            {("runtime-a", node, artifact) for node in self.node_ids for artifact in ("limits", "settings")})
+        raw_refs = self.connection.execute("SELECT activity_id,artifact_id,ref_preimage,birth_run_id,birth_activity_id,birth_attempt,"
             "birth_artifact_id,is_birth FROM cpk_effect_configuration_refs WHERE run_id='run-config' "
-            "AND activity_id='start-api' AND attempt=1 ORDER BY artifact_id").fetchall()
+            "AND attempt=1 ORDER BY activity_id,artifact_id").fetchall()
         codec = ConfigurationInstanceRefCodec()
-        self.assertEqual(raw_refs, [(ref.artifact_id, codec.encode_canonical_bytes(ref), "run-config", "start-api", 1,
+        self.assertEqual(raw_refs, [("start-" + ref.node_id, ref.artifact_id, codec.encode_canonical_bytes(ref), "run-config", "start-" + ref.node_id, 1,
             ref.artifact_id, True) for ref in refs])
         self.claims = self.protective_claims()
-        self.assertEqual(len(self.claims), 2)
+        self.assertEqual(len(self.claims), 2 * len(self.node_ids))
         self.expected_slots = tuple((ref.runtime_id, ref.node_id, ref.artifact_id,
-            "run-config", "start-api", 1, ref.artifact_id, "run-config", "start-api", 1, ref.artifact_id,
+            "run-config", "start-" + ref.node_id, 1, ref.artifact_id, "run-config", "start-" + ref.node_id, 1, ref.artifact_id,
             sha256(codec.encode_canonical_bytes(ref)).hexdigest()) for ref in refs)
 
     def cleanup_fixture(self):

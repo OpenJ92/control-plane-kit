@@ -26,7 +26,11 @@ perform no writes or row locking, and return closed observations without partial
 proofs on unavailable/capacity. Genuine E7 initialization is complete and empty
 with no accepted revision. Full-source receipt validation remains mandatory for
 advancement, replay and current-schema verification. The five public-read targets
-reached causal missing-method red; this source connection is not yet validated.
+reached causal missing-method red. The first source gate passed all 38 selected
+tests (eight public reads including genesis regression coverage, 23 acceptance
+and seven pure capacity tests), compilation and clean import. Two-node
+source-isolation, universal manifest-material corruption and actual aggregate
+query-budget targets are the next unvalidated strengthening checkpoint.
 
 All reads and scalar mutation returns share the command ledger. Before CAS,
 generated reader coordinates and PostgreSQL JSON sizes are checked and a fixed
