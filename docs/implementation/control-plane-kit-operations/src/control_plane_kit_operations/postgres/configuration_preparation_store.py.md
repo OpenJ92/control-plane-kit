@@ -7,7 +7,8 @@ The first-start owner rederives selected material under the existing lifecycle l
 
 Transport reservations include statements, scalar markers, returned values and relational identities. Failed reads retain their reservation. Caches stay within one UoW; command accounting can span the coordinator and nested start while fresh mutable authority is reread.
 
-B1 source integration is implemented. The full owning Docker gate and independent whole-B1 review remain pending. B2 current-use evidence and provider behavior are outside this module's authority.
+B1's accepted integration is the baseline. B2's initial exact accepted-ref reuse
+connection is implemented locally and awaits concrete review/focused validation.
 
 The future read reservation keeps the full 8,192-byte outcome domain. Per ref,
 192 KiB includes an 80,032-byte compact-source fetch, a 32,768-byte ref row,
@@ -19,8 +20,8 @@ are conservative limits, not a claim that all maxima are fetched on every read.
 The separate 3 MiB snapshot plus 512 KiB plan allowance includes 264 additional
 relational identities; its row cost is deducted from available value bytes.
 The current command's already-used footprint is added without resetting it.
-Any later consumer must still obey the global 4,096-identity/16 MiB limit; B1
-neither implements nor grants B2/current-use or cleanup authority.
+Any later consumer must still obey the global 4,096-identity/16 MiB limit;
+preparation grants no cleanup authority.
 
 B2's advancement evidence scope roots the existing command ledger before the
 first locator read and includes original replay. It translates closed capacity
@@ -30,6 +31,22 @@ there is no connection wrapper, independent commit or acceptance authority.
 B2 extracts the existing pure complete ref/claim material check as `_decode_ref`.
 The existing `_decode` still performs the original compact source proof afterward;
 its result and callers retain their contract. Acceptance can validate complete
-manifest material before selecting source provenance work. First-start preparation
-and claim insertion remain unchanged in this initial nonempty slice; reuse is
-still refused until its corresponding current-use proof is implemented.
+manifest material before selecting source provenance work.
+
+For an existing configured node, both optimistic and under-lock proposal paths
+verify authoritative current/base agreement, complete manifest and requested
+source/direct-birth proof. One pure selector compares full desired material with
+the complete accepted refs before fingerprinting. The locked owner additionally
+discovers complete same-slot history with a bounded sentinel, refuses other
+allocations, and validates reciprocal claims plus every neighbor's own original
+accepted successful use. This conservative subset refuses unaccepted/uncertain
+neighbors. Historical departure/new-birth transitions remain a later B2 obligation,
+not a permanent law forbidding lawful replacement.
+
+All selected claims and proposed new keys count toward 64 per ref and 256 for the
+logical set, alongside the shared ledger and future envelope. Exact root links
+come only from this proof and are bound to the identical store-issued start value.
+Insertion adds a nonbirth ref and reciprocal claim for each reuse; all previous
+claims remain protective. No new lock, independent transaction or provider call
+is introduced. Allocation proof caches stay inside the same UoW and count actual
+repeat queries. Current observations alone never authorize release or cleanup.

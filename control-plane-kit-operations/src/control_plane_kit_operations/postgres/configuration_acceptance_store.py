@@ -167,8 +167,7 @@ class ConfigurationAcceptanceStore:
         evidence = _decode(original, read)
         root = self._ref(read, row[7:11])
         birth = _decode(root, read)
-        if (original[16] is not True or evidence.identity != evidence.birth_identity
-                or root[16] is not True or birth.identity != birth.birth_identity
+        if (root[16] is not True or birth.identity != birth.birth_identity
                 or birth.ref != evidence.ref or birth.identity != evidence.birth_identity):
             raise _Unavailable
         source = evidence.source
@@ -177,7 +176,8 @@ class ConfigurationAcceptanceStore:
         activity = plan.plan.activity(ActivityId(source.identity.activity_id))
         # The leaf use always belongs to its own verified execution. Carry
         # needs its exact original acceptance point, never an intermediate
-        # receipt chain. Nonbirth reuse remains a separate preparation slice.
+        # receipt chain. Reuse qualifies its own original successful execution;
+        # its direct birth can belong to an earlier execution.
         if (source.identity.run_id.value != run.run_id
                 or source.source.workspace_id != request.identity.workspace_id
                 or source.source.request_id != request.identity.request_id

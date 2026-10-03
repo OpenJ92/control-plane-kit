@@ -62,6 +62,12 @@ def _decode(row, read):
 class ConfigurationPreparationStore:
     def __init__(self, connection):
         self._connection = connection
+        self._issued = None
+
+    def _require_issued(self, prepared):
+        if (self._issued is not prepared or prepared.stores.configuration_preparation is not self
+                or prepared.stores.connection is not self._connection):
+            raise OperationsRecordError("configuration start requires owner preparation")
 
     @contextmanager
     def _advancement_evidence(self, workspace_id, run_id):
@@ -163,16 +169,81 @@ class ConfigurationPreparationStore:
         original, _ = storage.verify(request.identity)
         return original, storage.events(run.run_id), read
 
+    def _proposal(self, stores, identity, material, activity, read):
+        """Immutable optimistic values; the start owner repeats this under L."""
+        from control_plane_kit_core.planning import StartNode, ReconcileNode
+        from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+        from control_plane_kit_operations._configuration_preparation import _propose_configuration
+        from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_material
+        if type(activity.operation) not in (StartNode, ReconcileNode):
+            return None, ()
+        intent = _runtime_effect_intent_for_material(material, activity)
+        proposed = _propose_configuration(identity, intent)
+        if proposed.kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+            return proposed, ()
+        node_id = intent.operation.target.node_id
+        base = DEFAULT_GRAPH_CODEC.decode(material.base_graph.graph_descriptor)
+        if node_id not in base.nodes:
+            return proposed, ()
+        acceptance = stores.configuration_acceptance
+        workspace = stores.workspaces.get(intent.source.workspace_id)
+        receipt = acceptance._current_manifest(workspace, read)
+        if (receipt[0]["graph_id"], receipt[0]["projection_id"]) != (
+                material.base_graph.source_authored_graph_id, material.base_graph.projection_id):
+            raise _Unavailable
+        rows = tuple(row for row in receipt[3] if row[1] == node_id)
+        if not rows or len(rows) > 32:
+            raise _Unavailable
+        observed = acceptance._observed_bindings(receipt, rows, read)
+        refs = tuple(binding.ref for binding in observed.bindings)
+        return _propose_configuration(identity, intent, refs), observed.bindings
+
+    def _reuse_protection(self, stores, refs, read):
+        """Conservative accepted-only subset; later births after departure pending."""
+        allocations = []
+        acceptance = stores.configuration_acceptance
+        for ref in refs:
+            columns = tuple((name, "int" if name == "attempt" else "text", 2048)
+                for name in ("run_id", "activity_id", "attempt", "artifact_id", "allocation_id"))
+            candidates = read.bounded_rows("cpk_effect_configuration_refs", columns,
+                "workspace_id=%s AND runtime_id=%s AND node_id=%s AND artifact_id=%s",
+                (ref.workspace_id, ref.runtime_id, ref.node_id, ref.artifact_id),
+                maximum=64, point=False, order="run_id,activity_id,attempt,artifact_id")
+            if not candidates or any(row[4] != ref.allocation_id for row in candidates):
+                raise _Unavailable
+            allocation = self._allocation_evidence(ref, read)
+            if allocation.state == "capacity":
+                raise _Capacity
+            if allocation.state != "complete":
+                raise _Unavailable
+            keys = tuple((claim.identity.run_id.value, claim.identity.activity_id,
+                claim.identity.attempt, claim.ref.artifact_id) for claim in allocation.claims)
+            if keys != tuple(row[:4] for row in candidates):
+                raise _Unavailable
+            allocations.append(allocation)
+            if sum(len(value.claims) for value in allocations) + len(refs) > 256:
+                raise _Capacity
+            for claim in allocation.claims:
+                birth = claim.birth_identity
+                key = (claim.identity, ref.artifact_id)
+                row = (ref.runtime_id, ref.node_id, ref.artifact_id,
+                    claim.identity.run_id.value, claim.identity.activity_id, claim.identity.attempt, ref.artifact_id,
+                    birth.run_id.value, birth.activity_id, birth.attempt, claim.birth_artifact_id, read.refs[key][9])
+                # Every neighbor must have its own original accepted successful
+                # use. Unaccepted/uncertain work cannot become reuse permission.
+                context = acceptance._original_use(read, row, claim.source)
+                acceptance._prove_use(read, row, *context)
+        return tuple(allocations)
+
     def _prepare(self, stores, command, request, run, plan, guard, event_kind):
         from control_plane_kit_core.operations import ActivityEventKind
         from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
-        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
-        from control_plane_kit_operations._configuration_preparation import _PreparedConfigurationStart, _propose_configuration
+        from control_plane_kit_operations._configuration_preparation import _PreparedConfigurationStart
         from control_plane_kit_operations.configuration_preparation import (
             ConfigurationEvidenceFootprint, ConfigurationCapacityDecision, configuration_preparation_capacity,
         )
         from control_plane_kit_operations.effect_attempt_intent_evidence import _encode_runtime_effect_intent
-        from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_material
         if event_kind is not ActivityEventKind.STEP_STARTED:
             raise _Unavailable
         read = _EvidenceRead(self._connection)
@@ -180,17 +251,16 @@ class ConfigurationPreparationStore:
         material = self._material(stores, request, run, activity, read, guard=guard)
         if material.plan_record != plan:
             raise _Unavailable
-        base = DEFAULT_GRAPH_CODEC.decode(material.base_graph.graph_descriptor)
-        if command.intent.operation.target.node_id in base.nodes:
-            # B2's authoritative current-use evidence has not been implemented.
-            raise _Unavailable
-        expected = _propose_configuration(command.transition.identity,
-            _runtime_effect_intent_for_material(material, activity))
+        expected, bindings = self._proposal(stores, command.transition.identity, material, activity, read)
         if expected != command.intent or runtime_effect_intent_fingerprint(expected) != command.transition.request_fingerprint:
             raise _Unavailable
         from .configuration_source import _preflight_source
         _preflight_source(read, _encode_runtime_effect_intent(expected), command.transition, expected.source, command.fence)
         refs = expected.configuration_instances.instances
+        allocations = self._reuse_protection(stores, refs, read) if bindings else ()
+        if allocations and tuple(value.birth for value in allocations) != tuple(binding.birth for binding in bindings):
+            raise _Unavailable
+        total_claims = sum(len(value.claims) for value in allocations)
         # Fixed future envelope includes complete source context, both original
         # and direct 16KiB events, the full 8192-byte outcome, and its source links.
         count = len(refs)
@@ -198,24 +268,36 @@ class ConfigurationPreparationStore:
         envelope = 192 * 1024 * count + 3 * 1024 * 1024 + 512 * 1024
         future = ConfigurationEvidenceFootprint(records,
             envelope - 128 * records - 16 * markers - 256 * statements, markers, statements)
-        for ref in refs:
-            prior = read.query("SELECT 1 FROM cpk_effect_configuration_refs WHERE workspace_id=%s "
-                "AND runtime_id=%s AND node_id=%s AND artifact_id=%s LIMIT 1",
-                (ref.workspace_id, ref.runtime_id, ref.node_id, ref.artifact_id),
-                records=1, octets=1, cells=1)
-            if prior:
-                raise _Unavailable
+        for index, ref in enumerate(refs):
+            claim_keys = ()
+            if allocations:
+                claim_keys = tuple((claim.identity, claim.ref.artifact_id) for claim in allocations[index].claims)
+            else:
+                # Fresh births after historical departure are a later B2 slice;
+                # never remint an unresolved or unsupported prior slot here.
+                prior = read.query("SELECT 1 FROM cpk_effect_configuration_refs WHERE workspace_id=%s "
+                    "AND runtime_id=%s AND node_id=%s AND artifact_id=%s LIMIT 1",
+                    (ref.workspace_id, ref.runtime_id, ref.node_id, ref.artifact_id),
+                    records=1, octets=1, cells=1)
+                if prior:
+                    raise _Unavailable
             decision = configuration_preparation_capacity(current=read.used, reserved_future=future,
-                existing_claim_keys=(), proposed_claim_key=(command.transition.identity, ref.artifact_id),
-                existing_total_claims=count - 1)
+                existing_claim_keys=claim_keys, proposed_claim_key=(command.transition.identity, ref.artifact_id),
+                existing_total_claims=total_claims + count - 1)
             if decision is not ConfigurationCapacityDecision.WITHIN_LIMITS:
                 raise _Capacity
-        return _PreparedConfigurationStart(stores, guard, command.transition.identity, expected)
+        births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in allocations)
+            if allocations else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
+        prepared = _PreparedConfigurationStart(stores, guard, command.transition.identity, expected, births)
+        self._issued = prepared
+        return prepared
 
     def read_allocation_evidence(self, exact_ref):
         """Complete historical protection only; never permission to reuse/release."""
         _ref(exact_ref)
-        read = _EvidenceRead(self._connection, standalone=True)
+        return self._allocation_evidence(exact_ref, _EvidenceRead(self._connection, standalone=True))
+
+    def _allocation_evidence(self, exact_ref, read):
         try:
             rows = read.query(_SELECT + " WHERE r.workspace_id=%s AND r.allocation_id=%s"
                 " ORDER BY r.run_id,r.activity_id,r.attempt,r.artifact_id LIMIT 65",
@@ -265,14 +347,15 @@ class ConfigurationPreparationStore:
         from control_plane_kit_operations._configuration_preparation import _require_prepared
         _require_prepared(prepared, self._connection, record.identity, record.intent)
         identity = record.identity
-        for ref in record.intent.configuration_instances.instances:
+        for ref, (birth, artifact) in zip(record.intent.configuration_instances.instances, prepared.births, strict=True):
             encoded = ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)
             key = (identity.run_id.value, identity.activity_id, identity.attempt, ref.artifact_id)
+            birth_key = (birth.run_id.value, birth.activity_id, birth.attempt, artifact)
             self._connection.execute("INSERT INTO cpk_effect_configuration_refs (" + ",".join(_NAMES)
                 + ") VALUES (" + ",".join("%s" for _ in _NAMES) + ")",
                 (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id,
                  encoded, sha256(encoded).hexdigest(), record.request_fingerprint,
-                 record.original_start_event.event_id, *key, True))
+                 record.original_start_event.event_id, *birth_key, key == birth_key))
             self._connection.execute("INSERT INTO cpk_configuration_claims "
                 "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id) VALUES (%s,%s,%s,%s,%s,%s)",
                 (*key, ref.workspace_id, ref.allocation_id))

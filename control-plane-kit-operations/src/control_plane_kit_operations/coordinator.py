@@ -47,6 +47,7 @@ from control_plane_kit_core.planning.saga import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectIntent,
     runtime_effect_intent_fingerprint,
     runtime_effect_request_for_intent,
 )
@@ -1451,6 +1452,8 @@ class ExecutionCoordinator:
                 identity = EffectAttemptIdentity(RunId(context.run.run_id), planned.activity_id.value, 1)
                 if type(context) is _ConfigurationReplayContext:
                     intent = context.original.intent
+                elif context.configuration_intent is not None:
+                    intent = context.configuration_intent
                 else:
                     from control_plane_kit_operations._configuration_preparation import _propose_configuration
                     intent = _propose_configuration(identity, _runtime_effect_intent_for_context(context, planned))
@@ -2137,7 +2140,7 @@ class ExecutionCoordinator:
         selected = schedule.running or schedule.ready
         activity = plan.plan.activity(selected[0].activity_id) if selected else None
         material = stores.configuration_preparation._material(stores, request, run, activity, read)
-        return _CoordinatorContext(**common,
+        context = _CoordinatorContext(**common,
             registered_products=material.registered_products,
             image_pull_authorities=material.image_pull_authorities,
             runtime_authorities=material.runtime_authorities,
@@ -2145,6 +2148,19 @@ class ExecutionCoordinator:
             ingress_authorities=material.ingress_authorities,
             ingress_resources=material.ingress_resources,
             generated_ingress_secrets=material.generated_ingress_secrets)
+        # Keep the existing unsupported/terminal classification ahead of
+        # translation; this pure check neither completes nor fails the run.
+        if (activity is not None and run.status is ActivityRunStatus.RUNNING
+                and not projection.uncertain and not schedule.failed
+                and not runtime_management_execution_is_unsupported(
+                    DEFAULT_GRAPH_CODEC.decode(base.graph_descriptor),
+                    DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor), plan.plan,
+                    registered_products=material.registered_products,
+                    derivation_profile=plan.derivation_profile)):
+            identity = EffectAttemptIdentity(RunId(run.run_id), activity.activity_id.value, 1)
+            intent, _ = stores.configuration_preparation._proposal(stores, identity, material, activity, read)
+            context = replace(context, configuration_intent=intent)
+        return context
 
     def _fresh_run(self, run_id: str) -> ActivityRunRecord:
         with self._unit_of_work_factory() as unit_of_work:
@@ -2190,6 +2206,7 @@ class _CoordinatorContext:
     schedule: ExecutionSchedule
     authority: ExecutionWorkerAuthority
     fence: ExecutionLeaseFence
+    configuration_intent: RuntimeEffectIntent | None = None
 
     def __post_init__(self) -> None:
         workspace_id = self.request.identity.workspace_id

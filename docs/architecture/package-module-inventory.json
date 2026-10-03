@@ -68,9 +68,10 @@
         "tests/test_current_schema_installation.py",
         "tests/test_postgres_configuration_acceptance_membership.py",
         "tests/test_postgres_configuration_current_reads.py",
-        "tests/test_postgres_configuration_carry.py"
+        "tests/test_postgres_configuration_carry.py",
+        "tests/test_postgres_configuration_reuse.py"
       ],
-      "motivation": "Bounded original receipt discovery, complete new-node and carried membership, current-row verification and read-only current-use evidence."
+      "motivation": "Bounded original receipt discovery, complete new-node, carried and reused membership, current-row verification and read-only current-use evidence."
     },
     {
       "module": "control_plane_kit_operations.configuration_preparation",
@@ -147,7 +148,7 @@
         "tests/test_postgres_configuration_material_boundary.py",
         "tests/test_configuration_preparation_capacity.py"
       ],
-      "motivation": "Private first-start preparation guard, deterministic proposal construction and one logical command's accounting scope."
+      "motivation": "Store-issued first-start preparation with direct birth links, shared pure birth/reuse proposal and one logical command's accounting scope."
     },
     {
       "module": "control_plane_kit_operations.postgres.configuration_evidence",
@@ -226,6 +227,8 @@
       "internal_dependencies": [
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effects",
         "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.configuration_preparation",
         "control_plane_kit_operations.postgres.configuration_evidence",
@@ -244,7 +247,7 @@
         "tests/test_postgres_configuration_material_boundary.py",
         "tests/test_configuration_preparation_capacity.py"
       ],
-      "motivation": "Own original configuration refs and protective claims inside the existing first-start transaction."
+      "motivation": "Own original configuration refs, direct accepted-reuse birth links and retained protective claims inside the existing first-start transaction."
     },
     {
       "module": "control_plane_kit_core.configuration_instances",

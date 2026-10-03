@@ -46,7 +46,10 @@ actual repeat is charged. The reviewed carry source passed all 41 selected carry
 acceptance, current-read and isolation tests, compilation and clean import. The
 removal fixtures explicitly use high-risk destructive approval metadata; this
 green establishes that strengthened premise, which the earlier partial-removal
-red did not. Nonbirth reuse and complete B2 validation remain pending.
+red did not. The new reuse connection permits a nonbirth source only with its
+own qualifying original success and a direct self-birth root with the identical
+full ref. Concrete source review, focused reuse validation and complete B2
+validation remain pending.
 
 All reads and scalar mutation returns share the command ledger. Before CAS,
 generated reader coordinates and PostgreSQL JSON sizes are checked and a fixed
