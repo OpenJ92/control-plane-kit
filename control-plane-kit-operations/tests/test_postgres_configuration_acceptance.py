@@ -12,7 +12,9 @@ from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedAct
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.topology import DeploymentGraph, RuntimeRecord
 from control_plane_kit_core.types import RuntimeKind
-from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService
+from control_plane_kit_operations.advancement import (
+    AdvanceCurrentGraph, CurrentGraphAdvancementCommandService, CurrentGraphAdvancementConflict,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ClaimAndOpenActivityRun, ExecutionLeaseDuration, StartActivityRun
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, SchemaInstallationError, install_schema
@@ -23,6 +25,7 @@ from control_plane_kit_operations.records import (
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
 from control_plane_kit_operations.coordinator import CoordinatorStatus
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleStorageError
 from tests import test_execution_coordinator as coordinator_fixture
 from tests.test_postgres_configuration_evidence import _ObservedConnection
 
@@ -120,6 +123,180 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
         self.advance()
         before = self.retained_snapshot()
         install_schema(self.connection)
+        self.assertEqual(self.retained_snapshot(), before)
+
+    def test_late_commit_failure_rolls_back_pointer_pair_and_header(self):
+        before, tentative = self.retained_snapshot(), []
+
+        class CommitFailure:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def __getattr__(self, name):
+                return getattr(self.connection, name)
+
+            def commit(self):
+                tentative.append((
+                    self.connection.execute("SELECT current_graph_id,current_realized_projection_id "
+                        "FROM cpk_workspaces WHERE workspace_id='workspace-a'").fetchone(),
+                    self.connection.execute("SELECT action_id,event_id,slot_count FROM "
+                        "cpk_configuration_acceptances WHERE workspace_id='workspace-a'").fetchall(),
+                    self.connection.execute("SELECT count(*) FROM cpk_operation_actions "
+                        "WHERE action_id='action-advance'").fetchone(),
+                    self.connection.execute("SELECT count(*) FROM cpk_activity_events "
+                        "WHERE event_id='event-advance'").fetchone()))
+                raise RuntimeError("injected acceptance commit failure")
+
+        with self.assertRaisesRegex(RuntimeError, "^injected acceptance commit failure$"):
+            self.advance(lambda: PostgresUnitOfWork(lambda: CommitFailure(psycopg.connect(self.database_url))))
+        self.assertEqual(tentative, [(("graph-desired", self.projection.projection_id),
+            [("action-advance", "event-advance", 0)], (1,), (1,))])
+        self.assertEqual(self.retained_snapshot(), before)
+
+    def test_oversized_workspace_metadata_refuses_before_transport_or_mutation(self):
+        marker = "private-advancement-canary"
+        self.connection.execute("UPDATE cpk_workspaces SET metadata=jsonb_build_object('canary',%s::text) "
+            "WHERE workspace_id='workspace-a'", (marker * 4000,))
+        before, writes = self.retained_snapshot(), []
+        observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+
+        class ObservedWrites(_ObservedConnection):
+            def execute(self, query, parameters=None):
+                if str(query).lstrip().split()[0].upper() in ("INSERT", "UPDATE", "DELETE"):
+                    writes.append(str(query))
+                return super().execute(query, parameters)
+
+        with self.assertRaises(CurrentGraphAdvancementConflict) as caught:
+            self.advance(lambda: PostgresUnitOfWork(lambda:
+                ObservedWrites(psycopg.connect(self.database_url), observed)))
+        self.assertIs(type(caught.exception), CurrentGraphAdvancementConflict)
+        self.assertLessEqual(len(str(caught.exception)), 512)
+        self.assertNotIn(marker, str(caught.exception))
+        self.assertLessEqual(observed["largest_cell"], 65536)
+        self.assertGreater(observed["statements"], 0)
+        self.assertEqual(writes, [])
+        self.assertEqual(self.retained_snapshot(), before)
+
+    def test_actual_cas_miss_is_accounted_and_publishes_no_receipt(self):
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+        # Disposable PostgreSQL fault injection: the actual UPDATE returns zero
+        # rows. No cursor result, source method or successful history is faked.
+        self.connection.execute("CREATE FUNCTION cpk_test_1924_skip_current_cas() RETURNS trigger "
+            "LANGUAGE plpgsql AS $$ BEGIN IF OLD.workspace_id='workspace-a' "
+            "AND NEW.current_graph_id IS DISTINCT FROM OLD.current_graph_id "
+            "THEN RETURN NULL; END IF; RETURN NEW; END $$")
+        self.addCleanup(self.connection.execute, "DROP FUNCTION cpk_test_1924_skip_current_cas()")
+        self.connection.execute("CREATE TRIGGER cpk_test_1924_skip_current_cas BEFORE UPDATE ON cpk_workspaces "
+            "FOR EACH ROW EXECUTE FUNCTION cpk_test_1924_skip_current_cas()")
+        self.addCleanup(self.connection.execute, "DROP TRIGGER cpk_test_1924_skip_current_cas ON cpk_workspaces")
+        before, cas_rows, ledgers = self.retained_snapshot(), [], []
+        observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+
+        class ObservedCas(_ObservedConnection):
+            def execute(self, query, parameters=None):
+                ledgers.append(_ACCOUNTING.get())
+                result = super().execute(query, parameters)
+                if str(query).lstrip().startswith("UPDATE cpk_workspaces") and "current_graph_id" in str(query):
+                    cas_rows.append(result.rowcount)
+                return result
+
+        with self.assertRaisesRegex(CurrentGraphAdvancementConflict, "^workspace current graph changed concurrently$"):
+            self.advance(lambda: PostgresUnitOfWork(lambda:
+                ObservedCas(psycopg.connect(self.database_url), observed)))
+        self.assertEqual(cas_rows, [0])
+        self.assertTrue(ledgers and all(ledger is not None for ledger in ledgers))
+        self.assertEqual(len({id(ledger) for ledger in ledgers}), 1)
+        self.assertEqual(ledgers[0].used.statements, observed["statements"])
+        self.assertGreaterEqual(ledgers[0].used.records, observed["rows"])
+        self.assertGreaterEqual(ledgers[0].used.accounted_bytes, observed["bytes"])
+        self.assertEqual(self.retained_snapshot(), before)
+
+    def test_issued_binding_invalidates_predecessor_copies_and_expired_transaction(self):
+        captured, identities = {}, iter(("event-advance", "action-advance"))
+        raw = psycopg.connect(self.database_url)
+        self.addCleanup(raw.close)
+
+        def probe_live_binding():
+            stores, predecessor = captured["stores"], captured["unbound"]
+            bound = stores.configuration_acceptance._issued
+            self.assertIsNotNone(predecessor)
+            self.assertIsNot(bound, predecessor)
+            bound.require(stores.connection, "workspace-a", after_cas=True)
+            captured["live_txid"] = raw.execute("SELECT txid_current()").fetchone()[0]
+            before = self.retained_snapshot(raw)
+            for candidate in (predecessor, replace(bound)):
+                for writer in ("event", "action"):
+                    with self.assertRaises(OperationsRecordError) as caught:
+                        if writer == "event":
+                            stores.execution._add_advancement_event(bound.event, candidate)
+                        else:
+                            stores.activity_history._add_advancement_action(bound.action, candidate)
+                    self.assertIs(type(caught.exception), OperationsRecordError)
+                    self.assertLessEqual(len(str(caught.exception)), 512)
+                    self.assertEqual(self.retained_snapshot(raw), before)
+                with self.assertRaises(OperationsRecordError):
+                    candidate.with_records(bound.event, bound.action)
+                self.assertEqual(self.retained_snapshot(raw), before)
+            with self.assertRaises(OperationsRecordError):
+                bound.with_records(bound.event, bound.action)
+            self.assertEqual(self.retained_snapshot(raw), before)
+            self.assertIs(stores.configuration_acceptance._issued, bound)
+
+        class RetainedConnection:
+            def __getattr__(self, name):
+                return getattr(raw, name)
+
+            def commit(self):
+                # Probe the live completed publication before real physical
+                # commit, outside the command's accounting observation scope.
+                probe_live_binding()
+                captured["probed"] = True
+                raw.commit()
+                captured["physical_commit"] = True
+
+            def close(self):
+                # Keep the real connection solely to probe the already-ended
+                # physical transaction; commit/rollback are never replaced.
+                captured["uow_closed"] = True
+
+        class CapturedUnitOfWork(PostgresUnitOfWork):
+            def __enter__(self):
+                super().__enter__()
+                captured["stores"] = self.stores
+                return self
+
+        def identity():
+            captured.setdefault("unbound", captured["stores"].configuration_acceptance._issued)
+            return next(identities)
+
+        accepted = CurrentGraphAdvancementCommandService(
+            lambda: CapturedUnitOfWork(RetainedConnection), clock=lambda: "2026-07-22T13:05:00Z",
+            id_factory=identity).execute(self.command())
+        self.assertTrue(captured["uow_closed"])
+        self.assertTrue(captured["probed"])
+        self.assertTrue(captured["physical_commit"])
+        stores = captured["stores"]
+        bound = stores.configuration_acceptance._issued
+        self.assertEqual((bound.event, bound.action), (accepted.event, accepted.action))
+        self.assertEqual(self.connection.execute("SELECT current_graph_id,current_realized_projection_id "
+            "FROM cpk_workspaces WHERE workspace_id='workspace-a'").fetchone(),
+            (accepted.to_authored_graph_id, accepted.to_realized_projection_id))
+        self.assertEqual(self.connection.execute("SELECT action_id,event_id FROM cpk_configuration_acceptances "
+            "WHERE workspace_id='workspace-a'").fetchall(), [(accepted.action.action_id, accepted.event.event_id)])
+        new_txid = raw.execute("SELECT txid_current()").fetchone()[0]
+        self.assertNotEqual(new_txid, captured["live_txid"])
+        before = self.retained_snapshot(raw)
+        for writer in ("event", "action"):
+            with self.subTest(expired_writer=writer):
+                with self.assertRaises(ReceiverLifecycleStorageError) as caught:
+                    if writer == "event":
+                        stores.execution._add_advancement_event(accepted.event, bound)
+                    else:
+                        stores.activity_history._add_advancement_action(accepted.action, bound)
+                self.assertIs(type(caught.exception), ReceiverLifecycleStorageError)
+                self.assertLessEqual(len(str(caught.exception)), 512)
+                self.assertEqual(self.retained_snapshot(raw), before)
+        raw.rollback()
         self.assertEqual(self.retained_snapshot(), before)
 
     def test_private_writers_refuse_reconstructed_unissued_advancement_owner(self):
