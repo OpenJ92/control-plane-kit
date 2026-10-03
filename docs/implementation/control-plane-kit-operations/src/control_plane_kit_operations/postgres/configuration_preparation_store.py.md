@@ -111,9 +111,14 @@ the corrected seven required lookup paths passed an index-only retry with
 compilation/import. These witnesses do not establish naturally reachable
 cold-budget exhaustion or promise an optimizer plan/latency bound.
 
-Two final concurrency candidates reuse this accepted history: distinct-key
+Two final concurrency targets reuse this accepted history: distinct-key
 advancement must have one complete winner; a separate failed-run compensation
 binding replay must hold only its own attempts, block on advancement's workspace,
 then refuse changed lineage without IDs or SQL mutation. Live leases and normal
 admission/lifecycle/compensation owners supply the setup. No raw pointer, lease,
-status or accepted-history mutation is used. These targets are unvalidated.
+status or accepted-history mutation is used. The initial seven-test gate passed
+five existing controls but both new targets hit a command-field assertion typo.
+The two-line correction uses `expected_desired_graph_revision`; the two-target
+retry passed in 22.163s plus compilation/import, with exit0 and exact cleanup.
+The original errors and corrected evidence remain distinct on PR #1926. Final
+whole-package and locked-baseline integration results are tracked there.
