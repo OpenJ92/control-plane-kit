@@ -294,6 +294,7 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("_http_verification_category"),
     architecture_testing.ResolvedCallTarget("_http_verification_record"),
     architecture_testing.ResolvedCallTarget("_legacy_effect_outcome_failure"),
+    architecture_testing.ResolvedCallTarget("_require_correlated_outcome"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("_verification_record_matches"),
