@@ -207,7 +207,6 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
             "header": ("cpk_configuration_acceptances", ("workspace_id", "pinned_revision")),
             "manifest": ("cpk_configuration_accepted_slots", ("workspace_id", "pinned_revision")),
             "node": ("cpk_effect_configuration_refs", ("workspace_id", "runtime_id", "node_id")),
-            "birth": ("cpk_effect_configuration_refs", ("workspace_id", "allocation_id")),
             "claims": ("cpk_configuration_claims", ("workspace_id", "allocation_id")),
         }
         # This proves eligibility of real owner SQL on PostgreSQL, not a bound

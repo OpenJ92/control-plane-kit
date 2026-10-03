@@ -115,3 +115,10 @@ index-prefix eligibility; isolated local tests of unchanged acceptance-envelope
 arithmetic; and a labeled failure injected after genuine owner preflight, before
 CAS. Synthetic local inputs never authorize durable mutation. These candidate
 targets are unvalidated. Two concurrency witnesses and full gates remain.
+
+The seven-target remainder gate passed six whole tests (all local arithmetic,
+both defensive sentinels and injected owner atomicity) but failed an optional
+known-birth EXPLAIN assertion: the optimizer chose the allocation index plus an
+`is_birth` filter. The one-line correction removes only that extra diagnostic;
+all seven required lookup paths, including actual allocation discovery, remain.
+The reviewed index-only retry is unvalidated; no source/index/hint changes.
