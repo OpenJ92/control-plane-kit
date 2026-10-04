@@ -54,3 +54,14 @@ The failed run provides no database-backed behavior credit. A focused rerun is
 required to establish actual catalog equality and detect any further mismatch.
 
 #1931 source checkpoint (unvalidated): D1 adds the exact seven-column invocation completion relation, primary key, source and outcome foreign keys, scalar checks and six-column outcome commitment index. Original event identities stay in the existing outcome owner. Exact empty-install/current-verification/drift-refusal policy is unchanged; this is not a migration.
+
+#1931 source3 corrects the added literal entries to the established catalog
+ordering. Source2 (`fc0198c6`) prepended them and therefore necessarily failed
+the order-sensitive exact-contract comparison during fresh installation; all
+18 selected methods stopped in setup and earned no behavioral credit. The
+strict verifier and SQL are unchanged. Current totals are 50 relations, 631
+columns, 503 constraints, 164 indexes and 138 foreign keys. The fixed digest,
+schema-test metadata and atlas move together. Source-literal transcription
+reproduced the accepted prior digest before authoring the new digest; this is
+not executable package validation. The ordinary focused gate remains required
+to establish catalog equality and expose any additional mismatch.

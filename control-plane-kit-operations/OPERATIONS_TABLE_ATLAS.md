@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=79111df594db6043e5bb5ef042b3934f3852675e00d1f907c38ef360ee0049f8 relations=49 columns=624 constraints=496 indexes=162 foreign-keys=136 -->
+<!-- current-schema-contract: sha256=f289985d3cba6de781517895f14999f5c1f0f41a042aa6d65f745ab9abd1581a relations=50 columns=631 constraints=503 indexes=164 foreign-keys=138 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -138,6 +138,9 @@ foreign key and the accepted lineage cycle:
    `cpk_configuration_accepted_slots` after their header, source/birth refs and
    source outcome. Header/slot completeness and current-pointer agreement must
    pass owner validation; foreign keys alone do not prove accepted use.
+   Restore invocation completion links after their original intent and exact
+   direct outcome. Full retained owner validation must prove completion; neither
+   a terminal attempt nor a historical unprofiled outcome permits backfill.
 8. Restore secret-use authorizations, rotation deployments,
    `cpk_cloudflare_ingress_resources`, and
    `cpk_generated_ingress_secret_references` after any optional
@@ -370,6 +373,8 @@ cpk_configuration_accepted_slots -->|cpk_configuration_accepted_slots_birth_fk| 
 cpk_configuration_accepted_slots -->|cpk_configuration_accepted_slots_outcome_fk| cpk_effect_attempt_outcomes
 cpk_configuration_accepted_slots -->|cpk_configuration_accepted_slots_source_fk| cpk_effect_configuration_refs
 cpk_configuration_claims -->|cpk_configuration_claims_ref_fk| cpk_effect_configuration_refs
+cpk_configuration_invocation_completions -->|cpk_configuration_completions_intent_fk| cpk_effect_attempt_intents
+cpk_configuration_invocation_completions -->|cpk_configuration_completions_outcome_fk| cpk_effect_attempt_outcomes
 cpk_delegation_signing_keys -->|cpk_delegation_signing_keys_workspace_id_fkey| cpk_workspaces
 cpk_desired_topology_draft_revisions -->|cpk_desired_topology_draft_revisions_draft_fkey| cpk_desired_topology_drafts
 cpk_desired_topology_draft_revisions -->|cpk_desired_topology_draft_revisions_graph_fkey| cpk_graph_versions
@@ -517,6 +522,8 @@ order is semantically significant for every composite identity.
 | `cpk_configuration_accepted_slots_outcome_fk` | `cpk_configuration_accepted_slots` | `source_run_id, source_activity_id, source_attempt` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt` | The selected source retains its immutable direct outcome without a late mutable-attempt FK; readers prove qualifying success. |
 | `cpk_configuration_accepted_slots_source_fk` | `cpk_configuration_accepted_slots` | `source_run_id, source_activity_id, source_attempt, source_artifact_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id` | The slot retains the immutable original ref for its exact installation use. |
 | `cpk_configuration_claims_ref_fk` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id` | Every immutable protective claim identifies one exact original ref; deferred until the caller commits both facts. |
+| `cpk_configuration_completions_intent_fk` | `cpk_configuration_invocation_completions` | `run_id, activity_id, attempt` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt` | Every completion retains its exact original invocation intent; owner validation proves the full selection. |
+| `cpk_configuration_completions_outcome_fk` | `cpk_configuration_invocation_completions` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint` | Completion pins the exact immutable direct outcome and its workspace/request commitments; typed completion and original-event correlation remain owner-validated. |
 | `cpk_delegation_signing_keys_workspace_id_fkey` | `cpk_delegation_signing_keys` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Delegation signing-key registrations are workspace scoped. |
 | `cpk_desired_topology_draft_revisions_draft_fkey` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id` | `cpk_desired_topology_drafts` | `workspace_id, draft_id` | Every immutable revision belongs to the exact workspace-scoped draft. |
 | `cpk_desired_topology_draft_revisions_graph_fkey` | `cpk_desired_topology_draft_revisions` | `workspace_id, graph_id` | `cpk_graph_versions` | `workspace_id, graph_id` | Saved graph evidence belongs to the same workspace as its revision. |
@@ -758,6 +765,20 @@ deleting its retained draft history.
 - **JSON boundary:** None; the exact canonical ref and protected original source are owned by the linked relations.
 - **Sensitive material:** Only identities are retained; no secret values or provider payloads.
 - **Future impact:** B2 requires authoritative accepted-use evidence for supported reuse while retaining every claim. Completion evidence, admitted cleanup and release belong to C/D/I177 at their separate boundaries; neither pointer departure nor accepted membership is writer-quiescence evidence.
+
+### `cpk_configuration_invocation_completions`
+
+- **Durable meaning and owner:** `ConfigurationCompletionStore` owns the immutable completion link admitted by a fresh configuration-aware terminal fold. It correlates the original complete selection with a typed Core completion in the retained direct outcome; it does not authorize cleanup.
+- **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary. Seven scalar columns retain workspace, request, selection and outcome commitments; original and direct event coordinates are derived from the existing outcome owner.
+- **Outgoing foreign keys:** The original intent identity must exist. The six-column outcome FK pins the exact invocation, workspace, request fingerprint and outcome fingerprint through an immutable unique outcome key.
+- **Inbound dependents:** None. D2 may consume this proof but no cleanup or deletion authority is implemented here.
+- **Writers and transactions:** Only a store-issued preparation bound to the actual active UoW and fresh persisted execution scope may insert after the terminal attempt CAS. Event, observations, outcome, CAS and link commit or roll back together; the store does not commit independently.
+- **Readers and projections:** `get(identity)` returns an absent link or validates the complete original selection, retained full outcome and typed completion correlation. Current-schema row verification invokes this same owner; indexed commitments alone are insufficient evidence.
+- **Mutation, locks, retries, and idempotency:** Fresh folds hold lifecycle L and the existing ordered execution locks. Pre-ID admission accounts for the complete fold tail in the shared budget. Replay validates any retained link without creating one; unprofiled historical outcomes remain link-free. No adoption, backfill or repair is allowed.
+- **Lifecycle, retention, deletion, and restore:** Restore original intent and exact outcome first, then the link. Restrictive foreign keys preserve those immutable parents. Protective claims remain retained; completion does not retire them or imply absence of accepted use. No public delete operation exists.
+- **JSON boundary:** None. Canonical original intent, complete refs and outcome documents remain with their established owners; the link contains bounded scalar commitments only.
+- **Sensitive material:** Invocation and workspace identities are protected operational context. No configuration material, secrets, credentials, addresses or provider response bodies are copied.
+- **Future impact:** D2 must combine completion with all other cleanup requirements under lifecycle L. Parent D still requires incremental accepted-current transfer and bounded-growth evidence; D1 alone cannot release I177.
 
 ### `cpk_delegation_signing_keys`
 - **Durable meaning and owner:** `DelegationSigningKeyStore` owns workspace-scoped public signing-key registrations and lifecycle state.
