@@ -326,11 +326,15 @@ class PostgresConfigurationEvidenceTests(ConfigurationEvidenceHistoryFixture, un
         for column, value in (("ref_digest", "0" * 64), ("node_id", "wrong-node")):
             with self.subTest(column=column):
                 ref, attempts = self.seed_recorded_claims(2)
-                self.connection.execute(
-                    f"UPDATE cpk_effect_configuration_refs SET {column}=%s "
-                    "WHERE run_id='run-a' AND activity_id=%s AND artifact_id=%s",
-                    (value, attempts[1].state.identity.activity_id, ref.artifact_id))
-                self.assert_allocation_unavailable(self.read_allocation(ref))
+                before = self.complete_start_snapshot()
+                with self.unit_of_work() as uow:
+                    uow.stores.connection.execute("SET CONSTRAINTS ALL DEFERRED")
+                    uow.stores.connection.execute(
+                        f"UPDATE cpk_effect_configuration_refs SET {column}=%s "
+                        "WHERE run_id='run-a' AND activity_id=%s AND artifact_id=%s",
+                        (value, attempts[1].state.identity.activity_id, ref.artifact_id))
+                    self.assert_allocation_unavailable(self.allocation_reader(uow.stores)(ref))
+                self.assertEqual(self.complete_start_snapshot(), before)
 
     def test_missing_reciprocal_claim_is_unavailable_inside_the_uncommitted_transaction(self):
         ref, attempts = self.seed_recorded_claims(2)
