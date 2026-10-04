@@ -2,6 +2,85 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.configuration_cleanup_ownership",
+      "destination": "control_plane_kit_operations.configuration_cleanup_ownership",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_cleanup_ownership.py",
+      "owner": "operation",
+      "role": "pure-contract",
+      "semantic_roles": [
+        "values",
+        "validation",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "ConfigurationCleanupReservationRecord"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.configuration_completion",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_ownership.py"
+      ],
+      "motivation": "Retained exact cleanup evidence value; no writer or authority token."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_cleanup_ownership_store",
+      "destination": "control_plane_kit_operations.postgres.configuration_cleanup_ownership_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_cleanup_ownership_store.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "validation",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.planning.codec",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.configuration_cleanup",
+        "control_plane_kit_operations.configuration_cleanup_ownership",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.configuration_preparation_store",
+        "control_plane_kit_operations.postgres.configuration_source",
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_ownership.py"
+      ],
+      "motivation": "Bounded read-only retained cleanup proof over exact source, D1 completion, proposal/approval, registration and total outcome owners."
+    },
+    {
       "module": "control_plane_kit_operations.configuration_completion",
       "destination": "control_plane_kit_operations.configuration_completion",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_completion.py",

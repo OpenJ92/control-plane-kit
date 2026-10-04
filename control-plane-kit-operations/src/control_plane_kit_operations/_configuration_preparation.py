@@ -66,6 +66,7 @@ def _require_prepared(value, connection, identity, intent):
         raise OperationsRecordError("configuration start requires owner preparation")
     value.stores.graphs._require_receiver_lifecycle(value.guard, intent.source.workspace_id)
     value.stores.configuration_preparation._require_issued(value)
+    value.stores.configuration_preparation._require_current(value)
 
 
 def _require_prepared_intent(value, connection, identity, intent):

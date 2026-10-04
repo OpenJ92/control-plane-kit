@@ -113,3 +113,44 @@ Schema changes follow ADR0008: exact object-free install, current verification w
 Mathematical shape: immutable original use → admitted completion; exact approved candidate/claim set → atomic reservation/closure; total per-candidate outcome → retirement or continuing exclusion. Identity is not permission; completion is not non-use; replay is not dispatch. Each transformation belongs to its existing Operations transaction owner. Core remains pure; I177 alone interprets actual ownership/non-use/non-forced deletion/absence.
 
 Requested disposition: Meridian independent design review, Kepler owner/concurrency consultation, then North's scope/topology and implementation release. No target/source work begins from this draft alone. Original tunnel/DNS/token and all provider resources remain untouched.
+
+## D2B #1935 implementation checkpoint (unvalidated)
+
+The frozen B contract is implemented on the accepted A base. The five retained
+relations pin a cleanup original, permanent allocation members, exact D1
+invocation completions, whole claim closures, and conserved member outcomes.
+Both original refs and claims carry nullable exact locators and generated
+protective flags, with reciprocal deferred scope/discriminator constraints.
+There is no cleanup writer, release API, migration or provider call.
+
+`stores.configuration_cleanup_ownership.get(identity)` returns one frozen
+`ConfigurationCleanupReservationRecord`, None for an absent header, or a fixed
+unavailable error for invalid/capacity evidence. The reader composes recorded
+intent, attempt, request/run, plan/approval, both pinned runtime graphs and exact
+registration identity. Revoked registration and changed current pointers do not
+invalidate recorded history. Full proof requires every closure's reciprocal
+backreference and the entire original ordinary selection. Canonical results use
+Core's total outcome reader; supported generic observations have no member
+retirement rows. Shallow paired proof never invokes the full retained reader.
+
+Ordinary start and both carried/installed acceptance reject permanent exact
+allocation membership before IDs; their common issued-owner seams recheck fresh
+permission under L. Original historical reads retain their meaning. Added reads
+use the shared ledger, the existing 4096-record/16MiB limits, and explicitly
+reserved writer tails. Protective discovery uses both partial-index entrances;
+retained birth material remains an independent exact point proof.
+
+The exact schema companions describe 55 relations, 697 columns, 598 constraints,
+188 indexes and 157 foreign keys. These are authored contract coordinates pending
+the owning PostgreSQL gate, not catalog-verified results. Three SELECT-* fixture
+builders include the new metadata; explicit projections retain their old shape.
+The accepted-capacity regression now requires all 64 accepted uses before the
+65th refusal. Runtime guards remain closed until C; E4 is still mandatory.
+
+Security/data/history: no route, network, credential or live-resource change.
+Rows retain bounded scalar commitments, not authority payloads. Ordinary writers
+remain in their caller-owned transaction; a failed fresh recheck rolls it back.
+SQL does not prevent a privileged reset of both locators; full/current proof
+finds it through closure ownership. Recorded fixtures establish history/read and
+ordinary refusal only. Focused, full package, independent and hosted evidence
+remain pending at this checkpoint.

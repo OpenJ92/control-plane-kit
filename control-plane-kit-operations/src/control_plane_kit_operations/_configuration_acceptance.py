@@ -65,6 +65,7 @@ class _PreparedAdvancementReceipt:
                 or self.stores.execution.get_request(self.request.identity.request_id) != self.request
                 or self.stores.execution.get_run(self.run.run_id) != self.run):
             raise OperationsRecordError("advancement owner truth changed")
+        self.stores.configuration_acceptance._require_current(self)
         self._validate_records(self.event, self.action)
 
 

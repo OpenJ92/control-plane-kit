@@ -285,6 +285,8 @@ def validate_current_rows(connection: _Connection) -> None:
         validate_execution_scope_rows(connection)
         from .configuration_cleanup_store import validate_cleanup_rows
         validate_cleanup_rows(connection)
+        from .configuration_cleanup_ownership_store import validate_cleanup_ownership_rows
+        validate_cleanup_ownership_rows(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()

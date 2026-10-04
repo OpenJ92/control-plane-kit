@@ -272,8 +272,16 @@ def _validate_current_rows(connection: object) -> None:
             if record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
                 from .configuration_evidence import _EvidenceRead
                 from .configuration_preparation_store import ConfigurationPreparationStore
-                ConfigurationPreparationStore(connection)._require_original(record,
-                    read=_EvidenceRead(connection, standalone=True))
+                from control_plane_kit_core.planning import StartNode, ReconcileNode, CleanupConfigurationInstances
+                if type(record.intent.operation) in (StartNode, ReconcileNode):
+                    ConfigurationPreparationStore(connection)._require_original(record,
+                        read=_EvidenceRead(connection, standalone=True))
+                elif type(record.intent.operation) is CleanupConfigurationInstances:
+                    from .stores import PostgresStoreBundle
+                    if PostgresStoreBundle(connection).configuration_cleanup_ownership.get(record.identity) is None:
+                        raise OperationsRecordError(_ROW_ERROR)
+                else:
+                    raise OperationsRecordError(_ROW_ERROR)
             cursor = (row[0], row[1], row[2])
         if len(rows) < _BATCH_SIZE:
             break

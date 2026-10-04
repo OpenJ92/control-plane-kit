@@ -86,6 +86,11 @@ class PostgresStoreBundle:
         from .configuration_cleanup_store import ConfigurationCleanupStore
         return ConfigurationCleanupStore(self)
 
+    @property
+    def configuration_cleanup_ownership(self):
+        from .configuration_cleanup_ownership_store import ConfigurationCleanupOwnershipStore
+        return ConfigurationCleanupOwnershipStore(self)
+
     desired_topology_drafts: PostgresDesiredTopologyDraftStore = field(init=False)
     saved_preparation_sources: PostgresSavedPreparationSourceStore = field(init=False)
     revision_history: PostgresRevisionHistoryStore = field(init=False)

@@ -1765,3 +1765,175 @@ CREATE TABLE cpk_configuration_invocation_completions (
 
 ALTER TABLE ONLY cpk_effect_attempt_outcomes ADD CONSTRAINT cpk_effect_outcomes_completion_key UNIQUE (run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint);
 ALTER TABLE ONLY cpk_configuration_invocation_completions ADD CONSTRAINT cpk_configuration_completions_outcome_fk FOREIGN KEY (run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint);
+
+ALTER TABLE ONLY cpk_runtime_authorities ADD CONSTRAINT cpk_runtime_authorities_cleanup_key UNIQUE (registration_id, workspace_id, authority_ref, runtime_kind);
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_birth_material_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, ref_digest);
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_allocation_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_invocation_completions ADD CONSTRAINT cpk_configuration_completions_exact_key UNIQUE (run_id, activity_id, attempt, workspace_id, request_fingerprint, selection_fingerprint, outcome_fingerprint);
+CREATE TABLE cpk_configuration_cleanup_reservations (
+    cleanup_run_id text NOT NULL,
+    cleanup_activity_id text NOT NULL,
+    cleanup_attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    request_id text NOT NULL,
+    request_fingerprint text NOT NULL,
+    original_event_id text NOT NULL,
+    plan_id text NOT NULL,
+    approval_request_id text NOT NULL,
+    approval_decision_id text NOT NULL,
+    proposal_fingerprint text NOT NULL,
+    runtime_id text NOT NULL,
+    runtime_kind text NOT NULL,
+    authority_ref text NOT NULL,
+    registration_id text NOT NULL,
+    candidate_count integer NOT NULL,
+    invocation_count integer NOT NULL,
+    claim_count integer NOT NULL
+);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_pkey PRIMARY KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_workspace_key UNIQUE (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_intent_fk FOREIGN KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, request_fingerprint, original_event_id) REFERENCES cpk_effect_attempt_intents (run_id, activity_id, attempt, request_fingerprint, original_event_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_run_fk FOREIGN KEY (cleanup_run_id, request_id) REFERENCES cpk_activity_runs (run_id, request_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_request_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests (request_id, workspace_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_plan_fk FOREIGN KEY (request_id, plan_id) REFERENCES cpk_execution_requests (request_id, plan_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_approval_fk FOREIGN KEY (approval_decision_id, approval_request_id) REFERENCES cpk_approval_decisions (decision_id, request_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_authority_fk FOREIGN KEY (registration_id, workspace_id, authority_ref, runtime_kind) REFERENCES cpk_runtime_authorities (registration_id, workspace_id, authority_ref, runtime_kind);
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_counts_check CHECK (((candidate_count >= 1) AND (candidate_count <= 32) AND (invocation_count >= 1) AND (invocation_count <= 256) AND (claim_count >= candidate_count) AND (claim_count <= 256) AND (claim_count >= invocation_count)));
+CREATE TABLE cpk_configuration_cleanup_members (
+    cleanup_run_id text NOT NULL,
+    cleanup_activity_id text NOT NULL,
+    cleanup_attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL,
+    birth_run_id text NOT NULL,
+    birth_activity_id text NOT NULL,
+    birth_attempt integer NOT NULL,
+    birth_artifact_id text NOT NULL,
+    full_ref_digest text NOT NULL
+);
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_pkey PRIMARY KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_allocation_key UNIQUE (workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_reservation_fk FOREIGN KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id) REFERENCES cpk_configuration_cleanup_reservations (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_birth_fk FOREIGN KEY (birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id, workspace_id, allocation_id, full_ref_digest) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, ref_digest);
+CREATE TABLE cpk_configuration_invocation_closures (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    cleanup_run_id text NOT NULL,
+    cleanup_activity_id text NOT NULL,
+    cleanup_attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    request_fingerprint text NOT NULL,
+    selection_fingerprint text NOT NULL,
+    outcome_fingerprint text NOT NULL
+);
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_pkey PRIMARY KEY (run_id, activity_id, attempt);
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_cleanup_key UNIQUE (run_id, activity_id, attempt, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id);
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_reservation_fk FOREIGN KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id) REFERENCES cpk_configuration_cleanup_reservations (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id);
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_completion_fk FOREIGN KEY (run_id, activity_id, attempt, workspace_id, request_fingerprint, selection_fingerprint, outcome_fingerprint) REFERENCES cpk_configuration_invocation_completions (run_id, activity_id, attempt, workspace_id, request_fingerprint, selection_fingerprint, outcome_fingerprint);
+CREATE INDEX cpk_invocation_closures_cleanup ON cpk_configuration_invocation_closures USING btree (cleanup_run_id, cleanup_activity_id, cleanup_attempt, run_id, activity_id, attempt);
+CREATE TABLE cpk_configuration_claim_closures (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    artifact_id text NOT NULL,
+    cleanup_run_id text NOT NULL,
+    cleanup_activity_id text NOT NULL,
+    cleanup_attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL
+);
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id);
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_locator_key UNIQUE (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_invocation_fk FOREIGN KEY (run_id, activity_id, attempt, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id) REFERENCES cpk_configuration_invocation_closures (run_id, activity_id, attempt, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id);
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_member_fk FOREIGN KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id) REFERENCES cpk_configuration_cleanup_members (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_ref_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id);
+CREATE INDEX cpk_claim_closures_cleanup ON cpk_configuration_claim_closures USING btree (cleanup_run_id, cleanup_activity_id, cleanup_attempt, run_id, activity_id, attempt, artifact_id);
+CREATE TABLE cpk_configuration_cleanup_member_outcomes (
+    cleanup_run_id text NOT NULL,
+    cleanup_activity_id text NOT NULL,
+    cleanup_attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL,
+    request_fingerprint text NOT NULL,
+    outcome_fingerprint text NOT NULL,
+    status text NOT NULL,
+    reason text
+);
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_pkey PRIMARY KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_member_fk FOREIGN KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id) REFERENCES cpk_configuration_cleanup_members (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_outcome_fk FOREIGN KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, request_fingerprint, outcome_fingerprint) REFERENCES cpk_effect_attempt_outcomes (run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint);
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_status_check CHECK ((status = ANY (ARRAY['removed'::text, 'already-absent'::text, 'retained-in-use'::text, 'refused'::text, 'unknown'::text])));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_reason_check CHECK ((((status = ANY (ARRAY['removed'::text, 'already-absent'::text])) AND (reason IS NULL)) OR ((status <> ALL (ARRAY['removed'::text, 'already-absent'::text])) AND (reason IS NOT NULL) AND (reason = ANY (ARRAY['in-use'::text, 'ownership-mismatch'::text, 'provenance-unproven'::text, 'authority-refused'::text, 'provider-uncertain'::text, 'not-attempted'::text])))));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_cleanup_run_id_check CHECK (((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_cleanup_activity_id_check CHECK (((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_cleanup_attempt_check CHECK ((cleanup_attempt > 0));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_workspace_id_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_request_id_check CHECK (((octet_length(request_id) >= 1) AND (octet_length(request_id) <= 2048)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_request_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_original_event_id_check CHECK (((octet_length(original_event_id) >= 1) AND (octet_length(original_event_id) <= 2048)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_plan_id_check CHECK (((octet_length(plan_id) >= 1) AND (octet_length(plan_id) <= 2048)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_approval_request_id_check CHECK (((octet_length(approval_request_id) >= 1) AND (octet_length(approval_request_id) <= 2048)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_approval_decision_id_check CHECK (((octet_length(approval_decision_id) >= 1) AND (octet_length(approval_decision_id) <= 2048)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_proposal_fingerprint_check CHECK ((proposal_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_runtime_id_check CHECK (((octet_length(runtime_id) >= 1) AND (octet_length(runtime_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_authority_ref_check CHECK (((octet_length(authority_ref) >= 1) AND (octet_length(authority_ref) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_registration_id_check CHECK (((octet_length(registration_id) >= 1) AND (octet_length(registration_id) <= 2048)));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_cleanup_run_id_check CHECK (((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_cleanup_activity_id_check CHECK (((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_cleanup_attempt_check CHECK ((cleanup_attempt > 0));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_workspace_id_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_allocation_id_check CHECK (((octet_length(allocation_id) >= 1) AND (octet_length(allocation_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_birth_run_id_check CHECK (((birth_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_birth_activity_id_check CHECK (((birth_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_birth_attempt_check CHECK ((birth_attempt > 0));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_birth_artifact_id_check CHECK (((octet_length(birth_artifact_id) >= 1) AND (octet_length(birth_artifact_id) <= 63)));
+ALTER TABLE ONLY cpk_configuration_cleanup_members ADD CONSTRAINT cpk_cleanup_members_full_ref_digest_check CHECK ((full_ref_digest ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_run_id_check CHECK (((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_activity_id_check CHECK (((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_attempt_check CHECK ((attempt > 0));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_cleanup_run_id_check CHECK (((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_cleanup_activity_id_check CHECK (((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_cleanup_attempt_check CHECK ((cleanup_attempt > 0));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_workspace_id_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_request_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_selection_fingerprint_check CHECK ((selection_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_invocation_closures ADD CONSTRAINT cpk_invocation_closures_outcome_fingerprint_check CHECK ((outcome_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_run_id_check CHECK (((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_activity_id_check CHECK (((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_attempt_check CHECK ((attempt > 0));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_artifact_id_check CHECK (((octet_length(artifact_id) >= 1) AND (octet_length(artifact_id) <= 63)));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_cleanup_run_id_check CHECK (((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_cleanup_activity_id_check CHECK (((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_cleanup_attempt_check CHECK ((cleanup_attempt > 0));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_workspace_id_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_claim_closures ADD CONSTRAINT cpk_claim_closures_allocation_id_check CHECK (((octet_length(allocation_id) >= 1) AND (octet_length(allocation_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_cleanup_run_id_check CHECK (((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_cleanup_activity_id_check CHECK (((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_cleanup_attempt_check CHECK ((cleanup_attempt > 0));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_workspace_id_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_allocation_id_check CHECK (((octet_length(allocation_id) >= 1) AND (octet_length(allocation_id) <= 128)));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_request_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cleanup_member_outcomes_outcome_fingerprint_check CHECK ((outcome_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN cleanup_run_id text;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN cleanup_activity_id text;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN cleanup_attempt integer;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN protective boolean GENERATED ALWAYS AS (((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL))) STORED NOT NULL;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_cleanup_shape_check CHECK ((((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL)) OR ((cleanup_run_id IS NOT NULL) AND (cleanup_activity_id IS NOT NULL) AND (cleanup_attempt IS NOT NULL))));
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_cleanup_identity_check CHECK (((cleanup_attempt > 0) AND ((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)));
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_closure_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id) REFERENCES cpk_configuration_claim_closures (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_protective_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective);
+CREATE INDEX cpk_configuration_refs_active_allocation ON cpk_effect_configuration_refs USING btree (workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id) WHERE protective;
+CREATE INDEX cpk_configuration_refs_active_slot ON cpk_effect_configuration_refs USING btree (workspace_id, runtime_id, node_id, artifact_id, run_id, activity_id, attempt) WHERE protective;
+ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN cleanup_run_id text;
+ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN cleanup_activity_id text;
+ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN cleanup_attempt integer;
+ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN protective boolean GENERATED ALWAYS AS (((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL))) STORED NOT NULL;
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_cleanup_shape_check CHECK ((((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL)) OR ((cleanup_run_id IS NOT NULL) AND (cleanup_activity_id IS NOT NULL) AND (cleanup_attempt IS NOT NULL))));
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_cleanup_identity_check CHECK (((cleanup_attempt > 0) AND ((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)));
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_closure_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id) REFERENCES cpk_configuration_claim_closures (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_protective_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective);
+CREATE INDEX cpk_configuration_claims_active_allocation ON cpk_configuration_claims USING btree (workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id) WHERE protective;
+CREATE INDEX cpk_configuration_claims_active_slot ON cpk_configuration_claims USING btree (workspace_id, runtime_id, node_id, artifact_id, run_id, activity_id, attempt) WHERE protective;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_protective_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) REFERENCES cpk_configuration_claims (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_protective_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) DEFERRABLE INITIALLY DEFERRED;

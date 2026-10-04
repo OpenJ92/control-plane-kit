@@ -6,7 +6,7 @@ selector = "_EvidenceRead.query"
 category = "fixed-cardinality"
 sql = "owner-declared SQL CASE/LIMIT or bounded RETURNING projection; reserve maximum records, value octets, scalar markers and one statement before fetch; reject excess rows/cells/bytes; zero-record savepoint statements do not fetch"
 consumer_kind = "production"
-consumer = "configuration preparation, original-source, historical and protective allocation evidence share the logical command ledger; protective discovery independently bounds refs and claims at 65/257 before union and fresh paired proof, even with warm immutable caches"
+consumer = "configuration preparation, original-source, historical and protective allocation evidence share the logical command ledger; protective discovery independently bounds refs and claims at 65/257 before union and fresh paired proof, even with warm immutable caches; retained-cleanup owner joins the same ledger with header 18 fields, members 10 (32 max), invocations 10 (256 max), closures 9 (256 max), and outcomes 9 (32 max), each child with overflow sentinel. Fresh nine-cell paired metadata and exact allocation exclusion are charged separately; full history never grants permission"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"

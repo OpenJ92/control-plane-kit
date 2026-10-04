@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=446b0106b34329ce569ef04780d0ccf5fc2119e1c1e961e91dcaf4e5cc67e2c6 relations=50 columns=633 constraints=507 indexes=167 foreign-keys=138 -->
+<!-- current-schema-contract: sha256=c4ddd80c3d61d66015a3fe9daf35b6334ed59f29b0a2d71d61b318b273988205 relations=55 columns=697 constraints=598 indexes=188 foreign-keys=157 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -27,10 +27,10 @@ repair, data conversion, or inference from an older layout.
 
 ## Dependency Shape
 
-<!-- multi-table-scc: cpk_graph_versions,cpk_realized_graph_projections,cpk_workspaces -->
 <!-- draft-catalogue-scc: cpk_desired_topology_draft_revisions,cpk_desired_topology_drafts -->
 <!-- receiver-storage-scc: cpk_graph_receiver_bindings,cpk_graph_receiver_introductions -->
-<!-- configuration-protection-scc: cpk_configuration_claims,cpk_effect_configuration_refs -->
+<!-- configuration-protection-scc: cpk_configuration_claim_closures,cpk_configuration_claims,cpk_configuration_cleanup_members,cpk_effect_configuration_refs -->
+<!-- multi-table-scc: cpk_graph_versions,cpk_realized_graph_projections,cpk_workspaces -->
 <!-- self-reference: cpk_activity_runs,cpk_effect_attempts,cpk_effect_configuration_refs,cpk_secret_providers,cpk_secret_references -->
 <!-- outcome-aggregate: cpk_effect_attempt_outcomes,cpk_effect_attempt_outcome_observations -->
 <!-- future-impact: 1553,1554,1555,1556,1243,1244 -->
@@ -78,7 +78,7 @@ reuses. Acceptance headers and slots depend on these retained facts without
 joining this cycle. Slots reference immutable source/birth refs and direct
 outcomes, not mutable historical attempts. Initialization receipts likewise
 depend on existing workspace/graph/projection truth without introducing another
-cycle. The four multi-table components above remain unchanged.
+cycle. Retained cleanup extends the configuration component with allocation members and claim closures: restore refs/claims with empty locators, then reservation/members/invocations/closures, then both exact disposition locators within one transaction. Full verification detects cleared backreferences; SQL alone does not forbid a privileged reset. The number of multi-table components remains four.
 
 Self-references express retry ancestry for activity runs, immediate retry
 ancestry for effect attempts, direct configuration birth links, and supersession
@@ -487,6 +487,25 @@ cpk_workspaces -->|cpk_workspaces_current_projection_source_fk| cpk_realized_gra
 cpk_workspaces -->|cpk_workspaces_current_realized_projection_fk| cpk_realized_graph_projections
 cpk_workspaces -->|cpk_workspaces_desired_projection_source_fk| cpk_realized_graph_projections
 cpk_workspaces -->|cpk_workspaces_desired_realized_projection_fk| cpk_realized_graph_projections
+cpk_configuration_claim_closures -->|cpk_claim_closures_invocation_fk| cpk_configuration_invocation_closures
+cpk_configuration_claim_closures -->|cpk_claim_closures_member_fk| cpk_configuration_cleanup_members
+cpk_configuration_claim_closures -->|cpk_claim_closures_ref_fk| cpk_effect_configuration_refs
+cpk_configuration_claims -->|cpk_configuration_claims_closure_fk| cpk_configuration_claim_closures
+cpk_configuration_claims -->|cpk_configuration_claims_protective_fk| cpk_effect_configuration_refs
+cpk_configuration_cleanup_member_outcomes -->|cpk_cleanup_member_outcomes_member_fk| cpk_configuration_cleanup_members
+cpk_configuration_cleanup_member_outcomes -->|cpk_cleanup_member_outcomes_outcome_fk| cpk_effect_attempt_outcomes
+cpk_configuration_cleanup_members -->|cpk_cleanup_members_birth_fk| cpk_effect_configuration_refs
+cpk_configuration_cleanup_members -->|cpk_cleanup_members_reservation_fk| cpk_configuration_cleanup_reservations
+cpk_configuration_cleanup_reservations -->|cpk_cleanup_reservations_approval_fk| cpk_approval_decisions
+cpk_configuration_cleanup_reservations -->|cpk_cleanup_reservations_authority_fk| cpk_runtime_authorities
+cpk_configuration_cleanup_reservations -->|cpk_cleanup_reservations_intent_fk| cpk_effect_attempt_intents
+cpk_configuration_cleanup_reservations -->|cpk_cleanup_reservations_plan_fk| cpk_execution_requests
+cpk_configuration_cleanup_reservations -->|cpk_cleanup_reservations_request_fk| cpk_execution_requests
+cpk_configuration_cleanup_reservations -->|cpk_cleanup_reservations_run_fk| cpk_activity_runs
+cpk_configuration_invocation_closures -->|cpk_invocation_closures_completion_fk| cpk_configuration_invocation_completions
+cpk_configuration_invocation_closures -->|cpk_invocation_closures_reservation_fk| cpk_configuration_cleanup_reservations
+cpk_effect_configuration_refs -->|cpk_configuration_refs_closure_fk| cpk_configuration_claim_closures
+cpk_effect_configuration_refs -->|cpk_configuration_refs_protective_fk| cpk_configuration_claims
 ```
 <!-- foreign-key-graph:end -->
 
@@ -636,6 +655,25 @@ order is semantically significant for every composite identity.
 | `cpk_workspaces_current_realized_projection_fk` | `cpk_workspaces` | `current_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The current projection belongs to the selected workspace. |
 | `cpk_workspaces_desired_projection_source_fk` | `cpk_workspaces` | `desired_realized_projection_id, desired_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The desired projection realizes the workspace's desired graph. |
 | `cpk_workspaces_desired_realized_projection_fk` | `cpk_workspaces` | `desired_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The desired projection belongs to the selected workspace. |
+| `cpk_claim_closures_invocation_fk` | `cpk_configuration_claim_closures` | `run_id, activity_id, attempt, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | `cpk_configuration_invocation_closures` | `run_id, activity_id, attempt, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_claim_closures_member_fk` | `cpk_configuration_claim_closures` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | `cpk_configuration_cleanup_members` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_claim_closures_ref_fk` | `cpk_configuration_claim_closures` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_configuration_claims_closure_fk` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | `cpk_configuration_claim_closures` | `run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_configuration_claims_protective_fk` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_member_outcomes_member_fk` | `cpk_configuration_cleanup_member_outcomes` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | `cpk_configuration_cleanup_members` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_member_outcomes_outcome_fk` | `cpk_configuration_cleanup_member_outcomes` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, request_fingerprint, outcome_fingerprint` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_members_birth_fk` | `cpk_configuration_cleanup_members` | `birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id, workspace_id, allocation_id, full_ref_digest` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, ref_digest` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_members_reservation_fk` | `cpk_configuration_cleanup_members` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | `cpk_configuration_cleanup_reservations` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_reservations_approval_fk` | `cpk_configuration_cleanup_reservations` | `approval_decision_id, approval_request_id` | `cpk_approval_decisions` | `decision_id, request_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_reservations_authority_fk` | `cpk_configuration_cleanup_reservations` | `registration_id, workspace_id, authority_ref, runtime_kind` | `cpk_runtime_authorities` | `registration_id, workspace_id, authority_ref, runtime_kind` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_reservations_intent_fk` | `cpk_configuration_cleanup_reservations` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_reservations_plan_fk` | `cpk_configuration_cleanup_reservations` | `request_id, plan_id` | `cpk_execution_requests` | `request_id, plan_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_reservations_request_fk` | `cpk_configuration_cleanup_reservations` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_cleanup_reservations_run_fk` | `cpk_configuration_cleanup_reservations` | `cleanup_run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_invocation_closures_completion_fk` | `cpk_configuration_invocation_closures` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, selection_fingerprint, outcome_fingerprint` | `cpk_configuration_invocation_completions` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, selection_fingerprint, outcome_fingerprint` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_invocation_closures_reservation_fk` | `cpk_configuration_invocation_closures` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | `cpk_configuration_cleanup_reservations` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_configuration_refs_closure_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | `cpk_configuration_claim_closures` | `run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
+| `cpk_configuration_refs_protective_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
 <!-- foreign-key-ledger:end -->
 
 ## Table Atlas
@@ -752,6 +790,20 @@ deleting its retained draft history.
 - **Sensitive material:** Slot and source identities are protected infrastructure context. No configuration bytes, secret values, addresses, private credentials or provider responses are copied into this table.
 - **Future impact:** C/D must distinguish accepted membership from protection and terminal completion authority. Destructive cleanup requires its own approved exact plan and evidence; I177 owns provider interpretation, not this manifest writer.
 
+### `cpk_configuration_claim_closures`
+
+- **Durable meaning and owner:** Exact ordinary RefKey/allocation closure connects whole-invocation and candidate membership; reciprocal locators must point back. Operations retained-cleanup owner.
+- **Identity and cardinality:** Exact composite original keys; one lifetime has 1–32 members and at most 256 invocations/claims; permanent unique workspace/allocation member.
+- **Outgoing foreign keys:** `cpk_claim_closures_invocation_fk`, `cpk_claim_closures_member_fk`, `cpk_claim_closures_ref_fk`.
+- **Inbound dependents:** `cpk_configuration_claims`, `cpk_effect_configuration_refs`.
+- **Writers and transactions:** No production cleanup writer in #1935. Recorded-history fixtures use a caller-owned rollback/commit transaction; #1936 owns atomic admission.
+- **Readers and projections:** `configuration_cleanup_ownership.get` composes bounded source/D1/approval/result owners with one ledger; no permission token.
+- **Mutation, locks, retries, and idempotency:** Permanent evidence; no reopen, reset, retry, release or independent commit API. Ordinary permission is rechecked under L.
+- **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. No migration, pruning or cleanup execution.
+- **JSON boundary:** Scalar exact identities only; original canonical documents remain with existing owners.
+- **Sensitive material:** No credentials, provider bodies or authority endpoint payloads. Fixed errors and bounded reads.
+- **Future impact:** #1936 owns the atomic writer; E4 remains mandatory. No published/live acceptance inferred.
+
 ### `cpk_configuration_claims`
 
 - **Durable meaning and owner:** `ConfigurationPreparationStore` owns immutable protection for every original configuration ref.
@@ -759,13 +811,68 @@ deleting its retained draft history.
 - **Outgoing foreign keys:** The deferred exact-ref FK requires the corresponding `cpk_effect_configuration_refs` identity, workspace, allocation, runtime and node at commit. Protective reads require the same pairing immediately inside deferred transactions.
 - **Inbound dependents:** Each ref reciprocally requires its claim; this is a caller-transactional protection aggregate.
 - **Writers and transactions:** Only prepared first-start writes append claims alongside event, intent, attempt and refs; the store never commits.
-- **Readers and projections:** Historical allocation evidence remains complete and nonempty. Private protective allocation/node discovery independently caps both indexed sides and their distinct union, then freshly checks reciprocal scope and source even with warm caches. Birth is point-proven independently; every current claim remains protective.
+- **Readers and projections:** Historical allocation evidence remains complete and nonempty. Private protective allocation/node discovery independently caps both indexed sides and their distinct union, then freshly checks reciprocal scope and source even with warm caches. Birth is point-proven independently; only pairs with both locators absent protect. A present reservation member permanently excludes ordinary use; retained closure and outcome history stays readable. Fresh permission checks are separate from immutable source caches.
 - **Mutation, locks, retries, and idempotency:** Fresh starts hold lifecycle L before request/run/attempt/session locks. Primary uniqueness resolves concurrent starts; exact replay performs no insertion.
 - **Lifecycle, retention, deletion, and restore:** Claims are retained protection, not accepted-current or release state. Restore refs and claims in one transaction after their original intent/attempt. No public delete or repair operation is introduced.
 - **JSON boundary:** None; the exact canonical ref and protected original source are owned by the linked relations.
 - **Sensitive material:** Only identities are retained; no secret values or provider payloads.
 - **Future impact:** B2 requires authoritative accepted-use evidence for supported reuse while retaining every claim. Completion evidence, admitted cleanup and release belong to C/D/I177 at their separate boundaries; neither pointer departure nor accepted membership is writer-quiescence evidence.
 
+### `cpk_configuration_cleanup_member_outcomes`
+
+- **Durable meaning and owner:** Each canonical execution outcome conserves every cleanup candidate, including UNKNOWN. Started/generic histories have no member outcome rows. Operations retained-cleanup owner.
+- **Identity and cardinality:** Exact composite original keys; one lifetime has 1–32 members and at most 256 invocations/claims; permanent unique workspace/allocation member.
+- **Outgoing foreign keys:** `cpk_cleanup_member_outcomes_member_fk`, `cpk_cleanup_member_outcomes_outcome_fk`.
+- **Inbound dependents:** None.
+- **Writers and transactions:** No production cleanup writer in #1935. Recorded-history fixtures use a caller-owned rollback/commit transaction; #1936 owns atomic admission.
+- **Readers and projections:** `configuration_cleanup_ownership.get` composes bounded source/D1/approval/result owners with one ledger; no permission token.
+- **Mutation, locks, retries, and idempotency:** Permanent evidence; no reopen, reset, retry, release or independent commit API. Ordinary permission is rechecked under L.
+- **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. No migration, pruning or cleanup execution.
+- **JSON boundary:** Scalar exact identities only; original canonical documents remain with existing owners.
+- **Sensitive material:** No credentials, provider bodies or authority endpoint payloads. Fixed errors and bounded reads.
+- **Future impact:** #1936 owns the atomic writer; E4 remains mandatory. No published/live acceptance inferred.
+
+### `cpk_configuration_cleanup_members`
+
+- **Durable meaning and owner:** Exact root-backed allocation members permanently exclude ordinary reuse, independently of protective counts or outcome. Operations retained-cleanup owner.
+- **Identity and cardinality:** Exact composite original keys; one lifetime has 1–32 members and at most 256 invocations/claims; permanent unique workspace/allocation member.
+- **Outgoing foreign keys:** `cpk_cleanup_members_birth_fk`, `cpk_cleanup_members_reservation_fk`.
+- **Inbound dependents:** `cpk_configuration_claim_closures`, `cpk_configuration_cleanup_member_outcomes`.
+- **Writers and transactions:** No production cleanup writer in #1935. Recorded-history fixtures use a caller-owned rollback/commit transaction; #1936 owns atomic admission.
+- **Readers and projections:** `configuration_cleanup_ownership.get` composes bounded source/D1/approval/result owners with one ledger; no permission token.
+- **Mutation, locks, retries, and idempotency:** Permanent evidence; no reopen, reset, retry, release or independent commit API. Ordinary permission is rechecked under L.
+- **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. No migration, pruning or cleanup execution.
+- **JSON boundary:** Scalar exact identities only; original canonical documents remain with existing owners.
+- **Sensitive material:** No credentials, provider bodies or authority endpoint payloads. Fixed errors and bounded reads.
+- **Future impact:** #1936 owns the atomic writer; E4 remains mandatory. No published/live acceptance inferred.
+
+### `cpk_configuration_cleanup_reservations`
+
+- **Durable meaning and owner:** One original cleanup lifetime pins the request, approval, plan/proposal and runtime registration, plus bounded member/invocation/claim counts. Operations retained-cleanup owner.
+- **Identity and cardinality:** Exact composite original keys; one lifetime has 1–32 members and at most 256 invocations/claims; permanent unique workspace/allocation member.
+- **Outgoing foreign keys:** `cpk_cleanup_reservations_approval_fk`, `cpk_cleanup_reservations_authority_fk`, `cpk_cleanup_reservations_intent_fk`, `cpk_cleanup_reservations_plan_fk`, `cpk_cleanup_reservations_request_fk`, `cpk_cleanup_reservations_run_fk`.
+- **Inbound dependents:** `cpk_configuration_cleanup_members`, `cpk_configuration_invocation_closures`.
+- **Writers and transactions:** No production cleanup writer in #1935. Recorded-history fixtures use a caller-owned rollback/commit transaction; #1936 owns atomic admission.
+- **Readers and projections:** `configuration_cleanup_ownership.get` composes bounded source/D1/approval/result owners with one ledger; no permission token.
+- **Mutation, locks, retries, and idempotency:** Permanent evidence; no reopen, reset, retry, release or independent commit API. Ordinary permission is rechecked under L.
+- **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. No migration, pruning or cleanup execution.
+- **JSON boundary:** Scalar exact identities only; original canonical documents remain with existing owners.
+- **Sensitive material:** No credentials, provider bodies or authority endpoint payloads. Fixed errors and bounded reads.
+- **Future impact:** #1936 owns the atomic writer; E4 remains mandatory. No published/live acceptance inferred.
+
+### `cpk_configuration_invocation_closures`
+
+- **Durable meaning and owner:** One whole ordinary invocation closes into one cleanup lifetime, pinned to the exact seven-field admitted completion. Operations retained-cleanup owner.
+- **Identity and cardinality:** Exact composite original keys; one lifetime has 1–32 members and at most 256 invocations/claims; permanent unique workspace/allocation member.
+- **Outgoing foreign keys:** `cpk_invocation_closures_completion_fk`, `cpk_invocation_closures_reservation_fk`.
+- **Inbound dependents:** `cpk_configuration_claim_closures`.
+- **Writers and transactions:** No production cleanup writer in #1935. Recorded-history fixtures use a caller-owned rollback/commit transaction; #1936 owns atomic admission.
+- **Readers and projections:** `configuration_cleanup_ownership.get` composes bounded source/D1/approval/result owners with one ledger; no permission token.
+- **Mutation, locks, retries, and idempotency:** Permanent evidence; no reopen, reset, retry, release or independent commit API. Ordinary permission is rechecked under L.
+- **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. No migration, pruning or cleanup execution.
+- **JSON boundary:** Scalar exact identities only; original canonical documents remain with existing owners.
+- **Sensitive material:** No credentials, provider bodies or authority endpoint payloads. Fixed errors and bounded reads.
+- **Future impact:** #1936 owns the atomic writer; E4 remains mandatory. No published/live acceptance inferred.
 ### `cpk_configuration_invocation_completions`
 
 - **Durable meaning and owner:** `ConfigurationCompletionStore` owns the immutable completion link admitted by a fresh configuration-aware terminal fold. It correlates the original complete selection with a typed Core completion in the retained direct outcome; it does not authorize cleanup.
