@@ -156,7 +156,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
             harness.coordinator.execute(replace(self.base.engine.command(generation=command.fence.generation,
                 idempotency_key="execute-return"), run_id=command.run_id))
         self.assert_sentinel(queries, rejections, "cpk_effect_configuration_refs",
-            "workspace_id=%s AND runtime_id=%s AND node_id=%s")
+            "protective AND (workspace_id=%s AND runtime_id=%s AND node_id=%s)")
         self.assertEqual(len(harness.start.commands), 1)
         self.assertEqual(harness.start_ids.calls, [])
         self.assertEqual(harness.adapter.runtime_calls, [])

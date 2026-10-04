@@ -236,3 +236,21 @@ because construction raised no error. The correction consumes Core's candidate
 validator and matches each claim's ref/birth identity/artifact to full member
 evidence. Invalid aggregate construction retains its fixed error. This adds no
 mutation authority or independent durable semantics.
+
+The corrected owning gate at `82c96b70` passed **20 tests in 423.664 seconds**,
+then compilation and clean import. Both aggregate negatives turned green. The
+revised corpus reached 264 closed claims across 33 recorded reservations and eight
+active claims in the 34th real incarnation. Every fresh empty-active sample used
+exactly two statements and transported zero records/bytes/markers. Final active
+proof used 99 records, 19678 value octets, 737 markers and 39 statements. Unforced
+EXPLAIN selected `cpk_configuration_refs_active_slot` and
+`cpk_configuration_claims_active_slot`; this is observed query-path evidence,
+not a latency guarantee. The old full-root point remained readable.
+
+Broader validation preparation found one unchanged capacity-test witness still
+matching the pre-B unwrapped node predicate. Its expected prefix now includes
+`protective AND (...)`; exact 257-row sentinel, bounded rejection, pre-ID,
+no-adapter and full rollback assertions remain. The manifest witness is unchanged.
+Final full package and locked-family composition evidence will use one exact-head
+hosted run of the existing authoritative workflows, without duplicating full
+Operations locally. Backend pins remain composition evidence, not B adoption.
