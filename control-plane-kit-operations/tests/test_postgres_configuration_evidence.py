@@ -1,5 +1,5 @@
 """#1923 reader integrity and capacity; no B2 reuse or provider authority."""
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from hashlib import sha256
 import unittest
 import json
@@ -9,6 +9,9 @@ import rfc8785
 
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.postgres.schema import SchemaInstallationError
+from control_plane_kit_operations.postgres.configuration_evidence import (
+    _Capacity, _Unavailable, _composed_read,
+)
 from control_plane_kit_operations.records import OperationsRecordError
 from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
 from control_plane_kit_operations.effect_attempt_start import ExistingAttempt
@@ -365,4 +368,189 @@ class PostgresConfigurationEvidenceTests(ConfigurationEvidenceHistoryFixture, un
                     "WHERE run_id='run-a' AND activity_id=%s AND artifact_id=%s",
                     (first, ref.artifact_id)).fetchone(), (second,))
                 raise RollBackCorruption()
+        self.assertEqual(self.complete_start_snapshot(), before)
+
+
+class PostgresProtectiveConfigurationEvidenceTests(ConfigurationEvidenceHistoryFixture, unittest.TestCase):
+    """#1934 protective-reader laws; recorded history is not cleanup admission."""
+
+    def protective_reader(self, stores):
+        reader = getattr(stores.configuration_preparation, "_protective_allocation_evidence", None)
+        self.assertTrue(callable(reader), "missing #1934 protective allocation owner")
+        return reader
+
+    def test_exact_root_and_all_protectors_preserve_the_public_historical_contract(self):
+        ref, attempts = self.seed_recorded_claims(2)
+        before = self.complete_start_snapshot()
+        with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+            evidence = self.protective_reader(uow.stores)(ref, read)
+            historical = self.allocation_reader(uow.stores)(ref)
+            self.assertEqual(evidence.birth, historical.birth)
+            self.assertEqual(evidence.claims, historical.claims)
+            self.assertEqual(evidence.birth.identity, attempts[0].state.identity)
+            self.assertTrue(all(claim.ref == ref and claim.birth_identity == evidence.birth.identity
+                for claim in evidence.claims))
+            with self.assertRaises(FrozenInstanceError):
+                evidence.claims = ()
+            # A private empty representation is not a released allocation or
+            # a change to the public historical reader's nonempty contract.
+            empty = replace(evidence, claims=())
+            self.assertEqual((empty.birth, empty.claims), (evidence.birth, ()))
+            with self.assertRaises(ValueError):
+                replace(historical, claims=())
+            self.assertEqual(self.protective_reader(uow.stores)(ref, read).claims, evidence.claims)
+        self.assertEqual(self.complete_start_snapshot(), before)
+
+    def test_warm_shared_cache_never_substitutes_for_fresh_reciprocity(self):
+        ref, attempts = self.seed_recorded_claims(2)
+        before = self.complete_start_snapshot()
+        key = ("run-a", attempts[1].state.identity.activity_id, 1, ref.artifact_id)
+        for corruption in ("missing-claim", "missing-ref", "claim-routing"):
+            with self.subTest(corruption=corruption):
+                with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+                    reader = self.protective_reader(uow.stores)
+                    self.assertEqual(len(reader(ref, read).claims), 2)
+                    # Warm the accepted shared ref cache explicitly as well as
+                    # the source cache populated by the real protective read.
+                    uow.stores.configuration_acceptance._ref(read, key)
+                    ledger, used = read.accounting, read.used
+                    uow.stores.connection.execute("SET CONSTRAINTS ALL DEFERRED")
+                    if corruption == "claim-routing":
+                        uow.stores.connection.execute("UPDATE cpk_configuration_claims SET node_id='wrong-node' "
+                            "WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key)
+                    else:
+                        table = ("cpk_configuration_claims" if corruption == "missing-claim"
+                            else "cpk_effect_configuration_refs")
+                        uow.stores.connection.execute("DELETE FROM " + table
+                            + " WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key)
+                    with self.assertRaises(_Unavailable):
+                        reader(ref, read)
+                    self.assertIs(read.accounting, ledger)
+                    self.assertGreater(read.used.statements, used.statements)
+                    self.assertGreater(read.used.accounted_bytes, used.accounted_bytes)
+                    self.assertGreaterEqual(read.used.records, used.records)
+                    self.assertGreaterEqual(read.used.value_octets, used.value_octets)
+                    self.assertGreaterEqual(read.used.scalar_markers, used.scalar_markers)
+        self.assertEqual(self.complete_start_snapshot(), before)
+
+    def test_node_discovery_refuses_either_missing_side_before_deferred_commit(self):
+        ref, attempts = self.seed_recorded_claims(2)
+        before = self.complete_start_snapshot()
+        key = ("run-a", attempts[1].state.identity.activity_id, 1, ref.artifact_id)
+        for table in ("cpk_configuration_claims", "cpk_effect_configuration_refs"):
+            with self.subTest(table=table):
+                with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+                    uow.stores.connection.execute("SET CONSTRAINTS ALL DEFERRED")
+                    uow.stores.connection.execute("DELETE FROM " + table
+                        + " WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key)
+                    with self.assertRaises(_Unavailable):
+                        uow.stores.configuration_preparation._node_history(ref, read)
+        self.assertEqual(self.complete_start_snapshot(), before)
+
+    def test_new_claim_routing_is_checked_by_public_reader_and_current_verifier(self):
+        ref, attempts = self.seed_recorded_claims(2)
+        before = self.complete_start_snapshot()
+        key = ("run-a", attempts[1].state.identity.activity_id, 1, ref.artifact_id)
+        for column in ("runtime_id", "node_id"):
+            with self.subTest(column=column):
+                with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+                    # Assert the new owner before future-schema corruption SQL;
+                    # missing behavior must not become a missing-column error.
+                    self.assertEqual(len(self.protective_reader(uow.stores)(ref, read).claims), 2)
+                    uow.stores.connection.execute("SET CONSTRAINTS ALL DEFERRED")
+                    uow.stores.connection.execute("UPDATE cpk_configuration_claims SET " + column
+                        + "='wrong-scope' WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key)
+                    self.assert_allocation_unavailable(self.allocation_reader(uow.stores)(ref))
+                    with self.assertRaises(SchemaInstallationError):
+                        install_schema(uow.stores.connection)
+                    self.assertEqual(uow.stores.connection.execute("SELECT " + column
+                        + " FROM cpk_configuration_claims WHERE (run_id,activity_id,attempt,artifact_id)="
+                        "(%s,%s,%s,%s)", key).fetchone(), ("wrong-scope",))
+        self.assertEqual(self.complete_start_snapshot(), before)
+
+    def test_allocation_bounds_cover_both_drivers_and_the_distinct_union(self):
+        ref, attempts = self.seed_recorded_claims(64)
+        with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+            evidence = self.protective_reader(uow.stores)(ref, read)
+            self.assertEqual({claim.identity for claim in evidence.claims},
+                {attempt.state.identity for attempt in attempts})
+            self.assertEqual(len(evidence.claims), 64)
+            self.assertEqual(evidence.birth.identity, attempts[0].state.identity)
+        ref, attempts = self.seed_recorded_claims(65)
+        before = self.complete_start_snapshot()
+        for remove in ((), ("claim",), ("ref",), ("claim", "ref")):
+            with self.subTest(remove=remove):
+                with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+                    reader = self.protective_reader(uow.stores)
+                    uow.stores.connection.execute("SET CONSTRAINTS ALL DEFERRED")
+                    for index, side in enumerate(remove, start=1):
+                        table = "cpk_configuration_claims" if side == "claim" else "cpk_effect_configuration_refs"
+                        uow.stores.connection.execute("DELETE FROM " + table
+                            + " WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)",
+                            ("run-a", attempts[index].state.identity.activity_id, 1, ref.artifact_id))
+                    # With opposite missing keys each driver contains 64 but
+                    # their distinct union still contains 65. Never truncate.
+                    with self.assertRaises(_Capacity):
+                        reader(ref, read)
+        self.assertEqual(self.complete_start_snapshot(), before)
+
+    def test_node_bounds_cover_both_drivers_and_the_distinct_union(self):
+        ref, _ = self.seed_recorded_claims(1)
+        with self.unit_of_work() as uow:
+            self.protective_reader(uow.stores)
+        originals = self.connection.execute("SELECT count(*) FROM cpk_effect_configuration_refs "
+            "WHERE workspace_id=%s AND runtime_id=%s AND node_id=%s",
+            (ref.workspace_id, ref.runtime_id, ref.node_id)).fetchone()[0]
+        # Deliberately invalid index history, like the existing 257-row owner
+        # sentinel: these copies are not lawful uses or admission evidence.
+        with self.connection.transaction():
+            self.connection.execute("INSERT INTO cpk_effect_configuration_refs "
+                "SELECT run_id,activity_id,attempt,'copied-' || n,workspace_id,allocation_id,runtime_id,node_id,"
+                "ref_preimage,ref_digest,request_fingerprint,original_event_id,birth_run_id,birth_activity_id,"
+                "birth_attempt,birth_artifact_id,false FROM cpk_effect_configuration_refs "
+                "CROSS JOIN generate_series(1,%s) n WHERE artifact_id=%s",
+                (257 - originals, ref.artifact_id))
+            self.connection.execute("INSERT INTO cpk_configuration_claims "
+                "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,runtime_id,node_id) "
+                "SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,runtime_id,node_id "
+                "FROM cpk_effect_configuration_refs WHERE artifact_id LIKE 'copied-%%'")
+
+        def sentinel_snapshot():
+            # The ordinary fixture deliberately caps legitimate worlds at 256.
+            # Only this invalid-history test observes its exact 257-row set.
+            protection = []
+            for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+                rows = self.connection.execute("SELECT * FROM " + table
+                    + " WHERE workspace_id=%s AND runtime_id=%s AND node_id=%s "
+                    "ORDER BY run_id,activity_id,attempt,artifact_id LIMIT 258",
+                    (ref.workspace_id, ref.runtime_id, ref.node_id)).fetchall()
+                self.assertEqual(len(rows), 257)
+                protection.append((table, tuple(rows)))
+            return self.attempt_snapshot(), tuple(protection)
+
+        before = sentinel_snapshot()
+        for remove in ((), ("claim",), ("ref",), ("claim", "ref")):
+            with self.subTest(remove=remove):
+                with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+                    uow.stores.connection.execute("SET CONSTRAINTS ALL DEFERRED")
+                    for index, side in enumerate(remove, start=1):
+                        table = "cpk_configuration_claims" if side == "claim" else "cpk_effect_configuration_refs"
+                        uow.stores.connection.execute("DELETE FROM " + table + " WHERE artifact_id=%s",
+                            ("copied-" + str(index),))
+                    # Either indexed side may overflow, or both may contain
+                    # 256 different keys whose union still contains 257.
+                    with self.assertRaises(_Capacity):
+                        uow.stores.configuration_preparation._node_history(ref, read)
+        self.assertEqual(sentinel_snapshot(), before)
+
+    def test_protective_owner_rejects_a_nonbirth_root_without_following_a_chain(self):
+        ref, attempts = self.seed_recorded_claims(3)
+        before = self.complete_start_snapshot()
+        with self.unit_of_work() as uow, _composed_read(uow.stores.connection) as read:
+            reader = self.protective_reader(uow.stores)
+            uow.stores.connection.execute("UPDATE cpk_effect_configuration_refs SET birth_activity_id=%s "
+                "WHERE run_id='run-a' AND activity_id=%s AND artifact_id=%s",
+                (attempts[2].state.identity.activity_id, attempts[1].state.identity.activity_id, ref.artifact_id))
+            with self.assertRaises(_Unavailable):
+                reader(ref, read)
         self.assertEqual(self.complete_start_snapshot(), before)
