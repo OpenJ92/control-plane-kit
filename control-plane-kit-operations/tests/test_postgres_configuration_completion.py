@@ -426,7 +426,7 @@ class PostgresConfigurationCompletionTests(ConfigurationPreparationFixture, unit
 
     def test_completion_preserves_real_product_bound_verification_membership(self):
         command, started = self.verification_fold()
-        folded = self.fold(command)
+        folded = self.fold(command, ids=Sequence("completion-terminal", "completion-verification"))
         self.assertEqual(folded.outcome_record.outcome, command.outcome)
         self.assertEqual(len(folded.outcome_record.endpoint_observations), 1)
         self.assertIsNotNone(self.admitted(started.attempt.state.identity))
