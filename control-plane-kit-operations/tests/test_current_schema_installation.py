@@ -128,10 +128,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "f289985d3cba6de781517895f14999f5c1f0f41a042aa6d65f745ab9abd1581a"
+    "446b0106b34329ce569ef04780d0ccf5fc2119e1c1e961e91dcaf4e5cc67e2c6"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "fe514052e261d343cf0d4e5797dd25f52f059ec2001349ca8b038f7ed3640072"
+    "645de1b5f29e0b574eb964a3dc28206e60cd589ce6e66b007599dab5a1bc84e1"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -425,9 +425,9 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         self.assertEqual(len(contract.relations), 50)
-        self.assertEqual(len(contract.columns), 631)
-        self.assertEqual(len(contract.constraints), 503)
-        self.assertEqual(len(contract.indexes), 164)
+        self.assertEqual(len(contract.columns), 633)
+        self.assertEqual(len(contract.constraints), 507)
+        self.assertEqual(len(contract.indexes), 167)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -664,7 +664,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (50, 631, 503, 164))
+        self.assertEqual(self._catalog_counts(), (50, 633, 507, 167))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -1171,7 +1171,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (50, 631, 503, 164))
+        self.assertEqual(self._catalog_counts(), (50, 633, 507, 167))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

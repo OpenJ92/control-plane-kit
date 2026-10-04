@@ -9,6 +9,7 @@ from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_operations.configuration_preparation import (
     ConfigurationAllocationEvidence, ConfigurationRefEvidence, _ref,
 )
+from control_plane_kit_operations._configuration_protection import _ProtectiveConfigurationAllocation
 from control_plane_kit_operations.records import OperationsRecordError
 from .configuration_evidence import _Capacity, _EvidenceRead, _Unavailable
 from .configuration_source import read_source
@@ -21,6 +22,7 @@ _TEXT = tuple(name for name in _NAMES if name not in ("attempt", "birth_attempt"
 _VALID = " AND ".join(f"octet_length(r.{name}) BETWEEN 1 AND 2048" for name in _TEXT)
 _VALID += " AND octet_length(r.ref_preimage) BETWEEN 1 AND 4096"
 _VALID += " AND octet_length(c.workspace_id) BETWEEN 1 AND 128 AND octet_length(c.allocation_id) BETWEEN 1 AND 128"
+_VALID += " AND c.runtime_id=r.runtime_id AND c.node_id=r.node_id"
 _SELECT = "SELECT " + ",".join(f"CASE WHEN {_VALID} THEN r.{name} END" for name in _NAMES)
 _SELECT += f", CASE WHEN {_VALID} THEN c.workspace_id END, CASE WHEN {_VALID} THEN c.allocation_id END"
 _SELECT += " FROM cpk_effect_configuration_refs r LEFT JOIN cpk_configuration_claims c ON "
@@ -208,13 +210,90 @@ class ConfigurationPreparationStore:
         return _propose_configuration(identity, intent, refs), observed.bindings
 
     def _node_history(self, ref, read):
-        """Complete bounded same-runtime node candidates, before any joins."""
-        columns = tuple((name, "int" if name == "attempt" else "text", 2048)
-            for name in ("run_id", "activity_id", "attempt", "artifact_id", "allocation_id"))
-        return read.bounded_rows("cpk_effect_configuration_refs", columns,
+        """Discover both indexed sides before proving any source or pairing."""
+        candidates = self._protective_candidates(read,
             "workspace_id=%s AND runtime_id=%s AND node_id=%s",
-            (ref.workspace_id, ref.runtime_id, ref.node_id),
-            maximum=256, point=False, order="artifact_id,run_id,activity_id,attempt")
+            (ref.workspace_id, ref.runtime_id, ref.node_id), maximum=256,
+            order="artifact_id,run_id,activity_id,attempt")
+        roots = {}
+        for candidate in candidates:
+            claim = self._paired_protective_ref(read, candidate)
+            if (claim.ref.workspace_id, claim.ref.runtime_id, claim.ref.node_id) != (
+                    ref.workspace_id, ref.runtime_id, ref.node_id):
+                raise _Unavailable
+            if claim.ref.allocation_id not in roots:
+                roots[claim.ref.allocation_id] = self._protective_root(claim.ref, read)
+            self._require_direct_root(claim, roots[claim.ref.allocation_id])
+        return tuple(row[:5] for row in candidates)
+
+    def _protective_candidates(self, read, where, params, *, maximum,
+            order="run_id,activity_id,attempt,artifact_id"):
+        # Scope is carried by each independent driver. Do not hide an orphan or
+        # routing mismatch behind an inner join, cache hit, or truncation.
+        names = ("run_id", "activity_id", "attempt", "artifact_id", "allocation_id",
+            "workspace_id", "runtime_id", "node_id")
+        columns = tuple((name, "int" if name == "attempt" else "text", cap)
+            for name, cap in zip(names, (2048, 2048, 12, 63, 128, 128, 128, 128)))
+        sides = tuple(read.bounded_rows(table, columns, where, params,
+            maximum=maximum, point=False, order=order)
+            for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"))
+        if any(len(rows) > maximum for rows in sides):
+            raise _Capacity
+        if any(any(value is None for value in row) for rows in sides for row in rows):
+            raise _Unavailable
+        keys = set(row[:4] for rows in sides for row in rows)
+        if len(keys) > maximum:
+            raise _Capacity
+        if sides[0] != sides[1]:
+            raise _Unavailable
+        return sides[0]
+
+    def _paired_protective_ref(self, read, candidate):
+        rows = read.query(_SELECT + " WHERE (r.run_id,r.activity_id,r.attempt,r.artifact_id)=(%s,%s,%s,%s)",
+            candidate[:4], records=1, octets=32768, cells=19, identities=2)
+        if len(rows) != 1:
+            raise _Unavailable
+        row = rows[0]
+        claim = _decode(row, read)
+        if (*row[:4], row[5], row[4], row[6], row[7]) != tuple(candidate):
+            raise _Unavailable
+        # Only a freshly checked pair may populate the immutable material cache.
+        read.refs[_key(row)] = row
+        return claim
+
+    def _protective_root(self, exact_ref, read):
+        roots = read.query(_SELECT + " WHERE r.workspace_id=%s AND r.allocation_id=%s AND r.is_birth LIMIT 2",
+            (exact_ref.workspace_id, exact_ref.allocation_id), records=2, octets=2 * 32768,
+            cells=19, identities=2)
+        if len(roots) != 1 or roots[0][16] is not True:
+            raise _Unavailable
+        birth = _decode(roots[0], read)
+        if birth.identity != birth.birth_identity or birth.ref != exact_ref:
+            raise _Unavailable
+        read.refs[_key(roots[0])] = roots[0]
+        return birth
+
+    @staticmethod
+    def _require_direct_root(claim, birth):
+        if (claim.ref != birth.ref or claim.birth_identity != birth.identity
+                or claim.birth_artifact_id != birth.ref.artifact_id):
+            raise _Unavailable
+
+    def _protective_allocation_evidence(self, exact_ref, read):
+        """Fresh protection and independent direct root; never reuse authority."""
+        try:
+            _ref(exact_ref)
+            birth = self._protective_root(exact_ref, read)
+            candidates = self._protective_candidates(read, "workspace_id=%s AND allocation_id=%s",
+                (exact_ref.workspace_id, exact_ref.allocation_id), maximum=64)
+            claims = tuple(self._paired_protective_ref(read, row) for row in candidates)
+            for claim in claims:
+                self._require_direct_root(claim, birth)
+            return _ProtectiveConfigurationAllocation(birth, claims)
+        except (_Capacity, _Unavailable):
+            raise
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise _Unavailable from None
 
     def _historical_protection(self, stores, refs, read):
         """Every historical allocation retains its own material and protection."""
@@ -233,11 +312,7 @@ class ConfigurationPreparationStore:
                     or (ref.workspace_id, ref.runtime_id, ref.node_id) != (
                         refs[0].workspace_id, refs[0].runtime_id, refs[0].node_id)):
                 raise _Unavailable
-            allocation = self._allocation_evidence(ref, read)
-            if allocation.state == "capacity":
-                raise _Capacity
-            if allocation.state != "complete":
-                raise _Unavailable
+            allocation = self._protective_allocation_evidence(ref, read)
             keys = tuple((claim.identity.run_id.value, claim.identity.activity_id,
                 claim.identity.attempt, claim.ref.artifact_id) for claim in allocation.claims)
             if keys != tuple(row[:4] for row in rows):
@@ -380,8 +455,9 @@ class ConfigurationPreparationStore:
                  encoded, sha256(encoded).hexdigest(), record.request_fingerprint,
                  record.original_start_event.event_id, *birth_key, key == birth_key))
             self._connection.execute("INSERT INTO cpk_configuration_claims "
-                "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id) VALUES (%s,%s,%s,%s,%s,%s)",
-                (*key, ref.workspace_id, ref.allocation_id))
+                "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,runtime_id,node_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id))
 
     def _require_original(self, record, *, read=None):
         read = _EvidenceRead(self._connection) if read is None else read

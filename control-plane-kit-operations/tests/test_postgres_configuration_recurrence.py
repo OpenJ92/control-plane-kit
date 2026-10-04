@@ -45,7 +45,7 @@ class PostgresConfigurationRecurrenceTests(unittest.TestCase):
 
     def claim_rows(self, identity, refs):
         return [(identity.run_id.value, identity.activity_id, identity.attempt,
-            ref.artifact_id, ref.workspace_id, ref.allocation_id) for ref in refs]
+            ref.artifact_id, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id) for ref in refs]
 
     def retained_state(self):
         return (self.base.retained_snapshot(), self.fixture.protective_claims(), tuple(

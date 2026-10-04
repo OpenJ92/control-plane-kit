@@ -122,3 +122,20 @@ The two-line correction uses `expected_desired_graph_revision`; the two-target
 retry passed in 22.163s plus compilation/import, with exit0 and exact cleanup.
 The original errors and corrected evidence remain distinct on PR #1926. Final
 whole-package and locked-baseline integration results are tracked there.
+
+D2A #1934 changes discovery to independently bounded refs and claims at both the
+allocation (65 sentinel) and node (257 sentinel) entrances. Each side and its
+distinct union must fit the unchanged 64/256 limits before decoding. Fresh
+point reads validate reciprocal identity and scope, immutable source and direct
+root; immutable caches never replace those current pairing reads. The root uses
+the existing unique workspace/allocation birth entrance independently of set
+membership, without traversing a predecessor chain or granting reuse permission.
+
+The shared historical/acceptance/completion projection remains exactly 19 cells;
+its validity predicate additionally requires matching claim runtime and node.
+The ordinary start path consumes the private protective value, retaining its
+accepted-success checks, lifecycle/lock order, future reservation and ID/write
+boundary. Both indexed probes and all repeated paired/source reads use the same
+ledger. All current claims remain protective; no closure, release or cleanup
+execution is added. The stronger paired schema changes are empty-install-only;
+current drift is refused without migration, repair, reset or backfill.

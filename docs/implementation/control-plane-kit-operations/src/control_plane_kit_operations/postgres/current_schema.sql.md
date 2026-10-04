@@ -76,3 +76,13 @@ revision indexes. Acceptance headers retain paired originals and explicit comple
 membership count/digest. Slot rows reference immutable source/birth refs and
 outcomes; no historical mutable lock tail is introduced. This is still an exact
 fresh-store contract; no migration or retained-data repair is authorized.
+
+D2A #1934 adds non-null runtime/node scope to configuration claims, constrained
+to the Core ASCII identifier grammar. Both sides retain their original primary
+keys and gain full identity/workspace/allocation/runtime/node unique support.
+Reciprocal deferred foreign keys now prove that complete scope tuple; a matching
+claims node index supports symmetric bounded discovery. No rows are removed or
+repaired. Normal prepared insertion copies scope from the exact ref inside its
+existing transaction. No disposition, reservation, closure or cleanup writer is
+introduced. The literal contract, atlas and catalog count/hash companions track
+these exact schema additions.

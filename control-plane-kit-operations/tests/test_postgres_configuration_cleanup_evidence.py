@@ -370,7 +370,7 @@ class PostgresConfigurationCleanupCapacityTests(ConfigurationCleanupPostgresFixt
                 "original_event_id,birth_run_id,birth_activity_id,birth_attempt,birth_artifact_id,false "
                 "FROM cpk_effect_configuration_refs WHERE run_id='run-config'")
             self.connection.execute("INSERT INTO cpk_configuration_claims SELECT run_id,activity_id,attempt,artifact_id,"
-                "workspace_id,allocation_id FROM cpk_effect_configuration_refs WHERE artifact_id='overflow'")
+                "workspace_id,allocation_id,runtime_id,node_id FROM cpk_effect_configuration_refs WHERE artifact_id='overflow'")
         self.assert_unavailable(self.inspect(), "capacity")
 
 

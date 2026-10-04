@@ -146,7 +146,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
                 "birth_attempt,birth_artifact_id,false FROM cpk_effect_configuration_refs "
                 "CROSS JOIN generate_series(1,256) n WHERE artifact_id=%s", (self.refs[0].artifact_id,))
             self.base.connection.execute("INSERT INTO cpk_configuration_claims "
-                "SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id "
+                "SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,runtime_id,node_id "
                 "FROM cpk_effect_configuration_refs WHERE artifact_id LIKE 'copied-%%'")
         self.assertEqual(self.base.connection.execute("SELECT count(*) FROM cpk_effect_configuration_refs "
             "WHERE workspace_id='workspace-a' AND runtime_id='runtime-a' AND node_id='api'").fetchone(), (257,))
@@ -321,7 +321,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
                         original = uow.stores.effect_attempt_intents.get(identity)
                     self.assertEqual(original.intent.configuration_instances.instances, self.refs)
                     claims += [(identity.run_id.value, identity.activity_id, 1,
-                        ref.artifact_id, ref.workspace_id, ref.allocation_id) for ref in self.refs]
+                        ref.artifact_id, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id) for ref in self.refs]
                     self.assertEqual(self.fixture.protective_claims(), sorted(claims))
                     after_effect = self.retained_state()
                     ids = iter(("capacity-event-" + label, "capacity-action-" + label))

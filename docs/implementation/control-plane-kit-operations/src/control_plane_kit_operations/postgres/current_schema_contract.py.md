@@ -65,3 +65,10 @@ schema-test metadata and atlas move together. Source-literal transcription
 reproduced the accepted prior digest before authoring the new digest; this is
 not executable package validation. The ordinary focused gate remains required
 to establish catalog equality and expose any additional mismatch.
+
+D2A #1934 retains 50 relations and 138 foreign keys. Its exact contract adds two
+claim scope columns, two identifier checks, two composite unique support keys
+and their indexes, plus the claim node index: 633 columns, 507 constraints and
+167 indexes. Both reciprocal foreign keys bind the full identity and scope.
+The semantic fingerprint and SQL hash companions change together; the ordinary
+Docker schema installer remains the authority for actual catalog agreement.

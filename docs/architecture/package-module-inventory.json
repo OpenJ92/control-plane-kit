@@ -315,6 +315,30 @@
       "motivation": "Store-issued first-start preparation with direct birth links, shared pure birth/reuse proposal and one logical command's accounting scope."
     },
     {
+      "module": "control_plane_kit_operations._configuration_protection",
+      "destination": "control_plane_kit_operations._configuration_protection",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_protection.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_operations.configuration_preparation"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_evidence.py"
+      ],
+      "motivation": "Private protective set with an independent exact retained birth; zero-capable value does not alter historical evidence or confer cleanup authority."
+    },
+    {
       "module": "control_plane_kit_operations.postgres.configuration_evidence",
       "destination": "control_plane_kit_operations.postgres.configuration_evidence",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_evidence.py",
@@ -399,7 +423,8 @@
         "control_plane_kit_operations.postgres.configuration_source",
         "control_plane_kit_operations.postgres.receiver_execution_scopes",
         "control_plane_kit_operations.runtime_effects",
-        "control_plane_kit_operations._configuration_preparation"
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations._configuration_protection"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations"
@@ -411,7 +436,7 @@
         "tests/test_postgres_configuration_material_boundary.py",
         "tests/test_configuration_preparation_capacity.py"
       ],
-      "motivation": "Own original configuration refs, bounded complete node-history protection, distinct births after accepted departure and current-only reuse inside the existing first-start transaction."
+      "motivation": "Own paired original refs and claims, symmetric bounded protective discovery, independent direct roots and fresh source proof before the unchanged ordinary accepted-use start rules."
     },
     {
       "module": "control_plane_kit_core.configuration_invocation",

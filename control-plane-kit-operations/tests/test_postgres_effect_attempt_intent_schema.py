@@ -111,9 +111,9 @@ class PostgresEffectAttemptIntentSchemaTests(
         relations = tuple(value.name for value in contract.relations)
         self.assertEqual(len(relations), 50)
         self.assertEqual(relations.count(RELATION), 1)
-        self.assertEqual(len(contract.columns), 631)
-        self.assertEqual(len(contract.constraints), 503)
-        self.assertEqual(len(contract.indexes), 164)
+        self.assertEqual(len(contract.columns), 633)
+        self.assertEqual(len(contract.constraints), 507)
+        self.assertEqual(len(contract.indexes), 167)
         self.assertEqual(
             sum(value.kind == "f" for value in contract.constraints),
             138,
@@ -397,7 +397,7 @@ class PostgresEffectAttemptIntentSchemaTests(
         )
         self.assertIn("### `cpk_effect_attempt_intents`", atlas)
         self.assertIn(
-            "sha256=f289985d3cba6de781517895f14999f5c1f0f41a042aa6d65f745ab9abd1581a",
+            "sha256=446b0106b34329ce569ef04780d0ccf5fc2119e1c1e961e91dcaf4e5cc67e2c6",
             atlas,
         )
         self.assertIn("foreign-keys=138", atlas)

@@ -31,7 +31,7 @@ class PostgresConfigurationReuseTests(unittest.TestCase):
         self.api_refs = self.fixture.originals["api"].intent.configuration_instances.instances
         self.identity = EffectAttemptIdentity(RunId("run-reuse"), "activity-reuse", 1)
         self.expected_claims = sorted(self.fixture.claims + [
-            ("run-reuse", "activity-reuse", 1, ref.artifact_id, ref.workspace_id, ref.allocation_id)
+            ("run-reuse", "activity-reuse", 1, ref.artifact_id, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id)
             for ref in self.api_refs])
 
     def cleanup_fixture(self):

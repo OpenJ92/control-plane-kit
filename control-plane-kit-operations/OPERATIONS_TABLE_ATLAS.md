@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=f289985d3cba6de781517895f14999f5c1f0f41a042aa6d65f745ab9abd1581a relations=50 columns=631 constraints=503 indexes=164 foreign-keys=138 -->
+<!-- current-schema-contract: sha256=446b0106b34329ce569ef04780d0ccf5fc2119e1c1e961e91dcaf4e5cc67e2c6 relations=50 columns=633 constraints=507 indexes=167 foreign-keys=138 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -521,7 +521,7 @@ order is semantically significant for every composite identity.
 | `cpk_configuration_accepted_slots_birth_fk` | `cpk_configuration_accepted_slots` | `birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id` | The slot retains an immutable direct allocation birth ref; readers prove self-rooted birth and full-ref equality. |
 | `cpk_configuration_accepted_slots_outcome_fk` | `cpk_configuration_accepted_slots` | `source_run_id, source_activity_id, source_attempt` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt` | The selected source retains its immutable direct outcome without a late mutable-attempt FK; readers prove qualifying success. |
 | `cpk_configuration_accepted_slots_source_fk` | `cpk_configuration_accepted_slots` | `source_run_id, source_activity_id, source_attempt, source_artifact_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id` | The slot retains the immutable original ref for its exact installation use. |
-| `cpk_configuration_claims_ref_fk` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id` | Every immutable protective claim identifies one exact original ref; deferred until the caller commits both facts. |
+| `cpk_configuration_claims_ref_fk` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id` | Every immutable protective claim identifies one exact original ref; deferred until the caller commits both facts. |
 | `cpk_configuration_completions_intent_fk` | `cpk_configuration_invocation_completions` | `run_id, activity_id, attempt` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt` | Every completion retains its exact original invocation intent; owner validation proves the full selection. |
 | `cpk_configuration_completions_outcome_fk` | `cpk_configuration_invocation_completions` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint` | Completion pins the exact immutable direct outcome and its workspace/request commitments; typed completion and original-event correlation remain owner-validated. |
 | `cpk_delegation_signing_keys_workspace_id_fkey` | `cpk_delegation_signing_keys` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Delegation signing-key registrations are workspace scoped. |
@@ -545,7 +545,7 @@ order is semantically significant for every composite identity.
 | `cpk_effect_attempts_prior_fkey` | `cpk_effect_attempts` | `prior_run_id, prior_activity_id, prior_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | A retry names the immediately preceding attempt for the same run and activity. |
 | `cpk_effect_attempts_run_id_fkey` | `cpk_effect_attempts` | `run_id` | `cpk_activity_runs` | `run_id` | Every effect attempt belongs to one durable activity run. |
 | `cpk_configuration_refs_birth_fk` | `cpk_effect_configuration_refs` | `birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id` | Every use points directly to retained birth evidence; complete readers reject chains or a mismatched root. |
-| `cpk_configuration_refs_claim_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id` | Reciprocal deferred protection prevents committing a ref without its claim. |
+| `cpk_configuration_refs_claim_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id` | Reciprocal deferred protection prevents committing a ref without its claim. |
 | `cpk_configuration_refs_intent_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | The ref commits to the original attempt intent and start event. |
 | `cpk_execution_command_receipts_run_id_fkey` | `cpk_execution_command_receipts` | `run_id` | `cpk_activity_runs` | `run_id` | Every admitted command receipt belongs to the exact run it may advance. |
 | `cpk_execution_receiver_scopes_request_workspace_fk` | `cpk_execution_receiver_scopes` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Immutable scope coverage belongs to the exact original request and workspace. |
@@ -755,11 +755,11 @@ deleting its retained draft history.
 ### `cpk_configuration_claims`
 
 - **Durable meaning and owner:** `ConfigurationPreparationStore` owns immutable protection for every original configuration ref.
-- **Identity and cardinality:** `(run_id, activity_id, attempt, artifact_id)` identifies one claim, with workspace/allocation lookup retaining all uses.
-- **Outgoing foreign keys:** The deferred exact-ref FK requires the corresponding `cpk_effect_configuration_refs` row at commit.
+- **Identity and cardinality:** `(run_id, activity_id, attempt, artifact_id)` identifies one claim, with workspace/allocation and workspace/runtime/node lookups retaining all uses. Runtime and node use the Core ASCII identifier domain. Composite support keys bind the full ref identity and scope on both sides.
+- **Outgoing foreign keys:** The deferred exact-ref FK requires the corresponding `cpk_effect_configuration_refs` identity, workspace, allocation, runtime and node at commit. Protective reads require the same pairing immediately inside deferred transactions.
 - **Inbound dependents:** Each ref reciprocally requires its claim; this is a caller-transactional protection aggregate.
 - **Writers and transactions:** Only prepared first-start writes append claims alongside event, intent, attempt and refs; the store never commits.
-- **Readers and projections:** Allocation evidence independently discovers every claim and every ref, compares their complete key sets and validates the direct birth and original source.
+- **Readers and projections:** Historical allocation evidence remains complete and nonempty. Private protective allocation/node discovery independently caps both indexed sides and their distinct union, then freshly checks reciprocal scope and source even with warm caches. Birth is point-proven independently; every current claim remains protective.
 - **Mutation, locks, retries, and idempotency:** Fresh starts hold lifecycle L before request/run/attempt/session locks. Primary uniqueness resolves concurrent starts; exact replay performs no insertion.
 - **Lifecycle, retention, deletion, and restore:** Claims are retained protection, not accepted-current or release state. Restore refs and claims in one transaction after their original intent/attempt. No public delete or repair operation is introduced.
 - **JSON boundary:** None; the exact canonical ref and protected original source are owned by the linked relations.
