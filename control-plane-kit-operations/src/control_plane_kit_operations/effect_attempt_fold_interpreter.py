@@ -455,7 +455,8 @@ def _execute_fold_once(
                 raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
             if configuration_guard is not None and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
                 completion_prepared = stores.configuration_completions._prepare(
-                    stores, configuration_guard, intent_record, attempt, command.outcome)
+                    stores, configuration_guard, intent_record, attempt, command.outcome,
+                    unit_of_work=unit_of_work, prefix=configuration_prefix, request=request, fence=fence)
             event_ordinal = stores.execution.next_event_ordinal(run.run_id)
             result = self._plan_result(
                 command,

@@ -366,6 +366,99 @@ class PostgresConfigurationCompletionTests(ConfigurationPreparationFixture, unit
         self.assertGreater(traces[-1].statements, traces[0].statements)
         self.assertIsNotNone(self.admitted(started.attempt.state.identity))
 
+    def test_private_preparation_cannot_backfill_terminal_or_stale_started_history(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
+        from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
+        original, started = self.started()
+        command = self.fold_command(original, started)
+        folded = self.fold(command)
+        self.assertIsNotNone(self.admitted(started.attempt.state.identity))
+        self.connection.execute(f"DELETE FROM {RELATION}")
+        before = self.durable_snapshot()
+        for supplied in (folded.attempt, started.attempt):
+            with self.subTest(status=supplied.state.status):
+                with _configuration_accounting("run-a"), self.unit_of_work() as uow:
+                    stores = uow.stores
+                    with _joined_read(stores.connection):
+                        guard = stores.graphs.lock_receiver_lifecycle("workspace-a")
+                        request = stores.execution.get_request_for_update("request-a")
+                        prefix = _lock_effect_run_prefix(uow, request, "run-a", latest_required=True)
+                        current = stores.effect_attempts.get_for_update(started.attempt.state.identity)
+                        retained = stores.effect_attempt_intents.get(current.state.identity)
+                        self.assertEqual(current, folded.attempt)
+                        with self.assertRaises(OperationsRecordError):
+                            self.completion_store(stores)._prepare(stores, guard, retained, supplied, command.outcome,
+                                unit_of_work=uow, prefix=prefix, request=request, fence=started.attempt.state.fence)
+                        uow.commit()
+                self.assertIsNone(self.admitted(started.attempt.state.identity))
+                self.assertEqual(self.durable_snapshot(), before)
+
+    def verification_fold(self):
+        from control_plane_kit_core.products import ProductDescriptorCodec
+        from control_plane_kit_core.verification import (
+            HttpCheck, HttpVerificationEvidence, VerificationCapability, VerificationCompleted,
+            VerificationContract, VerificationIdentity, VerificationOutcome,
+        )
+        from control_plane_kit_operations.products import RegisteredProduct
+        from tests.test_runtime_effect_translation import _configuration_product
+        registered = _configuration_product()
+        product = registered.descriptor_document.product
+        contract = replace(product.runtime_contract, verification=VerificationContract((
+            HttpCheck(check_id="completion-ready", provider_socket="http", path="/", expected_body_sha256="d" * 64),)))
+        registered = RegisteredProduct.from_document(workspace_id="workspace-a",
+            descriptor_document=ProductDescriptorCodec().encode_document(replace(product, runtime_contract=contract)),
+            source=registered.source, imported_by=registered.imported_by, imported_at=registered.imported_at)
+        # Only select fixture input; real registered product, graph, preparation,
+        # request and original-intent owners persist and validate that input.
+        with mock.patch("tests.configuration_preparation_fixture._configuration_product", return_value=registered):
+            self.reset_start_truth()
+        original, started = self.started()
+        command = self.fold_command(original, started)
+        verification = VerificationCompleted(
+            VerificationIdentity("api", original.intent.source.desired_graph_id, "completion-ready"),
+            VerificationCapability.HTTP, VerificationOutcome.PASSED, 1,
+            HttpVerificationEvidence(200, 21, expected_body_sha256="d" * 64, body_sha256_matches=True))
+        result = replace(command.outcome.result, observations=(verification,))
+        outcome = ExecutionEffectOutcome(command.outcome.identity, command.outcome.request_fingerprint, result)
+        return replace(command, outcome=outcome, transition=effect_outcome_transition(outcome),
+                       failure=effect_outcome_failure(outcome)), started
+
+    def test_completion_preserves_real_product_bound_verification_membership(self):
+        command, started = self.verification_fold()
+        folded = self.fold(command)
+        self.assertEqual(folded.outcome_record.outcome, command.outcome)
+        self.assertEqual(len(folded.outcome_record.endpoint_observations), 1)
+        self.assertIsNotNone(self.admitted(started.attempt.state.identity))
+        with self.unit_of_work() as uow:
+            retained = uow.stores.effect_outcomes.get(started.attempt.state.identity,
+                folded.attempt.latest_transition_event.event_id)
+        self.assertEqual(retained, folded.outcome_record)
+        install_schema(self.connection)
+
+    def test_verification_completion_reserves_its_full_tail_before_ids(self):
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+        command, started = self.verification_fold()
+        before = self.durable_snapshot()
+        actual, injected = _EvidenceRead.query, []
+        def restrict_tail(reader, sql, params, **kwargs):
+            result = actual(reader, sql, params, **kwargs)
+            if f"FROM {RELATION} WHERE" in sql and not injected:
+                # Fifteen remaining relational identities cover the ordinary
+                # tail but not the supported verification's repeated source
+                # and event reads plus generic ownership evidence.
+                reader.used = replace(reader.used, records=4096 - 15)
+                injected.append(True)
+            return result
+        ids = Sequence("must-not-be-used")
+        with mock.patch.object(_EvidenceRead, "query", restrict_tail):
+            with self.assertRaises(EffectAttemptFoldConflict):
+                self.fold(command, ids=ids)
+        self.assertEqual(injected, [True])
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.durable_snapshot(), before)
+        self.assertIsNone(self.admitted(started.attempt.state.identity))
+
 
 if __name__ == "__main__":
     unittest.main()

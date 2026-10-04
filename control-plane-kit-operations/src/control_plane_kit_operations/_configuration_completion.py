@@ -11,3 +11,5 @@ class _PreparedConfigurationCompletion:
     outcome: object
     completion: object
     accounting: object
+    request: object
+    fence: object

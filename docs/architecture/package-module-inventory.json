@@ -67,8 +67,12 @@
         "transformations"
       ],
       "movement": "remain",
-      "migration_prerequisites": [],
-      "canonical_public_exports": [],
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
       "internal_dependencies": [
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.configuration_invocation",
@@ -83,12 +87,17 @@
         "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_operations.postgres.configuration_preparation_store",
         "control_plane_kit_operations.postgres.configuration_source",
-        "control_plane_kit_operations.postgres.effect_outcome_store"
+        "control_plane_kit_operations.postgres.effect_outcome_store",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.verification",
+        "control_plane_kit_operations.effect_run_prefix"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations"
       ],
-      "optional_external_dependencies": [],
+      "optional_external_dependencies": [
+
+      ],
       "protecting_tests": [
         "tests/test_postgres_configuration_completion.py"
       ],
