@@ -16,3 +16,5 @@ and held lifecycle guard.
 The B2 configuration acceptance store shares this same connection and caller UoW.
 It prepares original advancement evidence and validates retained receipts; it
 introduces no independent transaction or provider capability.
+
+#1931 source checkpoint (unvalidated): D1 vends `configuration_completions` on the same connection as the original fold's stores. Its private admission methods participate in that UoW and never commit independently.

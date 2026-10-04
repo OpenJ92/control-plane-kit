@@ -2,6 +2,108 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.configuration_completion",
+      "destination": "control_plane_kit_operations.configuration_completion",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_completion.py",
+      "owner": "operation",
+      "role": "pure-contract",
+      "semantic_roles": [
+        "values",
+        "validation",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "ConfigurationInvocationCompletionRecord"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_completion.py"
+      ],
+      "motivation": "Immutable exact original-fold completion record; no provider non-use authority."
+    },
+    {
+      "module": "control_plane_kit_operations._configuration_completion",
+      "destination": "control_plane_kit_operations._configuration_completion",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_completion.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "validation",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_completion.py"
+      ],
+      "motivation": "Issued same-UoW completion preparation; no standalone writer."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_completion_store",
+      "destination": "control_plane_kit_operations.postgres.configuration_completion_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_completion_store.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "validation",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.configuration_invocation",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations._configuration_completion",
+        "control_plane_kit_operations.configuration_completion",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.configuration_preparation_store",
+        "control_plane_kit_operations.postgres.configuration_source",
+        "control_plane_kit_operations.postgres.effect_outcome_store",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.verification",
+        "control_plane_kit_operations.effect_run_prefix"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_completion.py"
+      ],
+      "motivation": "Admit and verify exact completion inside the original fold with guarded immutable linkage."
+    },
+    {
       "module": "control_plane_kit_operations.configuration_cleanup",
       "destination": "control_plane_kit_operations.configuration_cleanup",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_cleanup.py",
@@ -10422,17 +10524,22 @@
         "control_plane_kit_operations.runtime_authorities",
         "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.runtime_management_targets",
-        "control_plane_kit_operations.workflows"
+        "control_plane_kit_operations.workflows",
+        "control_plane_kit_operations.postgres.configuration_evidence"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
         "control_plane_kit_operations.coordinator"
       ],
-      "migration_prerequisites": [],
+      "migration_prerequisites": [
+
+      ],
       "module": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "motivation": "Owns the provider-free atomic durable interpreter for one effect-attempt fold, including signed-health authority revalidation in the fold transaction and native classification at database acceptance after current authority, pinned fresh plan, and approval binding validation, with immutable replay.",
       "movement": "remain",
-      "optional_external_dependencies": [],
+      "optional_external_dependencies": [
+
+      ],
       "owner": "operation",
       "protecting_tests": [
         "tests/test_atomic_effect_attempt_fold_contract.py",

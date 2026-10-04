@@ -19,6 +19,7 @@ from control_plane_kit_operations.postgres.effect_attempt_intent_store import (
     EffectAttemptIntentStore,
 )
 from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
+from control_plane_kit_operations.postgres.configuration_completion_store import ConfigurationCompletionStore
 from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
 from control_plane_kit_operations.postgres.effect_outcome_store import (
     EffectAttemptOutcomeStore,
@@ -106,6 +107,7 @@ class PostgresStoreBundle:
     execution: PostgresExecutionStore = field(init=False)
     effect_attempt_intents: EffectAttemptIntentStore = field(init=False)
     configuration_preparation: ConfigurationPreparationStore = field(init=False)
+    configuration_completions: ConfigurationCompletionStore = field(init=False)
     configuration_acceptance: ConfigurationAcceptanceStore = field(init=False)
     health_effect_preparations: HealthEffectPreparationStore = field(init=False)
     effect_attempts: EffectAttemptStore = field(init=False)
@@ -125,6 +127,7 @@ class PostgresStoreBundle:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "configuration_preparation", ConfigurationPreparationStore(self.connection))
+        object.__setattr__(self, "configuration_completions", ConfigurationCompletionStore(self.connection))
         object.__setattr__(self, "configuration_acceptance", ConfigurationAcceptanceStore(self.connection))
         object.__setattr__(self, "health_effect_preparations", HealthEffectPreparationStore(self.connection))
         object.__setattr__(self, "desired_topology_drafts", PostgresDesiredTopologyDraftStore(self.connection))

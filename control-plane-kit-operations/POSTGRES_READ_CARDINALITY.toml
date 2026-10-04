@@ -611,3 +611,11 @@ category = "exact-verifier"
 sql = "Same scoped selector and limit as probe; SQL guards per-cell caps, row count and aggregate column bytes; text/null and bool only; complete observed result reserved before execute against the same context budget"
 consumer_kind = "production"
 consumer = "Receiver authoring read validates complete graph/projection/binding and origin facts in one repeatable-read snapshot"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.configuration_completion_store"
+selector = "validate_configuration_completion_rows"
+category = "exact-verifier"
+sql = "strict (run_id,activity_id,attempt) keyset ordered page; LIMIT 32; current-data validation visits every retained completion identity"
+consumer_kind = "production"
+consumer = "Current schema admission validates each retained completion through ConfigurationCompletionStore.get without backfill or repair"

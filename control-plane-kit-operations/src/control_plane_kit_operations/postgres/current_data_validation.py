@@ -277,6 +277,8 @@ def validate_current_rows(connection: _Connection) -> None:
         from .configuration_acceptance_store import validate_configuration_advancement_rows
         validate_configuration_advancement_rows(connection)
         validate_effect_outcome_rows(connection)
+        from .configuration_completion_store import validate_configuration_completion_rows
+        validate_configuration_completion_rows(connection)
         validate_saved_preparation_sources(connection)
         validate_health_preparations(connection)
         validate_receiver_rows(connection)

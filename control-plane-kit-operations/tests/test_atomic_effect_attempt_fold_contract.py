@@ -54,7 +54,10 @@ INTERPRETER_SOURCE_PATH = (
 EXACT_INTERPRETER_IMPORTS = tuple(
     architecture_testing.ImportSurfaceEntry(*value)
     for value in (
+        (".postgres.configuration_evidence", "_active_read", None),
+        (".postgres.configuration_evidence", "_joined_read", None),
         ("__future__", "annotations", None),
+        ("contextlib", "ExitStack", None),
         ("control_plane_kit_core.approval_subjects", "ActivityPlanApprovalSubject", None),
         ("control_plane_kit_core.operations", "EffectAttemptFence", None),
         ("control_plane_kit_core.operations", "EffectAttemptState", None),
@@ -241,6 +244,8 @@ EXACT_INTERPRETER_CALLS = (
     *tuple(
         architecture_testing.ResolvedCallTarget(value)
         for value in (
+            ".postgres.configuration_evidence._active_read",
+            ".postgres.configuration_evidence._joined_read",
             "_AcceptedNativeFold",
             "_EVENT_KIND_BY_STATE.get",
             "_attempt_for_update",
@@ -283,6 +288,7 @@ EXACT_INTERPRETER_CALLS = (
             "_translate_fence",
             "any",
             "any",
+            "contextlib.ExitStack",
             "control_plane_kit_core.operations.EffectAttemptFence",
             "control_plane_kit_core.operations.fold_effect_attempt",
             "control_plane_kit_core.planning.resolve_management_observation",
@@ -323,6 +329,7 @@ EXACT_INTERPRETER_CALLS = (
             *("control_plane_kit_operations.runtime_management_targets.is_signed_management_health_operation",) * 2,
             *("control_plane_kit_operations.workflows.InvalidOperationCommand",) * 5,
             "dataclasses.dataclass",
+            "evidence_contexts.enter_context",
             "graph.require_valid",
             "graphs.append",
             "health_prefix.require",
@@ -337,6 +344,10 @@ EXACT_INTERPRETER_CALLS = (
             "stores.activity_history.get_approval_request",
             "stores.activity_history.get_plan",
             "stores.activity_history.get_session_for_update",
+            "stores.configuration_completions._bind",
+            "stores.configuration_completions._insert",
+            "stores.configuration_completions._prepare",
+            "stores.configuration_completions.get",
             "stores.configuration_preparation._configure_run",
             "stores.configuration_preparation._require_original",
             "stores.effect_attempt_intents.get",
@@ -865,6 +876,7 @@ class AtomicEffectAttemptFoldContractTests(
                     "control_plane_kit_operations.effect_run_prefix",
                     "control_plane_kit_operations.health_signing_authority",
                     "control_plane_kit_operations.plan_derivation",
+                    "control_plane_kit_operations.postgres.configuration_evidence",
                     "control_plane_kit_operations.records",
                     "control_plane_kit_operations.runtime_authorities",
                     "control_plane_kit_operations.runtime_management_admission",

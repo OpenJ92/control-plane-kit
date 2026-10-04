@@ -426,6 +426,7 @@ class EffectAttemptFoldInterpreterContractTests(
                 "control_plane_kit_operations.effect_run_prefix",
                 "control_plane_kit_operations.health_signing_authority",
                 "control_plane_kit_operations.plan_derivation",
+                "control_plane_kit_operations.postgres.configuration_evidence",
                 "control_plane_kit_operations.records",
                 "control_plane_kit_operations.runtime_authorities",
                 "control_plane_kit_operations.runtime_management_admission",
