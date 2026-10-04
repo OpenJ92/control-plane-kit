@@ -45,9 +45,16 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
             clock=lambda: "2026-07-22T12:00:00Z", id_factory=lambda: "graph-current").create(self.create_command)
         plan = ActivityPlan((PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("runtime-a"))),))
         desired = DeploymentGraph("desired", runtimes={
-            "runtime-a": RuntimeRecord("runtime-a", RuntimeKind.DOCKER, children=())})
+            "runtime-a": RuntimeRecord("runtime-a", RuntimeKind.DOCKER, children=(),
+                authority_ref=getattr(self, "runtime_authority_ref", None))})
         with self.unit_of_work() as uow:
             stores = uow.stores
+            if (reference := getattr(self, "runtime_authority_ref", None)) is not None:
+                from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+                self.runtime_registration = stores.runtime_authorities.register(
+                    workspace_id="workspace-a", authority_ref=reference, runtime_kind=RuntimeKind.DOCKER,
+                    authority=LocalDockerSocketAuthority(), admitted_by="operator-a",
+                    admitted_at="2026-07-22T12:00:10Z")
             stores.graphs.save(GraphVersionRecord.from_graph(graph_id="graph-desired", workspace_id="workspace-a",
                 version=2, graph=desired, created_by="operator-a", created_at="2026-07-22T12:00:30Z"))
             self.workspace = stores.workspaces.set_desired_graph("workspace-a", "graph-desired")

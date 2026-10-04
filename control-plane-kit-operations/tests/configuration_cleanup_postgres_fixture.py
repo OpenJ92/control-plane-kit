@@ -56,6 +56,7 @@ class ConfigurationCleanupPostgresFixture:
         self.values = require_cleanup(self)
         self.commands = import_module("control_plane_kit_operations.configuration_cleanup_planning")
         self.member = membership.PostgresConfigurationAcceptanceMembershipTests()
+        self.member.runtime_authority_ref = getattr(self, "runtime_authority_ref", None)
         self.member.configuration_result_for_request = completion_result
         if getattr(self, "single_artifact", False):
             registered = _configuration_product()

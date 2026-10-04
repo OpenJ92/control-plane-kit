@@ -41,6 +41,7 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
 
     def setUp(self):
         self.fixture = acceptance_fixture.PostgresConfigurationAcceptanceTests()
+        self.fixture.runtime_authority_ref = getattr(self, "runtime_authority_ref", None)
         self.addCleanup(self.cleanup_fixture)
         self.fixture.setUp()
         self.connection = self.fixture.connection
@@ -49,7 +50,8 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         product = registered.descriptor_document.product
         blocks = tuple(instantiate_product(product, node, ProductInstanceConfiguration.from_contract(product.runtime_contract))
             for node in self.node_ids)
-        desired = compile_topology(DeploymentTopology("configured", DockerRuntime(runtime_id="runtime-a", children=blocks)))
+        desired = compile_topology(DeploymentTopology("configured", DockerRuntime(runtime_id="runtime-a", children=blocks,
+            authority_ref=getattr(self, "runtime_authority_ref", None))))
         plan = ActivityPlan(tuple(PlannedActivity(ActivityId("start-" + node), StartNode(NodeTarget(node)))
             for node in self.node_ids))
         requirement = ApprovalPolicy().requirement_for(plan)
