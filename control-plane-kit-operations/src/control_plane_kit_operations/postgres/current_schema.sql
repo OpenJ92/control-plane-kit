@@ -1740,3 +1740,21 @@ ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configurati
 ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_configuration_accepted_slots_outcome_fk FOREIGN KEY (source_run_id, source_activity_id, source_attempt) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt);
 
 CREATE INDEX cpk_configuration_slots_inverse ON cpk_configuration_accepted_slots USING btree (workspace_id, pinned_revision, full_ref_digest);
+
+CREATE TABLE cpk_configuration_invocation_completions (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    request_fingerprint text NOT NULL,
+    selection_fingerprint text NOT NULL,
+    outcome_fingerprint text NOT NULL,
+    CONSTRAINT cpk_configuration_completions_pkey PRIMARY KEY (run_id, activity_id, attempt),
+    CONSTRAINT cpk_configuration_completions_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_configuration_completions_workspace_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 128))),
+    CONSTRAINT cpk_configuration_completions_digest_check CHECK (((request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (selection_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (outcome_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT cpk_configuration_completions_intent_fk FOREIGN KEY (run_id, activity_id, attempt) REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt)
+);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes ADD CONSTRAINT cpk_effect_outcomes_completion_key UNIQUE (run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint);
+ALTER TABLE ONLY cpk_configuration_invocation_completions ADD CONSTRAINT cpk_configuration_completions_outcome_fk FOREIGN KEY (run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint);

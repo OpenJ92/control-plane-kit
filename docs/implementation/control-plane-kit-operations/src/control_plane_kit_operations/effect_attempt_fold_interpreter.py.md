@@ -17,3 +17,5 @@ proof without acquiring fresh lifecycle permission. B1 does not authorize reuse,
 claim release or provider cleanup. The focused PostgreSQL blocker test verifies
 that a fresh fold waits at L before allocating IDs; full package acceptance and
 independent review remain pending on PR #1925.
+
+#1931 source checkpoint (unvalidated): D1 joins the existing fold-owned accounting after routing without resetting its prelude. Fresh ordinary configuration completion is prepared before IDs, bound to the actual terminal outcome, and inserted after event/outcome/CAS in the same UoW. Replay validates present linkage without admission or late lifecycle locking. Both cleanup execution refusals remain closed.

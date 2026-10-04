@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import ExitStack
 from typing import Any, Callable
 
 from control_plane_kit_core.operations import (
@@ -242,7 +243,7 @@ def _execute_fold_once(
     native = command if type(command) is FoldNativeConnectionObservation else None
     identity = native.identity if native is not None else command.transition.identity
 
-    with self._unit_of_work_factory() as unit_of_work:
+    with self._unit_of_work_factory() as unit_of_work, ExitStack() as evidence_contexts:
         stores = unit_of_work.stores
         health_prefix = None
         health_locator = None
@@ -256,6 +257,8 @@ def _execute_fold_once(
             if not accounting.active:
                 stores.configuration_preparation._configure_run(identity.run_id.value)
             if accounting.active:
+                from .postgres.configuration_evidence import _joined_read
+                evidence_contexts.enter_context(_joined_read(stores.connection))
                 configuration_request = stores.execution.get_request(command.request_id)
                 configuration_locator = _attempt_for_update(stores, identity, for_update=False)
                 original = stores.effect_attempt_intents.get(identity)
@@ -368,6 +371,8 @@ def _execute_fold_once(
             result = None
             if replay_error is None:
                 try:
+                    if configuration_request is not None:
+                        stores.configuration_completions.get(identity)
                     result = ExistingFold(attempt, outcome_record)
                 except OperationsRecordError:
                     replay_error = _INVALID_TRUTH_ERROR
@@ -375,6 +380,7 @@ def _execute_fold_once(
                 raise EffectAttemptFoldConflict(replay_error)
         else:
             denied = False
+            completion_prepared = None
             if configuration_guard is not None:
                 stores.activity_history.get_session_for_update(request.identity.session_id)
             intent_record = (located_health_intent if health is not None else
@@ -384,7 +390,8 @@ def _execute_fold_once(
                 if configuration_guard is None:
                     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
                 stores.graphs._require_receiver_lifecycle(configuration_guard, request.identity.workspace_id)
-                stores.configuration_preparation._require_original(intent_record)
+                from .postgres.configuration_evidence import _active_read
+                stores.configuration_preparation._require_original(intent_record, read=_active_read(stores.connection))
             observation = None
             if (not invalid_truth and native is None
                     and is_native_connection_operation(intent_record.intent.operation)):
@@ -446,6 +453,9 @@ def _execute_fold_once(
                 raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
             if denied:
                 raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+            if configuration_guard is not None and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+                completion_prepared = stores.configuration_completions._prepare(
+                    stores, configuration_guard, intent_record, attempt, command.outcome)
             event_ordinal = stores.execution.next_event_ordinal(run.run_id)
             result = self._plan_result(
                 command,
@@ -457,6 +467,8 @@ def _execute_fold_once(
                 intent_record=intent_record,
             )
             event = result.attempt.latest_transition_event
+            if completion_prepared is not None:
+                stores.configuration_completions._bind(completion_prepared, result.outcome_record)
             event_acknowledgement = stores.execution.add_event(event)
             changed = (
                 type(event_acknowledgement) is not ActivityEventRecord
@@ -493,6 +505,8 @@ def _execute_fold_once(
                 )
             if changed:
                 raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+            if completion_prepared is not None:
+                stores.configuration_completions._insert(completion_prepared, result.outcome_record)
         unit_of_work.commit()
         return result
 

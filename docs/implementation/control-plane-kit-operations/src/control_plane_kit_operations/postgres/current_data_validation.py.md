@@ -39,3 +39,5 @@ headers independently. Each source is bounded, each receipt uses a closed eviden
 budget, and each workspace's latest paired occurrence must agree with its current
 pointer. Unsupported nonempty membership refuses at this interim checkpoint;
 there is no inferred genesis or header backfill.
+
+#1931 source checkpoint (unvalidated): D1 verifies every retained completion against original full selection and direct outcome using bounded per-record reads. Missing historical links remain nonauthorizing and are never backfilled. Corrupt present links cause current-schema verification to refuse without repair.

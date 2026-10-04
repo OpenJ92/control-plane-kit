@@ -24,6 +24,29 @@ _COMPOSED_READ = ContextVar("cpk_configuration_composed_read", default=None)
 
 
 @contextmanager
+def _joined_read(connection):
+    """Join active owner accounting without discarding any prelude charges."""
+    from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+    accounting = _ACCOUNTING.get()
+    if accounting is None:
+        with _composed_read(connection) as read:
+            yield read
+        return
+    read = _active_read(connection)
+    if read is None:
+        raise _Unavailable
+    existing = _COMPOSED_READ.get()
+    if existing is not None:
+        yield read
+        return
+    token = _COMPOSED_READ.set(read)
+    try:
+        yield read
+    finally:
+        _COMPOSED_READ.reset(token)
+
+
+@contextmanager
 def _composed_read(connection):
     """Bind one command-local ledger and cache across existing evidence owners."""
     from control_plane_kit_operations._configuration_preparation import _configuration_accounting

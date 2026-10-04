@@ -166,3 +166,25 @@ new exact profiles must survive current-data validation without repair.
 D #1921 will own completion linkage, actual closure, claim dispositions and
 reservation. Interpreters #177 owns terminal production and fresh provider non-use
 proof. C2 does not enable either boundary or authorize live resource changes.
+
+## Final C acceptance — 2026-10-03
+
+The intermediate validation paragraphs above are historical checkpoints. C1 and
+C2 are accepted. PR #1930 merged as
+`f0eff627aec3b983ef075439cda43eac6459ebaa`, tree
+`f50d4d90410f32f88f51c739b596c5007bd34221`, exactly matching the reviewed source
+and tested synthetic merge tree. Meridian and Kepler issued final PASS; North
+closed C2 #1928 and C parent #1920.
+
+Final owning evidence: Operations 2343 tests, Core 943 package plus 21 support
+tests, and compile/import passed. Required current-backend passed its declared
+pinned-family composition; it does not establish C2 runtime adoption or provider
+behavior. [Final validation and exact coordinates](https://github.com/OpenJ92/control-plane-kit/pull/1930#issuecomment-5973298211)
+and [independent review handoff](https://github.com/OpenJ92/control-plane-kit/pull/1930#issuecomment-5973312504)
+retain the source3 full failure and source4 structural correction honestly.
+A successful-suite psycopg connection warning remains an unattributed,
+nonblocking cleanup observation; no warning-free claim is made.
+
+D #1921 planning starts from this actual merged base. Original claims remain
+protective and both cleanup execution refusals remain closed. Planning D does
+not release targets, source activation, provider effects or a live grandparent run.

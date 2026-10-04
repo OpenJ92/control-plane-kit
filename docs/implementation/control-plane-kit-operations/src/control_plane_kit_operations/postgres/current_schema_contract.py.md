@@ -52,3 +52,5 @@ constraints/indexes by relation and name. Counts and SQL are unchanged; the
 literal fingerprint and expected table atlas move with that source correction.
 The failed run provides no database-backed behavior credit. A focused rerun is
 required to establish actual catalog equality and detect any further mismatch.
+
+#1931 source checkpoint (unvalidated): D1 adds the exact seven-column invocation completion relation, primary key, source and outcome foreign keys, scalar checks and six-column outcome commitment index. Original event identities stay in the existing outcome owner. Exact empty-install/current-verification/drift-refusal policy is unchanged; this is not a migration.
