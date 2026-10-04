@@ -32,7 +32,8 @@
       ],
       "optional_external_dependencies": [],
       "protecting_tests": [
-        "tests/test_postgres_configuration_cleanup_ownership.py"
+        "tests/test_postgres_configuration_cleanup_ownership.py",
+        "tests/test_postgres_configuration_retained_growth.py"
       ],
       "motivation": "Retained exact cleanup evidence value; no writer or authority token."
     },
@@ -76,7 +77,8 @@
       ],
       "optional_external_dependencies": [],
       "protecting_tests": [
-        "tests/test_postgres_configuration_cleanup_ownership.py"
+        "tests/test_postgres_configuration_cleanup_ownership.py",
+        "tests/test_postgres_configuration_retained_growth.py"
       ],
       "motivation": "Bounded read-only retained cleanup proof over exact source, D1 completion, proposal/approval, registration and total outcome owners."
     },
@@ -12260,7 +12262,8 @@
       "protecting_tests": [
         "tests/test_receiver_execution_scope_derivation.py",
         "tests/test_receiver_execution_scope_classification.py",
-        "tests/test_postgres_configuration_cleanup_ownership.py"
+        "tests/test_postgres_configuration_cleanup_ownership.py",
+        "tests/test_postgres_configuration_retained_growth.py"
       ]
     },
     {

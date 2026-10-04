@@ -192,3 +192,26 @@ writes to the existing fixed conflict, leaving non-configuration errors, health
 retention and commit unchanged. The conflict exits the UoW; marker and complete
 snapshot assertions on rerun must establish rollback. Neither correction enables
 cleanup execution. Capacity, retained growth and full acceptance remain pending.
+
+At `351eb02e`, the focused gate ran 54 tests in 474.228 seconds with one
+workspace-negative fixture construction error. All retained-owner tests passed,
+including the late-start marker and complete rollback snapshot and the analogous
+acceptance control. The real capacity target accepted 64 uses and refused the
+65th at guarded start for the per-ref claim limit, without partial publication.
+Its measured prefix was 3097 records /805567 value octets /30418 scalar markers /
+2325 statements; reserved future was 301 /3821590 /432 /32 respectively. This is
+actual B evidence for that composition, not a universal maximal-payload bound.
+The remaining fixture now builds a Core-valid intent whose own workspace agrees
+with its candidate, then tests its mismatch with the request independently.
+
+The retained-growth target uses nine real 32-artifact incarnations on one node,
+each with ordinary completion and accepted departure. Nine explicitly recorded
+STARTED cleanup reservations retain 288 closed claims and reserved allocations.
+Each empty-active discovery starts a fresh transaction/cache/ledger; both actual
+protective drivers and identical measured footprints are checked. A tenth real
+incarnation must produce exactly 32 active claims and retain an old root's point
+read. The fixture explicitly verifies its existing nonreceiver graph premise;
+it does not bypass runtime-wide receiver conflicts. EXPLAIN reports actual paths
+without changing planner settings or making latency claims. The separate real
+coordinator test owns refusal of exact reserved ordinary reuse. No provider
+removal or C admission is inferred; E4 remains separate and mandatory.

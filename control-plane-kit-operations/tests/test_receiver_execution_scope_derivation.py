@@ -295,7 +295,7 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
                 activity = candidate_plan.plan.activities[0]
                 runtime = DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor).runtimes["docker"]
                 intent = RuntimeEffectIntent(RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, runtime.kind,
-                    RuntimeEffectIntentSource(identity.workspace_id, identity.request_id, RunId("scope-cleanup-run"),
+                    RuntimeEffectIntentSource(activity.operation.instances[0].workspace_id, identity.request_id, RunId("scope-cleanup-run"),
                         plan.plan_id, plan.base_graph_id, plan.desired_graph_id),
                     activity.activity_id, activity.operation, runtime.authority_ref, (), ())
                 with self.assertRaises(module.ReceiverScopeUnavailable):

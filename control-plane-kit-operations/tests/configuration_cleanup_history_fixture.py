@@ -78,26 +78,28 @@ class ConfigurationCleanupHistoryFixture(ConfigurationCleanupPostgresFixture):
         self.assertTrue(callable(getattr(owner, "get", None)), "missing #1935 retained reservation reader")
         return owner
 
-    def prepare_recorded_cleanup(self):
+    def prepare_recorded_cleanup(self, *, label=None):
         # Capability assertion comes before future-schema SQL, not in setUp.
         with self.unit_of_work() as uow:
             self.ownership(uow.stores)
-        plan = self.publish().plan_record
+        suffix = "" if label is None else "-" + label
+        self.retained_suffix = suffix
+        plan = self.publish(self.request(key="publish-cleanup" + suffix)).plan_record
         approvals = ApprovalCommandService(self.unit_of_work, clock=lambda: NOW, id_factory=self.sample_id)
         requested = approvals.execute(RequestApproval(plan.session_id, plan.plan_id, "requester",
-            (PolicyScope.PLAN_REQUEST,), IdempotencyKey("retained-ask"))).request
+            (PolicyScope.PLAN_REQUEST,), IdempotencyKey("retained-ask" + suffix))).request
         decision = approvals.execute(DecideApproval(plan.session_id, requested.request_id, "approver",
             (PolicyScope.PLAN_APPROVE_DESTRUCTIVE,), ApprovalDecisionKind.APPROVED,
-            IdempotencyKey("retained-decide"))).decision
+            IdempotencyKey("retained-decide" + suffix))).decision
         activity = plan.plan.activities[0]
-        identity = EffectAttemptIdentity(RunId("recorded-cleanup-run"), activity.activity_id.value, 1)
+        identity = EffectAttemptIdentity(RunId("recorded-cleanup-run" + suffix), activity.activity_id.value, 1)
         intent = RuntimeEffectIntent(RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, RuntimeKind.DOCKER,
-            RuntimeEffectIntentSource("workspace-a", "recorded-cleanup-request", identity.run_id,
+            RuntimeEffectIntentSource("workspace-a", "recorded-cleanup-request" + suffix, identity.run_id,
                 plan.plan_id, plan.base_graph_id, plan.desired_graph_id), activity.activity_id,
             activity.operation, self.runtime_authority_ref, (), ())
         state = EffectAttemptState(identity, runtime_effect_intent_fingerprint(intent),
             EffectAttemptFence("recorded-worker", 1), EffectAttemptStatus.STARTED)
-        event = event_for(state, event_id="recorded-cleanup-start", ordinal=1, kind=ActivityEventKind.STEP_STARTED)
+        event = event_for(state, event_id="recorded-cleanup-start" + suffix, ordinal=1, kind=ActivityEventKind.STEP_STARTED)
         attempt = EffectAttemptRecord(state, event, event)
         self.retained_plan, self.retained_approval, self.retained_decision = plan, requested, decision
         self.retained_attempt = attempt
@@ -124,7 +126,7 @@ class ConfigurationCleanupHistoryFixture(ConfigurationCleanupPostgresFixture):
         insert_recorded_request(connection, request_id=original.intent.source.request_id,
             workspace_id="workspace-a", session_id=plan.session_id, plan_id=plan.plan_id,
             approval_request_id=self.retained_approval.request_id,
-            approval_decision_id=self.retained_decision.decision_id, idempotency_key="recorded-cleanup-request",
+            approval_decision_id=self.retained_decision.decision_id, idempotency_key=original.intent.source.request_id,
             intent_fingerprint="recorded-history-only", requested_at=NOW, status="claimed",
             claim_worker_id="recorded-worker", claim_generation=1, claimed_at=NOW,
             lease_expires_at="2026-10-03T13:00:00Z")
@@ -173,8 +175,8 @@ class ConfigurationCleanupHistoryFixture(ConfigurationCleanupPostgresFixture):
                     (*key(identity), *key(source_identity), ref.artifact_id)).fetchall()
                 self.assertEqual(rows, [(1,)])
 
-    def retain_cleanup(self):
-        identity = self.prepare_recorded_cleanup()
+    def retain_cleanup(self, *, label=None):
+        identity = self.prepare_recorded_cleanup(label=label)
         with self.unit_of_work() as uow:
             self.insert_recorded_cleanup(uow.stores)
             uow.commit()
@@ -198,7 +200,7 @@ class ConfigurationCleanupHistoryFixture(ConfigurationCleanupPostgresFixture):
     def _retain_outcome(self, outcome, members):
         original, current = self.retained_intent, self.retained_attempt
         state = fold_effect_attempt(current.state, effect_outcome_transition(outcome), fence=current.state.fence)
-        event = event_for(state, event_id="recorded-cleanup-terminal", ordinal=2,
+        event = event_for(state, event_id="recorded-cleanup-terminal" + self.retained_suffix, ordinal=2,
             kind={EffectAttemptStatus.SUCCEEDED: ActivityEventKind.STEP_SUCCEEDED,
                   EffectAttemptStatus.FAILED: ActivityEventKind.STEP_FAILED,
                   EffectAttemptStatus.UNCERTAIN: ActivityEventKind.STEP_UNCERTAIN}[state.status],

@@ -58,6 +58,7 @@ class ConfigurationCleanupPostgresFixture:
         self.member = membership.PostgresConfigurationAcceptanceMembershipTests()
         self.member.runtime_authority_ref = getattr(self, "runtime_authority_ref", None)
         self.member.configuration_result_for_request = completion_result
+        self.member.registered_product = getattr(self, "registered_product", None)
         if getattr(self, "single_artifact", False):
             registered = _configuration_product()
             product = registered.descriptor_document.product
