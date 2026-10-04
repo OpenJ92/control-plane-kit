@@ -4,6 +4,7 @@ from importlib import import_module
 from itertools import count
 
 import psycopg
+import rfc8785
 
 from control_plane_kit_core.configuration_invocation import (
     ConfigurationInvocationCompletion, configuration_invocation_correlation_for_request,
@@ -18,6 +19,7 @@ from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.coordinator import CoordinatorStatus
+from control_plane_kit_operations.effect_attempts import effect_attempt_state_fingerprint
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.products import RegisteredProduct
 from control_plane_kit_operations.workflows import IdempotencyKey
@@ -119,6 +121,7 @@ class ConfigurationCleanupPostgresFixture:
         tables = ("cpk_workspaces", "cpk_activity_plans", "cpk_operation_actions", "cpk_approval_requests",
             "cpk_approval_decisions", "cpk_configuration_claims", "cpk_effect_configuration_refs",
             "cpk_effect_attempts", "cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes",
+            "cpk_configuration_invocation_completions",
             "cpk_activity_events", "cpk_configuration_acceptances", "cpk_configuration_accepted_slots")
         return tuple((table, self.connection.execute("SELECT row_to_json(t)::text FROM " + table +
             " t ORDER BY row_to_json(t)::text").fetchall()) for table in tables)
@@ -134,6 +137,49 @@ class ConfigurationCleanupPostgresFixture:
         command = operator.admit(label, "graph-" + label, ReconcileNode(NodeTarget("api")), graph=operator.graph)
         result = self.execute_later(command, label, producer=producer, expected_status=expected_status)
         return command, result
+
+    def retain_historical_malformed_completion(self, identity):
+        """Build archived no-link evidence, never admit an invalid fresh result.
+
+        The real seed already owns its terminal state, source and event IDs.
+        Only retained evidence and its existing fingerprint commitments change.
+        """
+        key = (identity.run_id.value, identity.activity_id, identity.attempt)
+        with self.unit_of_work() as uow:
+            stores = uow.stores
+            attempt = stores.effect_attempts.get(identity)
+            direct = attempt.latest_transition_event
+            retained = stores.effect_outcomes.get(identity, direct.event_id)
+            self.assertEqual(retained.endpoint_observations, ())
+            self.assertIsNotNone(stores.configuration_completions.get(identity))
+            malformed = replace(retained.outcome.result, evidence={
+                **retained.outcome.result.evidence,
+                "configuration_invocation_completion": {"profile": "CANARY"}})
+            outcome = replace(retained.outcome, result=malformed)
+            state = replace(attempt.state, outcome_fingerprint=outcome.outcome_fingerprint)
+            connection = stores.connection
+            self.assertEqual(connection.execute(
+                "DELETE FROM cpk_configuration_invocation_completions "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s) RETURNING 1", key).fetchone(), (1,))
+            self.assertEqual(connection.execute(
+                "UPDATE cpk_effect_attempt_outcomes SET preimage=%s,outcome_fingerprint=%s "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s) RETURNING 1",
+                (rfc8785.dumps(malformed.descriptor()), outcome.outcome_fingerprint, *key)).fetchone(), (1,))
+            self.assertEqual(connection.execute(
+                "UPDATE cpk_effect_attempts SET outcome_fingerprint=%s "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s) RETURNING 1",
+                (outcome.outcome_fingerprint, *key)).fetchone(), (1,))
+            self.assertEqual(connection.execute(
+                "UPDATE cpk_activity_events SET payload=jsonb_set(payload, "
+                "'{evidence,effect_attempt,state_fingerprint}',to_jsonb(%s::text)) "
+                "WHERE (event_id,run_id,ordinal)=(%s,%s,%s) RETURNING 1",
+                (effect_attempt_state_fingerprint(state), direct.event_id, direct.run_id, direct.ordinal)).fetchone(), (1,))
+            uow.commit()
+        with self.unit_of_work() as uow:
+            self.assertIsNone(uow.stores.configuration_completions.get(identity))
+            self.assertEqual(uow.stores.effect_attempts.get(identity).state, state)
+            self.assertEqual(uow.stores.effect_outcomes.get(identity, direct.event_id).outcome.result, malformed)
+        return malformed
 
     def carry_operator(self):
         operator = carry.PostgresConfigurationCarryTests()

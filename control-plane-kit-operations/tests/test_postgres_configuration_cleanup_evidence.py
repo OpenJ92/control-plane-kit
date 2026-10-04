@@ -125,6 +125,18 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
             self.assertEqual({item["kind"] for item in row["invocations"]}, {"completed"})
 
     def test_corrupt_status_event_source_result_or_present_profile_is_unavailable(self):
+        identity = self.original.identity
+        key = (identity.run_id.value, identity.activity_id, identity.attempt)
+        before = self.truth()
+        with self.assertRaises(psycopg.errors.ForeignKeyViolation):
+            with self.connection.transaction():
+                self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET outcome_fingerprint=%s "
+                    "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", ("a" * 64, *key))
+        self.assertEqual(self.truth(), before)
+        # Explicit archived no-link fixture: preserve corruption-reader laws
+        # without weakening the admitted completion's immutable-parent FK.
+        self.assertEqual(self.connection.execute("DELETE FROM cpk_configuration_invocation_completions "
+            "WHERE (run_id,activity_id,attempt)=(%s,%s,%s) RETURNING 1", key).fetchone(), (1,))
         cases = (
             ("cpk_effect_attempts", "status", "failed", "run_id='run-config'"),
             ("cpk_effect_attempt_intents", "preimage", b"bad-original-CANARY", "run_id='run-config'"),
@@ -141,9 +153,15 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
             finally:
                 self.connection.execute(f"UPDATE {table} SET {field}=%s WHERE {where}", (original,))
         self.member.advance()
-        self.later_use("invalid-profile", producer=lambda request: RuntimeEffectResult.succeeded(
-            request.effect_id, evidence={"configuration_invocation_completion": {"profile": "CANARY"}}))
+        command, _ = self.later_use("invalid-profile", producer=lambda request:
+            replace(completion_result(request), observations=()))
+        self.descriptors(self.inspect())
+        malformed = self.retain_historical_malformed_completion(
+            EffectAttemptIdentity(RunId(command.run_id), "activity-invalid-profile", 1))
+        self.assertEqual(malformed.evidence["configuration_invocation_completion"], {"profile": "CANARY"})
+        before = self.truth()
         self.assert_unavailable(self.inspect())
+        self.assertEqual(self.truth(), before)
 
     def test_all_current_and_old_claims_protect_without_desired_digest_inference(self):
         self.member.advance()
