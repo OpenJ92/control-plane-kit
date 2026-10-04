@@ -12256,10 +12256,11 @@
         "values",
         "transformations"
       ],
-      "motivation": "Execution-owned immutable original-source coverage and nonauthorizing history classification; cancellation returns an unresolved fresh-gate obligation.",
+      "motivation": "Execution-owned immutable original-source coverage and nonauthorizing history classification; cancellation returns an unresolved fresh-gate obligation. Retained cleanup uses conservative runtime-wide scope with exact candidate workspace and congruent runtime kind/non-null authority in both pinned graphs, even after node departure; no execution authority.",
       "protecting_tests": [
         "tests/test_receiver_execution_scope_derivation.py",
-        "tests/test_receiver_execution_scope_classification.py"
+        "tests/test_receiver_execution_scope_classification.py",
+        "tests/test_postgres_configuration_cleanup_ownership.py"
       ]
     },
     {

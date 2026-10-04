@@ -154,3 +154,29 @@ SQL does not prevent a privileged reset of both locators; full/current proof
 finds it through closure ownership. Recorded fixtures establish history/read and
 ordinary refusal only. Focused, full package, independent and hosted evidence
 remain pending at this checkpoint.
+
+## D2B historical receiver-scope amendment
+
+The first schema-correct focused run exposed an omitted prerequisite: recorded
+cleanup requests pass through the receiver-scope owner, whose closed operation
+classifier did not recognize cleanup. The current verifier uses the same owner,
+so bypassing its digest derivation in a fixture would not establish valid history.
+The [scope clarification](https://github.com/OpenJ92/control-plane-kit/issues/1935#issuecomment-5983483047)
+adds pure historical recognition to B without activating execution.
+
+An exact cleanup candidate set maps to one runtime-wide receiver scope. Its
+workspace matches the request; both pinned projections contain that runtime with
+the same kind and the same nonnull authority reference. Candidate node/artifacts
+may be absent. Runtime-wide scope conservatively conflicts with ordinary work on
+any node in that runtime. The operation/proposal digest still commits the exact
+node and allocations. No current-pointer, active-registration or lease check is
+added to historical derivation; no schema/index or digest format changes.
+
+The same helper validates independent effect classification. Cleanup is not an
+inverse operation. Existing runtime material checks still require exact kind and
+authority with no products, and public nonaffecting writers reject the nonempty
+scope. Tests cover present/departed nodes, crossed workspace, missing either
+runtime, mismatched kind/authority, null authority, genuine recorded digest and
+cold verification, node lookup and unrelated-runtime separation. Existing
+non-cleanup scope/digest and unknown-operation laws remain in the focused gate.
+Both cleanup admission/translation guards and C's start/fold ownership remain.

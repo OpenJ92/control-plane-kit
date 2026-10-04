@@ -46,6 +46,29 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
         plan = self.publish().plan_record
         self.assertEqual(plan.plan.activities[0].operation.instances, tuple(sorted(self.refs, key=lambda ref: ref.allocation_id)))
 
+    def test_recorded_cleanup_scope_is_real_runtime_conflict_without_writer_authority(self):
+        from control_plane_kit_operations.receiver_execution_scopes import ExecutionReceiverScope, ReceiverScopeUnavailable
+        from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
+        identity = self.retain_cleanup()
+        request_id = self.retained_intent.request_id
+        with self.unit_of_work() as uow:
+            stores = uow.stores
+            request = stores.execution.get_request(request_id)
+            scope_store = _ExecutionScopeStorage(stores.connection)
+            _, derived = scope_store.verify(request.identity)
+            self.assertEqual(derived.scopes, (ExecutionReceiverScope("runtime-a"),))
+            self.assertEqual(stores.connection.execute("SELECT receiver_scope_count,receiver_scope_digest "
+                "FROM cpk_execution_requests WHERE request_id=%s", (request_id,)).fetchone(),
+                (1, derived.source_digest))
+            for node in ("api", "different-node"):
+                self.assertIn(request_id, scope_store.candidates("workspace-a", (ExecutionReceiverScope("runtime-a", node),)))
+            self.assertNotIn(request_id, scope_store.candidates("workspace-a", (ExecutionReceiverScope("other-runtime", "api"),)))
+            with self.assertRaises(ReceiverScopeUnavailable):
+                stores.execution.add_run(stores.execution.get_run(identity.run_id.value))
+            with self.assertRaises(ReceiverScopeUnavailable):
+                stores.effect_attempt_intents.insert(self.retained_intent)
+        install_schema(self.connection)
+
     def test_absent_reservation_is_none_without_claiming_permission(self):
         before = self.truth()
         with self.unit_of_work() as uow:

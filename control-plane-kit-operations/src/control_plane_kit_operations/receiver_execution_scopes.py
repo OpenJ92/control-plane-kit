@@ -11,7 +11,7 @@ from hashlib import sha256
 import rfc8785
 
 from control_plane_kit_core.planning import (
-    AddSocketConnection, AllocatePublicIngress, Compensate,
+    AddSocketConnection, AllocatePublicIngress, CleanupConfigurationInstances, Compensate,
     CompensationMaterialSource, ObserveManagementBootstrap, ObserveNodeHealth,
     ReconcileNode, ReconcileRuntime, RemoveNodeResource, RemovePublicIngress,
     RemoveRuntimeResource, RemoveSocketConnection, StartNode, StartRuntime,
@@ -91,7 +91,26 @@ _NON_RECEIVER_OPERATIONS = (
 )
 
 
+def _cleanup_scope(operation, workspace_id, *graphs):
+    """Conservative historical runtime conflict, never cleanup authority."""
+    _require(type(operation) is CleanupConfigurationInstances)
+    # Consume Core's closed candidate law without repairing malformed values.
+    _require(CleanupConfigurationInstances(operation.instances) == operation)
+    candidate = operation.instances[0]
+    _require(candidate.workspace_id == workspace_id)
+    runtimes = tuple(graph.runtimes.get(candidate.runtime_id) for graph in graphs)
+    _require(bool(runtimes) and all(runtime is not None for runtime in runtimes))
+    first = runtimes[0]
+    _require(first.authority_ref is not None and all(
+        (runtime.kind, runtime.authority_ref) == (first.kind, first.authority_ref) for runtime in runtimes))
+    # The node/artifacts may have departed from both graphs. Their exact
+    # identities remain in the operation/proposal committed by the scope digest.
+    return ExecutionReceiverScope(candidate.runtime_id)
+
+
 def _operation_scope(operation, graph):
+    if type(operation) is CleanupConfigurationInstances:
+        return _cleanup_scope(operation, operation.instances[0].workspace_id, graph)
     if type(operation) in _NODE_OPERATIONS:
         node_id = operation.target.node_id
         _require(node_id in graph.nodes)
@@ -152,6 +171,10 @@ def _effect_receiver_scope(identity, original, intent, *, compensation):
         _require(intent.operation == activity.operation)
         material = base if type(intent.operation) in _BASE_OPERATIONS else desired
     graph = DEFAULT_GRAPH_CODEC.decode(material.graph_descriptor)
+    if type(intent.operation) is CleanupConfigurationInstances:
+        _require(not compensation and identity.plan_id == plan.plan_id and identity.session_id == plan.session_id)
+        _cleanup_scope(intent.operation, identity.workspace_id,
+            _projection(identity, plan, base, "base"), _projection(identity, plan, desired, "desired"))
     return _operation_scope(intent.operation, graph), graph, material
 
 
@@ -207,11 +230,14 @@ def _derive(identity, plan, base_projection, desired_projection):
     for activity in plan.plan.activities:
         operation = activity.operation
         graph = base if type(operation) in _BASE_OPERATIONS else desired
+        if type(operation) is CleanupConfigurationInstances:
+            _cleanup_scope(operation, identity.workspace_id, base, desired)
         scope = _operation_scope(operation, graph)
         if scope is not None:
             scopes.add(scope)
         inverse = activity.compensation
         if type(inverse) is Compensate:
+            _require(type(inverse.operation) is not CleanupConfigurationInstances)
             _require(type(inverse.material_source) is CompensationMaterialSource)
             material = base if inverse.material_source is CompensationMaterialSource.BASE_GRAPH else desired
             scope = _operation_scope(inverse.operation, material)

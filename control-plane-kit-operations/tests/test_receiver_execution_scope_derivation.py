@@ -224,3 +224,76 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
                 else:
                     self.assertEqual(module.derive_execution_receiver_scopes(candidate, plan, base, desired).scopes,
                                      (module.ExecutionReceiverScope("docker", "app"),))
+
+    def cleanup_source(self, *, present=False):
+        from control_plane_kit_core.planning import CleanupConfigurationInstances
+        from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+        from tests.configuration_instance_fixture import configuration_ref
+        graph = self.graph(nodes=("api",) if present else ())
+        runtime = replace(graph.runtimes["docker"], authority_ref=RuntimeAuthorityReference("cleanup-runtime"))
+        graph = replace(graph, runtimes={"docker": runtime})
+        operation = CleanupConfigurationInstances((configuration_ref(),))
+        return self.source_with_operations(operation, base_graph=graph, desired_graph=graph)
+
+    def test_cleanup_derives_runtime_scope_with_present_or_departed_node(self):
+        from control_plane_kit_core.operations import RunId
+        from control_plane_kit_core.runtime_effect_observation import RuntimeEffectIntent, RuntimeEffectIntentSource
+        from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+        module = self.require_scopes()
+        for present in (False, True):
+            with self.subTest(node_present=present):
+                source = self.cleanup_source(present=present)
+                identity, plan, base, desired = source
+                derived = module.derive_execution_receiver_scopes(*source)
+                self.assertEqual(derived.scopes, (module.ExecutionReceiverScope("docker"),))
+                runtime = DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor).runtimes["docker"]
+                activity = plan.plan.activities[0]
+                intent = RuntimeEffectIntent(RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, runtime.kind,
+                    RuntimeEffectIntentSource(identity.workspace_id, identity.request_id, RunId("scope-cleanup-run"),
+                        plan.plan_id, plan.base_graph_id, plan.desired_graph_id),
+                    activity.activity_id, activity.operation, runtime.authority_ref, (), ())
+                scope, _, _ = module._effect_receiver_scope(identity, (plan, base, desired), intent, compensation=False)
+                self.assertEqual(scope, derived.scopes[0])
+                module._validate_effect_receiver_material(identity, (plan, base, desired), derived, intent, compensation=False)
+
+    def test_cleanup_refuses_crossed_workspace_and_either_pinned_runtime_or_authority(self):
+        from control_plane_kit_core.planning import CleanupConfigurationInstances
+        from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+        from control_plane_kit_core.types import RuntimeKind
+        from control_plane_kit_core.operations import RunId
+        from control_plane_kit_core.runtime_effect_observation import RuntimeEffectIntent, RuntimeEffectIntentSource
+        from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+        module = self.require_scopes()
+        identity, plan, base, desired = self.cleanup_source()
+        candidate = plan.plan.activities[0].operation.instances[0]
+        crossed = replace(plan, plan=ActivityPlan((replace(plan.plan.activities[0],
+            operation=CleanupConfigurationInstances((replace(candidate, workspace_id="other-workspace"),))),)))
+        cases = [("workspace", (identity, crossed, base, desired))]
+        for side, projection in (("base", base), ("desired", desired)):
+            graph = DEFAULT_GRAPH_CODEC.decode(projection.graph_descriptor)
+            runtime = graph.runtimes["docker"]
+            for name, runtimes in (
+                ("missing", {}),
+                ("kind", {"docker": replace(runtime, kind=next(value for value in RuntimeKind if value is not runtime.kind))}),
+                ("null-authority", {"docker": replace(runtime, authority_ref=None)}),
+                ("other-authority", {"docker": replace(runtime, authority_ref=RuntimeAuthorityReference("other-authority"))}),
+            ):
+                changed = self.projection(projection, replace(graph, runtimes=runtimes))
+                cases.append((side + "-" + name, (identity, plan,
+                    changed if side == "base" else base, changed if side == "desired" else desired)))
+        for name, source in cases:
+            with self.subTest(case=name):
+                with self.assertRaises(module.ReceiverScopeUnavailable):
+                    module.derive_execution_receiver_scopes(*source)
+                identity, candidate_plan, candidate_base, candidate_desired = source
+                activity = candidate_plan.plan.activities[0]
+                runtime = DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor).runtimes["docker"]
+                intent = RuntimeEffectIntent(RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, runtime.kind,
+                    RuntimeEffectIntentSource(identity.workspace_id, identity.request_id, RunId("scope-cleanup-run"),
+                        plan.plan_id, plan.base_graph_id, plan.desired_graph_id),
+                    activity.activity_id, activity.operation, runtime.authority_ref, (), ())
+                with self.assertRaises(module.ReceiverScopeUnavailable):
+                    module._effect_receiver_scope(identity, (candidate_plan, candidate_base, candidate_desired), intent,
+                        compensation=False)
