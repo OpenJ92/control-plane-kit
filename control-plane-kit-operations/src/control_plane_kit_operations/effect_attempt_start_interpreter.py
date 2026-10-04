@@ -288,21 +288,26 @@ class EffectAttemptStartService:
             )
             if stores.execution.add_event(event) != event:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
-            intent_acknowledgement = stores.effect_attempt_intents._insert(
-                intent_record,
-                **({"configuration_preparation": configuration_preparation} if configuration_preparation else {}),
-            )
-            if (
-                type(intent_acknowledgement) is not EffectAttemptIntentRecord
-                or intent_acknowledgement != intent_record
-            ):
-                raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
-            expected_attempt = result.attempt
-            if stores.effect_attempts._insert_absent(expected_attempt,
-                    **({"configuration_preparation": configuration_preparation} if configuration_preparation else {})) != expected_attempt:
-                raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
-            if configuration_preparation is not None:
-                stores.configuration_preparation._insert_original(intent_record, configuration_preparation)
+            try:
+                intent_acknowledgement = stores.effect_attempt_intents._insert(
+                    intent_record,
+                    **({"configuration_preparation": configuration_preparation} if configuration_preparation else {}),
+                )
+                if (
+                    type(intent_acknowledgement) is not EffectAttemptIntentRecord
+                    or intent_acknowledgement != intent_record
+                ):
+                    raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+                expected_attempt = result.attempt
+                if stores.effect_attempts._insert_absent(expected_attempt,
+                        **({"configuration_preparation": configuration_preparation} if configuration_preparation else {})) != expected_attempt:
+                    raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+                if configuration_preparation is not None:
+                    stores.configuration_preparation._insert_original(intent_record, configuration_preparation)
+            except OperationsRecordError:
+                if configuration_preparation is None:
+                    raise
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
             if health_write is not None:
                 result = retain_health_start(unit_of_work, health_write, result)
             try:

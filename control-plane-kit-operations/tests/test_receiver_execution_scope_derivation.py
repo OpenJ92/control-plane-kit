@@ -233,7 +233,11 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
         runtime = replace(graph.runtimes["docker"], authority_ref=RuntimeAuthorityReference("cleanup-runtime"))
         graph = replace(graph, runtimes={"docker": runtime})
         operation = CleanupConfigurationInstances((configuration_ref(),))
-        return self.source_with_operations(operation, base_graph=graph, desired_graph=graph)
+        identity, plan, base, desired = self.source()
+        plan = replace(plan, plan=ActivityPlan((PlannedActivity(
+            ActivityId("scope-cleanup"), operation,
+            impact=ActivityImpact.DESTRUCTIVE, risk=RiskLevel.HIGH),)))
+        return identity, plan, self.projection(base, graph), self.projection(desired, graph)
 
     def test_cleanup_derives_runtime_scope_with_present_or_departed_node(self):
         from control_plane_kit_core.operations import RunId

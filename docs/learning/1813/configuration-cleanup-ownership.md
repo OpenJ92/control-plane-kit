@@ -180,3 +180,15 @@ runtime, mismatched kind/authority, null authority, genuine recorded digest and
 cold verification, node lookup and unrelated-runtime separation. Existing
 non-cleanup scope/digest and unknown-operation laws remain in the focused gate.
 Both cleanup admission/translation guards and C's start/fold ownership remain.
+
+The next [focused gate](https://github.com/OpenJ92/control-plane-kit/issues/1935#issuecomment-5983598033)
+ran 53 tests with four errors. Retained ownership, real recorded scope storage,
+current verification and stale acceptance passed. The pure scope helper had
+omitted Core's required destructive/high-risk metadata; it now constructs a
+lawful plan locally. A late ordinary-start reservation correctly refused storage
+permission but escaped as `OperationsRecordError`. The narrow start-service
+amendment translates that error from the three configuration-prepared private
+writes to the existing fixed conflict, leaving non-configuration errors, health
+retention and commit unchanged. The conflict exits the UoW; marker and complete
+snapshot assertions on rerun must establish rollback. Neither correction enables
+cleanup execution. Capacity, retained growth and full acceptance remain pending.
