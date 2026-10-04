@@ -215,3 +215,24 @@ it does not bypass runtime-wide receiver conflicts. EXPLAIN reports actual paths
 without changing planner settings or making latency claims. The separate real
 coordinator test owns refusal of exact reserved ordinary reuse. No provider
 removal or C admission is inferred; E4 remains separate and mandatory.
+
+At `c44095c2`, the next focused gate passed all retained-owner and receiver-scope
+laws. The 32-artifact ordinary lifecycle passed, but Core refused the first
+recorded cleanup intent: its worst-case result exceeds the existing 8192-byte
+limit. No reservation or growth proof followed. The stateful subtest loop then
+continued without its predecessor and emitted consequential errors; it now stops
+at the first failure. The revised corpus is **33 eight-artifact incarnations**,
+264 retained closed claims, then a 34th incarnation with eight active claims
+(272 total). This supersedes the proposed nine-by-32 corpus above without changing
+the law or any capacity. The supported-size mismatch belongs in C/#225's handoff:
+ordinary installation capacity alone does not establish end-to-end cleanup
+representability. B does not raise limits or split whole-invocation closure.
+
+The overall source review found a public aggregate-constructor inconsistency:
+claim ref equality did not prove its direct birth, and workspace/runtime equality
+did not enforce Core's single-node candidate law. The database reader already
+proved both. Two focused targets at `d4180776` failed as intended in 12.988 seconds
+because construction raised no error. The correction consumes Core's candidate
+validator and matches each claim's ref/birth identity/artifact to full member
+evidence. Invalid aggregate construction retains its fixed error. This adds no
+mutation authority or independent durable semantics.

@@ -4,6 +4,7 @@ import re
 
 from control_plane_kit_core.configuration_instances import ConfigurationCleanupOutcomeSet, ConfigurationCleanupOutcomeSetCodec
 from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptStatus
+from control_plane_kit_core.planning import CleanupConfigurationInstances
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.configuration_completion import ConfigurationInvocationCompletionRecord
@@ -61,7 +62,11 @@ class ConfigurationCleanupReservationRecord:
             value.__post_init__()
         for value in self.completions:
             value.__post_init__()
-        member_refs = {value.ref.allocation_id: value.ref for value in self.members}
+        try:
+            CleanupConfigurationInstances(tuple(value.ref for value in self.members))
+        except (TypeError, ValueError):
+            raise OperationsRecordError("configuration cleanup reservation is invalid") from None
+        members = {value.ref.allocation_id: value for value in self.members}
         member_keys = tuple(value.ref.allocation_id for value in self.members)
         claim_keys = tuple((*_key(value.identity), value.ref.artifact_id) for value in self.claims)
         completion_keys = tuple(_key(value.identity) for value in self.completions)
@@ -72,8 +77,10 @@ class ConfigurationCleanupReservationRecord:
             and all((value.ref.workspace_id, value.ref.runtime_id) == (self.workspace_id, self.runtime_id)
                 and value.identity == value.birth_identity and value.ref.artifact_id == value.birth_artifact_id
                 for value in self.members)
-            and all(member_refs.get(value.ref.allocation_id) == value.ref for value in self.claims)
-            and {value.ref.allocation_id for value in self.claims} == set(member_refs)
+            and all((member := members.get(value.ref.allocation_id)) is not None
+                and (value.ref, value.birth_identity, value.birth_artifact_id)
+                    == (member.ref, member.identity, member.ref.artifact_id) for value in self.claims)
+            and {value.ref.allocation_id for value in self.claims} == set(members)
             and all(value.workspace_id == self.workspace_id for value in self.completions))
         if self.status is EffectAttemptStatus.STARTED:
             valid = valid and self.outcome_fingerprint is None and self.outcome_profile is None and self.outcomes is None
