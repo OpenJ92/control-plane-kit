@@ -12,7 +12,7 @@ from control_plane_kit_core.configuration_instances import ConfigurationInstance
 from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptStatus, RunId
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, NodeTarget, PlannedActivity, StartNode
-from control_plane_kit_core.policies import ApprovalPolicy
+from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.products import ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult
@@ -77,7 +77,9 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
                 "manager-a", ApprovalDecisionKind.APPROVED, requirement.required_scope, "2026-07-22T12:03:30Z"))
             uow.commit()
         admit_fixture_plan(self.fixture, request_id="request-config", session_id="session-config", plan_id="plan-config",
-            approval_request_id="approval-config", key="admit-config")
+            approval_request_id="approval-config", key="admit-config",
+            actor_scopes=(PolicyScope.PLAN_EXECUTE,) + ((PolicyScope.RUNTIME_AUTHORITY_USE,)
+                if getattr(self, "runtime_authority_ref", None) is not None else ()))
         engine = self.fixture.engine
         opened = engine.lifecycle_with_ids("run-config", "open-config", "claim-config").execute(
             ClaimAndOpenActivityRun("request-config", engine.authority(), ExecutionLeaseDuration(600), IdempotencyKey("claim-config")))
