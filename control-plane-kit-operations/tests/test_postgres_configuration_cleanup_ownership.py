@@ -46,6 +46,33 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
         plan = self.publish().plan_record
         self.assertEqual(plan.plan.activities[0].operation.instances, tuple(sorted(self.refs, key=lambda ref: ref.allocation_id)))
 
+    def test_aggregate_constructor_rejects_wrong_direct_birth(self):
+        self.retain_cleanup()
+        record = self.read_retained()
+        first = record.claims[0]
+        crossed = replace(first, birth_identity=EffectAttemptIdentity(
+            RunId("different-birth"), first.birth_identity.activity_id, 1))
+        with self.assertRaisesRegex(OperationsRecordError, "^configuration cleanup reservation is invalid$"):
+            replace(record, claims=(crossed, *record.claims[1:]))
+
+    def test_aggregate_constructor_rejects_mixed_node_candidates(self):
+        self.retain_cleanup()
+        record = self.read_retained()
+        self.assertGreaterEqual(len(record.members), 2)
+        crossed_allocation = record.members[0].ref.allocation_id
+
+        def cross_node(value):
+            if value.ref.allocation_id != crossed_allocation:
+                return value
+            ref = replace(value.ref, node_id="different-node")
+            source = replace(value.source, ref=ref, operation=replace(value.source.operation, target=NodeTarget("different-node")))
+            return replace(value, ref=ref, source=source)
+
+        members = tuple(cross_node(value) for value in record.members)
+        claims = tuple(cross_node(value) for value in record.claims)
+        with self.assertRaisesRegex(OperationsRecordError, "^configuration cleanup reservation is invalid$"):
+            replace(record, members=members, claims=claims)
+
     def test_recorded_cleanup_scope_is_real_runtime_conflict_without_writer_authority(self):
         from control_plane_kit_operations.receiver_execution_scopes import ExecutionReceiverScope, ReceiverScopeUnavailable
         from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
