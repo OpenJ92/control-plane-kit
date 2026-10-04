@@ -321,7 +321,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
                         original = uow.stores.effect_attempt_intents.get(identity)
                     self.assertEqual(original.intent.configuration_instances.instances, self.refs)
                     claims += [(identity.run_id.value, identity.activity_id, 1,
-                        ref.artifact_id, ref.workspace_id, ref.allocation_id) for ref in self.refs]
+                        ref.artifact_id, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id) for ref in self.refs]
                     self.assertEqual(self.fixture.protective_claims(), sorted(claims))
                     after_effect = self.retained_state()
                     ids = iter(("capacity-event-" + label, "capacity-action-" + label))
