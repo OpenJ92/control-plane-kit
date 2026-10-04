@@ -254,3 +254,30 @@ no-adapter and full rollback assertions remain. The manifest witness is unchange
 Final full package and locked-family composition evidence will use one exact-head
 hosted run of the existing authoritative workflows, without duplicating full
 Operations locally. Backend pins remain composition evidence, not B adoption.
+
+The first full hosted Operations gate at `a0c2c228` failed: run `37231077716`,
+job `111520640000`, 2387 tests in 5491.684 seconds, two failures and four error
+subcases. Its log SHA256 is
+`6bef7887244bb533aca85bfb4baf2b40a2cf73cb0527fb26271931fea960decf`.
+Independent Core and pinned-backend passes do not replace this failed package
+acceptance. Review traced the failures to two stale test companions: preflight
+arithmetic and the retained-intent validator's exact import allowlist.
+
+For each slot, two fresh protective checks reserve `(6,1648,20,4)` in records,
+value octets, scalar markers and statements. The two-slot synthetic preflight
+fixture therefore adds `(12,3296,40,8)`, or 7520 accounted bytes. Its cold snapshot
+includes that conservative allowance; this is not measured transport. Updated
+literal expectations preserve exact 3 MiB snapshot, 4096-record and 16 MiB global
+limits, one-over refusals, decision order and separation of prior command work.
+The validator allowlist adds only Core planning and the connection-bound store
+bundle used by retained cleanup validation. Signature, forbidden effects and
+module ownership checks remain. Kepler reviewed the exact two-test-file diff.
+Security: this correction changes no runtime, auth, network, secret, mutation,
+schema or capacity policy; both cleanup activation refusals remain closed.
+
+The single owning focused correction run selected
+`ConfigurationAcceptancePreflightTests` and
+`PostgresEffectAttemptIntentStoreContractTests`: all eight tests passed in
+9.968 seconds, followed by compilation and clean import (terminal exit zero).
+The gate removed its exact test container and network. This is focused evidence;
+the corrected commit still requires full hosted acceptance before merge.
