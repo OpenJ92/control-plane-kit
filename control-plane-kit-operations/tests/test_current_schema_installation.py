@@ -25,7 +25,12 @@ _EXPECTED_RELATIONS = (
     "cpk_cloudflare_ingress_resources",
     "cpk_configuration_acceptances",
     "cpk_configuration_accepted_slots",
+    "cpk_configuration_claim_closures",
     "cpk_configuration_claims",
+    "cpk_configuration_cleanup_member_outcomes",
+    "cpk_configuration_cleanup_members",
+    "cpk_configuration_cleanup_reservations",
+    "cpk_configuration_invocation_closures",
     "cpk_configuration_invocation_completions",
     "cpk_delegation_signing_keys",
     "cpk_desired_topology_draft_revisions",
@@ -128,7 +133,7 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "c4ddd80c3d61d66015a3fe9daf35b6334ed59f29b0a2d71d61b318b273988205"
+    "66057e9920650baa5df73d69b3edf895241f98ae84fe7f9b1d5112c4280435c3"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
     "4a06bfaeff7537a51879d0d3343776d4f1fa31064965e66549f2650ff67ce77c"
