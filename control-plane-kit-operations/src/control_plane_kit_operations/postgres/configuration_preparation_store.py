@@ -213,7 +213,8 @@ class ConfigurationPreparationStore:
         """Discover both indexed sides before proving any source or pairing."""
         candidates = self._protective_candidates(read,
             "workspace_id=%s AND runtime_id=%s AND node_id=%s",
-            (ref.workspace_id, ref.runtime_id, ref.node_id), maximum=256)
+            (ref.workspace_id, ref.runtime_id, ref.node_id), maximum=256,
+            order="artifact_id,run_id,activity_id,attempt")
         roots = {}
         for candidate in candidates:
             claim = self._paired_protective_ref(read, candidate)
@@ -223,9 +224,10 @@ class ConfigurationPreparationStore:
             if claim.ref.allocation_id not in roots:
                 roots[claim.ref.allocation_id] = self._protective_root(claim.ref, read)
             self._require_direct_root(claim, roots[claim.ref.allocation_id])
-        return tuple(row[:5] for row in sorted(candidates, key=lambda row: (row[3], *row[:3])))
+        return tuple(row[:5] for row in candidates)
 
-    def _protective_candidates(self, read, where, params, *, maximum):
+    def _protective_candidates(self, read, where, params, *, maximum,
+            order="run_id,activity_id,attempt,artifact_id"):
         # Scope is carried by each independent driver. Do not hide an orphan or
         # routing mismatch behind an inner join, cache hit, or truncation.
         names = ("run_id", "activity_id", "attempt", "artifact_id", "allocation_id",
@@ -233,7 +235,7 @@ class ConfigurationPreparationStore:
         columns = tuple((name, "int" if name == "attempt" else "text", cap)
             for name, cap in zip(names, (2048, 2048, 12, 63, 128, 128, 128, 128)))
         sides = tuple(read.bounded_rows(table, columns, where, params,
-            maximum=maximum, point=False, order="run_id,activity_id,attempt,artifact_id")
+            maximum=maximum, point=False, order=order)
             for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"))
         if any(len(rows) > maximum for rows in sides):
             raise _Capacity
