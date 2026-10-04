@@ -86,9 +86,10 @@ class ConfigurationEvidenceHistoryFixture(ConfigurationPreparationFixture):
                          "run-a", "start-api", 1, ref.artifact_id, index == 0))
                     connection.execute(
                         "INSERT INTO cpk_configuration_claims "
-                        "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id) "
-                        "VALUES (%s,%s,%s,%s,%s,%s)",
-                        ("run-a", activity_id, 1, ref.artifact_id, ref.workspace_id, ref.allocation_id))
+                        "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,runtime_id,node_id) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                        ("run-a", activity_id, 1, ref.artifact_id, ref.workspace_id, ref.allocation_id,
+                         ref.runtime_id, ref.node_id))
                 uow.commit()
         return refs[0], tuple(attempts)
 

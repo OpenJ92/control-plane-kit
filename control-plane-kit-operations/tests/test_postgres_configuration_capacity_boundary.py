@@ -146,7 +146,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
                 "birth_attempt,birth_artifact_id,false FROM cpk_effect_configuration_refs "
                 "CROSS JOIN generate_series(1,256) n WHERE artifact_id=%s", (self.refs[0].artifact_id,))
             self.base.connection.execute("INSERT INTO cpk_configuration_claims "
-                "SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id "
+                "SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,runtime_id,node_id "
                 "FROM cpk_effect_configuration_refs WHERE artifact_id LIKE 'copied-%%'")
         self.assertEqual(self.base.connection.execute("SELECT count(*) FROM cpk_effect_configuration_refs "
             "WHERE workspace_id='workspace-a' AND runtime_id='runtime-a' AND node_id='api'").fetchone(), (257,))

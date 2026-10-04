@@ -6,7 +6,7 @@ selector = "_EvidenceRead.query"
 category = "fixed-cardinality"
 sql = "owner-declared SQL CASE/LIMIT or bounded RETURNING projection; reserve maximum records, value octets, scalar markers and one statement before fetch; reject excess rows/cells/bytes; zero-record savepoint statements do not fetch"
 consumer_kind = "production"
-consumer = "configuration preparation, original-source and allocation evidence readers share the logical command ledger across owner queries and units of work"
+consumer = "configuration preparation, original-source, historical and protective allocation evidence share the logical command ledger; protective discovery independently bounds refs and claims at 65/257 before union and fresh paired proof, even with warm immutable caches"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"

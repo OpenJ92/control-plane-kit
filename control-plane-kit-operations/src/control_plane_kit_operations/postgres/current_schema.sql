@@ -1574,6 +1574,7 @@ CREATE TABLE cpk_effect_configuration_refs (
     birth_attempt integer NOT NULL,
     birth_artifact_id text NOT NULL,
     is_birth boolean NOT NULL,
+    CONSTRAINT cpk_configuration_refs_scope_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id),
     CONSTRAINT cpk_configuration_refs_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id),
     CONSTRAINT cpk_configuration_refs_intent_fk FOREIGN KEY (run_id, activity_id, attempt, request_fingerprint, original_event_id)
         REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt, request_fingerprint, original_event_id),
@@ -1594,13 +1595,19 @@ CREATE TABLE cpk_configuration_claims (
     artifact_id text NOT NULL,
     workspace_id text NOT NULL,
     allocation_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    CONSTRAINT cpk_configuration_claims_runtime_check CHECK ((runtime_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'),
+    CONSTRAINT cpk_configuration_claims_node_check CHECK ((node_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'),
+    CONSTRAINT cpk_configuration_claims_scope_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id),
     CONSTRAINT cpk_configuration_claims_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id),
-    CONSTRAINT cpk_configuration_claims_ref_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
-        REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED
+    CONSTRAINT cpk_configuration_claims_ref_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id)
+        REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id) DEFERRABLE INITIALLY DEFERRED
 );
 ALTER TABLE cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_claim_fk
-    FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
-    REFERENCES cpk_configuration_claims(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED;
+    FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id)
+    REFERENCES cpk_configuration_claims(run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id) DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX cpk_configuration_claims_slot ON cpk_configuration_claims(workspace_id, runtime_id, node_id, artifact_id, run_id, activity_id, attempt);
 CREATE INDEX cpk_configuration_claims_protecting ON cpk_configuration_claims(workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id);
 
 CREATE TABLE cpk_workspace_initializations (
