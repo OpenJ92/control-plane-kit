@@ -54,6 +54,8 @@ INTERPRETER_SOURCE_PATH = (
 EXACT_INTERPRETER_IMPORTS = tuple(
     architecture_testing.ImportSurfaceEntry(*value)
     for value in (
+        (".postgres.configuration_evidence", "_active_read", None),
+        (".postgres.configuration_evidence", "_joined_read", None),
         ("__future__", "annotations", None),
         ("contextlib", "ExitStack", None),
         ("control_plane_kit_core.approval_subjects", "ActivityPlanApprovalSubject", None),
@@ -190,8 +192,6 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ("control_plane_kit_operations.health_signing_authority", "ReloadHealthSigningAuthority", None),
         ("control_plane_kit_operations.health_signing_authority", "_lock_health_prefix", None),
         ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
-        ("control_plane_kit_operations.postgres.configuration_evidence", "_active_read", None),
-        ("control_plane_kit_operations.postgres.configuration_evidence", "_joined_read", None),
         (
             "control_plane_kit_operations.records",
             "ActivityEventRecord",
@@ -244,6 +244,8 @@ EXACT_INTERPRETER_CALLS = (
     *tuple(
         architecture_testing.ResolvedCallTarget(value)
         for value in (
+            ".postgres.configuration_evidence._active_read",
+            ".postgres.configuration_evidence._joined_read",
             "_AcceptedNativeFold",
             "_EVENT_KIND_BY_STATE.get",
             "_attempt_for_update",
@@ -320,8 +322,6 @@ EXACT_INTERPRETER_CALLS = (
             "control_plane_kit_operations.effect_run_prefix._lock_effect_run_prefix",
             "control_plane_kit_operations.health_signing_authority.ReloadHealthSigningAuthority",
             "control_plane_kit_operations.health_signing_authority._lock_health_prefix",
-            "control_plane_kit_operations.postgres.configuration_evidence._active_read",
-            "control_plane_kit_operations.postgres.configuration_evidence._joined_read",
             "control_plane_kit_operations.records.ActivityEventRecord",
             "control_plane_kit_operations.records.BoundedEvidence.from_mapping",
             "control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported",
