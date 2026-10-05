@@ -1,4 +1,4 @@
-"""One receiver setup; ordinary D1 is real, cleanup execution is recorded only."""
+"""One real receiver/D1 chronology with an optional recorded cleanup suffix."""
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -73,7 +73,8 @@ class _CeilingObservedConnection(_ObservedConnection):
 class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture):
     accept_receiver = ReceiverAcceptanceAdvancementTests.accept_receiver
 
-    def prepare_ceiling_premise(self, *, distinct_pins=False, recorded_cleanup=True):
+    def prepare_ceiling_premise(self, *, distinct_pins=False, recorded_cleanup=True,
+                               artifact_ids=("settings",)):
         """No second setup, direct receiver graph save, or cleanup admission."""
         canonical = self.canonical_receiver_graph
         runtime = canonical.runtimes["docker"]
@@ -81,8 +82,8 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             self.registration = uow.stores.runtime_authorities.get("workspace-a", runtime.authority_ref)
         product = _configuration_product().descriptor_document.product
         selected = tuple(artifact for artifact in product.runtime_contract.configuration_artifacts
-            if artifact.artifact_id == "settings")
-        self.assertEqual(tuple(artifact.artifact_id for artifact in selected), ("settings",))
+            if artifact.artifact_id in artifact_ids)
+        self.assertCountEqual(tuple(artifact.artifact_id for artifact in selected), artifact_ids)
         product = replace(product, identity=ProductIdentity("test", "cleanup-target", 1),
             runtime_contract=replace(product.runtime_contract, configuration_artifacts=selected))
         with self.unit_of_work() as uow:
@@ -115,7 +116,7 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
                 return RuntimeEffectResult.succeeded(request.effect_id,
                     evidence={"fixture_premise": "simulated-ordinary-runtime-or-health"})
             correlated = configuration_invocation_correlation_for_request(request)
-            self.assertEqual(len(correlated.selection.instances), 1)
+            self.assertEqual(len(correlated.selection.instances), len(artifact_ids))
             completion = ConfigurationInvocationCompletion(correlated.request_fingerprint,
                 configuration_invocation_selection_fingerprint(correlated.selection))
             return RuntimeEffectResult.succeeded(request.effect_id, evidence={
@@ -134,8 +135,9 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             self.completion = uow.stores.configuration_completions.get(self.source_identity)
             self.assertIsNotNone(self.completion, "selected source must have actual admitted D1")
             source = uow.stores.effect_attempt_intents.get(self.source_identity)
-            self.assertEqual(len(source.intent.configuration_instances.instances), 1)
-            self.selected_ref = source.intent.configuration_instances.instances[0]
+            self.selected_refs = source.intent.configuration_instances.instances
+            self.assertEqual(len(self.selected_refs), len(artifact_ids))
+            self.selected_ref = next(ref for ref in self.selected_refs if ref.artifact_id == "settings")
         self.assertEqual((self.selected_ref.runtime_id, self.selected_ref.node_id,
             self.selected_ref.artifact_id), ("docker", "cleanup-target", "settings"))
         self.advance(claimed, "ceilings-install")
@@ -183,8 +185,9 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         compare = self.assertNotEqual if distinct_pins else self.assertEqual
         compare(pins.base_graph_id, pins.desired_graph_id)
         compare(pins.base_realized_projection_id, pins.desired_realized_projection_id)
-        query = InspectConfigurationCleanup("session-a", "workspace-a", pins, (
-            ConfigurationCleanupSourceSelector(self.source_identity, "settings", self.selected_ref),))
+        query = InspectConfigurationCleanup("session-a", "workspace-a", pins,
+            tuple(ConfigurationCleanupSourceSelector(self.source_identity, ref.artifact_id, ref)
+                for ref in self.selected_refs))
         service = ConfigurationCleanupPlanningService(self.unit_of_work, clock=self.now,
             id_factory=GeneratedIds("ceilings-cleanup"))
         inspected = service.inspect(query, context=command_context())

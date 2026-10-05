@@ -1,5 +1,8 @@
 """#1936 public-owner targets; simulated adapter results are not provider proof."""
 import unittest
+from dataclasses import replace
+
+import psycopg
 
 from control_plane_kit_core.configuration_instances import (
     ConfigurationCleanupOutcome, ConfigurationCleanupOutcomeSet, ConfigurationCleanupStatus,
@@ -10,7 +13,10 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectFailure, RuntimeEffectResult, configuration_cleanup_result, configuration_cleanup_outcomes,
 )
 from control_plane_kit_operations.coordinator import CoordinatorStatus, RuntimeInterpreterDispatcher
+from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _configuration_accounting
+from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from tests.configuration_cleanup_execution_fixture import ConfigurationCleanupExecutionFixture
+from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection, _components
 from tests.postgres_effect_attempt_coordinator_fixture import RecordingRuntimeAdapter
 
 
@@ -31,7 +37,9 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
             identity = EffectAttemptIdentity(request.source.run_id, request.activity_id.value, 1)
             # An independent transaction must see the complete committed start
             # before the coordinator is permitted to invoke its runtime adapter.
-            with self.unit_of_work() as uow:
+            # This observer is test instrumentation, outside the coordinator's
+            # work. Its own ledger must not consume the measured command budget.
+            with _configuration_accounting(("committed-start-observer", identity)), self.unit_of_work() as uow:
                 reservation = uow.stores.configuration_cleanup_ownership.get(identity)
                 self.assertIsNotNone(reservation)
                 self.assertIs(reservation.status, EffectAttemptStatus.STARTED)
@@ -104,10 +112,63 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
         self.assert_uncertain_cleanup(lambda _context, request: RuntimeEffectResult.unsupported(
             request.effect_id, RuntimeEffectFailure("provider.unsupported", "PROVIDER-CANARY")))
 
+    def test_generic_failed_result_is_not_a_conserved_cleanup_outcome(self):
+        self.assert_uncertain_cleanup(lambda _context, request: RuntimeEffectResult.failed(
+            request.effect_id, RuntimeEffectFailure("provider.failed", "PROVIDER-CANARY")))
+
+    def test_missing_cleanup_evidence_is_not_success(self):
+        self.assert_uncertain_cleanup(lambda _context, request: RuntimeEffectResult.succeeded(request.effect_id))
+
+    def test_malformed_cleanup_evidence_retains_total_unknown(self):
+        self.assert_uncertain_cleanup(lambda _context, request: RuntimeEffectResult.succeeded(
+            request.effect_id, evidence={"configuration_cleanup": {
+                "profile": "PROVIDER-CANARY", "outcomes": []}}))
+
+    def test_nonconserved_cleanup_evidence_retains_original_candidates(self):
+        def foreign_candidate(_context, request):
+            rows = ConfigurationCleanupOutcomeSet((ConfigurationCleanupOutcome(
+                self.selected_ref, ConfigurationCleanupStatus.REMOVED, None),))
+            result = configuration_cleanup_result(request, rows)
+            evidence = result.descriptor()["evidence"]
+            evidence["configuration_cleanup"]["outcomes"][0]["ref"]["allocation_id"] = "foreign-allocation"
+            return replace(result, evidence=evidence)
+        self.assert_uncertain_cleanup(foreign_candidate)
+
     def test_missing_interpreter_is_known_not_attempted(self):
         dispatcher = RuntimeInterpreterDispatcher({})
         self.assert_uncertain_cleanup(dispatcher.execute_runtime,
             reason=ConfigurationCleanupReason.NOT_ATTEMPTED)
+
+    def test_missing_authority_at_dispatch_is_known_not_attempted(self):
+        calls = []
+
+        class Interpreter:
+            def execute(self, request):
+                calls.append(request)
+                raise AssertionError("missing authority must refuse before interpreter invocation")
+
+        def missing_authority(context, request):
+            # A below-adapter fault removes delivered authority, not durable
+            # registration. The real dispatcher must refuse before calling.
+            dispatcher = RuntimeInterpreterDispatcher({request.runtime_kind: Interpreter()})
+            return dispatcher.execute_runtime(replace(context, runtime_authorities=()), request)
+
+        self.assert_uncertain_cleanup(missing_authority, reason=ConfigurationCleanupReason.NOT_ATTEMPTED)
+        self.assertEqual(calls, [])
+
+    def test_interpreter_without_authority_entrypoint_is_known_not_attempted(self):
+        calls = []
+
+        class Interpreter:
+            def execute(self, request):
+                calls.append(request)
+                raise AssertionError("registered authority cannot fall back to execute")
+
+        def unsupported_authority(context, request):
+            return RuntimeInterpreterDispatcher({request.runtime_kind: Interpreter()}).execute_runtime(context, request)
+
+        self.assert_uncertain_cleanup(unsupported_authority, reason=ConfigurationCleanupReason.NOT_ATTEMPTED)
+        self.assertEqual(calls, [])
 
     def test_inner_interpreter_exception_retains_total_unknown(self):
         calls = []
@@ -126,3 +187,78 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
 
         self.assert_uncertain_cleanup(dispatch)
         self.assertEqual(len(calls), 1)
+
+    def test_valid_mixed_total_is_retained_verbatim_without_erasing_known_outcomes(self):
+        claimed = self.ready_cleanup(artifact_ids=("settings", "limits"))
+        refs = self.plan.plan.activities[0].operation.instances
+        self.assertEqual(len(refs), 2)
+        expected = ConfigurationCleanupOutcomeSet((
+            ConfigurationCleanupOutcome(refs[0], ConfigurationCleanupStatus.REMOVED, None),
+            ConfigurationCleanupOutcome(refs[1], ConfigurationCleanupStatus.UNKNOWN,
+                ConfigurationCleanupReason.PROVIDER_UNCERTAIN),
+        ))
+        returned = []
+
+        def mixed(_context, request):
+            result = configuration_cleanup_result(request, expected)
+            returned.append(result)
+            return result
+
+        adapter = RecordingRuntimeAdapter(mixed)
+        coordinator = self.coordinator(self.unit_of_work, adapter, "cleanup-execution")
+        command = self.execution_command(claimed, "cleanup-execution")
+        self.assertIs(coordinator.execute(command).status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(len(adapter.runtime_calls), 1)
+        request = adapter.runtime_calls[0][1]
+        identity = EffectAttemptIdentity(request.source.run_id, request.activity_id.value, 1)
+        with self.unit_of_work() as uow:
+            reservation = uow.stores.configuration_cleanup_ownership.get(identity)
+            self.assertEqual((len(reservation.members), len(reservation.completions), len(reservation.claims)), (2, 1, 2))
+            self.assertEqual(reservation.outcomes, expected)
+            attempt = uow.stores.effect_attempts.get(identity)
+            outcome = uow.stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id)
+            self.assertEqual(outcome.outcome.result, returned[0])
+        before = self.ceiling_truth()
+        self.assertIs(coordinator.execute(command).status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(len(adapter.runtime_calls), 1)
+        self.assertEqual(self.ceiling_truth(), before)
+
+    def test_public_k1_coordinator_preserves_one_complete_transport_ledger(self):
+        claimed = self.ready_cleanup()
+        observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
+            accounting=None, role_label=lambda _query, _params: None)
+
+        def factory():
+            accounting = _ACCOUNTING.get()
+            self.assertIsNotNone(accounting, "public coordinator must establish command accounting")
+            if observed["accounting"] is None:
+                observed["accounting"] = accounting
+            self.assertIs(accounting, observed["accounting"], "phase transition reset cumulative accounting")
+            return PostgresUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.database_url), observed))
+
+        def removed(_context, request):
+            return configuration_cleanup_result(request, ConfigurationCleanupOutcomeSet((
+                ConfigurationCleanupOutcome(self.selected_ref, ConfigurationCleanupStatus.REMOVED, None),)))
+
+        adapter = RecordingRuntimeAdapter(removed)
+        result = self.coordinator(factory, adapter, "cleanup-execution").execute(
+            self.execution_command(claimed, "cleanup-execution"))
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(len(adapter.runtime_calls), 1)
+        used = observed["accounting"].used
+        self.assertGreater(len(observed["queries"]), 0)
+        self.assertLessEqual(used.records, 4096)
+        self.assertLessEqual(used.accounted_bytes, 16 * 1024 * 1024)
+        self.assertGreaterEqual(used.records, observed["rows"])
+        self.assertGreaterEqual(used.accounted_bytes, observed["bytes"])
+        self.assertEqual(used.statements, observed["statements"])
+        peaks = []
+        for query in observed["queries"]:
+            records, octets, cells, statements = query["peak"]
+            peak = octets + 128 * records + 16 * cells + 256 * statements
+            self.assertLessEqual(records, 4096)
+            self.assertLessEqual(peak, 16 * 1024 * 1024)
+            peaks.append(peak)
+        print("#1936 public K1 coordinator transport", dict(used=_components(used),
+            charged_bytes=used.accounted_bytes, physical_weighted_bytes=observed["bytes"],
+            maximum_query_reservation_bytes=max(peaks), statements=observed["statements"]))

@@ -1,5 +1,8 @@
 """Atomic cleanup writes through public owners; faults never grant permission."""
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+import queue
 
 import psycopg
 
@@ -9,7 +12,9 @@ from control_plane_kit_core.configuration_instances import (
 from control_plane_kit_core.operations import EffectAttemptStatus
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
 from control_plane_kit_core.runtime_effects import configuration_cleanup_result
-from control_plane_kit_operations.effect_attempt_start import ExistingAttempt, NewlyStarted
+from control_plane_kit_operations.effect_attempt_start import (
+    ExistingAttempt, NewlyStarted, EffectAttemptStartDenied,
+)
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_attempt_fold import ExistingFold, FoldEffectAttempt, NewlyFolded
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
@@ -21,6 +26,7 @@ from tests.configuration_cleanup_execution_fixture import ConfigurationCleanupEx
 from tests.test_execution_admission import Sequence
 from tests.test_postgres_configuration_completion import _AfterWriteFailure
 from tests.test_postgres_effect_attempt_start_eligibility_rollback import _CommitFailureConnection
+from tests import test_postgres_effect_attempt_start_concurrency as concurrency
 
 
 class _CommitThenRaiseConnection:
@@ -37,6 +43,9 @@ class _CommitThenRaiseConnection:
 
 
 class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecutionFixture, unittest.TestCase):
+    _factory_with_pids = concurrency.PostgresEffectAttemptStartConcurrencyTests._factory_with_pids
+    _wait_until_blocked_by = concurrency.PostgresEffectAttemptStartConcurrencyTests._wait_until_blocked_by
+
     def fault_factory(self, statement, fault):
         def connect():
             connection = psycopg.connect(self.database_url)
@@ -144,3 +153,51 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
         replay = EffectAttemptFoldService(self.unit_of_work, id_factory=self.assert_no_ids).execute(command)
         self.assertIs(type(replay), ExistingFold)
         self.assertEqual(self.ceiling_truth(), before)
+
+    def test_identical_concurrent_starts_return_one_new_permission_and_one_original(self):
+        claimed = self.ready_cleanup()
+        command = self.native_start_command(claimed, "cleanup-execution")
+        pids = queue.Queue()
+        first_id = concurrency._BlockingId("cleanup-original")
+        other_ids = Sequence("must-not-be-used")
+        first = EffectAttemptStartService(self._factory_with_pids(pids), id_factory=first_id)
+        second = EffectAttemptStartService(self._factory_with_pids(pids), id_factory=other_ids)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first_future = executor.submit(first.execute, command)
+            try:
+                if not first_id.entered.wait(timeout=30):
+                    first_future.result(timeout=1)
+                    self.fail("first cleanup start never reached its event allocation")
+                first_pid = pids.get(timeout=5)
+                second_future = executor.submit(second.execute, command)
+                second_pid = pids.get(timeout=5)
+                self._wait_until_blocked_by(second_pid, first_pid)
+                first_id.release.set()
+                results = first_future.result(timeout=30), second_future.result(timeout=30)
+            finally:
+                first_id.release.set()
+        self.assertCountEqual(tuple(type(value) for value in results), (NewlyStarted, ExistingAttempt))
+        self.assertEqual(results[0].attempt, results[1].attempt)
+        self.assertEqual(other_ids.calls, [])
+        with self.unit_of_work() as uow:
+            reservation = uow.stores.configuration_cleanup_ownership.get(command.transition.identity)
+            self.assertEqual((len(reservation.members), len(reservation.completions), len(reservation.claims)), (1, 1, 1))
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_activity_events WHERE run_id=%s AND event_type='step_started'",
+            (claimed.run.run_id,)).fetchone(), (1,))
+
+    def test_stale_fence_and_expired_lease_refuse_before_ids_and_reservation(self):
+        claimed = self.ready_cleanup()
+        command = self.native_start_command(claimed, "cleanup-execution")
+        stale = replace(command, fence=replace(command.fence, generation=command.fence.generation + 1))
+        before = self.ceiling_truth()
+        with self.assertRaises(EffectAttemptStartDenied):
+            EffectAttemptStartService(self.unit_of_work, id_factory=self.assert_no_ids).execute(stale)
+        self.assertEqual(self.ceiling_truth(), before)
+        # Below-owner expiry premise, distinct from a competing lease claim.
+        self.connection.execute("UPDATE cpk_execution_requests SET lease_expires_at="
+            "clock_timestamp()-interval '1 second' WHERE request_id=%s", (command.request_id,))
+        expired = self.ceiling_truth()
+        with self.assertRaises(EffectAttemptStartDenied):
+            EffectAttemptStartService(self.unit_of_work, id_factory=self.assert_no_ids).execute(command)
+        self.assertEqual(self.ceiling_truth(), expired)
