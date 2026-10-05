@@ -1,4 +1,4 @@
-"""#1939 strengthened original-read laws; cleanup execution remains unsupported."""
+"""#1939 original-read laws with #1936 scope and runtime-binding boundaries."""
 from dataclasses import replace
 from importlib import import_module
 from importlib.util import find_spec
@@ -6,7 +6,7 @@ import json
 import unittest
 
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, ExecutionAdmissionConflict
+from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, ExecutionAdmissionDenied
 from control_plane_kit_operations.postgres.configuration_evidence import _Capacity, _Unavailable
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.runtime_effects import (
@@ -61,17 +61,17 @@ class PostgresConfigurationCleanupReadCeilingsTests(ConfigurationCleanupReadCeil
             calls.append("clock-or-id")
             self.fail("cleanup admission reached clock or identity allocation")
 
-        with self.assertRaisesRegex(ExecutionAdmissionConflict, "configuration cleanup.*unsupported"):
+        with self.assertRaisesRegex(ExecutionAdmissionDenied, "scope runtime-authority:use is missing"):
             ExecutionAdmissionCommandService(self.unit_of_work, clock=forbidden, id_factory=forbidden).execute(
                 self.command(plan_id=self.plan.plan_id, approval_request_id=self.approval.request_id,
-                    scopes=tuple(PolicyScope),
+                    scopes=tuple(scope for scope in PolicyScope if scope is not PolicyScope.RUNTIME_AUTHORITY_USE),
                     key="ceilings-public-refusal"))
         self.assertEqual(calls, [])
         activity = self.plan.plan.activities[0]
         context = _context(activity=activity)
         for translate in (lambda: runtime_effect_request_for_context(context),
                 lambda: _runtime_effect_intent_for_context(context, activity)):
-            with self.assertRaisesRegex(InvalidOperationCommand, "configuration cleanup.*unsupported"):
+            with self.assertRaisesRegex(InvalidOperationCommand, "cleanup requires"):
                 translate()
         self.assertEqual(self.ceiling_truth(), before)
 

@@ -1,6 +1,7 @@
 """#1936 public-owner targets; simulated adapter results are not provider proof."""
 import unittest
 from dataclasses import replace
+from unittest import mock
 
 import psycopg
 
@@ -224,9 +225,38 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
         self.assertEqual(self.ceiling_truth(), before)
 
     def test_public_k1_coordinator_preserves_one_complete_transport_ledger(self):
+        from control_plane_kit_operations import _configuration_cleanup_ownership as cleanup
+
         claimed = self.ready_cleanup()
         observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
             accounting=None, role_label=lambda _query, _params: None)
+        tails = []
+        test = self
+
+        class MeasuredUnitOfWork(PostgresUnitOfWork):
+            def __exit__(uow, *args):
+                super().__exit__(*args)
+                for tail in tails:
+                    if tail["uow"] is uow:
+                        test.assertNotIn("end", tail, "tail interval ended twice")
+                        test.assertIs(_ACCOUNTING.get(), tail["accounting"])
+                        tail["end"] = tail["accounting"].used
+                        tail["query_end"] = len(observed["queries"])
+
+        admit_tail = cleanup._admit_tail
+
+        def measure_tail(owner, future, unmetered):
+            self.assertIsInstance(owner.uow, MeasuredUnitOfWork)
+            self.assertIs(owner.connection, owner.uow.stores.connection)
+            self.assertIs(owner.accounting, observed["accounting"])
+            self.assertFalse(any(tail["uow"] is owner.uow for tail in tails))
+            # Capture before the real admission precharges raw writes. The
+            # interval ends at this exact UoW, excluding later coordinator work.
+            phase = "start" if type(owner.issued) is cleanup._PreparedCleanupStart else "fold"
+            self.assertIn(type(owner.issued), (cleanup._PreparedCleanupStart, cleanup._PreparedCleanupFold))
+            tails.append(dict(phase=phase, uow=owner.uow, accounting=owner.accounting,
+                prefix=owner.accounting.used, forecast=future, query_start=len(observed["queries"])))
+            return admit_tail(owner, future, unmetered)
 
         def factory():
             accounting = _ACCOUNTING.get()
@@ -234,15 +264,16 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
             if observed["accounting"] is None:
                 observed["accounting"] = accounting
             self.assertIs(accounting, observed["accounting"], "phase transition reset cumulative accounting")
-            return PostgresUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.database_url), observed))
+            return MeasuredUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.database_url), observed))
 
         def removed(_context, request):
             return configuration_cleanup_result(request, ConfigurationCleanupOutcomeSet((
                 ConfigurationCleanupOutcome(self.selected_ref, ConfigurationCleanupStatus.REMOVED, None),)))
 
         adapter = RecordingRuntimeAdapter(removed)
-        result = self.coordinator(factory, adapter, "cleanup-execution").execute(
-            self.execution_command(claimed, "cleanup-execution"))
+        with mock.patch.object(cleanup, "_admit_tail", measure_tail):
+            result = self.coordinator(factory, adapter, "cleanup-execution").execute(
+                self.execution_command(claimed, "cleanup-execution"))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
         self.assertEqual(len(adapter.runtime_calls), 1)
         used = observed["accounting"].used
@@ -252,6 +283,28 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
         self.assertGreaterEqual(used.records, observed["rows"])
         self.assertGreaterEqual(used.accounted_bytes, observed["bytes"])
         self.assertEqual(used.statements, observed["statements"])
+        self.assertEqual([tail["phase"] for tail in tails], ["start", "fold"])
+        tail_metrics = []
+        for tail in tails:
+            prefix, forecast = _components(tail["prefix"]), _components(tail["forecast"])
+            delta = tuple(end - before for end, before in zip(_components(tail["end"]), prefix, strict=True))
+            queries = observed["queries"][tail["query_start"]:tail["query_end"]]
+            self.assertTrue(queries)
+            # Wire widths come from PostgreSQL results, independently of the
+            # production forecasting algebra and ledger settlement calculation.
+            rows = [widths for query in queries for widths in query["widths"]]
+            physical = (len(rows), sum(sum(widths) for widths in rows),
+                sum(len(widths) for widths in rows), len(queries))
+            self.assertEqual(delta[3], physical[3], tail["phase"])
+            for charged, actual in zip(delta, physical, strict=True):
+                self.assertGreaterEqual(charged, actual, tail["phase"])
+            for actual in (delta, physical, *(tuple(peak - before for peak, before in
+                    zip(query["peak"], prefix, strict=True)) for query in queries)):
+                for needed, declared in zip(actual, forecast, strict=True):
+                    self.assertLessEqual(needed, declared, tail["phase"])
+            tail_metrics.append(dict(phase=tail["phase"], prefix=prefix, forecast=forecast,
+                settled_delta=delta, physical=physical, query_peak_delta=tuple(
+                    max(query["peak"][i] - prefix[i] for query in queries) for i in range(4))))
         peaks = []
         for query in observed["queries"]:
             records, octets, cells, statements = query["peak"]
@@ -262,3 +315,4 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
         print("#1936 public K1 coordinator transport", dict(used=_components(used),
             charged_bytes=used.accounted_bytes, physical_weighted_bytes=observed["bytes"],
             maximum_query_reservation_bytes=max(peaks), statements=observed["statements"]))
+        print("#1936 public K1 admitted tails", tail_metrics)
