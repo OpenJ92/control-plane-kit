@@ -303,31 +303,34 @@ class PostgresExecutionStore:
     ) -> ExecutionCommandReceiptRecord:
         if type(record) is not ExecutionCommandReceiptRecord:
             raise OperationsRecordError("execution command receipt must be typed")
-        self._connection.execute(
-            """
+        sql = """
             INSERT INTO cpk_execution_command_receipts
               (run_id, idempotency_key, intent_fingerprint, worker_id,
                authority_scopes, claim_generation, max_effects, admitted_at,
                initial_run, receipt_status, completed_at, result, managed_intent)
             VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s::jsonb,
                     %s, %s, %s::jsonb, %s::jsonb)
-            """,
-            (
-                record.run_id,
-                record.idempotency_key,
-                record.intent_fingerprint,
-                record.worker_id,
-                _json([scope.value for scope in record.authority_scopes]),
-                record.claim_generation,
-                canonical_positive_decimal(record.max_effects),
-                encode_postgres_timestamp(record.admitted_at),
-                _json(_run_descriptor(record.initial_run)),
-                record.status.value,
-                _encode_optional_timestamp(record.completed_at),
-                None if record.result is None else _json(_result_descriptor(record.result)),
-                None if record.managed_intent is None else _json(record.managed_intent.descriptor()),
-            ),
+            """
+        params = (
+            record.run_id,
+            record.idempotency_key,
+            record.intent_fingerprint,
+            record.worker_id,
+            _json([scope.value for scope in record.authority_scopes]),
+            record.claim_generation,
+            canonical_positive_decimal(record.max_effects),
+            encode_postgres_timestamp(record.admitted_at),
+            _json(_run_descriptor(record.initial_run)),
+            record.status.value,
+            _encode_optional_timestamp(record.completed_at),
+            None if record.result is None else _json(_result_descriptor(record.result)),
+            None if record.managed_intent is None else _json(record.managed_intent.descriptor()),
         )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query(sql + " RETURNING 1", params, records=1, octets=1, cells=1)
+        else:
+            self._connection.execute(sql, params)
         return record
 
     def command_receipt_for_idempotency(
@@ -832,6 +835,34 @@ class PostgresExecutionStore:
         _require_run_id(run_id)
         encoded_started_at = _encode_optional_timestamp(started_at)
         encoded_settled_at = _encode_optional_timestamp(settled_at)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("run_id", "plan_id", "request_id", "attempt", "prior_run_id", "status",
+                "created_at", "started_at", "settled_at", "metadata")
+            ceilings = tuple(65536 if name == "metadata" else 2048 for name in names)
+            valid = " AND ".join(
+                f"({name} IS NULL OR octet_length({name}::text)<={ceiling})"
+                for name, ceiling in zip(names, ceilings))
+            projection = ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in names)
+            rows = read.query("WITH updated AS (UPDATE cpk_activity_runs "
+                "SET status=%s, started_at=COALESCE(%s,started_at), "
+                "settled_at=COALESCE(settled_at,%s) "
+                "WHERE run_id=%s AND status=%s AND settled_at IS NULL "
+                "RETURNING run_id,plan_id,request_id,attempt,prior_run_id,status,"
+                "created_at,started_at,settled_at,metadata) SELECT " + projection +
+                f",({valid}) FROM updated",
+                (replacement.value, encoded_started_at, encoded_settled_at, run_id, expected.value),
+                records=1, octets=sum(ceilings) + 1, cells=len(names) + 1)
+            if not rows:
+                return None
+            if rows[0][-1] is not True:
+                raise OperationsRecordError("activity run is unavailable")
+            values = list(rows[0][:-1])
+            values[3] = int(values[3])
+            for index in (6, 7, 8):
+                values[index] = None if values[index] is None else datetime.fromisoformat(values[index])
+            values[9] = json.loads(values[9])
+            return _activity_run(tuple(values))
         row = self._connection.execute(
             """
             UPDATE cpk_activity_runs
