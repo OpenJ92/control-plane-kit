@@ -362,3 +362,25 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
         fold = self.removed_fold(command, started)
         run_depleted("_preflight_fold", lambda: EffectAttemptFoldService(self.unit_of_work,
             id_factory=self.assert_no_ids).execute(fold), EffectAttemptFoldConflict)
+
+    def test_fresh_inspection_requires_admitted_d1_and_unreserved_candidates(self):
+        from control_plane_kit_operations.configuration_cleanup_planning import ConfigurationCleanupPlanningService
+        from tests.configuration_cleanup_postgres_fixture import command_context
+        claimed = self.ready_cleanup()
+        service = ConfigurationCleanupPlanningService(self.unit_of_work,
+            clock=self.now, id_factory=self.assert_no_ids)
+        # A retained provider completion profile cannot replace its D1 link.
+        with self.unit_of_work() as uow:
+            source = self.source_identity
+            uow.stores.connection.execute("DELETE FROM cpk_configuration_invocation_completions "
+                "WHERE run_id=%s AND activity_id=%s AND attempt=%s",
+                (source.run_id.value, source.activity_id, source.attempt))
+            result, proposal = uow.stores.configuration_cleanup.read(self.cleanup_query)
+            self.assertEqual(result.state, "unavailable")
+            self.assertIsNone(proposal)
+            # Deliberately no commit: restore the genuine ordinary D1 premise.
+        self.assertEqual(service.inspect(self.cleanup_query, context=command_context()).state, "complete")
+        self.start_cleanup(claimed)
+        before = self.ceiling_truth()
+        self.assertEqual(service.inspect(self.cleanup_query, context=command_context()).state, "unavailable")
+        self.assertEqual(self.ceiling_truth(), before)

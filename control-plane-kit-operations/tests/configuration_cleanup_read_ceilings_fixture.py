@@ -188,6 +188,7 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         query = InspectConfigurationCleanup("session-a", "workspace-a", pins,
             tuple(ConfigurationCleanupSourceSelector(self.source_identity, ref.artifact_id, ref)
                 for ref in self.selected_refs))
+        self.cleanup_query = query
         service = ConfigurationCleanupPlanningService(self.unit_of_work, clock=self.now,
             id_factory=GeneratedIds("ceilings-cleanup"))
         inspected = service.inspect(query, context=command_context())
