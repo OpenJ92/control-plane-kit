@@ -3,7 +3,7 @@
 Governing issue: [#1936](https://github.com/OpenJ92/control-plane-kit/issues/1936),
 draft [PR #1943](https://github.com/OpenJ92/control-plane-kit/pull/1943), based on
 the accepted #1941 merge `215d8366c4d1e66507bc008a43d7b8749f918f7f`.
-Status: implementation and focused hardening in progress; not integration or
+Status: implementation and focused review complete; not integration or
 provider acceptance. Servers #225 and E4 remain downstream, separate boundaries.
 
 ## Objects, transformations, and authority
@@ -59,11 +59,19 @@ maximum query reservation of 3,762,297 bytes. The fixed 4096-record / 16 MiB lim
 are unchanged. This measured K1 result is not a universal capacity claim for all
 valid K/U/D combinations.
 
-Independent review additionally requires the existing K1 target to capture each
-actual start/fold forecast before raw-write precharge and compare its corresponding
-remaining transaction's settled charges, physical transport and every query peak.
-That strengthening is pending owning validation; the existing depleted-prefix
-pre-ID refusal test remains unchanged.
+At `d9e6029a`, the strengthened K1 target captured each actual start/fold forecast
+before raw-write precharge and independently measured its remaining transaction.
+Start forecast `(1022, 5877880, 7319, 750)` covered settlement
+`(855, 519290, 6037, 713)`, physical transport `(798, 519290, 6037, 713)` and
+componentwise query-peak deltas `(856, 594786, 6038, 713)`. Fold forecast
+`(141, 1208441, 1071, 99)` covered settlement `(106, 37133, 738, 88)`, physical
+transport `(85, 37133, 738, 88)` and peaks `(106, 66013, 738, 88)`. Components are
+records, value octets, scalar markers and statements. Exact owner UoW/accounting
+identity bounds each interval; no forecasting formula is reproduced in the test.
+The existing depleted-prefix/pre-ID refusal and #1939 supersession targets also
+passed: 3 tests in 97.201s, compilation/import and owning runner exit 0.
+The measurement wrapper uses `unittest.mock` instrumentation and invokes the
+unchanged production admission function. This is exercised K1 evidence only.
 
 ## Law provenance and test honesty
 
@@ -96,8 +104,9 @@ Focused public execution, mutation accounting, rollback, uncertainty and replay
 evidence is recorded on PR #1943. At `17b77c33`, the 15-method focused gate passed
 in 404.829s with compile/import checks: both competing-owner race orders, both
 distinct-cleanup winner orders, identical-command concurrency, all eight history
-and freshness laws, TLS refusal, and the full K1 ledger. Final forecast and #1939
-supersession targets still require focused owning validation. Required hosted
+and freshness laws, TLS refusal, and the full K1 ledger. The final three focused
+targets passed at `d9e6029a`; terminal log SHA256
+`f42bdfa91d24e60dd90f31fa835c9352dff60c2b9de964df106363dd862d7b7a`. Required hosted
 current-package Core/Operations and pinned-family current-backend gates, followed
 by independent integration disposition, remain pending. The backend lock selects
 older CPK packages; its package stages cannot substitute for candidate Core and
