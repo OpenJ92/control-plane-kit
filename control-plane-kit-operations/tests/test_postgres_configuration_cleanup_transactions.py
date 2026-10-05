@@ -3,6 +3,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import queue
+from unittest import mock
 
 import psycopg
 
@@ -13,7 +14,7 @@ from control_plane_kit_core.operations import EffectAttemptStatus
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
 from control_plane_kit_core.runtime_effects import configuration_cleanup_result
 from control_plane_kit_operations.effect_attempt_start import (
-    ExistingAttempt, NewlyStarted, EffectAttemptStartDenied,
+    ExistingAttempt, NewlyStarted, EffectAttemptStartDenied, EffectAttemptStartConflict,
 )
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_attempt_fold import ExistingFold, FoldEffectAttempt, NewlyFolded
@@ -22,6 +23,8 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     ExecutionEffectOutcome, effect_outcome_failure, effect_outcome_transition,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
+from control_plane_kit_operations.postgres.effect_attempt_intent_store import EffectAttemptIntentStore
+from control_plane_kit_operations.records import OperationsRecordError
 from tests.configuration_cleanup_execution_fixture import ConfigurationCleanupExecutionFixture
 from tests.test_execution_admission import Sequence
 from tests.test_postgres_configuration_completion import _AfterWriteFailure
@@ -40,6 +43,30 @@ class _CommitThenRaiseConnection:
     def commit(self):
         self.connection.commit()
         raise self.fault
+
+
+class _RedirectCleanupApproval:
+    """Valid foreign FK pair introduced after writes; no malformed-row shortcut."""
+    def __init__(self, connection, foreign, observed):
+        self.connection, self.foreign, self.observed = connection, foreign, observed
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+    def execute(self, query, params=(), **kwargs):
+        sql = query.as_string(self.connection) if hasattr(query, "as_string") else str(query)
+        normalized = " ".join(sql.lower().split())
+        if self.observed["redirected"] and ("cpk_approval_requests" in normalized
+                or "cpk_approval_decisions" in normalized) and any(value in params for value in self.foreign):
+            self.observed["foreign_reads"] += 1
+        result = self.connection.execute(query, params, **kwargs)
+        if normalized.startswith("update cpk_configuration_claims"):
+            changed = self.connection.execute("UPDATE cpk_configuration_cleanup_reservations "
+                "SET approval_request_id=%s,approval_decision_id=%s RETURNING 1", self.foreign).fetchall()
+            if changed != [(1,)]:
+                raise AssertionError("foreign approval fault did not change exactly one reservation")
+            self.observed["redirected"] = True
+        return result
 
 
 class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecutionFixture, unittest.TestCase):
@@ -201,3 +228,68 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
         with self.assertRaises(EffectAttemptStartDenied):
             EffectAttemptStartService(self.unit_of_work, id_factory=self.assert_no_ids).execute(command)
         self.assertEqual(self.ceiling_truth(), expired)
+
+    def test_final_start_proof_refuses_valid_foreign_approval_before_payload_fetch(self):
+        claimed = self.ready_cleanup()
+        command = self.native_start_command(claimed, "cleanup-execution")
+        foreign = self.connection.execute("SELECT request_id,decision_id FROM cpk_approval_decisions "
+            "WHERE request_id<>%s ORDER BY decision_id LIMIT 1", (self.approval.request_id,)).fetchone()
+        self.assertIsNotNone(foreign, "chronology must contain an independently valid approval")
+        self.assertTrue(all(type(value) is str and 1 <= len(value.encode()) <= 2048 for value in foreign))
+        with self.unit_of_work() as uow:
+            self.assertIsNotNone(uow.stores.activity_history.get_approval_request(foreign[0]))
+            self.assertEqual(uow.stores.activity_history.approval_decision_for_request(foreign[0]).decision_id,
+                foreign[1])
+        before = self.ceiling_truth()
+        observed = dict(redirected=False, foreign_reads=0)
+        factory = lambda: PostgresUnitOfWork(lambda: _RedirectCleanupApproval(
+            psycopg.connect(self.database_url), foreign, observed))
+        with self.assertRaises(EffectAttemptStartConflict):
+            EffectAttemptStartService(factory, id_factory=Sequence("cleanup-original")).execute(command)
+        self.assertTrue(observed["redirected"], "fault must pass the real composite FK checks")
+        self.assertEqual(observed["foreign_reads"], 0, "issued row correspondence must precede foreign payload")
+        self.assertEqual(self.ceiling_truth(), before)
+
+    def test_start_preparation_rejects_copy_foreign_uow_thread_and_finished_lifetime(self):
+        claimed = self.ready_cleanup()
+        command = self.native_start_command(claimed, "cleanup-execution")
+        real_insert = EffectAttemptIntentStore._insert
+        captured = []
+        for mode in ("copy", "foreign-uow", "foreign-thread"):
+            before = self.ceiling_truth()
+            reached = []
+
+            def altered(store, record, *, configuration_preparation=None):
+                self.assertIsNotNone(configuration_preparation)
+                reached.append(mode)
+                if mode == "copy":
+                    return real_insert(store, record, configuration_preparation=replace(configuration_preparation))
+                if mode == "foreign-uow":
+                    with self.unit_of_work() as foreign:
+                        return real_insert(foreign.stores.effect_attempt_intents, record,
+                            configuration_preparation=configuration_preparation)
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    return executor.submit(real_insert, store, record,
+                        configuration_preparation=configuration_preparation).result(timeout=5)
+
+            with self.subTest(mode=mode), mock.patch.object(EffectAttemptIntentStore, "_insert", altered):
+                with self.assertRaises(EffectAttemptStartConflict):
+                    EffectAttemptStartService(self.unit_of_work,
+                        id_factory=Sequence("cleanup-original")).execute(command)
+            self.assertEqual(reached, [mode])
+            self.assertEqual(self.ceiling_truth(), before)
+
+        def retained(store, record, *, configuration_preparation=None):
+            captured.append((store, record, configuration_preparation))
+            return real_insert(store, record, configuration_preparation=configuration_preparation)
+
+        with mock.patch.object(EffectAttemptIntentStore, "_insert", retained):
+            started = EffectAttemptStartService(self.unit_of_work,
+                id_factory=Sequence("cleanup-original")).execute(command)
+        self.assertIs(type(started), NewlyStarted)
+        self.assertEqual(len(captured), 1)
+        store, record, prepared = captured[0]
+        before = self.ceiling_truth()
+        with self.assertRaises(OperationsRecordError):
+            real_insert(store, record, configuration_preparation=prepared)
+        self.assertEqual(self.ceiling_truth(), before)
