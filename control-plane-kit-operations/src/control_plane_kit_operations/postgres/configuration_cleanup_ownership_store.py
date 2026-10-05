@@ -80,7 +80,7 @@ class ConfigurationCleanupOwnershipStore:
     def _get(self, identity, read):
         cleanup = _key(identity)
         from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_require
-        _phase_context(self._connection, accounting=read.accounting)
+        _phase_context(self._connection, read=read)
         headers = read.bounded_rows(_TABLE, _columns(_HEADER), _WHERE, cleanup)
         if not headers:
             return None

@@ -60,7 +60,7 @@ class ConfigurationCompletionStore:
 
     def _get(self, identity, read):
         from .configuration_cleanup_phase_read_bounds import _phase_context
-        _phase_context(self._connection, accounting=read.accounting)
+        _phase_context(self._connection, read=read)
         rows = read.bounded_rows(_TABLE, _COLUMNS, "run_id=%s AND activity_id=%s AND attempt=%s", _key(identity))
         if not rows:
             return None

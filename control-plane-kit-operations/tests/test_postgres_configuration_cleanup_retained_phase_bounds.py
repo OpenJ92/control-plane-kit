@@ -104,6 +104,9 @@ class PostgresConfigurationCleanupRetainedPhaseBoundsTests(ConfigurationCleanupH
         self.assertTrue(peaks)
         self.assertLessEqual(max(peaks), 16*1024*1024)
         physical = sum(256 + sum(128+16*len(row)+sum(row) for row in q["widths"]) for q in segment)
+        self.assertGreaterEqual(read.used.accounted_bytes - before.accounted_bytes, physical)
+        self.assertEqual(read.used.statements - before.statements, len(segment))
+        self.assertGreaterEqual(read.used.records - before.records, sum(len(q["widths"]) for q in segment))
         print("#1941 retained phase", dict(stage=label, prefix=_components(before), used=_components(read.used),
             physical_weighted_bytes=physical, maximum_reservation_bytes=max(peaks)))
 

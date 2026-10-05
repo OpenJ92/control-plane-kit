@@ -55,32 +55,31 @@ changed row can never turn a small probe into an unbounded transported value.
 Each column is (SQL expression, maximum bytes). Expressions explicitly cast
 scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
         """
+        configuration_read = self.configuration_read
+        from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_columns, _phase_rows
+        issued = _phase_context(self.connection, read=configuration_read)
+        if issued is not None and configuration_read is None:
+            from .configuration_evidence import _Unavailable
+            raise _Unavailable
         if phase is not None:
-            from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_columns, _phase_rows
-            issued = _phase_context(self.connection)
-            if issued is not None:
-                from .configuration_evidence import _Unavailable
-                if self.configuration_read is None:
-                    raise _Unavailable
-                _phase_context(self.connection, accounting=self.configuration_read.accounting)
             if point:
                 narrowed = _phase_columns(self.connection, *phase,
                     tuple((name, "text", cap) for name, cap in columns))
                 columns = tuple((name, cap) for name, _, cap in narrowed)
-            elif self.configuration_read is not None:
-                rows = _phase_rows(self.configuration_read, *phase, maximum=maximum, text=True)
+            elif configuration_read is not None:
+                rows = _phase_rows(configuration_read, *phase, maximum=maximum, text=True)
                 if rows is not None:
                     return rows
         key = (table, columns, where, params, order, maximum, point, page, unique)
         _require(0 < len(columns) <= 32)
         if cache and key in self.cache:
             return self.cache[key]
-        if self.configuration_read is not None:
+        if configuration_read is not None:
             # Original-material verification keeps its decoder and authority
             # laws, while B1 supplies the same command's transport accounting.
             declared = tuple((expression, "bytes" if not expression.endswith("::text") else "text", cap)
                 for expression, cap in columns)
-            rows = self.configuration_read.bounded_rows(table, declared, where, params,
+            rows = configuration_read.bounded_rows(table, declared, where, params,
                 maximum=1 if point else maximum, order=order, point=point or page)
             if unique and len(rows) > (1 if point else maximum):
                 raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")

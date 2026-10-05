@@ -247,3 +247,33 @@ schema, global budget, public default, cleanup activation or provider change is
 included. This checkpoint has only source inspection and diff whitespace
 validation; its authored negative branches have not yet passed against the
 implementation. The owning Docker run and independent source review follow.
+
+## Initial production execution and residual correction
+
+The owning focused gate on `8409bec59c1e5c269a33facda63b3df8336e2873`
+completed 99 tests in 2013.560 seconds: one failure and one error, exit 1.
+Log SHA-256:
+`06e21070d4cac594e1e1294b2afc7e711ffea34ec8ff0823563649a202f17e35`.
+All original 18 phase methods executed. The allocation-claims subcase reached
+`unavailable` before its expected capacity refusal because the reciprocal join
+hid the changed key; the correction reads the bounded complete claim keys first.
+The acceptance-scopes subcase failed in its mutation acknowledgement before the
+consumer: its request selector updated multiple rows against a one-row declared
+acknowledgement. Restricting it to `scope_ordinal=0` retains the existing exact
+`[(1,)]` acknowledgement assertion and the original consumer growth law.
+All other selected target/regression methods passed. Post-test compile/import
+phases were not reached. Exact test container `cpk-1941-source-postgres` and
+network `cpk-1941-source-test` were checked absent afterward.
+
+Independent review of correction `5c918100014a91bff00d52a9339e5f34a6a14e71`
+identified two remaining confinement entrances. Every receiver transport now
+checks context before even an untagged query or cache return; a missing reader
+under C refuses before SQL. Store entrances validate the actual supplied reader
+connection as well as its accounting identity. Regressions use real verify,
+originals, request, receipt-cache, D1 and B entrances and assert no SQL on either
+connection. Retained measurements additionally compare each stage's accounting
+delta against independently observed transport, statements and records.
+
+These residual corrections are unexecuted. The prior failed head and hosted
+results cannot accept the corrected source. Both cleanup activation guards
+remain closed; no provider, schema, credential or durable writer change occurs.

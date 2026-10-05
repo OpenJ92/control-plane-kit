@@ -100,7 +100,7 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                 text_growth("cpk_execution_receiver_scopes", "runtime_id", "request_id=%s",
                     (self.intent.source.request_id,), 100), "cleanup-verify"),
             ("acceptance-scopes", "cpk_execution_receiver_scopes", 4, "acceptance-scopes",
-                text_growth("cpk_execution_receiver_scopes", "runtime_id", "request_id=%s", (request_id,), 100), "verify"),
+                text_growth("cpk_execution_receiver_scopes", "runtime_id", "request_id=%s AND scope_ordinal=0", (request_id,), 100), "verify"),
             ("acceptance-runs", "cpk_activity_runs", 9, "acceptance-runs", run_growth, "runs"),
             ("acceptance-events", "cpk_activity_events", 5, "acceptance-events", event_growth, "events"),
             ("advancement-actions", "cpk_operation_actions", 5, "advancement-actions", action_growth, "actions"),
@@ -531,6 +531,8 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                 lambda: stores.execution.get_request(a.action.payload["execution_request_id"]),
                 lambda: stores.execution.get_run(a.run_id),
                 lambda: stores.graphs._require_receiver_origin_action(self.companion_origin),
+                lambda: _ExecutionScopeStorage(stores.connection, read).verify(prefix.request.identity),
+                lambda: _ExecutionScopeStorage(stores.connection, read).originals(prefix.request.identity),
             )
             def refuse_all():
                 offset = len(observed["queries"])
@@ -541,8 +543,9 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                     "foreign context reached SQL before confinement refusal")
             with owner.bind(issued):
                 offset = len(observed["queries"])
-                with self.assertRaises(_Unavailable):
-                    _ExecutionScopeStorage(stores.connection).request("workspace-a", a.action.payload["execution_request_id"])
+                for entrance in ("verify", "originals"):
+                    with self.assertRaises(_Unavailable):
+                        getattr(_ExecutionScopeStorage(stores.connection), entrance)(prefix.request.identity)
                 with _configuration_accounting("foreign-read-object"):
                     foreign_read = type(read)(stores.connection)
                 with self.assertRaises(_Unavailable):
@@ -658,6 +661,38 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
             with self.assertRaises(_Unavailable):
                 self.capture_phase(owner, guard, prefix)
             self.assertEqual(len(observed["queries"]), offset)
+
+    def test_same_accounting_foreign_read_connection_refuses_before_sql_or_cache(self):
+        self.prepare_ceiling_premise()
+        import psycopg
+        from control_plane_kit_operations.postgres import PostgresUnitOfWork
+        from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection
+        with self.prepared_phase() as (uow, guard, prefix, read, observed, owner, issued):
+            stores, a = uow.stores, self.companion_acceptance
+            with owner.bind(issued):
+                warm = type(read)(stores.connection)
+                stores.configuration_acceptance._receipt_context("workspace-a", a.desired_graph_revision, warm)
+                with PostgresUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.database_url), observed)) as other:
+                    foreign = type(read)(other.stores.connection)
+                    self.assertIs(foreign.accounting, read.accounting)
+                    # Real proved cached data on a wrongly associated reader
+                    # must not evade connection confinement either.
+                    foreign.sources.update(warm.sources)
+                    consumers = (
+                        lambda: stores.configuration_acceptance._receipt_context("workspace-a", a.desired_graph_revision, foreign),
+                        lambda: stores.configuration_acceptance._originals(foreign, a.action.action_id, a.event.event_id),
+                        lambda: stores.configuration_completions._get(self.source_identity, foreign),
+                        lambda: stores.configuration_cleanup_ownership._get(self.identity, foreign),
+                        lambda: _ExecutionScopeStorage(stores.connection, foreign).verify(prefix.request.identity),
+                        lambda: _ExecutionScopeStorage(stores.connection, foreign).originals(prefix.request.identity),
+                        lambda: _ExecutionScopeStorage(stores.connection, foreign).request("workspace-a", a.action.payload["execution_request_id"]),
+                    )
+                    offset = len(observed["queries"])
+                    for consume in consumers:
+                        with self.assertRaises(_Unavailable):
+                            consume()
+                    self.assertEqual(len(observed["queries"]), offset,
+                        "foreign reader transported SQL through one of the real entrances")
 
     def test_capture_refuses_constructor_context_change_before_sql(self):
         self.prepare_ceiling_premise()

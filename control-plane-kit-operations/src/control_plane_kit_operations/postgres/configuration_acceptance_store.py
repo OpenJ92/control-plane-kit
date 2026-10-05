@@ -112,7 +112,7 @@ class ConfigurationAcceptanceStore:
 
     def _originals(self, read, action_id, event_id):
         from .configuration_cleanup_phase_read_bounds import _phase_columns, _phase_context
-        _phase_context(self._connection, accounting=read.accounting)
+        _phase_context(self._connection, read=read)
         action_names = _ACTION + _LOCATOR + ("advancement_run_id",)
         event_names = _EVENT + _LOCATOR
         actions = read.bounded_rows("cpk_operation_actions",
@@ -221,7 +221,8 @@ class ConfigurationAcceptanceStore:
         return plan, request, run
 
     def _manifest(self, read, header, material):
-        from .configuration_cleanup_phase_read_bounds import _phase_rows
+        from .configuration_cleanup_phase_read_bounds import _phase_rows, _phase_context
+        _phase_context(self._connection, read=read)
         rows = _phase_rows(read, "slots", (header["workspace_id"], header["pinned_revision"]))
         if rows is None:
             rows = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
@@ -243,7 +244,7 @@ class ConfigurationAcceptanceStore:
         """Original pair/header/execution point proof, without prior manifests."""
         key = ("configuration-receipt-context", workspace_id, revision)
         from .configuration_cleanup_phase_read_bounds import _phase_columns, _phase_context
-        _phase_context(self._connection, accounting=read.accounting)
+        _phase_context(self._connection, read=read)
         columns = _phase_columns(self._connection, "header", (workspace_id, revision), _columns(_HEADER))
         if key in read.sources:
             return read.sources[key]

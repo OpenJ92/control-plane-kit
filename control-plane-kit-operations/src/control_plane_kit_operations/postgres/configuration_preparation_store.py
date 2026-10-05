@@ -493,7 +493,8 @@ class ConfigurationPreparationStore:
 
     def _allocation_evidence(self, exact_ref, read):
         try:
-            from .configuration_cleanup_phase_read_bounds import _phase_rows
+            from .configuration_cleanup_phase_read_bounds import _phase_rows, _phase_context
+            _phase_context(self._connection, read=read)
             key = (exact_ref.workspace_id, exact_ref.allocation_id)
             # Bound claims before the reciprocal join can turn a changed key
             # into a NULL ref. Both complete sets and pairing are still proved.

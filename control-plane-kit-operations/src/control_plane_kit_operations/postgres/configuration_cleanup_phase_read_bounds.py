@@ -44,13 +44,13 @@ def _entries(value, role):
     raise _Unavailable
 
 
-def _phase_context(connection, *, accounting=None):
+def _phase_context(connection, *, read=None):
     issued = _BOUND_CLEANUP_PHASE.get()
     if issued is not None:
         _require(type(issued) is _CleanupPhaseReadBounds
             and type(issued.owner) is _CleanupPhaseReadBoundsOwner)
         issued.owner._require(issued, connection)
-        _require(accounting is None or accounting is issued.owner._accounting)
+        _require(read is None or read.connection is connection and read.accounting is issued.owner._accounting)
     return issued
 
 
@@ -102,7 +102,7 @@ def _phase_columns(connection, role, identity, columns):
 
 
 def _phase_rows(read, role, identity, *, maximum=None, text=False):
-    _phase_context(read.connection, accounting=read.accounting)
+    _phase_context(read.connection, read=read)
     bound = _bound(read.connection, role, identity)
     if bound is None:
         return None
