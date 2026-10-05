@@ -368,7 +368,8 @@ class ConfigurationCleanupOwnershipStore:
         for claim in owner.record.claims:
             ref = claim.ref
             for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
-                changed = read.query("UPDATE " + table + " SET protective=false,cleanup_run_id=%s,"
+                # protective is generated from the nullable cleanup locator.
+                changed = read.query("UPDATE " + table + " SET cleanup_run_id=%s,"
                     "cleanup_activity_id=%s,cleanup_attempt=%s WHERE "
                     "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s) "
                     "AND (workspace_id,allocation_id,runtime_id,node_id)=(%s,%s,%s,%s) "
