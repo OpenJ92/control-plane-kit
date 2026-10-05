@@ -548,7 +548,7 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
                 )
             )
 
-    def test_approved_configuration_cleanup_is_refused_before_clock_ids_or_writes(self) -> None:
+    def test_cleanup_without_exact_proposal_is_refused_before_clock_ids_or_writes(self) -> None:
         from tests.configuration_instance_fixture import configuration_cleanup_activity
 
         activity = configuration_cleanup_activity()
@@ -570,7 +570,7 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
         service = ExecutionAdmissionCommandService(
             self.unit_of_work, clock=forbidden_value, id_factory=forbidden_value,
         )
-        with self.assertRaisesRegex(ExecutionAdmissionConflict, "configuration cleanup.*unsupported"):
+        with self.assertRaisesRegex(ExecutionAdmissionConflict, "cleanup requires its exact approved proposal"):
             service.execute(self.command(
                 plan_id="plan-cleanup", approval_request_id="approval-cleanup",
                 scopes=(PolicyScope.PLAN_EXECUTE,),
