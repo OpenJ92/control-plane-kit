@@ -14,14 +14,17 @@ from control_plane_kit_core.configuration_invocation import (
 )
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
-from control_plane_kit_core.planning import StartNode
+from control_plane_kit_core.planning import (
+    StartNode, StartRuntime, WaitForHealthy, StopNode, RemoveNodeResource,
+    StopRuntime, RemoveRuntimeResource,
+)
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
     ProductDescriptorCodec, ProductIdentity, ProductInstanceConfiguration, instantiate_product,
 )
 from control_plane_kit_core.runtime_effect_observation import RuntimeEffectIntent, RuntimeEffectIntentSource
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology, validate_graph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology, validate_graph
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting
 from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval
 from control_plane_kit_operations.configuration_cleanup import (
@@ -61,9 +64,10 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
 
     def prepare_ceiling_premise(self):
         """No second setup, direct receiver graph save, or cleanup admission."""
-        _, self.companion_acceptance, self.companion_origin = self.accept_receiver("ceilings-companion")
         canonical = self.canonical_receiver_graph
         runtime = canonical.runtimes["docker"]
+        with self.unit_of_work() as uow:
+            self.registration = uow.stores.runtime_authorities.get("workspace-a", runtime.authority_ref)
         product = _configuration_product().descriptor_document.product
         product = replace(product, identity=ProductIdentity("test", "cleanup-target", 1),
             runtime_contract=replace(product.runtime_contract,
@@ -77,19 +81,26 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             ProductInstanceConfiguration.from_contract(product.runtime_contract))
         target = compile_topology(DeploymentTopology("selected", DockerRuntime(
             runtime_id="docker", authority_ref=runtime.authority_ref, children=(block,))))
-        combined = replace(canonical, nodes={**canonical.nodes, **target.nodes},
-            runtimes={**canonical.runtimes, "docker": replace(runtime,
-                children=(*runtime.children, "cleanup-target"))})
-        validate_graph(combined).require_valid()
-        self.desired_receiver("ceilings-install", graph=combined)
+        validate_graph(target).require_valid()
+        self.desired_receiver("ceilings-install", graph=target)
         _, plan, _ = self.plan_and_admit("ceilings-install")
-        self.assertEqual(len(plan.plan.activities), 1)
-        activity = plan.plan.activities[0]
-        self.assertIs(type(activity.operation), StartNode)
-        self.assertEqual(activity.operation.target.node_id, "cleanup-target")
+        self.assertCountEqual([type(a.operation) for a in plan.plan.activities],
+            [StartRuntime, StartNode, WaitForHealthy])
+        by_type = {type(a.operation): a for a in plan.plan.activities}
+        self.assertEqual(by_type[StartRuntime].operation.target.runtime_id, "docker")
+        for operation in (StartNode, WaitForHealthy):
+            self.assertEqual(by_type[operation].operation.target.node_id, "cleanup-target")
+        activity = by_type[StartNode]
         claimed = self.ready_run("ceilings-install")
 
         def installed(_context, request):
+            self.assertEqual(request.operation, by_type[type(request.operation)].operation)
+            self.assertEqual(request.activity_id, by_type[type(request.operation)].activity_id)
+            if type(request.operation) is not StartNode:
+                self.assertIn(type(request.operation), (StartRuntime, WaitForHealthy))
+                self.assertIsNone(request.configuration_instances)
+                return RuntimeEffectResult.succeeded(request.effect_id,
+                    evidence={"fixture_premise": "simulated-ordinary-runtime-or-health"})
             correlated = configuration_invocation_correlation_for_request(request)
             self.assertEqual(len(correlated.selection.instances), 1)
             completion = ConfigurationInvocationCompletion(correlated.request_fingerprint,
@@ -98,11 +109,13 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
                 "adapter": "simulated-total-configuration-invocation",
                 "configuration_invocation_completion": completion.descriptor()})
 
-        adapter = RecordingRuntimeAdapter(installed)
+        adapter = RecordingRuntimeAdapter(installed, installed, installed)
         result = self.coordinator(self.unit_of_work, adapter, "ceilings-install").execute(
-            self.execution_command(claimed, "ceilings-install"))
+            replace(self.execution_command(claimed, "ceilings-install"), max_effects=3))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
-        self.assertEqual(len(adapter.runtime_calls), 1)
+        self.assertEqual([request.activity_id for _, request in adapter.runtime_calls],
+            [by_type[kind].activity_id for kind in (StartRuntime, StartNode, WaitForHealthy)])
+        self.assertEqual(adapter.legacy_calls, [])
         self.source_identity = EffectAttemptIdentity(RunId(claimed.run.run_id), activity.activity_id.value, 1)
         with self.unit_of_work() as uow:
             self.completion = uow.stores.configuration_completions.get(self.source_identity)
@@ -114,16 +127,37 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             self.selected_ref.artifact_id), ("docker", "cleanup-target", "settings"))
         self.advance(claimed, "ceilings-install")
 
-        # Removing only the added target restores the complete companion graph.
-        self.desired_receiver("ceilings-depart", graph=canonical)
-        self.plan_and_admit("ceilings-depart")
+        self.assert_registration_unchanged()
+        # A real full teardown avoids unsupported managed UpdateDeployment.
+        self.desired_receiver("ceilings-depart", graph=DeploymentGraph("ceilings-empty"))
+        _, departure, _ = self.plan_and_admit("ceilings-depart")
+        self.assertCountEqual([type(a.operation) for a in departure.plan.activities],
+            [StopNode, RemoveNodeResource, StopRuntime, RemoveRuntimeResource])
         departed = self.ready_run("ceilings-depart")
-        result = self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), "ceilings-depart").execute(
+        removed = RecordingRuntimeAdapter()
+        result = self.coordinator(self.unit_of_work, removed, "ceilings-depart").execute(
             replace(self.execution_command(departed, "ceilings-depart"), max_effects=1024))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertCountEqual([(request.activity_id, request.operation) for _, request in removed.runtime_calls],
+            [(a.activity_id, a.operation) for a in departure.plan.activities])
+        self.assertEqual(removed.legacy_calls, [])
         self.advance(departed, "ceilings-depart")
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            current = DEFAULT_GRAPH_CODEC.decode(uow.stores.realized_graphs.get(
+                workspace.current_realized_projection_id).graph_descriptor)
+            self.assertFalse(current.nodes or current.runtimes or current.edges
+                or current.public_ingresses or current.delegation_authorities)
+        self.assert_registration_unchanged()
+        _, self.companion_acceptance, self.companion_origin = self.accept_receiver("ceilings-companion")
+        self.assert_registration_unchanged()
         self.assertEqual(self.receiver_origin(), self.companion_origin)
         self._publish_cleanup(runtime)
+
+    def assert_registration_unchanged(self):
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.runtime_authorities.get("workspace-a", self.registration.authority_ref),
+                self.registration)
 
     def _publish_cleanup(self, runtime):
         with self.unit_of_work() as uow:
@@ -208,6 +242,7 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         self.assertIsNotNone(self.intent.authority_ref)
         registration = stores.runtime_authorities.get("workspace-a", self.intent.authority_ref)
         self.assertEqual(registration.status.value, "active")
+        self.assertEqual(registration, self.registration)
         self.assertEqual(registration.runtime_kind, self.intent.runtime_kind)
         self.assertEqual(registration.authority_ref, self.intent.authority_ref)
         self.assertEqual(stores.graphs.receiver_introduction("workspace-a", "a" * 32), self.companion_origin)

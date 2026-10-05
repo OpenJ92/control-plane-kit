@@ -68,6 +68,41 @@ portability/transaction/context, fixed-expression/null, probe/fetch race,
 distinct-pin and exact-boundary laws remain required before source-green; this
 initial target slice does not claim them complete.
 
+## First target run: fixture prerequisite failure
+
+At target commit `323d635a9eecd540db5d8da55d4fcc66d05ae116`, the owning focused
+gate ran four tests in 95.568 seconds and exited one with four assertion
+failures. The existing-owner control failed, so **none earns causal-red credit**.
+Each method stopped at the same existing supported-plan assertion, before the
+target's missing-issuer check. Log SHA256:
+`bf663671fea0a25348b93e230f0af6a8758e23a7d4caedbab2b2ef74b7b153c1`.
+The gate's exact container and network were removed; this was not an apparatus
+failure.
+
+The receiver companion's initial acceptance completed. Adding the isolated
+configuration target then produces an `UpdateDeployment`. Existing
+`runtime_management_execution_is_unsupported` supports nonempty managed plans
+only for `InitialDeployment` or `TeardownDeployment`; it therefore rejects this
+update. A later selective departure preserving the receiver would cross the
+same boundary. This invalidates the proposed fixture's supported-execution
+assumption. Removing the assertion, substituting recorded acceptance, or enabling
+managed updates would not be a routine #1939 fixture correction. The baseline
+failure is referred to the coordinator/reviewer for prerequisite or explicit
+read-premise disposition. Production source and reruns remain held.
+
+North subsequently released Kepler's fixture-only reorder: actual ordinary
+initial deployment, selected D1 and acceptance; actual completely empty teardown
+and acceptance; then existing canonical receiver initial deployment and
+acceptance. The registered Docker authority record must remain identical across
+all stages. This supersedes the receiver-before-source ordering above without
+changing admission or creating acceptance records directly. The ordinary initial
+compiler shape is exactly StartRuntime, StartNode and WaitForHealthy; only the
+selected configuration StartNode receives the correlated D1 completion. Runtime
+and health results are explicitly simulated and their exact call identities are
+asserted. Final historical cleanup inspection still uses the actual owner. This
+sequence supplies reader premises, not managed-update or provider evidence.
+Exact fixture review and a new focused baseline remain required before credit.
+
 Security: no runtime, network, authentication, secret transfer, durable production
 writer or activation change. The negative metadata mutation is confined to a
 rolled-back test transaction. The complete cleanup ledger and provider results
