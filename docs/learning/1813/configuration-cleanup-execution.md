@@ -111,3 +111,52 @@ current-package Core/Operations and pinned-family current-backend gates, followe
 by independent integration disposition, remain pending. The backend lock selects
 older CPK packages; its package stages cannot substitute for candidate Core and
 Operations validation. E4/provider truth remains separate even after source green.
+
+## Hosted regression and bounded terminal-routing correction
+
+Hosted Operations at `def9ecb6` ran 2476 tests in 5498.148s and failed 15 cases.
+Eight ordinary terminal reconciliation subcases exposed a real regression: the
+new unconditional original-intent read crossed the existing replay boundary.
+The remaining failures were four exact architecture surfaces, two obsolete
+unsupported guards, and a corruption fixture whose absent D1 link masked a later
+complete-premise assumption. Earlier focused green did not establish acceptance.
+
+The correction at `88dc922e` preserves all eight original forbidden-access
+assertions. Existing preparation `_configure_run` has an optional terminal mode
+anchored to exact original run/request/plan/activity. Its four Boolean projections
+use Q(1,4,4,6); existing no-keyword Q(1,3,3,6) is unchanged. Terminal reconciliation
+always performs this extra charged routing read after claim/lineage validation,
+even with an already-active joined ledger. The prefix is retained and accounting
+is never deactivated. Only the three existing typed stored forms are recognized;
+malformed/missing/duplicate correspondence refuses, with no legacy fallback.
+Version2 never becomes ordinary even when cleanup hints are stripped.
+
+This is routing, not semantic approval or permission. Ordinary replay avoids the
+intent/material/lease/current-authority/secret/observer/fold interactions forbidden
+by its existing law. Cleanup replay checks exact original typed intent correlation
+and complete B proof, including generic observed outcomes with no member evidence.
+Missing or corrupt proof cannot fall through to ordinary replay. There is no new
+schema, public API, cache, lock, provider call or fresh-authority requirement.
+
+The new routing target first failed at test-only `3d4177d6`: 1 method / 3.176s,
+33 subcase errors for the missing private keyword interface. At `88dc922e`, the
+focused correction gate passed all 20 methods in 166.713s, compilation/import
+and runner exit 0. All four finite architecture policies passed without wildcard
+allowances. Each independent status/intent/result corruption starts from complete
+D1 evidence; the prohibited fingerprint mutation remains an actual FK refusal.
+Missing D1 is a separate rollback-only owner fault with public complete controls.
+New missing-proof and measurement mocks are explicit test instrumentation.
+
+The complete K1 coordinator still charges exactly 2066 physical statements,
+2624 records and 2,911,165 weighted bytes, with maximum query reservation
+3,762,201 bytes; both phase forecasts cover all measured remaining work/peaks.
+The actual generic observed cleanup replay on a preactive ledger charges all 90
+physical statements: footprint `(101, 41239, 876, 90)`, 91,223 weighted charged
+bytes versus 89,175 physical weighted bytes. All query peaks remain within the
+unchanged limits. This is bounded exercised evidence, not universal fit.
+
+Terminal focused log SHA256:
+`38abd0c3aaa83c762791845b2da1c69920d34ab407c9e0571f32eb90741f9f70`.
+Renewed required hosted candidate-package/backend gates and North's acceptance
+remain necessary. D2 parent disposition cannot waive mandatory E4, complete D,
+release I177, or authorize Servers225/provider work.
