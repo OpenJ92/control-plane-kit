@@ -1,6 +1,6 @@
 # D2 private cleanup original-read ceilings (#1939)
 
-Target stage only. Base: accepted B merge
+Source stage, released after independent baseline/causal-red review. Base: accepted B merge
 `a15e51677ab9e901cb031ae1dffa2403fc7b7ce7`, tree
 `f887663727525a6ef3a8754fdeca7b5b8ae387ca`. B's corrected hosted Core (943 tests),
 Operations (2387 tests) and pinned-family backend (nine stages) passed. That
@@ -137,3 +137,46 @@ Security: no runtime, network, authentication, secret transfer, durable producti
 writer or activation change. The negative metadata mutation is confined to a
 rolled-back test transaction. The complete cleanup ledger and provider results
 remain C/I177/E4 obligations. No executable result is claimed at target authoring.
+
+## Source draft and completed target shape
+
+North released source after Kepler accepted the baseline and causal-red evidence.
+Two private modules now hold the frozen issued value and its PostgreSQL owner.
+The owner rechecks the locked request, run prefix, complete original receiver
+material, destructive approval and prospective Core intent before measuring the
+fixed columns. A single-use lexical binding passes named widths into the five
+existing read entrances. Matching applications check the exact issuer, UoW,
+connection, accounting, execution context and transaction; nonmatching rows keep
+their ordinary limits. No new public export, schema, global limit or cleanup
+activation is introduced.
+
+The target matrix now covers independent readers, coincident/distinct pins,
+retained intent bytea, metadata and each original's growth, probe/fetch growth,
+same-width semantic corruption, named-column caps, defensive SQL NULL handling,
+copy/unissued/foreign-owner refusal, accounting/task/thread/connection/transaction
+boundaries, scope exit and premature commit, exact/one-byte-over metadata, empty
+reads, prelude retention and failed reservations. Current captured columns are
+NOT NULL: the isolated NULL projection proves defensive transport semantics,
+not valid issuance. The retained-intent test explicitly creates recorded history
+separately; the prospective capture control still has no intent or attempt.
+
+Early review fixed an accidental change to shared receiver bytea caps by restoring
+the existing `_columns` implementation exactly. A real ordinary receiver-history
+test requires an intent larger than 2048 bytes. Review also required a fresh
+locked request comparison and exposed `bind(None)` before first issuance; exact
+issued type/owner checks and a pre-capture refusal assertion close that gap.
+
+Accounting remains cumulative. The fixed width capture plus its initial txid
+reservation is 2300 bytes for coincident pins, 3516 for distinct pins; these are
+not total capture costs. Additional proof includes the fresh request lock/read,
+run-prefix recheck, receiver originals and persisted scope verification, and
+approval request/decision reads, all charged to the same ledger. Each matching
+point application adds one txid query. Coincident receiver pins therefore have
+five application checks but only three original fetches in a fresh receiver
+storage; the existing lifecycle check is an additional sixth txid query.
+
+Source targets have not yet executed at this checkpoint. Focused owning evidence,
+independent source review and hosted full acceptance remain required. The
+inventory includes the new modules, changed import companions, and the previously
+unlisted touched PostgreSQL activity-history owner. Both cleanup refusal gates
+remain asserted; whole-C capacity and mutable proof freshness remain #1936 work.

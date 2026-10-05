@@ -2,6 +2,106 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.postgres.activity_history",
+      "destination": "control_plane_kit_operations.postgres.activity_history",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/activity_history.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.operations.commands",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_operations.plan_derivation",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.postgres.temporal",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations._configuration_acceptance",
+        "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_read_ceilings.py"
+      ],
+      "motivation": "Existing plan/history store; exact cleanup plan reads accept privately issued ceilings without changing ordinary reads."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings",
+      "destination": "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_cleanup_read_ceilings.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations._configuration_cleanup_read_ceilings",
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.configuration_cleanup",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes",
+        "control_plane_kit_core.topology"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_read_ceilings.py"
+      ],
+      "motivation": "Private cleanup-original SQL-width constraints bound to one owner, transaction and accounting scope; no authority or durable writer."
+    },
+    {
+      "module": "control_plane_kit_operations._configuration_cleanup_read_ceilings",
+      "destination": "control_plane_kit_operations._configuration_cleanup_read_ceilings",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_cleanup_read_ceilings.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_read_ceilings.py"
+      ],
+      "motivation": "Private cleanup-original SQL-width constraints bound to one owner, transaction and accounting scope; no authority or durable writer."
+    },
+    {
       "module": "control_plane_kit_operations.configuration_cleanup_ownership",
       "destination": "control_plane_kit_operations.configuration_cleanup_ownership",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/configuration_cleanup_ownership.py",
@@ -10795,7 +10895,16 @@
       "internal_dependencies": [
         "control_plane_kit_core.operations",
         "control_plane_kit_operations.effect_attempt_intent_evidence",
-        "control_plane_kit_operations.records"
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.postgres.configuration_source",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes",
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations.postgres.configuration_preparation_store",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.postgres.stores"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
@@ -10813,7 +10922,8 @@
         "tests/test_postgres_effect_attempt_intent_store_contract.py",
         "tests/test_postgres_effect_attempt_intent_store.py",
         "tests/test_postgres_effect_attempt_intent_schema.py",
-        "tests/test_postgres_effect_attempt_start_intent.py"
+        "tests/test_postgres_effect_attempt_start_intent.py",
+        "tests/test_postgres_configuration_cleanup_read_ceilings.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -12294,7 +12404,11 @@
         "control_plane_kit_operations.postgres.temporal",
         "control_plane_kit_operations.receiver_execution_scopes",
         "control_plane_kit_operations.records",
-        "control_plane_kit_operations.revision_history"
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.postgres.",
+        "control_plane_kit_operations.postgres.configuration_evidence"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.execution",
@@ -12312,7 +12426,8 @@
         "tests/test_postgres_receiver_execution_scope_schema.py",
         "tests/test_receiver_execution_scope_classification.py",
         "tests/test_receiver_execution_scope_row_budgets.py",
-        "tests/test_receiver_execution_scope_transport.py"
+        "tests/test_receiver_execution_scope_transport.py",
+        "tests/test_postgres_configuration_cleanup_read_ceilings.py"
       ]
     },
     {
@@ -12321,7 +12436,9 @@
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/graph_store.py",
       "owner": "operation",
       "role": "durable-store",
-      "semantic_roles": ["interpreter"],
+      "semantic_roles": [
+        "interpreter"
+      ],
       "movement": "remain",
       "migration_prerequisites": [],
       "canonical_public_exports": [],
@@ -12340,16 +12457,22 @@
         "control_plane_kit_operations.postgres.activity_history",
         "control_plane_kit_operations.postgres.receiver_lifecycle_store",
         "control_plane_kit_operations.postgres.schema",
-        "control_plane_kit_operations.postgres.temporal"
+        "control_plane_kit_operations.postgres.temporal",
+        "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings"
       ],
-      "known_package_consumers": ["control_plane_kit_operations.postgres.stores"],
-      "optional_external_dependencies": ["psycopg"],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
       "motivation": "Existing workspace/graph/projection persistence; C2 public single-record writes refuse receiver-affecting changes while private primitives support complete semantic transactions and original introducing-action checks. Does not import execution history or grant receiver acceptance.",
       "protecting_tests": [
         "tests/test_postgres_workspace_initialization.py",
         "tests/test_workspace_graph_stores.py",
         "tests/test_realized_graph_projection_store.py",
-        "tests/test_receiver_admission_boundaries.py"
+        "tests/test_receiver_admission_boundaries.py",
+        "tests/test_postgres_configuration_cleanup_read_ceilings.py"
       ]
     },
     {

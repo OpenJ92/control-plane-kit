@@ -563,13 +563,16 @@ class PostgresActivityHistoryStore:
 
     def _get_plan(self, plan_id: str, *, for_share: bool) -> ActivityPlanRecord:
         from .configuration_evidence import _active_read
+        from .configuration_cleanup_read_ceilings import _cleanup_original_limits
+        ceilings = _cleanup_original_limits(self._connection, "plan", plan_id)
         if (read := _active_read(self._connection)) is not None:
             from .receiver_execution_scopes import _PLAN, _Transport, _columns, _decode
             if for_share:
                 read.query("SELECT 1 FROM cpk_activity_plans WHERE plan_id=%s FOR SHARE",
                     (plan_id,), records=1, octets=1, cells=1)
             rows = _Transport(self._connection, read).read("cpk_activity_plans",
-                _columns(_PLAN, json_columns=("payload",)), "plan_id=%s", (plan_id,), point=True)
+                _columns(_PLAN, json_columns=("payload",), ceilings=ceilings),
+                "plan_id=%s", (plan_id,), point=True)
             if not rows:
                 raise KeyError("missing activity plan")
             return _plan_record(_decode(rows[0], _PLAN, json_columns=("payload",),

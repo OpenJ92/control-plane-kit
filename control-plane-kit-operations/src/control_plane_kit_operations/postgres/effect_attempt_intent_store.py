@@ -122,10 +122,13 @@ class EffectAttemptIntentStore:
     def get(self, identity: EffectAttemptIdentity) -> EffectAttemptIntentRecord:
         admitted = _require_identity(identity)
         from .configuration_evidence import _active_read
-        if (read := _active_read(self._connection)) is not None:
-            columns = tuple((name, "bytes" if name == "preimage" else "int" if name in
+        from .configuration_cleanup_read_ceilings import _cleanup_original_columns
+        columns = _cleanup_original_columns(self._connection, "intent",
+            (admitted.run_id.value, admitted.activity_id, admitted.attempt),
+            tuple((name, "bytes" if name == "preimage" else "int" if name in
                 ("attempt", "original_event_ordinal") else "text", 1048576 if name == "preimage" else 2048)
-                for name in _COLUMN_NAMES)
+                for name in _COLUMN_NAMES))
+        if (read := _active_read(self._connection)) is not None:
             rows = read.bounded_rows("cpk_effect_attempt_intents", columns,
                 "run_id=%s AND activity_id=%s AND attempt=%s",
                 (admitted.run_id.value, admitted.activity_id, admitted.attempt))

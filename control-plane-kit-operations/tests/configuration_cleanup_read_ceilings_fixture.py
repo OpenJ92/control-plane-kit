@@ -59,10 +59,21 @@ from tests.test_receiver_acceptance_advancement import ReceiverAcceptanceAdvance
 from tests.test_runtime_effect_translation import _configuration_product
 
 
+class _CeilingObservedConnection(_ObservedConnection):
+    before_execute = None
+
+    def execute(self, *args, **kwargs):
+        query = str(args[0] if args else kwargs["query"])
+        self.observations.setdefault("queries", []).append(query)
+        if self.before_execute is not None:
+            self.before_execute(query)
+        return super().execute(*args, **kwargs)
+
+
 class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture):
     accept_receiver = ReceiverAcceptanceAdvancementTests.accept_receiver
 
-    def prepare_ceiling_premise(self):
+    def prepare_ceiling_premise(self, *, distinct_pins=False):
         """No second setup, direct receiver graph save, or cleanup admission."""
         canonical = self.canonical_receiver_graph
         runtime = canonical.runtimes["docker"]
@@ -154,21 +165,24 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         _, self.companion_acceptance, self.companion_origin = self.accept_receiver("ceilings-companion")
         self.assert_registration_unchanged()
         self.assertEqual(self.receiver_origin(), self.companion_origin)
-        self._publish_cleanup(runtime)
+        if distinct_pins:
+            self.desired_receiver("ceilings-distinct", graph=canonical)
+        self._publish_cleanup(runtime, distinct_pins=distinct_pins)
 
     def assert_registration_unchanged(self):
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.runtime_authorities.get("workspace-a", self.registration.authority_ref),
                 self.registration)
 
-    def _publish_cleanup(self, runtime):
+    def _publish_cleanup(self, runtime, *, distinct_pins):
         with self.unit_of_work() as uow:
             workspace = uow.stores.workspaces.get("workspace-a")
         pins = ConfigurationCleanupExpectedContext(workspace.current_graph_id,
             workspace.current_realized_projection_id, workspace.desired_graph_id,
             workspace.desired_realized_projection_id, workspace.desired_graph_revision)
-        self.assertEqual(pins.base_graph_id, pins.desired_graph_id)
-        self.assertEqual(pins.base_realized_projection_id, pins.desired_realized_projection_id)
+        compare = self.assertNotEqual if distinct_pins else self.assertEqual
+        compare(pins.base_graph_id, pins.desired_graph_id)
+        compare(pins.base_realized_projection_id, pins.desired_realized_projection_id)
         query = InspectConfigurationCleanup("session-a", "workspace-a", pins, (
             ConfigurationCleanupSourceSelector(self.source_identity, "settings", self.selected_ref),))
         service = ConfigurationCleanupPlanningService(self.unit_of_work, clock=self.now,
@@ -208,7 +222,7 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
     @contextmanager
     def read_premise(self):
         observations = dict(bytes=0, rows=0, largest_cell=0, statements=0)
-        factory = lambda: _ObservedConnection(psycopg.connect(self.database_url), observations)
+        factory = lambda: _CeilingObservedConnection(psycopg.connect(self.database_url), observations)
         with _configuration_accounting(self.identity.run_id.value), PostgresUnitOfWork(factory) as uow:
             with _joined_read(uow.stores.connection) as read:
                 guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
@@ -240,7 +254,8 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             self.assertEqual(material.runtimes["docker"].authority_ref, self.intent.authority_ref)
             self.assertEqual(material.runtimes["docker"].kind, self.intent.runtime_kind)
             bindings.append(stored)
-        self.assertEqual(*bindings)
+        self.assertEqual(bindings[0], tuple(replace(binding, graph_id=base.source_authored_graph_id,
+            realized_projection_id=base.projection_id) for binding in bindings[1]))
         self.assertIsNotNone(self.intent.authority_ref)
         registration = stores.runtime_authorities.get("workspace-a", self.intent.authority_ref)
         self.assertEqual(registration.status.value, "active")
@@ -292,3 +307,27 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             "cpk_configuration_claim_closures", "cpk_configuration_cleanup_member_outcomes")
         return self.acceptance_truth(), tuple((table, self.connection.execute(
             f"SELECT to_jsonb(t) FROM {table} AS t ORDER BY to_jsonb(t)::text").fetchall()) for table in extra)
+
+    def record_intent_premise(self, stores):
+        """Separate retained-reader case; never used by prospective controls."""
+        from control_plane_kit_core.operations import EffectAttemptFence, EffectAttemptState, EffectAttemptStatus
+        from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+        from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
+        from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+        from control_plane_kit_operations.postgres import effect_attempt_store, effect_attempt_intent_store
+        from tests.configuration_cleanup_history_fixture import event_for, insert
+        from control_plane_kit_core.operations import ActivityEventKind
+        state = EffectAttemptState(self.identity, runtime_effect_intent_fingerprint(self.intent),
+            EffectAttemptFence("recorded-worker", 1), EffectAttemptStatus.STARTED)
+        event = replace(event_for(state, event_id="ceilings-recorded-start", ordinal=1,
+            kind=ActivityEventKind.STEP_STARTED), occurred_at=self.now())
+        record = EffectAttemptIntentRecord(self.identity, event, self.intent)
+        stores.execution.add_event(event)
+        _, preimage = effect_attempt_intent_store._require_record(record)
+        insert(stores.connection, "cpk_effect_attempt_intents", effect_attempt_intent_store._COLUMN_NAMES,
+            (self.identity.run_id.value, self.identity.activity_id, self.identity.attempt,
+             record.workspace_id, record.request_id, record.request_fingerprint,
+             event.event_id, event.run_id, event.ordinal, preimage))
+        insert(stores.connection, "cpk_effect_attempts", effect_attempt_store._COLUMN_NAMES,
+            effect_attempt_store._record_values(EffectAttemptRecord(state, event, event)))
+        return record

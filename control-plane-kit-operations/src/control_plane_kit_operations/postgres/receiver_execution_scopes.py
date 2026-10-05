@@ -187,13 +187,15 @@ class _ExecutionScopeStorage:
         from .activity_history import _plan_record
         from .graph_store import _graph_record, _realized_graph_projection_record
         from control_plane_kit_operations.records import RealizedGraphProjectionRecord
+        from .configuration_cleanup_read_ceilings import _cleanup_original_limits
 
         for value in (identity.request_id, identity.workspace_id, identity.session_id, identity.plan_id):
             _text(value)
         sessions = self.transport.read("cpk_operation_sessions", _columns(("workspace_id",)),
             "session_id=%s", (identity.session_id,), point=True, cache=True)
         _require(sessions == ((identity.workspace_id,),))
-        rows = self.transport.read("cpk_activity_plans", _columns(_PLAN, json_columns=("payload",)),
+        rows = self.transport.read("cpk_activity_plans", _columns(_PLAN, json_columns=("payload",),
+            ceilings=_cleanup_original_limits(self.connection, "plan", identity.plan_id)),
             "plan_id=%s", (identity.plan_id,), point=True, cache=True)
         _require(len(rows) == 1)
         plan = _plan_record(_decode(rows[0], _PLAN, json_columns=("payload",),
@@ -203,7 +205,8 @@ class _ExecutionScopeStorage:
             graph_id = getattr(plan, side + "_graph_id")
             _text(graph_id)
             authored = self.transport.read("cpk_graph_versions",
-                _columns(_GRAPH, json_columns=("graph_descriptor", "metadata")),
+                _columns(_GRAPH, json_columns=("graph_descriptor", "metadata"),
+                    ceilings=_cleanup_original_limits(self.connection, "graph", graph_id)),
                 "graph_id=%s AND workspace_id=%s", (graph_id, identity.workspace_id), point=True, cache=True)
             _require(len(authored) == 1)
             graph = _graph_record(_decode(authored[0], _GRAPH,
@@ -218,7 +221,8 @@ class _ExecutionScopeStorage:
                 expected = None
             _text(projection_id)
             rows = self.transport.read("cpk_realized_graph_projections",
-                _columns(_PROJECTION, json_columns=("graph_descriptor",)),
+                _columns(_PROJECTION, json_columns=("graph_descriptor",),
+                    ceilings=_cleanup_original_limits(self.connection, "projection", projection_id)),
                 "projection_id=%s AND workspace_id=%s AND source_authored_graph_id=%s",
                 (projection_id, identity.workspace_id, graph_id), point=True, cache=True)
             if not rows and expected is not None:
