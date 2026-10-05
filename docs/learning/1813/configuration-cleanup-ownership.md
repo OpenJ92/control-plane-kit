@@ -16,8 +16,10 @@ ordered planning topology [A #1944](https://github.com/OpenJ92/control-plane-kit
 → [B2 #1946](https://github.com/OpenJ92/control-plane-kit/issues/1946)
 → [C #1947](https://github.com/OpenJ92/control-plane-kit/issues/1947).
 All are children of D with native blockers in that order. Project 5: A is
-In Progress / Refining; later children are Todo / Hold. Exact interfaces still
-require review before targets/source; no production or provider work is released.
+In Progress / Ready after North and Kepler's exact planning PASS; later children
+are Todo / Hold. North released A's focused targets, with implementation following
+Kepler's causal-red confirmation within the frozen ceiling. Later exact interfaces
+and all provider work remain held.
 This supersedes the earlier D3/D4 recommendation. D2 does not release I177 or
 Servers225, which remains the governing delivery objective.
 
@@ -309,8 +311,9 @@ the corrected commit still requires full hosted acceptance before merge.
 
 Planning branch `codex/1921-e4-planning` starts at accepted D2 merge
 `a28e58675893a0aa842903e11d7dffb508750004`; the merged candidate is unchanged.
-The four child boundaries below are accepted for issue publication and exact
-interface planning, not targets/source. The trace reuses the earlier D2 handoff and [frozen E4/E5 contract](https://github.com/OpenJ92/control-plane-kit/issues/1919#issuecomment-5946799775),
+The four child boundaries below are accepted; A subsequently received exact
+interface acceptance and focused-target release as recorded above. The trace
+reuses the earlier D2 handoff and [frozen E4/E5 contract](https://github.com/OpenJ92/control-plane-kit/issues/1919#issuecomment-5946799775),
 as retained by the [operative D staging decision](https://github.com/OpenJ92/control-plane-kit/issues/1921#issuecomment-5976074207).
 Only affected tests and consumer/writer paths were revisited; no duplicate D2
 validation or provider work was run.
@@ -403,7 +406,7 @@ tree and owning suite's clean architecture-testing sibling
 ### Accepted ordered planning boundaries
 
 North accepted the following four children after Kepler's planning/docs review.
-Each depends natively on its predecessor; exact interfaces remain held/refining.
+Each depends natively on its predecessor; B1/B2/C exact interfaces remain held.
 
 1. **[A #1944 — versioned root/outstanding-use language](https://github.com/OpenJ92/control-plane-kit/issues/1944).** Operations values/codecs, exact
    domain-separated fingerprint and stored plan envelope with v1 compatibility.
@@ -495,7 +498,7 @@ interpreter/server code, packaging or provider harness is currently indicated.
   meaning. Version support must be closed and routed without fallback through
   original replay and current-schema validation as well as fresh execution.
 
-### Accepted complete-accounting principle; exact A interface still refining
+### Accepted complete-accounting principle and exact A interface
 
 North accepted this planning law after Kepler's two-allocation analysis. For every
 relevant original invocation u, its full original selection S(u) has disjoint
@@ -537,7 +540,10 @@ root-only and transferred-sibling locators, nonnegative canonical receipt revisi
 exact proposal-to-inspection projection, uncovered-outstanding counts, blocked
 inspection privacy and finite array ceilings. It requires explicit pre-B2 fresh
 approval/admission/start/dispatch denial, not incidental malformed-shape refusal.
-Kepler's PASS is planning-only; North still owns target/source release. Pure value tests prove syntax/commitments;
+Kepler's PASS is planning-only. North released focused targets; implementation
+follows causal-red review within the frozen ceiling, without another routine
+permission round. A real owner-guard/semantic mismatch must return for narrow
+disposition. Pure value tests prove syntax/commitments;
 B1/B2 prove actual database truth and C proves real transfer/no-stranding.
 
 Do not claim finite complete accounting always fits: 256 invocations times 32
