@@ -300,20 +300,37 @@ class _ReceiverStorage:
         _text(workspace)
         _text(receiver)
         from .configuration_evidence import _active_read
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        columns = _phase_columns(self.connection, "introduction", (workspace, receiver),
+            tuple((name, "text", 2048) for name in _INTRO_COLUMNS))
         read = _active_read(self.connection)
         if read is None:
             row = self.connection.execute(_select(_INTRO, _INTRO_COLUMNS) +
                 "WHERE workspace_id=%s AND receiver_id=%s", (workspace, receiver)).fetchone()
         else:
-            rows = read.bounded_rows(_INTRO, tuple((name, "text", 2048) for name in _INTRO_COLUMNS),
+            rows = read.bounded_rows(_INTRO, columns,
                 "workspace_id=%s AND receiver_id=%s", (workspace, receiver))
             row = (*rows[0], True) if rows else None
-        return None if row is None else _decode(row, ReceiverIntroduction)
+        result = None if row is None else _decode(row, ReceiverIntroduction)
+        if result is not None:
+            from .configuration_cleanup_phase_read_bounds import _phase_require
+            for role, child in (("origin-action", (result.introducing_action_id, result.introducing_session_id, workspace)),
+                    ("graph", (result.introducing_graph_id,)), ("projection", (result.introducing_realized_projection_id,)),
+                    ("raw-graph", (workspace, result.introducing_graph_id)),
+                    ("raw-projection", (workspace, result.introducing_realized_projection_id, result.introducing_graph_id)),
+                    ("bindings", (workspace, result.introducing_graph_id, result.introducing_realized_projection_id))):
+                _phase_require(self.connection, "introduction", (workspace, receiver), role, child)
+            if result.first_accepted_action_id is not None:
+                _phase_require(self.connection, "introduction", (workspace, receiver), "acceptance-action",
+                    (result.first_accepted_action_id, result.first_accepted_session_id))
+        return result
 
     def material(self, workspace, graph_id, projection_id, *, graph=None, projection=None):
         for value in (workspace, graph_id, projection_id):
             _text(value)
         from .configuration_evidence import _active_read
+        from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_columns
+        _phase_context(self.connection)
         read = _active_read(self.connection)
         if read is None:
             authored_row = self.connection.execute(_select("cpk_graph_versions", _GRAPH_COLUMNS) +
@@ -326,9 +343,11 @@ class _ReceiverStorage:
                 return tuple((name, "json" if name in _JSON else "int" if name == "version"
                     else "time" if name == "created_at" else "text", 1048576 if name in _JSON else 2048)
                     for name in names)
-            authored_rows = read.bounded_rows("cpk_graph_versions", columns(_GRAPH_COLUMNS),
+            authored_rows = read.bounded_rows("cpk_graph_versions",
+                _phase_columns(self.connection, "raw-graph", (workspace, graph_id), columns(_GRAPH_COLUMNS)),
                 "workspace_id=%s AND graph_id=%s", (workspace, graph_id))
-            projected_rows = read.bounded_rows("cpk_realized_graph_projections", columns(_PROJECTION_COLUMNS),
+            projected_rows = read.bounded_rows("cpk_realized_graph_projections",
+                _phase_columns(self.connection, "raw-projection", (workspace, projection_id, graph_id), columns(_PROJECTION_COLUMNS)),
                 "workspace_id=%s AND projection_id=%s AND source_authored_graph_id=%s", (workspace, projection_id, graph_id))
             authored_row = (*authored_rows[0], True) if authored_rows else None
             projected_row = (*projected_rows[0], True) if projected_rows else None
@@ -363,13 +382,21 @@ class _ReceiverStorage:
                 "ORDER BY node_id,provider_socket_name LIMIT %s",
                 (workspace, graph_id, projection_id, len(expected) + 1)).fetchall()
         else:
-            rows = tuple((*row, True) for row in read.bounded_rows(_BIND,
+            from .configuration_cleanup_phase_read_bounds import _phase_rows
+            bounded = _phase_rows(read, "bindings", (workspace, graph_id, projection_id), maximum=len(expected))
+            if bounded is None:
+                bounded = read.bounded_rows(_BIND,
                 tuple((name, "text", 2048) for name in _BIND_COLUMNS),
                 "workspace_id=%s AND graph_id=%s AND realized_projection_id=%s", (workspace, graph_id, projection_id),
-                maximum=len(expected), point=False, order="node_id,provider_socket_name"))
+                maximum=len(expected), point=False, order="node_id,provider_socket_name")
+            rows = tuple((*row, True) for row in bounded)
         actual = tuple(sorted((_decode(row, ReceiverBinding) for row in rows),
                               key=lambda item: (item.node_id, item.provider_socket_name)))
         _require(actual == expected)
+        from .configuration_cleanup_phase_read_bounds import _phase_require
+        for binding in actual:
+            _phase_require(self.connection, "bindings", (workspace, graph_id, projection_id),
+                "introduction", (workspace, binding.receiver_id))
         return actual
 
     def witness(self, workspace, action_id, session_id):

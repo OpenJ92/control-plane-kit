@@ -99,6 +99,8 @@ class PostgresActivityHistoryStore:
         )
 
     def get_session(self, session_id: str) -> OperationSessionRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
             return self._configuration_session(read, session_id)
@@ -120,6 +122,8 @@ class PostgresActivityHistoryStore:
             "closed_at", "metadata", "idempotency_key", "intent_fingerprint")
         columns = tuple((name, "json" if name == "metadata" else "time" if name in
             ("created_at", "closed_at") else "text", 65536 if name == "metadata" else 2048) for name in names)
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        columns = _phase_columns(self._connection, "session", (session_id,), columns)
         rows = read.bounded_rows("cpk_operation_sessions", columns, "session_id=%s", (session_id,))
         if not rows:
             raise KeyError("missing operation session")
@@ -562,6 +566,8 @@ class PostgresActivityHistoryStore:
         return self._get_plan(plan_id, for_share=True)
 
     def _get_plan(self, plan_id: str, *, for_share: bool) -> ActivityPlanRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
         from .configuration_evidence import _active_read
         from .configuration_cleanup_read_ceilings import _cleanup_original_limits
         ceilings = _cleanup_original_limits(self._connection, "plan", plan_id)
@@ -572,11 +578,18 @@ class PostgresActivityHistoryStore:
                     (plan_id,), records=1, octets=1, cells=1)
             rows = _Transport(self._connection, read).read("cpk_activity_plans",
                 _columns(_PLAN, json_columns=("payload",), ceilings=ceilings),
-                "plan_id=%s", (plan_id,), point=True)
+                "plan_id=%s", (plan_id,), point=True, phase=("plan", (plan_id,)))
             if not rows:
                 raise KeyError("missing activity plan")
-            return _plan_record(_decode(rows[0], _PLAN, json_columns=("payload",),
+            record = _plan_record(_decode(rows[0], _PLAN, json_columns=("payload",),
                 int_columns=("desired_graph_revision",), time_columns=("created_at",)))
+            from .configuration_cleanup_phase_read_bounds import _phase_require
+            for side in ("base", "desired"):
+                _phase_require(self._connection, "plan", (plan_id,), "graph", (getattr(record, side+"_graph_id"),))
+                projection_id = getattr(record, side+"_realized_projection_id")
+                if projection_id is not None:
+                    _phase_require(self._connection, "plan", (plan_id,), "projection", (projection_id,))
+            return record
         lock = "FOR SHARE" if for_share else ""
         row = self._connection.execute(
             f"""

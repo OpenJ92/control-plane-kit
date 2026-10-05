@@ -75,7 +75,7 @@ class PostgresExecutionStore:
             read.query("SELECT 1 FROM cpk_execution_requests WHERE request_id=%s FOR UPDATE",
                 (request_id,), records=1, octets=1, cells=1)
         rows = _Transport(self._connection, read).read("cpk_execution_requests", _columns(_REQUEST),
-            "request_id=%s", (request_id,), point=True)
+            "request_id=%s", (request_id,), point=True, phase=("request", (request_id,)))
         if not rows:
             raise KeyError("missing execution request")
         return _execution_request(_decode(rows[0], _REQUEST, int_columns=("claim_generation",),
@@ -89,7 +89,8 @@ class PostgresExecutionStore:
                 params, records=1, octets=1, cells=1)
         rows = _Transport(self._connection, read).read("cpk_activity_runs",
             _columns(_RUN, json_columns=("metadata",), ceilings={"metadata": 65536}),
-            where, params, order=order, point=True)
+            where, params, order=order, point=True,
+            phase=("run", params) if where == "run_id=%s" else None)
         if not rows:
             raise KeyError("missing activity run")
         return _activity_run(_decode(rows[0], _RUN, json_columns=("metadata",),
@@ -200,12 +201,18 @@ class PostgresExecutionStore:
                 if key not in receipts:
                     rows = reader.transport.read("cpk_operation_actions", _columns(_ACTION,
                         json_columns=("payload",), ceilings={"payload": 65536}),
-                        "action_id=%s AND session_id=%s", (key[2], key[1]), point=True, cache=True)
+                        "action_id=%s AND session_id=%s", (key[2], key[1]), point=True, cache=True,
+                        phase=("acceptance-action", (key[2], key[1])))
                     _require(len(rows) == 1)
                     action = _action_record(_decode(rows[0], _ACTION, json_columns=("payload",),
                         int_columns=("ordinal",), time_columns=("created_at",)))
                     payload = action.payload
                     request_id, run_id = payload["execution_request_id"], payload["run_id"]
+                    from .configuration_cleanup_phase_read_bounds import _phase_require
+                    for role, child in (("request", (request_id,)), ("run", (run_id,)),
+                            ("plan", (payload["plan_id"],)), ("runs", (request_id,)),
+                            ("events", (run_id,)), ("advancement-actions", (action.session_id, run_id))):
+                        _phase_require(self._connection, "acceptance-action", (key[2], key[1]), role, child)
                     for locator in (request_id, run_id, payload["plan_id"]):
                         _text(locator)
                     request_key = (origin.workspace_id, request_id)
@@ -247,7 +254,8 @@ class PostgresExecutionStore:
                     rows = reader.transport.read("cpk_graph_receiver_bindings", _columns(_BIND_COLUMNS),
                         "workspace_id=%s AND graph_id=%s AND realized_projection_id=%s",
                         (origin.workspace_id, desired.source_authored_graph_id, desired.projection_id),
-                        order="node_id,provider_socket_name", maximum=len(expected), cache=True)
+                        order="node_id,provider_socket_name", maximum=len(expected), cache=True,
+                        phase=("bindings", (origin.workspace_id, desired.source_authored_graph_id, desired.projection_id)))
                     actual = tuple(ReceiverBinding(*_decode(row, _BIND_COLUMNS)) for row in rows)
                     _require(actual == expected)
                     receipts[key] = (action, event, plan, run, desired, actual)
@@ -422,6 +430,8 @@ class PostgresExecutionStore:
         return None if row is None else _command_receipt(row)
 
     def get_request(self, request_id: str) -> ExecutionRequestRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
             return self._configuration_request(read, request_id)
@@ -764,6 +774,8 @@ class PostgresExecutionStore:
         return record
 
     def get_run(self, run_id: str) -> ActivityRunRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
         _require_run_id(run_id)
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:

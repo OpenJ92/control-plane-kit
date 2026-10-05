@@ -59,11 +59,16 @@ class ConfigurationCompletionStore:
         raise OperationsRecordError(_ERROR)
 
     def _get(self, identity, read):
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection, read=read)
         rows = read.bounded_rows(_TABLE, _COLUMNS, "run_id=%s AND activity_id=%s AND attempt=%s", _key(identity))
         if not rows:
             return None
         row = rows[0]
-        refs = read.query(_SELECT + " WHERE r.run_id=%s AND r.activity_id=%s AND r.attempt=%s"
+        from .configuration_cleanup_phase_read_bounds import _phase_rows
+        refs = _phase_rows(read, "invocation-refs", _key(identity))
+        if refs is None:
+            refs = read.query(_SELECT + " WHERE r.run_id=%s AND r.activity_id=%s AND r.attempt=%s"
             " ORDER BY r.artifact_id LIMIT 33", _key(identity),
             records=33, octets=33 * 32768, cells=19, identities=2)
         if not 1 <= len(refs) <= 32:
