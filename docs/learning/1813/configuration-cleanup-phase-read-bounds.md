@@ -326,3 +326,54 @@ application-stage values. The focused follow-up will report that stage directly.
 These are reader evidence only; no #1936 coordinator/tail fit or activation is
 inferred. Source acceptance remains pending the corrected focused gate and
 required integration evidence.
+
+## Focused correction green and measured handoff
+
+At `4b67c913ee853544d9cb217bae63b97914b8df80`, tree
+`c250256f1969ed967b22991941b9034f55d84c80`, the sole focused follow-up passed
+all three selected methods in 107.172 seconds. The owning Docker gate also
+completed normal compilation and clean import, exit 0. Log SHA-256:
+`4b56e24ee03e6cbc729b8a72246bffe3d42dea2716ab1b9e8c96972aa14288a0`.
+Exact container `cpk-1941-fixture-postgres` and network
+`cpk-1941-fixture-test` were checked absent afterward. Whitespace validation
+passed. The four captured-parent and three cache-fault branches now execute and
+pass, with no weakened constraint or semantic assertion.
+
+Production and all unaffected tests are byte-identical to `f8c7b93e`. Its
+130-test command remains failed historical evidence; acceptance combines its
+unaffected green target/regression results with this corrected three-method
+green run. This is not a green 130-test rerun or full package acceptance.
+Required hosted integration and independent review remain separate gates.
+
+Fresh per-stage evidence below uses the same cumulative caller ledger and the
+independent SQL observer. Peak includes the actual prefix plus the outstanding
+reservation at query execution. Timestamp/transaction-ID widths explain small
+value-octet differences from the earlier run.
+
+| Stage | Prefix `(r,b,c,s)` | End `(r,b,c,s)` | Charged delta bytes | Physical stage bytes | Peak bytes |
+| --- | --- | --- | ---: | ---: | ---: |
+| Fresh capture | `(489,424394,3725,371)` | `(1203,930706,9010,837)` | 801560 | 798104 | 3575266 |
+| Fresh application | `(1204,930709,9011,838)` | `(1749,1338312,12559,1263)` | 642931 | 640115 | 2154115 |
+
+Fresh capture delta is `(714,506312,5285,466)`; application delta is
+`(545,407603,3548,425)`. Final cumulative charged footprint is 2086456 bytes
+and 1749 records, below 16 MiB and 4096 records. Both repeated acceptance-event
+readers and all fourteen raw graph/projection pairs still execute. The separate
+binding guard explains the one-record/one-cell/one-statement step between capture
+end and application prefix; successful settlement uses actual transaction-ID
+width while its full 420-byte reservation remains observable.
+
+Retained stage deltas from the unchanged production run are baseline
+`(90,24635,698,69)` / 64987 charged bytes, capture `(107,32708,813,83)` /
+80660 bytes, and application `(123,29412,928,87)` / 82276 bytes. Their final
+cumulative footprint is 264504 bytes and 365 records. Earlier retained table
+values provide each independent physical-stage and maximum reservation result.
+
+The handoff is bounded reader enforcement and fixture-specific phase measurement.
+It does not discharge #1936's complete atomic-tail/coordinator forecast, result
+admission, folds, concurrency fences or public lifecycle tests. Both existing
+cleanup execution guards remain closed. There are no schema, provider, runtime,
+credential, network-exposure or durable writer changes; permissions and complete
+historical proofs retain their existing owners. Broader histories may still
+refuse capacity. Full package/backend integration must use reviewed source or a
+verified source-equivalent documentation descendant before merge disposition.
