@@ -190,13 +190,6 @@ class EffectAttemptStartService:
             if attempt is not None:
                 _require_replay(command, fence, request, run, attempt)
                 _require_intent_replay(stores, command, attempt)
-                if type(command.intent.operation) is CleanupConfigurationInstances:
-                    try:
-                        retained = stores.configuration_cleanup_ownership.get(attempt.state.identity)
-                        if retained is None:
-                            raise ValueError("cleanup original is unavailable")
-                    except (ValueError, TypeError, KeyError, AttributeError):
-                        raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
                 result = ExistingAttempt(attempt)
                 if is_signed_management_health_operation(command.intent.operation):
                     preparation = health_replay(stores, attempt, health)
@@ -304,7 +297,10 @@ class EffectAttemptStartService:
                 command.intent,
             )
             if cleanup_store is not None:
-                cleanup_store._bind_start(configuration_preparation, intent_record)
+                try:
+                    cleanup_store._bind_start(configuration_preparation, intent_record)
+                except OperationsRecordError:
+                    raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
             if stores.execution.add_event(event) != event:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             try:
@@ -561,7 +557,11 @@ def _require_intent_replay(
         observed = stores.effect_attempt_intents.get(attempt.state.identity)
         if (type(observed) is EffectAttemptIntentRecord
                 and observed.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
-            stores.configuration_preparation._require_original(observed)
+            if type(observed.intent.operation) is CleanupConfigurationInstances:
+                if stores.configuration_cleanup_ownership.get(observed.identity) is None:
+                    raise OperationsRecordError(_INVALID_TRUTH_ERROR)
+            else:
+                stores.configuration_preparation._require_original(observed)
     except (KeyError, OperationsRecordError):
         failed = True
     else:

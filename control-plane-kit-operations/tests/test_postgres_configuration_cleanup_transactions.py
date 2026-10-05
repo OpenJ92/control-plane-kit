@@ -384,3 +384,33 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
         before = self.ceiling_truth()
         self.assertEqual(service.inspect(self.cleanup_query, context=command_context()).state, "unavailable")
         self.assertEqual(self.ceiling_truth(), before)
+
+    def test_copied_preparation_cannot_bind_start_or_fold_owner_state(self):
+        from control_plane_kit_operations.postgres.configuration_cleanup_ownership_store import ConfigurationCleanupOwnershipStore
+        claimed = self.ready_cleanup()
+        command = self.native_start_command(claimed, "cleanup-execution")
+
+        def refuse_copy(name, invoke, conflict):
+            bind = getattr(ConfigurationCleanupOwnershipStore, name)
+            reached = []
+            before = self.ceiling_truth()
+
+            def copied(store, prepared, original):
+                reached.append(True)
+                try:
+                    return bind(store, replace(prepared), original)
+                finally:
+                    self.assertIsNone(prepared.owner.bound, "copy must not poison the original owner's binding")
+
+            with mock.patch.object(ConfigurationCleanupOwnershipStore, name, copied), self.assertRaises(conflict):
+                invoke()
+            self.assertEqual(reached, [True])
+            self.assertEqual(self.ceiling_truth(), before)
+
+        refuse_copy("_bind_start", lambda: EffectAttemptStartService(self.unit_of_work,
+            id_factory=Sequence("cleanup-original")).execute(command), EffectAttemptStartConflict)
+        started = EffectAttemptStartService(self.unit_of_work,
+            id_factory=Sequence("cleanup-original")).execute(command)
+        fold = self.removed_fold(command, started)
+        refuse_copy("_bind_fold", lambda: EffectAttemptFoldService(self.unit_of_work,
+            id_factory=Sequence("cleanup-terminal")).execute(fold), EffectAttemptFoldConflict)

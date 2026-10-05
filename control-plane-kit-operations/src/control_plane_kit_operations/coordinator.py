@@ -1756,6 +1756,14 @@ class ExecutionCoordinator:
         # unsupported material must be intercepted before calling it.
         if context.run.status is not ActivityRunStatus.RUNNING:
             return None
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        if (context.plan_record.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+                and context.plan_record.cleanup_proposal is not None
+                and len(context.plan.activities) == 1
+                and type(context.plan.activities[0].operation) is CleanupConfigurationInstances):
+            # Cleanup has its own approved topology and atomic ownership
+            # protocol. Management deployment shape is not its capability test.
+            return None
         has_health = any(
             type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth)
             for activity in context.plan.activities

@@ -108,8 +108,8 @@ def _q(rows, octets, cells, identities=1):
     return _Footprint(rows * identities, octets, rows * cells, 1)
 
 
-def _b(columns, octets):
-    return _sum(_q(1, 12 * columns, columns), _q(1, octets + 1, columns + 1))
+def _b(columns, octets, identities=1):
+    return _sum(_q(1, 12 * columns, columns, identities), _q(1, octets + 1, columns + 1, identities))
 
 
 def _v(columns, octets, count, identities=1):
@@ -157,11 +157,11 @@ class _CleanupTail:
         # widest column is selected independently, never max(total row size).
         maxima = tuple(max(row[i] for row in values) for i in range(len(columns))) if values else tuple(
             cap for _, _, cap in columns)
-        return _sum(_T, _b(len(columns), sum(maxima)))
+        return _sum(_T, _b(len(columns), sum(maxima), _shape(role)[6]))
 
     def all_points(self, role):
-        from control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds import _entries
-        return _sum(*(_sum(_T, _b(len(entry.widths), sum(entry.widths)))
+        from control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds import _entries, _shape
+        return _sum(*(_sum(_T, _b(len(entry.widths), sum(entry.widths), _shape(role)[6]))
             for entry in _entries(self.phase, role)))
 
     def collections(self, role):
@@ -227,7 +227,8 @@ class _CleanupTail:
             *(self.collections(role) for role in ("scopes", "runs", "events", "advancement-actions", "bindings")))
         return _sum(_times(material, 2), _times(binding, 2),
             _times(_sum(graph_pair, binding), 6 * receivers),
-            _times(_sum(self.points("introduction"), self.points("origin-action"), graph_pair, binding), 6 * receivers),
+            _times(_sum(self.points("introduction"), self.points("origin-action"), graph_pair, binding,
+                _ACK), 6 * receivers),  # Conservatively include optional draft-origin existence proof.
             _times(acceptance, 2), _REQUEST, _SESSION, _ACK, _WORKSPACE, _APPROVALS)
 
     def pending(self):
