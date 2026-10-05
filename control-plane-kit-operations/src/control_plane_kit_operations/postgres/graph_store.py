@@ -528,6 +528,10 @@ class PostgresGraphTopologyStore:
         return _ReceiverAuthoringSnapshot(self._connection)
 
     def _require_receiver_origin_action(self, origin):
+        from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_require
+        _phase_context(self._connection)
+        _phase_require(self._connection, "introduction", (origin.workspace_id, origin.receiver_id),
+            "origin-action", (origin.introducing_action_id, origin.introducing_session_id, origin.workspace_id))
         from control_plane_kit_operations.postgres.activity_history import _action_record
         from .configuration_evidence import _active_read
         read = _active_read(self._connection)

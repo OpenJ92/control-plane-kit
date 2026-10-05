@@ -311,7 +311,19 @@ class _ReceiverStorage:
             rows = read.bounded_rows(_INTRO, columns,
                 "workspace_id=%s AND receiver_id=%s", (workspace, receiver))
             row = (*rows[0], True) if rows else None
-        return None if row is None else _decode(row, ReceiverIntroduction)
+        result = None if row is None else _decode(row, ReceiverIntroduction)
+        if result is not None:
+            from .configuration_cleanup_phase_read_bounds import _phase_require
+            for role, child in (("origin-action", (result.introducing_action_id, result.introducing_session_id, workspace)),
+                    ("graph", (result.introducing_graph_id,)), ("projection", (result.introducing_realized_projection_id,)),
+                    ("raw-graph", (workspace, result.introducing_graph_id)),
+                    ("raw-projection", (workspace, result.introducing_realized_projection_id, result.introducing_graph_id)),
+                    ("bindings", (workspace, result.introducing_graph_id, result.introducing_realized_projection_id))):
+                _phase_require(self.connection, "introduction", (workspace, receiver), role, child)
+            if result.first_accepted_action_id is not None:
+                _phase_require(self.connection, "introduction", (workspace, receiver), "acceptance-action",
+                    (result.first_accepted_action_id, result.first_accepted_session_id))
+        return result
 
     def material(self, workspace, graph_id, projection_id, *, graph=None, projection=None):
         for value in (workspace, graph_id, projection_id):
@@ -381,6 +393,10 @@ class _ReceiverStorage:
         actual = tuple(sorted((_decode(row, ReceiverBinding) for row in rows),
                               key=lambda item: (item.node_id, item.provider_socket_name)))
         _require(actual == expected)
+        from .configuration_cleanup_phase_read_bounds import _phase_require
+        for binding in actual:
+            _phase_require(self.connection, "bindings", (workspace, graph_id, projection_id),
+                "introduction", (workspace, binding.receiver_id))
         return actual
 
     def witness(self, workspace, action_id, session_id):

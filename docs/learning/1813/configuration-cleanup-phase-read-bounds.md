@@ -202,6 +202,39 @@ Independent target-stage acceptance and coordinator production release are still
 required. Full18 targets and governing regressions remain the later source gate.
 # Initial production checkpoint (unvalidated)
 
+## Independent review correction checkpoint (unvalidated)
+
+The initial source review was HOLD. It found historical point entrances that
+could select a legacy path before checking the active phase context, a matching
+receipt-cache hit that skipped its transaction guard, and captured parents that
+could redirect to uncaptured children before later semantic rejection. The
+correction moves context checks ahead of branch selection, retains the charged
+header guard on cache hits, and checks fixed parent/child identity membership
+before child transport. Truly unrelated direct reads retain native defaults.
+The original #1939 plan/graph/projection/intent identity set is checked without
+copying its widths; exact UoW/stores identity and caller accounting are required.
+Allocation claim keys are checked before the guarded join can turn a changed
+claim into a generic NULL/ref-unavailable result. Both complete proofs remain.
+
+North separately froze a retained-history correction: the private
+`capture_retained(guard, prefix, approved_plan, *, original_identity)` loads the
+actual original and complete existing B STARTED proof, then captures only whole
+invocation refs. It does not repeat fresh-start receiver permission, current
+pointer equality, cleanup inspection, live registration eligibility, approval or
+lease renewal. Existing B proofs still own historical registration, approval,
+original/claim/completion correspondence. The small B owner amendment checks
+the captured reservation's original plan and admitted invocation identities
+before child fetches. #1936 retains all fold fencing/result/CAS/write ownership.
+
+New ownership-local negatives cover public historical-point portability, warm
+receipt cache context/transaction reuse, existing foreign children (including a
+#1939 original parent), same connection with a second UoW, original identity
+scope mismatch, and retained B/D1 capture/application. The retained fixture
+uses existing recorded STARTED history and real ordinary D1 completions; it
+does not earn cleanup execution or provider evidence. Baseline/capture/apply
+wire and reservation measurements are required before acceptance. All original
+18 target methods remain. This correction is not yet executed or accepted.
+
 The fixed phase value and issuer now connect the reviewed historical points,
 raw lifecycle material, acceptance collections, complete allocation refs and
 claims, and whole invocation refs. The issuer runs cold receiver, cleanup and

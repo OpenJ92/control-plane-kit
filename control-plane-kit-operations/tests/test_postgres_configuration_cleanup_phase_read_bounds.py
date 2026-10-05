@@ -518,13 +518,228 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
             self.read_chain(uow, guard, prefix, read, observed)
         self.assertEqual(self.ceiling_truth(), before)
 
+    def test_historical_point_entrances_refuse_foreign_context_before_legacy_sql(self):
+        self.prepare_ceiling_premise()
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from concurrent.futures import ThreadPoolExecutor
+        import asyncio
+        with self.prepared_phase() as (uow, guard, prefix, read, observed, owner, issued):
+            a, stores = self.companion_acceptance, uow.stores
+            consumers = (
+                lambda: stores.activity_history.get_session(a.action.session_id),
+                lambda: stores.activity_history.get_plan(a.plan_id),
+                lambda: stores.execution.get_request(a.action.payload["execution_request_id"]),
+                lambda: stores.execution.get_run(a.run_id),
+                lambda: stores.graphs._require_receiver_origin_action(self.companion_origin),
+            )
+            def refuse_all():
+                offset = len(observed["queries"])
+                for consume in consumers:
+                    with self.assertRaises(_Unavailable):
+                        consume()
+                self.assertEqual(len(observed["queries"]), offset,
+                    "foreign context reached SQL before confinement refusal")
+            with owner.bind(issued):
+                offset = len(observed["queries"])
+                with self.assertRaises(_Unavailable):
+                    _ExecutionScopeStorage(stores.connection).request("workspace-a", a.action.payload["execution_request_id"])
+                with _configuration_accounting("foreign-read-object"):
+                    foreign_read = type(read)(stores.connection)
+                with self.assertRaises(_Unavailable):
+                    _ExecutionScopeStorage(stores.connection, foreign_read).request(
+                        "workspace-a", a.action.payload["execution_request_id"])
+                self.assertEqual(len(observed["queries"]), offset)
+                for active in (False, True):
+                    with _configuration_accounting("foreign-point-context", active=active):
+                        refuse_all()
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    executor.submit(copy_context().run, refuse_all).result()
+                async def other_task():
+                    refuse_all()
+                asyncio.run(other_task())
+
+    def test_matching_warm_receipt_cache_retains_its_charged_context_guard(self):
+        self.prepare_ceiling_premise()
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        for fault in ("accounting", "inactive", "transaction"):
+            with self.subTest(fault=fault), self.prepared_phase() as (uow, guard, prefix, read, observed, owner, issued):
+                fresh = type(read)(uow.stores.connection)
+                revision = self.companion_acceptance.desired_graph_revision
+                with owner.bind(issued):
+                    receipt = uow.stores.configuration_acceptance._receipt_context("workspace-a", revision, fresh)
+                    before, offset = read.used.accounted_bytes, len(observed["queries"])
+                    self.assertEqual(uow.stores.configuration_acceptance._receipt_context("workspace-a", revision, fresh), receipt)
+                    self.assertEqual([q["sql"] for q in observed["queries"][offset:]], ["SELECT txid_current()"])
+                    self.assertEqual(read.used.accounted_bytes - before, 420)
+                    offset = len(observed["queries"])
+                    if fault == "transaction":
+                        uow.stores.connection.commit()
+                        with self.assertRaises(_Unavailable):
+                            uow.stores.configuration_acceptance._receipt_context("workspace-a", revision, fresh)
+                        self.assertEqual([q["sql"] for q in observed["queries"][offset:]], ["SELECT txid_current()"])
+                    else:
+                        with _configuration_accounting("foreign-cache-context", active=fault != "inactive"):
+                            with self.assertRaises(_Unavailable):
+                                uow.stores.configuration_acceptance._receipt_context("workspace-a", revision, fresh)
+                        self.assertEqual(len(observed["queries"]), offset)
+
+    def test_captured_parent_refuses_existing_uncaptured_child_before_payload_transport(self):
+        self.prepare_ceiling_premise()
+        before = self.ceiling_truth()
+        for parent in ("receipt", "origin", "historical-plan", "original-plan"):
+            with self.subTest(parent=parent), self.prepared_phase() as (uow, guard, prefix, read, observed, owner, issued):
+                a, stores = self.companion_acceptance, uow.stores
+                if parent in ("receipt", "origin"):
+                    old = a.action.action_id if parent == "receipt" else self.companion_origin.introducing_action_id
+                    foreign = ("z" if old[0] != "z" else "y") + old[1:]
+                    self.mutate(read, "INSERT INTO cpk_operation_actions "
+                        "(action_id,session_id,ordinal,action_type,actor_id,payload,created_at,idempotency_key,"
+                        "intent_fingerprint,advancement_workspace_id,advancement_request_id,advancement_plan_id,"
+                        "advancement_run_id,advancement_revision) SELECT %s,session_id,ordinal+100000,action_type,actor_id,"
+                        "jsonb_set(payload,'{phase_foreign}'::text[],to_jsonb(repeat('x',32768))),created_at,NULL,"
+                        "intent_fingerprint,advancement_workspace_id,advancement_request_id,advancement_plan_id,"
+                        "advancement_run_id,advancement_revision FROM cpk_operation_actions WHERE action_id=%s", (foreign, old))
+                    if parent == "receipt":
+                        self.mutate(read, "UPDATE cpk_configuration_acceptances SET action_id=%s "
+                            "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (foreign, a.desired_graph_revision))
+                        consume = lambda: stores.configuration_acceptance._receipt_context(
+                            "workspace-a", a.desired_graph_revision, type(read)(stores.connection))
+                    else:
+                        self.mutate(read, "UPDATE cpk_graph_receiver_introductions SET introducing_action_id=%s "
+                            "WHERE workspace_id='workspace-a' AND receiver_id=%s", (foreign, self.companion_origin.receiver_id))
+                        consume = lambda: stores.graphs.receiver_introduction("workspace-a", self.companion_origin.receiver_id)
+                    forbidden_table = "cpk_operation_actions"
+                else:
+                    old = a.from_authored_graph_id if parent == "historical-plan" else self.plan.base_graph_id
+                    foreign = ("z" if old[0] != "z" else "y") + old[1:]
+                    self.mutate(read, "INSERT INTO cpk_graph_versions "
+                        "(graph_id,workspace_id,version,graph_descriptor,created_by,created_at,metadata) "
+                        "SELECT %s,workspace_id,version+100000,graph_descriptor,created_by,created_at,"
+                        "jsonb_set(metadata,'{phase_foreign}'::text[],to_jsonb(repeat('x',65536))) "
+                        "FROM cpk_graph_versions WHERE graph_id=%s", (foreign, old))
+                    plan_id = a.plan_id if parent == "historical-plan" else self.plan.plan_id
+                    request_id = a.action.payload["execution_request_id"] if parent == "historical-plan" else prefix.request.identity.request_id
+                    request = stores.execution.get_request(request_id)
+                    if parent == "original-plan":
+                        from control_plane_kit_operations.configuration_cleanup import ConfigurationCleanupProposalCodec
+                        from control_plane_kit_operations.plan_derivation import encode_stored_activity_plan
+                        document = self.plan.cleanup_proposal.descriptor()
+                        document["context"]["base_graph_id"] = foreign
+                        document["context"]["current_occurrence"]["graph_id"] = foreign
+                        proposal = ConfigurationCleanupProposalCodec().decode(document)
+                        payload = encode_stored_activity_plan(self.plan.plan, profile=self.plan.derivation_profile,
+                            cleanup_proposal=proposal)
+                        self.mutate(read, "UPDATE cpk_activity_plans SET base_graph_id=%s,payload=%s::jsonb WHERE plan_id=%s",
+                            (foreign, json.dumps(payload), plan_id))
+                    else:
+                        self.mutate(read, "UPDATE cpk_activity_plans SET base_graph_id=%s WHERE plan_id=%s", (foreign, plan_id))
+                    # It is a readable retained plan pointing at a real row,
+                    # not an import/decoder/FK failure before the child entrance.
+                    self.assertEqual(stores.activity_history.get_plan(plan_id).base_graph_id, foreign)
+                    consume = lambda: _ExecutionScopeStorage(stores.connection, type(read)(stores.connection)).verify(request.identity)
+                    forbidden_table = "cpk_graph_versions"
+                offset = len(observed["queries"])
+                with owner.bind(issued), self.assertRaises(ValueError):
+                    consume()
+                segment = observed["queries"][offset:]
+                self.assertFalse(any(" FROM " + forbidden_table in q["sql"] for q in segment),
+                    "captured parent reached an uncaptured child query")
+        self.assertEqual(self.ceiling_truth(), before)
+
+    def test_capture_refuses_a_second_uow_sharing_the_original_connection(self):
+        self.prepare_ceiling_premise()
+        from control_plane_kit_operations.postgres import PostgresUnitOfWork
+        with self.phase_premise() as (uow, guard, prefix, read, observed):
+            # Deliberately give a second owner the same physical connection.
+            # The outer UoW remains its sole rollback/close owner in this test.
+            other = PostgresUnitOfWork(lambda: uow.stores.connection).__enter__()
+            owner = self.phase_owner(other)
+            offset = len(observed["queries"])
+            with self.assertRaises(_Unavailable):
+                self.capture_phase(owner, guard, prefix)
+            self.assertEqual(len(observed["queries"]), offset)
+
+    def test_capture_refuses_constructor_context_change_before_sql(self):
+        self.prepare_ceiling_premise()
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with self.phase_premise() as (uow, guard, prefix, read, observed):
+            owner = self.phase_owner(uow)
+            offset = len(observed["queries"])
+            with _configuration_accounting("foreign-capture"):
+                with self.assertRaises(_Unavailable):
+                    self.capture_phase(owner, guard, prefix)
+            self.assertEqual(len(observed["queries"]), offset)
+
+    def test_capture_cannot_borrow_original_scope_for_another_valid_plan_or_attempt(self):
+        self.prepare_ceiling_premise()
+        from datetime import datetime, timedelta, timezone
+        from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
+        from control_plane_kit_core.operations import RunId
+        from control_plane_kit_operations.configuration_cleanup import configuration_cleanup_proposal_fingerprint
+        from control_plane_kit_operations.records import AdmittedRun
+        from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        foreign_plan = replace(self.plan, plan_id="foreign-phase-plan")
+        foreign_identity = replace(self.identity, run_id=RunId("foreign-phase-run"))
+        foreign_intent = replace(self.intent, source=replace(self.intent.source,
+            request_id="foreign-phase-request", run_id=foreign_identity.run_id, plan_id=foreign_plan.plan_id))
+        with self.unit_of_work() as setup:
+            stores = setup.stores
+            stores.activity_history.add_plan(foreign_plan)
+            approval = replace(self.approval, request_id="foreign-phase-approval",
+                subject=ActivityPlanApprovalSubject(foreign_plan.plan_id,
+                    proposal_fingerprint=configuration_cleanup_proposal_fingerprint(foreign_plan.cleanup_proposal)),
+                idempotency_key=None, intent_fingerprint=None)
+            decision = replace(self.decision, decision_id="foreign-phase-decision", request_id=approval.request_id,
+                idempotency_key=None, intent_fingerprint=None)
+            stores.activity_history.add_approval_request(approval)
+            stores.activity_history.add_approval_decision(decision)
+            now = self.now()
+            insert_recorded_request(stores.connection, request_id=foreign_intent.source.request_id,
+                workspace_id="workspace-a", session_id=foreign_plan.session_id, plan_id=foreign_plan.plan_id,
+                approval_request_id=approval.request_id, approval_decision_id=decision.decision_id,
+                idempotency_key="foreign-phase-recorded", intent_fingerprint="recorded-history-only",
+                requested_at=now, status="claimed", claim_worker_id="recorded-worker", claim_generation=1,
+                claimed_at=now, lease_expires_at=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat())
+            run = stores.execution.get_run(self.identity.run_id.value)
+            stores.execution._add_run(replace(run, run_id=foreign_identity.run_id.value,
+                plan_id=foreign_plan.plan_id, admission=AdmittedRun(foreign_intent.source.request_id)))
+            setup.commit()
+        for fault in ("plan-and-intent", "attempt"):
+            with self.subTest(fault=fault), self.phase_premise() as (uow, guard, prefix, read, observed):
+                plan, identity, intent = self.plan, replace(self.identity, attempt=2), self.intent
+                if fault == "plan-and-intent":
+                    request = uow.stores.execution.get_request_for_update(foreign_intent.source.request_id)
+                    prefix = _lock_effect_run_prefix(uow, request, foreign_identity.run_id.value, latest_required=True)
+                    plan, identity, intent = foreign_plan, foreign_identity, foreign_intent
+                owner = self.phase_owner(uow)
+                offset = len(observed["queries"])
+                with self.assertRaises(_Unavailable):
+                    owner.capture(guard, prefix, plan, intent_identity=identity, prospective_intent=intent)
+                self.assertFalse(any(" FROM cpk_activity_plans " in q["sql"]
+                    or " FROM cpk_effect_attempt_intents " in q["sql"] for q in observed["queries"][offset:]),
+                    "mismatched original scope fetched uncaptured plan or intent")
+                with self.assertRaises(_Unavailable):
+                    with owner.bind(None):
+                        self.fail("failed original correspondence issued a token")
+
     def test_phase_binding_reaches_independent_cold_proof_readers(self):
         self.prepare_ceiling_premise()
         before = self.ceiling_truth()
         with self.phase_premise() as (uow, guard, prefix, read, observed):
             self.read_chain(uow, guard, prefix, read, observed)
             owner = self.phase_owner(uow)
+            capture_prefix, offset = read.used, len(observed["queries"])
             issued = self.capture_phase(owner, guard, prefix)
+            segment = observed["queries"][offset:]
+            physical = sum(256 + sum(128 + 16*len(row) + sum(row) for row in q["widths"]) for q in segment)
+            self.assertGreaterEqual(read.used.accounted_bytes - capture_prefix.accounted_bytes, physical)
+            self.assertEqual(read.used.statements - capture_prefix.statements, len(segment))
+            peaks = [b+128*r+16*c+256*s for r,b,c,s in (q["peak"] for q in segment)]
+            self.assertLessEqual(max(peaks), 16*1024*1024)
+            from tests.configuration_cleanup_phase_read_bounds_fixture import _components
+            print("#1941 start capture", dict(prefix=_components(capture_prefix), used=_components(read.used),
+                physical_weighted_bytes=physical, maximum_reservation_bytes=max(peaks)))
             self.assertNotIn(self.plan.plan_id, repr(issued))
             with owner.bind(issued):
                 self.read_chain(uow, guard, prefix, read, observed)

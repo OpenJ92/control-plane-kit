@@ -11,22 +11,15 @@
         "values"
       ],
       "movement": "remain",
-      "migration_prerequisites": [
-
-      ],
-      "canonical_public_exports": [
-
-      ],
-      "internal_dependencies": [
-
-      ],
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [],
       "known_package_consumers": [
         "control_plane_kit_operations"
       ],
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_retained_phase_bounds.py",
         "tests/test_postgres_configuration_cleanup_phase_read_bounds.py"
       ],
       "motivation": "Private fixed-role point widths and complete collection keysets; no persisted material or permission."
@@ -42,12 +35,8 @@
         "transformations"
       ],
       "movement": "remain",
-      "migration_prerequisites": [
-
-      ],
-      "canonical_public_exports": [
-
-      ],
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
       "internal_dependencies": [
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.operations",
@@ -72,10 +61,9 @@
       "known_package_consumers": [
         "control_plane_kit_operations"
       ],
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_retained_phase_bounds.py",
         "tests/test_postgres_configuration_cleanup_phase_read_bounds.py"
       ],
       "motivation": "Single-use fixed cleanup proof bounds with cold capture, indexed capped counts, exact membership, and transaction/context confinement."
@@ -115,6 +103,7 @@
       ],
       "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_postgres_configuration_cleanup_read_ceilings.py"
       ],
       "motivation": "Existing plan/history store; exact cleanup plan reads accept privately issued ceilings without changing ordinary reads."
@@ -233,6 +222,7 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.operations",
@@ -258,6 +248,7 @@
       ],
       "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_retained_phase_bounds.py",
         "tests/test_postgres_configuration_cleanup_ownership.py",
         "tests/test_postgres_configuration_retained_growth.py"
       ],
@@ -329,12 +320,8 @@
         "transformations"
       ],
       "movement": "remain",
-      "migration_prerequisites": [
-
-      ],
-      "canonical_public_exports": [
-
-      ],
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
       "internal_dependencies": [
         "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.configuration_instances",
@@ -358,10 +345,10 @@
       "known_package_consumers": [
         "control_plane_kit_operations"
       ],
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_retained_phase_bounds.py",
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_postgres_configuration_completion.py"
       ],
       "motivation": "Admit and verify exact completion inside the original fold with guarded immutable linkage."
@@ -487,6 +474,7 @@
       ],
       "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_postgres_configuration_acceptance.py",
         "tests/test_current_schema_installation.py",
         "tests/test_postgres_configuration_acceptance_membership.py",
@@ -696,6 +684,7 @@
       ],
       "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_postgres_configuration_preparation.py",
         "tests/test_postgres_configuration_evidence.py",
         "tests/test_postgres_configuration_material_boundary.py",
@@ -10821,15 +10810,11 @@
         "control_plane_kit_operations",
         "control_plane_kit_operations.coordinator"
       ],
-      "migration_prerequisites": [
-
-      ],
+      "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "motivation": "Owns the provider-free atomic durable interpreter for one effect-attempt fold, including signed-health authority revalidation in the fold transaction and native classification at database acceptance after current authority, pinned fresh plan, and approval binding validation, with immutable replay.",
       "movement": "remain",
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
         "tests/test_atomic_effect_attempt_fold_contract.py",
@@ -11321,9 +11306,7 @@
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.workflows"
       ],
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "semantic_roles": [
         "durable-control-plane-operation"
       ],
@@ -11345,9 +11328,7 @@
       "known_package_consumers": [
         "control_plane_kit_operations.cpk_server"
       ],
-      "migration_prerequisites": [
-
-      ],
+      "migration_prerequisites": [],
       "movement": "remain",
       "protecting_tests": [
         "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
@@ -11371,9 +11352,7 @@
         "control_plane_kit_operations.postgres.schema",
         "control_plane_kit_operations.postgres.temporal"
       ],
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "semantic_roles": [
         "durable-store"
       ],
@@ -11383,9 +11362,7 @@
       "known_package_consumers": [
         "control_plane_kit_operations.cpk_server"
       ],
-      "migration_prerequisites": [
-
-      ],
+      "migration_prerequisites": [],
       "movement": "remain",
       "protecting_tests": [
         "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
@@ -11440,21 +11417,15 @@
         "control_plane_kit_operations.read_services.models",
         "control_plane_kit_operations.read_services.workspace_graph"
       ],
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "semantic_roles": [
         "read-projection"
       ],
-      "canonical_public_exports": [
-
-      ],
+      "canonical_public_exports": [],
       "known_package_consumers": [
         "control_plane_kit_operations.cpk_server"
       ],
-      "migration_prerequisites": [
-
-      ],
+      "migration_prerequisites": [],
       "movement": "remain",
       "protecting_tests": [
         "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
@@ -11479,9 +11450,7 @@
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.workflows"
       ],
-      "optional_external_dependencies": [
-
-      ],
+      "optional_external_dependencies": [],
       "semantic_roles": [
         "durable-control-plane-operation"
       ],
@@ -11497,9 +11466,7 @@
         "control_plane_kit_operations.postgres.saved_preparation_source_store",
         "control_plane_kit_operations.read_services.operator_overview"
       ],
-      "migration_prerequisites": [
-
-      ],
+      "migration_prerequisites": [],
       "movement": "remain",
       "protecting_tests": [
         "control-plane-kit-operations/tests/test_saved_preparation.py",
@@ -12394,6 +12361,7 @@
       "canonical_public_exports": [],
       "destination": "control_plane_kit_operations.postgres.receiver_lifecycle_store",
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.operations.commands",
         "control_plane_kit_core.topology",
         "control_plane_kit_operations.receiver_lifecycle",
@@ -12414,6 +12382,7 @@
       ],
       "owner": "operation",
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_receiver_authoring_context.py",
         "tests/test_receiver_authoring_context_snapshot.py",
         "tests/test_receiver_authoring_context_bounds.py",
@@ -12470,6 +12439,7 @@
       "destination": "control_plane_kit_operations.postgres.receiver_execution_scopes",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/receiver_execution_scopes.py",
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning",
         "control_plane_kit_operations._execution_lease_recovery_support",
@@ -12505,6 +12475,7 @@
       ],
       "motivation": "Existing execution-store composition for bounded original-source reads, scope persistence in admission transactions, complete history retrieval and exact current-row verification. Reuses effect-owner decoders and historical receipt/success laws; adds no store bundle service or effect authority.",
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_postgres_receiver_execution_scopes.py",
         "tests/test_postgres_receiver_execution_scope_schema.py",
         "tests/test_receiver_execution_scope_classification.py",
@@ -12552,6 +12523,7 @@
       ],
       "motivation": "Existing workspace/graph/projection persistence; C2 public single-record writes refuse receiver-affecting changes while private primitives support complete semantic transactions and original introducing-action checks. Does not import execution history or grant receiver acceptance.",
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_postgres_workspace_initialization.py",
         "tests/test_workspace_graph_stores.py",
         "tests/test_realized_graph_projection_store.py",
@@ -12591,6 +12563,7 @@
       "optional_external_dependencies": [],
       "motivation": "Existing execution store. C2's private _receiver_acceptance_evidence reuses one bounded C1 reader per origin set and original receipt/journal validators; no new locks, execution writes or public store service. Current graph membership remains graph-owned.",
       "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_receiver_accepted_continuation.py",
         "tests/test_receiver_reference_admission.py",
         "tests/test_receiver_admission_execution_evidence.py"

@@ -111,7 +111,8 @@ class ConfigurationAcceptanceStore:
         return bound
 
     def _originals(self, read, action_id, event_id):
-        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        from .configuration_cleanup_phase_read_bounds import _phase_columns, _phase_context
+        _phase_context(self._connection, accounting=read.accounting)
         action_names = _ACTION + _LOCATOR + ("advancement_run_id",)
         event_names = _EVENT + _LOCATOR
         actions = read.bounded_rows("cpk_operation_actions",
@@ -241,15 +242,22 @@ class ConfigurationAcceptanceStore:
     def _receipt_context(self, workspace_id, revision, read):
         """Original pair/header/execution point proof, without prior manifests."""
         key = ("configuration-receipt-context", workspace_id, revision)
+        from .configuration_cleanup_phase_read_bounds import _phase_columns, _phase_context
+        _phase_context(self._connection, accounting=read.accounting)
+        columns = _phase_columns(self._connection, "header", (workspace_id, revision), _columns(_HEADER))
         if key in read.sources:
             return read.sources[key]
-        from .configuration_cleanup_phase_read_bounds import _phase_columns
-        rows = read.bounded_rows("cpk_configuration_acceptances",
-            _phase_columns(self._connection, "header", (workspace_id, revision), _columns(_HEADER)),
+        rows = read.bounded_rows("cpk_configuration_acceptances", columns,
             "workspace_id=%s AND pinned_revision=%s", (workspace_id, revision))
         if len(rows) != 1:
             raise _Unavailable
         header = dict(zip(_HEADER, rows[0]))
+        from .configuration_cleanup_phase_read_bounds import _phase_require
+        parent = (workspace_id, revision)
+        for role, child in (("receipt-action", (header["action_id"],)), ("receipt-event", (header["event_id"],)),
+                ("request", (header["request_id"],)), ("run", (header["run_id"],)), ("plan", (header["plan_id"],)),
+                ("graph", (header["graph_id"],)), ("projection", (header["projection_id"],))):
+            _phase_require(self._connection, "header", parent, role, child)
         if not 0 <= header["slot_count"] <= 256:
             raise _Unavailable
         action, event, action_locator, event_locator = self._originals(read, header["action_id"], header["event_id"])
@@ -260,6 +268,7 @@ class ConfigurationAcceptanceStore:
         run = execution.get_run(header["run_id"])
         request = execution.get_request(header["request_id"])
         plan = history.get_plan(header["plan_id"])
+        _phase_require(self._connection, "header", parent, "session", (plan.session_id,))
         session = history.get_session(plan.session_id)
         if (run.admission.request_id != request.identity.request_id or run.plan_id != plan.plan_id
                 or request.identity.workspace_id != workspace_id or request.identity.plan_id != plan.plan_id

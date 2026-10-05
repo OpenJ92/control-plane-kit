@@ -44,12 +44,13 @@ def _entries(value, role):
     raise _Unavailable
 
 
-def _phase_context(connection):
+def _phase_context(connection, *, accounting=None):
     issued = _BOUND_CLEANUP_PHASE.get()
     if issued is not None:
         _require(type(issued) is _CleanupPhaseReadBounds
             and type(issued.owner) is _CleanupPhaseReadBoundsOwner)
         issued.owner._require(issued, connection)
+        _require(accounting is None or accounting is issued.owner._accounting)
     return issued
 
 
@@ -65,6 +66,32 @@ def _bound(connection, role, identity):
     return matched
 
 
+def _contains(issued, role, identity):
+    if role == "retained":
+        return issued.retained_identity == identity
+    # Independently derived original IDs, never copied #1939 widths. The
+    # original reader still applies its own sole SQL guard and cap contract.
+    if role == "plan" and identity == (issued.original_plan,):
+        return True
+    if role == "graph" and identity in tuple((key,) for key in issued.original_graphs):
+        return True
+    if role == "projection" and identity in tuple((key,) for key in issued.original_projections):
+        return True
+    return any(entry.identity == identity for entry in _entries(issued, role))
+
+
+def _phase_require(connection, parent_role, parent_identity, child_role, child_identity):
+    """A captured traversal cannot redirect into an uncaptured native read.
+
+    Direct unrelated lookups retain ordinary defaults. This is an identity
+    check, not a query or semantic permission; the child still runs its guard
+    and cold owner proof.
+    """
+    issued = _phase_context(connection)
+    if issued is not None and _contains(issued, parent_role, parent_identity):
+        _require(_contains(issued, child_role, child_identity))
+
+
 def _phase_columns(connection, role, identity, columns):
     bound = _bound(connection, role, identity)
     if bound is None:
@@ -75,6 +102,7 @@ def _phase_columns(connection, role, identity, columns):
 
 
 def _phase_rows(read, role, identity, *, maximum=None, text=False):
+    _phase_context(read.connection, accounting=read.accounting)
     bound = _bound(read.connection, role, identity)
     if bound is None:
         return None
@@ -212,19 +240,37 @@ class _CleanupPhaseReadBoundsOwner:
         self._spent = False
         self._original = _BOUND_CLEANUP_ORIGINALS.get()
 
-    def _require(self, issued, connection):
+    def _require_context(self, connection):
         try:
             stores = self._uow.stores
         except RuntimeError:
             raise _Unavailable from None
-        _require(type(issued) is _CleanupPhaseReadBounds and issued is self._issued
-            and issued.owner is self and not self._spent and stores is self._stores
+        _require(not self._spent and stores is self._stores
             and not self._uow._commit_requested and connection is self._connection
             and stores.connection is connection and _ACCOUNTING.get() is self._accounting
             and self._accounting is not None and self._accounting.active
             and self._context == _execution_context() == self._accounting.execution_context
             and self._original is not None and _BOUND_CLEANUP_ORIGINALS.get() is self._original)
         self._original.owner._require(self._original, connection)
+        _require(self._original.owner._uow is self._uow
+            and self._original.owner._stores is self._stores)
+
+    def _require(self, issued, connection):
+        _require(type(issued) is _CleanupPhaseReadBounds and issued is self._issued and issued.owner is self)
+        self._require_context(connection)
+
+    def _require_original_identities(self, plan, identity):
+        # Check correspondence to the already-issued original scope. Do not
+        # copy its widths into C or admit another original identity.
+        for role, key in (("plan", plan.plan_id), ("graph", plan.base_graph_id),
+                ("graph", plan.desired_graph_id), ("projection", plan.base_realized_projection_id),
+                ("projection", plan.desired_realized_projection_id),
+                ("intent", (identity.run_id.value, identity.activity_id, identity.attempt))):
+            self._require_original_identity(role, key)
+
+    def _require_original_identity(self, role, key):
+        _require(any(kind == role and original_key == key
+            for kind, original_key, _ in self._original.originals))
 
     @contextmanager
     def bind(self, issued):
@@ -255,7 +301,7 @@ class _CleanupPhaseReadBoundsOwner:
 
         _require(self._issued is None and not self._spent and _BOUND_CLEANUP_PHASE.get() is None
             and self._original is not None and _BOUND_CLEANUP_ORIGINALS.get() is self._original)
-        self._original.owner._require(self._original, self._connection)
+        self._require_context(self._connection)
         _require(type(guard) is WorkspaceLifecycleGuard and guard._owner is self._stores.graphs)
         read = _active_read(self._connection)
         transaction = _transaction(read)
@@ -266,8 +312,11 @@ class _CleanupPhaseReadBoundsOwner:
             and intent_identity.activity_id == prospective_intent.activity_id.value
             and prospective_intent.source.request_id == request.identity.request_id
             and prospective_intent.source.run_id == intent_identity.run_id)
+        self._require_original_identity("plan", request.identity.plan_id)
+        self._require_original_identity("intent", (intent_identity.run_id.value, intent_identity.activity_id, intent_identity.attempt))
         prefix.require(self._uow, request, intent_identity.run_id.value, latest_required=True)
         plan = stores.activity_history.get_plan(request.identity.plan_id)
+        self._require_original_identities(plan, intent_identity)
         _require(plan == approved_plan and plan.cleanup_proposal is not None
             and type(prospective_intent.operation) is CleanupConfigurationInstances
             and plan.plan.activity(prospective_intent.activity_id).operation == prospective_intent.operation)
@@ -363,7 +412,9 @@ class _CleanupPhaseReadBoundsOwner:
         if current_receipt["kind"] == "configuration-acceptance":
             receipt = stores.configuration_acceptance._receipt_manifest(workspace, current_receipt["pinned_revision"], fresh)
             slots[(workspace, current_receipt["pinned_revision"])] = tuple(tuple(str(v) for v in row[:3]) for row in receipt[3])
-        issued = _CleanupPhaseReadBounds(self, transaction,
+        issued = _CleanupPhaseReadBounds(self, transaction, plan.plan_id,
+            tuple(sorted({plan.base_graph_id, plan.desired_graph_id})),
+            tuple(sorted({plan.base_realized_projection_id, plan.desired_realized_projection_id})), None,
             points("plan", ((key,) for key in history_plans if key != plan.plan_id)),
             points("graph", ((key,) for key in old_graphs - {plan.base_graph_id, plan.desired_graph_id})),
             points("projection", ((key,) for key in old_projections - {plan.base_realized_projection_id, plan.desired_realized_projection_id})),
@@ -383,6 +434,59 @@ class _CleanupPhaseReadBoundsOwner:
             collections("advancement-actions", action_sets), collections("bindings", binding_sets),
             collections("slots", slots), collections("allocation-refs", allocation_sets),
             collections("allocation-claims", allocation_sets), collections("invocation-refs", invocation_sets))
+        self._issued = issued
+        self._require(issued, self._connection)
+        return issued
+
+    def capture_retained(self, guard, prefix, approved_plan, *, original_identity):
+        """Bound a retained STARTED proof without re-authorizing fresh work.
+
+        B owns the original, approval, registration identity, closed claims and
+        whole invocation correspondence. Only its complete invocation-ref
+        reader needs C bounds; no current selection or live permission is read.
+        The later fold owner still owns all fencing, result checks and writes.
+        """
+        from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptStatus
+        from .graph_store import WorkspaceLifecycleGuard
+        _require(self._issued is None and not self._spent and _BOUND_CLEANUP_PHASE.get() is None)
+        self._require_context(self._connection)
+        _require(type(original_identity) is EffectAttemptIdentity and type(guard) is WorkspaceLifecycleGuard
+            and guard._owner is self._stores.graphs)
+        self._require_original_identity("plan", approved_plan.plan_id)
+        self._require_original_identity("plan", prefix.request.identity.plan_id)
+        self._require_original_identity("intent", (original_identity.run_id.value, original_identity.activity_id, original_identity.attempt))
+        read = _active_read(self._connection)
+        transaction = _transaction(read)
+        _require(transaction == guard._transaction_id == self._original.transaction_id)
+        prefix.require(self._uow, prefix.request, original_identity.run_id.value, latest_required=True)
+        fresh = _EvidenceRead(self._connection)
+        retained = self._stores.configuration_cleanup_ownership._get(original_identity, fresh)
+        _require(retained is not None and retained.status is EffectAttemptStatus.STARTED)
+        original = self._stores.effect_attempt_intents.get(original_identity)
+        plan = self._stores.activity_history.get_plan(retained.plan_id)
+        self._require_original_identities(plan, original_identity)
+        _require(plan == approved_plan and plan.cleanup_proposal is not None
+            and original.identity == retained.identity == original_identity
+            and original.intent.source.request_id == retained.request_id == prefix.request.identity.request_id
+            and original.intent.source.plan_id == retained.plan_id == plan.plan_id == prefix.request.identity.plan_id
+            and original.intent.source.workspace_id == retained.workspace_id == guard.workspace_id
+            and original.request_fingerprint == retained.request_fingerprint
+            and original.original_start_event.event_id == retained.original_event_id)
+        invocations = []
+        for completion in retained.completions:
+            identity = completion.identity
+            key = (identity.run_id.value, identity.activity_id, identity.attempt)
+            expected = tuple((claim.ref.artifact_id,) for claim in retained.claims if claim.identity == identity)
+            _require(bool(expected))
+            invocations.append(_capture_collection(read, "invocation-refs", key, expected))
+        issued = _CleanupPhaseReadBounds(owner=self, transaction_id=transaction,
+            original_plan=plan.plan_id, original_graphs=tuple(sorted({plan.base_graph_id, plan.desired_graph_id})),
+            original_projections=tuple(sorted({plan.base_realized_projection_id, plan.desired_realized_projection_id})),
+            retained_identity=(original_identity.run_id.value, original_identity.activity_id, original_identity.attempt),
+            plans=(), graphs=(), projections=(), raw_graphs=(), raw_projections=(), introductions=(),
+            origin_actions=(), acceptance_actions=(), receipt_actions=(), receipt_events=(), requests=(), runs=(),
+            sessions=(), headers=(), scopes=(), run_histories=(), event_histories=(), advancement_actions=(),
+            bindings=(), slots=(), allocation_refs=(), allocation_claims=(), invocation_refs=tuple(invocations))
         self._issued = issued
         self._require(issued, self._connection)
         return issued

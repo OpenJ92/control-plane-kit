@@ -79,10 +79,13 @@ class ConfigurationCleanupOwnershipStore:
 
     def _get(self, identity, read):
         cleanup = _key(identity)
+        from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_require
+        _phase_context(self._connection, accounting=read.accounting)
         headers = read.bounded_rows(_TABLE, _columns(_HEADER), _WHERE, cleanup)
         if not headers:
             return None
         h = dict(zip(_HEADER, headers[0], strict=True))
+        _phase_require(self._connection, "retained", cleanup, "plan", (h["plan_id"],))
         if (tuple(headers[0][:3]) != cleanup or any(value is None for value in headers[0])
                 or not 1 <= h["candidate_count"] <= 32 or not 1 <= h["invocation_count"] <= h["claim_count"] <= 256
                 or not h["candidate_count"] <= h["claim_count"]):
@@ -119,6 +122,7 @@ class ConfigurationCleanupOwnershipStore:
         completions = []
         for row in invocations:
             ordinary = EffectAttemptIdentity(RunId(row[0]), row[1], row[2])
+            _phase_require(self._connection, "retained", cleanup, "invocation-refs", _key(ordinary))
             # Each distinct O occurs once in this bounded proof phase.
             completion = self._stores.configuration_completions._get(ordinary, read)
             if (completion is None or row != (*_key(ordinary), *cleanup, completion.workspace_id,

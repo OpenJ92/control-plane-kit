@@ -495,6 +495,9 @@ class ConfigurationPreparationStore:
         try:
             from .configuration_cleanup_phase_read_bounds import _phase_rows
             key = (exact_ref.workspace_id, exact_ref.allocation_id)
+            # Bound claims before the reciprocal join can turn a changed key
+            # into a NULL ref. Both complete sets and pairing are still proved.
+            claimed = _phase_rows(read, "allocation-claims", key)
             rows = _phase_rows(read, "allocation-refs", key)
             if rows is None:
                 rows = read.query(_SELECT + " WHERE r.workspace_id=%s AND r.allocation_id=%s"
@@ -505,7 +508,6 @@ class ConfigurationPreparationStore:
                 raise _Capacity
             if not rows:
                 raise _Unavailable
-            claimed = _phase_rows(read, "allocation-claims", key)
             if claimed is None:
                 claimed = read.query("SELECT "
                 "CASE WHEN octet_length(run_id)<=200 THEN run_id END,"

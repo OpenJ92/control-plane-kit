@@ -20,6 +20,10 @@ class _PhaseCollection:
 class _CleanupPhaseReadBounds:
     owner: object
     transaction_id: int
+    original_plan: str
+    original_graphs: tuple[str, ...]
+    original_projections: tuple[str, ...]
+    retained_identity: tuple | None
     plans: tuple[_PhasePoint, ...]
     graphs: tuple[_PhasePoint, ...]
     projections: tuple[_PhasePoint, ...]

@@ -57,7 +57,12 @@ scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
         """
         if phase is not None:
             from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_columns, _phase_rows
-            _phase_context(self.connection)
+            issued = _phase_context(self.connection)
+            if issued is not None:
+                from .configuration_evidence import _Unavailable
+                if self.configuration_read is None:
+                    raise _Unavailable
+                _phase_context(self.connection, accounting=self.configuration_read.accounting)
             if point:
                 narrowed = _phase_columns(self.connection, *phase,
                     tuple((name, "text", cap) for name, cap in columns))
@@ -205,6 +210,9 @@ class _ExecutionScopeStorage:
         sessions = self.transport.read("cpk_operation_sessions", _columns(("workspace_id",)),
             "session_id=%s", (identity.session_id,), point=True, cache=True)
         _require(sessions == ((identity.workspace_id,),))
+        from .configuration_cleanup_phase_read_bounds import _phase_require
+        for parent in ("request", "scopes"):
+            _phase_require(self.connection, parent, (identity.request_id,), "plan", (identity.plan_id,))
         rows = self.transport.read("cpk_activity_plans", _columns(_PLAN, json_columns=("payload",),
             ceilings=_cleanup_original_limits(self.connection, "plan", identity.plan_id)),
             "plan_id=%s", (identity.plan_id,), point=True, cache=True, phase=("plan", (identity.plan_id,)))
@@ -215,6 +223,7 @@ class _ExecutionScopeStorage:
         for side in ("base", "desired"):
             graph_id = getattr(plan, side + "_graph_id")
             _text(graph_id)
+            _phase_require(self.connection, "plan", (plan.plan_id,), "graph", (graph_id,))
             authored = self.transport.read("cpk_graph_versions",
                 _columns(_GRAPH, json_columns=("graph_descriptor", "metadata"),
                     ceilings=_cleanup_original_limits(self.connection, "graph", graph_id)),
@@ -232,6 +241,7 @@ class _ExecutionScopeStorage:
             else:
                 expected = None
             _text(projection_id)
+            _phase_require(self.connection, "plan", (plan.plan_id,), "projection", (projection_id,))
             rows = self.transport.read("cpk_realized_graph_projections",
                 _columns(_PROJECTION, json_columns=("graph_descriptor",),
                     ceilings=_cleanup_original_limits(self.connection, "projection", projection_id)),

@@ -208,6 +208,11 @@ class PostgresExecutionStore:
                         int_columns=("ordinal",), time_columns=("created_at",)))
                     payload = action.payload
                     request_id, run_id = payload["execution_request_id"], payload["run_id"]
+                    from .configuration_cleanup_phase_read_bounds import _phase_require
+                    for role, child in (("request", (request_id,)), ("run", (run_id,)),
+                            ("plan", (payload["plan_id"],)), ("runs", (request_id,)),
+                            ("events", (run_id,)), ("advancement-actions", (action.session_id, run_id))):
+                        _phase_require(self._connection, "acceptance-action", (key[2], key[1]), role, child)
                     for locator in (request_id, run_id, payload["plan_id"]):
                         _text(locator)
                     request_key = (origin.workspace_id, request_id)
@@ -425,6 +430,8 @@ class PostgresExecutionStore:
         return None if row is None else _command_receipt(row)
 
     def get_request(self, request_id: str) -> ExecutionRequestRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
             return self._configuration_request(read, request_id)
@@ -767,6 +774,8 @@ class PostgresExecutionStore:
         return record
 
     def get_run(self, run_id: str) -> ActivityRunRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
         _require_run_id(run_id)
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
