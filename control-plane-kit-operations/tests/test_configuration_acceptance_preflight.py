@@ -65,20 +65,22 @@ class ConfigurationAcceptancePreflightTests(unittest.TestCase):
 
     def test_snapshot_exact_three_mib_then_one_byte_over(self):
         # Two88-octet slots; two12-octet conservative ref rows. Baseline snapshot
-        # is (33,528975,381,25), accounting to545695 bytes, independent of prior.
+        # includes the conservative protective-read allowance (12,3296,40,8),
+        # not observed transport maxima. It is (45,532271,421,33), accounting
+        # to553215 bytes, independent of prior.
         baseline = self.exercise()
         self.assertEqual(baseline, [
-            (Footprint(102, 1053294, 1408, 59), "within-limits"),
-            (Footprint(540, 8393482, 8298, 140), "within-limits")])
-        exact = self.exercise(owner=Footprint(7, 2600134, 11, 5))
+            (Footprint(114, 1056590, 1448, 67), "within-limits"),
+            (Footprint(552, 8396778, 8338, 148), "within-limits")])
+        exact = self.exercise(owner=Footprint(7, 2592614, 11, 5))
         self.assertEqual(exact[0][0].accounted_bytes, 3145728 + 557056 + 1231)
         self.assertEqual(len(exact), 2)
         # Snapshot failure precedes BOTH production global-budget decisions.
-        self.assertEqual(self.exercise(owner=Footprint(7, 2600135, 11, 5), refuses=True), [])
+        self.assertEqual(self.exercise(owner=Footprint(7, 2592615, 11, 5), refuses=True), [])
 
     def test_cold_consumer_record_and_byte_edges_use_actual_envelope(self):
-        for field, boundary, expected in (("records", 3999, "record-limit"),
-                ("value_octets", 15673265, "byte-limit")):
+        for field, boundary, expected in (("records", 3987, "record-limit"),
+                ("value_octets", 15665745, "byte-limit")):
             with self.subTest(dimension=field):
                 proof = replace(Footprint(5, 31, 3, 2), **{field: boundary})
                 exact = self.exercise(proof=proof)
@@ -91,8 +93,8 @@ class ConfigurationAcceptancePreflightTests(unittest.TestCase):
                 self.assertEqual(over[0][1], expected)
 
     def test_publication_record_and_byte_edges_include_prior_command_work(self):
-        for field, boundary, expected in (("records", 3569, "record-limit"),
-                ("value_octets", 8146217, "byte-limit")):
+        for field, boundary, expected in (("records", 3557, "record-limit"),
+                ("value_octets", 8138697, "byte-limit")):
             with self.subTest(dimension=field):
                 prior = replace(Footprint(13, 211, 17, 3), **{field: boundary})
                 exact = self.exercise(prior=prior)

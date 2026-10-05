@@ -113,3 +113,171 @@ Schema changes follow ADR0008: exact object-free install, current verification w
 Mathematical shape: immutable original use → admitted completion; exact approved candidate/claim set → atomic reservation/closure; total per-candidate outcome → retirement or continuing exclusion. Identity is not permission; completion is not non-use; replay is not dispatch. Each transformation belongs to its existing Operations transaction owner. Core remains pure; I177 alone interprets actual ownership/non-use/non-forced deletion/absence.
 
 Requested disposition: Meridian independent design review, Kepler owner/concurrency consultation, then North's scope/topology and implementation release. No target/source work begins from this draft alone. Original tunnel/DNS/token and all provider resources remain untouched.
+
+## D2B #1935 implementation checkpoint (unvalidated)
+
+The frozen B contract is implemented on the accepted A base. The five retained
+relations pin a cleanup original, permanent allocation members, exact D1
+invocation completions, whole claim closures, and conserved member outcomes.
+Both original refs and claims carry nullable exact locators and generated
+protective flags, with reciprocal deferred scope/discriminator constraints.
+There is no cleanup writer, release API, migration or provider call.
+
+`stores.configuration_cleanup_ownership.get(identity)` returns one frozen
+`ConfigurationCleanupReservationRecord`, None for an absent header, or a fixed
+unavailable error for invalid/capacity evidence. The reader composes recorded
+intent, attempt, request/run, plan/approval, both pinned runtime graphs and exact
+registration identity. Revoked registration and changed current pointers do not
+invalidate recorded history. Full proof requires every closure's reciprocal
+backreference and the entire original ordinary selection. Canonical results use
+Core's total outcome reader; supported generic observations have no member
+retirement rows. Shallow paired proof never invokes the full retained reader.
+
+Ordinary start and both carried/installed acceptance reject permanent exact
+allocation membership before IDs; their common issued-owner seams recheck fresh
+permission under L. Original historical reads retain their meaning. Added reads
+use the shared ledger, the existing 4096-record/16MiB limits, and explicitly
+reserved writer tails. Protective discovery uses both partial-index entrances;
+retained birth material remains an independent exact point proof.
+
+The exact schema companions describe 55 relations, 697 columns, 598 constraints,
+188 indexes and 157 foreign keys. These are authored contract coordinates pending
+the owning PostgreSQL gate, not catalog-verified results. Three SELECT-* fixture
+builders include the new metadata; explicit projections retain their old shape.
+The accepted-capacity regression now requires all 64 accepted uses before the
+65th refusal. Runtime guards remain closed until C; E4 is still mandatory.
+
+Security/data/history: no route, network, credential or live-resource change.
+Rows retain bounded scalar commitments, not authority payloads. Ordinary writers
+remain in their caller-owned transaction; a failed fresh recheck rolls it back.
+SQL does not prevent a privileged reset of both locators; full/current proof
+finds it through closure ownership. Recorded fixtures establish history/read and
+ordinary refusal only. Focused, full package, independent and hosted evidence
+remain pending at this checkpoint.
+
+## D2B historical receiver-scope amendment
+
+The first schema-correct focused run exposed an omitted prerequisite: recorded
+cleanup requests pass through the receiver-scope owner, whose closed operation
+classifier did not recognize cleanup. The current verifier uses the same owner,
+so bypassing its digest derivation in a fixture would not establish valid history.
+The [scope clarification](https://github.com/OpenJ92/control-plane-kit/issues/1935#issuecomment-5983483047)
+adds pure historical recognition to B without activating execution.
+
+An exact cleanup candidate set maps to one runtime-wide receiver scope. Its
+workspace matches the request; both pinned projections contain that runtime with
+the same kind and the same nonnull authority reference. Candidate node/artifacts
+may be absent. Runtime-wide scope conservatively conflicts with ordinary work on
+any node in that runtime. The operation/proposal digest still commits the exact
+node and allocations. No current-pointer, active-registration or lease check is
+added to historical derivation; no schema/index or digest format changes.
+
+The same helper validates independent effect classification. Cleanup is not an
+inverse operation. Existing runtime material checks still require exact kind and
+authority with no products, and public nonaffecting writers reject the nonempty
+scope. Tests cover present/departed nodes, crossed workspace, missing either
+runtime, mismatched kind/authority, null authority, genuine recorded digest and
+cold verification, node lookup and unrelated-runtime separation. Existing
+non-cleanup scope/digest and unknown-operation laws remain in the focused gate.
+Both cleanup admission/translation guards and C's start/fold ownership remain.
+
+The next [focused gate](https://github.com/OpenJ92/control-plane-kit/issues/1935#issuecomment-5983598033)
+ran 53 tests with four errors. Retained ownership, real recorded scope storage,
+current verification and stale acceptance passed. The pure scope helper had
+omitted Core's required destructive/high-risk metadata; it now constructs a
+lawful plan locally. A late ordinary-start reservation correctly refused storage
+permission but escaped as `OperationsRecordError`. The narrow start-service
+amendment translates that error from the three configuration-prepared private
+writes to the existing fixed conflict, leaving non-configuration errors, health
+retention and commit unchanged. The conflict exits the UoW; marker and complete
+snapshot assertions on rerun must establish rollback. Neither correction enables
+cleanup execution. Capacity, retained growth and full acceptance remain pending.
+
+At `351eb02e`, the focused gate ran 54 tests in 474.228 seconds with one
+workspace-negative fixture construction error. All retained-owner tests passed,
+including the late-start marker and complete rollback snapshot and the analogous
+acceptance control. The real capacity target accepted 64 uses and refused the
+65th at guarded start for the per-ref claim limit, without partial publication.
+Its measured prefix was 3097 records /805567 value octets /30418 scalar markers /
+2325 statements; reserved future was 301 /3821590 /432 /32 respectively. This is
+actual B evidence for that composition, not a universal maximal-payload bound.
+The remaining fixture now builds a Core-valid intent whose own workspace agrees
+with its candidate, then tests its mismatch with the request independently.
+
+The retained-growth target uses nine real 32-artifact incarnations on one node,
+each with ordinary completion and accepted departure. Nine explicitly recorded
+STARTED cleanup reservations retain 288 closed claims and reserved allocations.
+Each empty-active discovery starts a fresh transaction/cache/ledger; both actual
+protective drivers and identical measured footprints are checked. A tenth real
+incarnation must produce exactly 32 active claims and retain an old root's point
+read. The fixture explicitly verifies its existing nonreceiver graph premise;
+it does not bypass runtime-wide receiver conflicts. EXPLAIN reports actual paths
+without changing planner settings or making latency claims. The separate real
+coordinator test owns refusal of exact reserved ordinary reuse. No provider
+removal or C admission is inferred; E4 remains separate and mandatory.
+
+At `c44095c2`, the next focused gate passed all retained-owner and receiver-scope
+laws. The 32-artifact ordinary lifecycle passed, but Core refused the first
+recorded cleanup intent: its worst-case result exceeds the existing 8192-byte
+limit. No reservation or growth proof followed. The stateful subtest loop then
+continued without its predecessor and emitted consequential errors; it now stops
+at the first failure. The revised corpus is **33 eight-artifact incarnations**,
+264 retained closed claims, then a 34th incarnation with eight active claims
+(272 total). This supersedes the proposed nine-by-32 corpus above without changing
+the law or any capacity. The supported-size mismatch belongs in C/#225's handoff:
+ordinary installation capacity alone does not establish end-to-end cleanup
+representability. B does not raise limits or split whole-invocation closure.
+
+The overall source review found a public aggregate-constructor inconsistency:
+claim ref equality did not prove its direct birth, and workspace/runtime equality
+did not enforce Core's single-node candidate law. The database reader already
+proved both. Two focused targets at `d4180776` failed as intended in 12.988 seconds
+because construction raised no error. The correction consumes Core's candidate
+validator and matches each claim's ref/birth identity/artifact to full member
+evidence. Invalid aggregate construction retains its fixed error. This adds no
+mutation authority or independent durable semantics.
+
+The corrected owning gate at `82c96b70` passed **20 tests in 423.664 seconds**,
+then compilation and clean import. Both aggregate negatives turned green. The
+revised corpus reached 264 closed claims across 33 recorded reservations and eight
+active claims in the 34th real incarnation. Every fresh empty-active sample used
+exactly two statements and transported zero records/bytes/markers. Final active
+proof used 99 records, 19678 value octets, 737 markers and 39 statements. Unforced
+EXPLAIN selected `cpk_configuration_refs_active_slot` and
+`cpk_configuration_claims_active_slot`; this is observed query-path evidence,
+not a latency guarantee. The old full-root point remained readable.
+
+Broader validation preparation found one unchanged capacity-test witness still
+matching the pre-B unwrapped node predicate. Its expected prefix now includes
+`protective AND (...)`; exact 257-row sentinel, bounded rejection, pre-ID,
+no-adapter and full rollback assertions remain. The manifest witness is unchanged.
+Final full package and locked-family composition evidence will use one exact-head
+hosted run of the existing authoritative workflows, without duplicating full
+Operations locally. Backend pins remain composition evidence, not B adoption.
+
+The first full hosted Operations gate at `a0c2c228` failed: run `37231077716`,
+job `111520640000`, 2387 tests in 5491.684 seconds, two failures and four error
+subcases. Its log SHA256 is
+`6bef7887244bb533aca85bfb4baf2b40a2cf73cb0527fb26271931fea960decf`.
+Independent Core and pinned-backend passes do not replace this failed package
+acceptance. Review traced the failures to two stale test companions: preflight
+arithmetic and the retained-intent validator's exact import allowlist.
+
+For each slot, two fresh protective checks reserve `(6,1648,20,4)` in records,
+value octets, scalar markers and statements. The two-slot synthetic preflight
+fixture therefore adds `(12,3296,40,8)`, or 7520 accounted bytes. Its cold snapshot
+includes that conservative allowance; this is not measured transport. Updated
+literal expectations preserve exact 3 MiB snapshot, 4096-record and 16 MiB global
+limits, one-over refusals, decision order and separation of prior command work.
+The validator allowlist adds only Core planning and the connection-bound store
+bundle used by retained cleanup validation. Signature, forbidden effects and
+module ownership checks remain. Kepler reviewed the exact two-test-file diff.
+Security: this correction changes no runtime, auth, network, secret, mutation,
+schema or capacity policy; both cleanup activation refusals remain closed.
+
+The single owning focused correction run selected
+`ConfigurationAcceptancePreflightTests` and
+`PostgresEffectAttemptIntentStoreContractTests`: all eight tests passed in
+9.968 seconds, followed by compilation and clean import (terminal exit zero).
+The gate removed its exact test container and network. This is focused evidence;
+the corrected commit still requires full hosted acceptance before merge.

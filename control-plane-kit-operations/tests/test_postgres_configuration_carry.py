@@ -88,7 +88,9 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
                 "manager-a", ApprovalDecisionKind.APPROVED, requirement.required_scope, "2026-07-22T12:03:30Z"))
             uow.commit()
         admit_fixture_plan(self.base, request_id="request-" + label, session_id="session-" + label,
-            plan_id="plan-" + label, approval_request_id="approval-" + label, key="admit-" + label)
+            plan_id="plan-" + label, approval_request_id="approval-" + label, key="admit-" + label,
+            actor_scopes=(PolicyScope.PLAN_EXECUTE,) + ((PolicyScope.RUNTIME_AUTHORITY_USE,)
+                if getattr(self.base, "runtime_authority_ref", None) is not None else ()))
         engine = self.base.engine
         def lifecycle(*ids):
             return (engine.lifecycle_with_ids(*ids) if clock is None else

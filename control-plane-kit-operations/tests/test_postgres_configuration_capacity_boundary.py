@@ -156,7 +156,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
             harness.coordinator.execute(replace(self.base.engine.command(generation=command.fence.generation,
                 idempotency_key="execute-return"), run_id=command.run_id))
         self.assert_sentinel(queries, rejections, "cpk_effect_configuration_refs",
-            "workspace_id=%s AND runtime_id=%s AND node_id=%s")
+            "protective AND (workspace_id=%s AND runtime_id=%s AND node_id=%s)")
         self.assertEqual(len(harness.start.commands), 1)
         self.assertEqual(harness.start_ids.calls, [])
         self.assertEqual(harness.adapter.runtime_calls, [])
@@ -321,7 +321,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
                         original = uow.stores.effect_attempt_intents.get(identity)
                     self.assertEqual(original.intent.configuration_instances.instances, self.refs)
                     claims += [(identity.run_id.value, identity.activity_id, 1,
-                        ref.artifact_id, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id) for ref in self.refs]
+                        ref.artifact_id, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id, None, None, None, True) for ref in self.refs]
                     self.assertEqual(self.fixture.protective_claims(), sorted(claims))
                     after_effect = self.retained_state()
                     ids = iter(("capacity-event-" + label, "capacity-action-" + label))
@@ -341,8 +341,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
             if refusal is not None:
                 break
         self.assertIsNotNone(refusal, "65 accepted claims bypassed the supported per-allocation boundary")
-        self.assertGreaterEqual(accepted_count, 2, "compact history must support a real accepted reuse")
-        self.assertLessEqual(accepted_count, 64)
+        self.assertEqual(accepted_count, 64, "retained disposition must preserve the accepted 64-use boundary")
         self.assertEqual(self.fixture.protective_claims(), sorted(claims))
         with self.base.unit_of_work() as uow:
             allocation = uow.stores.configuration_preparation.read_allocation_evidence(self.refs[0])

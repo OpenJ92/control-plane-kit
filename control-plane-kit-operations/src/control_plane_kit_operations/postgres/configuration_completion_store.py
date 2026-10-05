@@ -17,7 +17,7 @@ from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffect
 from control_plane_kit_operations.effect_run_prefix import PreparedEffectRunPrefix
 from control_plane_kit_operations.records import OperationsRecordError
 from .configuration_evidence import _joined_read, _active_read, _Capacity, _Unavailable
-from .configuration_preparation_store import _SELECT, _decode
+from .configuration_preparation_store import _SELECT, _decode, _paired_disposition
 from .configuration_source import read_original_selection
 from .effect_outcome_store import EffectAttemptOutcomeStore
 
@@ -69,6 +69,8 @@ class ConfigurationCompletionStore:
         if not 1 <= len(refs) <= 32:
             raise _Unavailable
         evidence = tuple(_decode(value, read) for value in refs)
+        for value, claim in zip(refs, evidence, strict=True):
+            _paired_disposition(read, tuple(value[:4]), claim.ref)
         source = evidence[0].source
         original = read_original_selection(self._connection, identity, evidence[0].ref, read=read)
         selection = ConfigurationInstanceSelection(tuple(value.ref for value in original))

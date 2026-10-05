@@ -224,6 +224,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
             {
                 "__future__",
                 "control_plane_kit_core.operations",
+                "control_plane_kit_core.planning",
                 "control_plane_kit_core.runtime_effects",
                 "control_plane_kit_operations._configuration_preparation",
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
@@ -232,6 +233,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
                 "configuration_preparation_store",
                 "configuration_source",
                 "receiver_execution_scopes",
+                "stores",
             },
         )
         forbidden = {

@@ -454,6 +454,7 @@ class ConfigurationAcceptanceStore:
             row = (*slot, *candidates[0], *_ref_key(birth, birth_artifact), original[9])
             self._material_ref(read, row, material, workspace.workspace_id)
             slots.append(row)
+        self._require_current_slots(read, slots)
         # Snapshot material is admitted before provenance work; source/slot
         # consumer size is preflighted again with the complete generated pair.
         if read.used.accounted_bytes - snapshot_start > 3 * 1024 * 1024:
@@ -468,6 +469,18 @@ class ConfigurationAcceptanceStore:
             current_projection, desired_projection, slots=tuple(slots), evidence_read=read, proof_footprint=proof)
         self._issued = prepared
         return prepared
+
+    def _require_current_slots(self, read, slots):
+        from .configuration_preparation_store import _paired_disposition, _require_unreserved
+        for slot in slots:
+            row = self._ref(read, slot[3:7])
+            _, ref, _, _ = _decode_ref(row)
+            _require_unreserved(read, ref)
+            _paired_disposition(read, tuple(row[:4]), ref, protective=True)
+
+    @_closed_evidence
+    def _require_current(self, prepared):
+        self._require_current_slots(prepared.evidence_read, prepared.slots)
 
     def _insert(self, prepared):
         workspace_id = prepared.workspace.workspace_id
@@ -532,6 +545,7 @@ class ConfigurationAcceptanceStore:
         ref_octets = sum(sum(len(value) if type(value) is bytes else len(str(value).encode("utf-8"))
             for value in self._ref(prepared.evidence_read, slot[3:7])) for slot in prepared.slots)
         ref_snapshot = ConfigurationEvidenceFootprint(2 * count, ref_octets, 19 * count, count)
+        ref_snapshot = ref_snapshot.plus(ConfigurationEvidenceFootprint(6 * count, 1648 * count, 20 * count, 4 * count))
         # 512KiB bounds generated header + both originals (two <=64KiB JSON
         # payloads, bounded text/scalars, size passes, statement/row overhead).
         pair_snapshot = ConfigurationEvidenceFootprint(16, 512 * 1024, 256, 16)
@@ -556,6 +570,7 @@ class ConfigurationAcceptanceStore:
         future = ConfigurationEvidenceFootprint(512 + 3 * count + 2,
             8 * 1024 * 1024 + slot_octets + 145 * count + 4096,
             8192 + 26 * count + 26, 130 + count)
+        future = future.plus(ConfigurationEvidenceFootprint(6 * count, 1648 * count, 20 * count, 4 * count))
         if configuration_evidence_capacity(read.used.plus(future)) is not ConfigurationCapacityDecision.WITHIN_LIMITS:
             raise _Capacity
 

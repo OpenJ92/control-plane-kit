@@ -61,6 +61,69 @@ def _decode(row, read):
     return ConfigurationRefEvidence(identity, ref, birth, birth_artifact, source.source)
 
 
+def _paired_disposition(read, key, ref, *, expected=None, protective=False, allow_absent=False):
+    """Fresh nine-cell correspondence, below all full history proofs."""
+    valid = " AND ".join((
+        "(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id,r.ref_digest)=(%s,%s,%s,%s,%s)",
+        "(c.workspace_id,c.allocation_id,c.runtime_id,c.node_id)=(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id)",
+        "r.protective=((r.cleanup_run_id IS NULL) AND (r.cleanup_activity_id IS NULL) AND (r.cleanup_attempt IS NULL))",
+        "c.protective=((c.cleanup_run_id IS NULL) AND (c.cleanup_activity_id IS NULL) AND (c.cleanup_attempt IS NULL))",
+    ))
+    shape = " AND ".join(
+        f"(({side}.cleanup_run_id IS NULL AND {side}.cleanup_activity_id IS NULL AND {side}.cleanup_attempt IS NULL) OR "
+        f"({side}.cleanup_run_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND "
+        f"{side}.cleanup_activity_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND {side}.cleanup_attempt>0))"
+        for side in ("r", "c"))
+    # Invalid or oversized metadata is represented only as NULL/false.
+    projections = [f"CASE WHEN {shape} THEN {side}.{name} END"
+        for side in ("r", "c") for name in ("cleanup_run_id", "cleanup_activity_id", "cleanup_attempt")]
+    rows = read.query("SELECT " + ",".join(projections) + ",r.protective,c.protective,(" + valid + ") "
+        "FROM (SELECT * FROM cpk_effect_configuration_refs WHERE "
+        "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)) r FULL JOIN "
+        "(SELECT * FROM cpk_configuration_claims WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)) c ON "
+        "(c.run_id,c.activity_id,c.attempt,c.artifact_id)=(r.run_id,r.activity_id,r.attempt,r.artifact_id) "
+        "",
+        (ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id,
+         sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(), *key, *key),
+        records=1, octets=823, cells=9, identities=2)
+    if not rows and allow_absent:
+        return None
+    if len(rows) != 1:
+        raise _Unavailable
+    row = rows[0]
+    locator = row[:3]
+    if (row[8] is not True or locator != row[3:6] or type(row[6]) is not bool
+            or row[6] != row[7] or row[6] != (locator == (None, None, None))
+            or (protective and row[6] is not True)
+            or (expected is not None and locator != expected)):
+        raise _Unavailable
+    if row[6]:
+        return None
+    if any(value is None for value in locator):
+        raise _Unavailable
+    # Exact key proof only. No D1/outcome/reservation recursion here.
+    closed = read.query("SELECT 1 FROM cpk_configuration_claim_closures c "
+        "JOIN cpk_configuration_invocation_closures i ON "
+        "(i.run_id,i.activity_id,i.attempt,i.cleanup_run_id,i.cleanup_activity_id,i.cleanup_attempt,i.workspace_id)="
+        "(c.run_id,c.activity_id,c.attempt,c.cleanup_run_id,c.cleanup_activity_id,c.cleanup_attempt,c.workspace_id) "
+        "JOIN cpk_configuration_cleanup_members m ON "
+        "(m.cleanup_run_id,m.cleanup_activity_id,m.cleanup_attempt,m.workspace_id,m.allocation_id)="
+        "(c.cleanup_run_id,c.cleanup_activity_id,c.cleanup_attempt,c.workspace_id,c.allocation_id) "
+        "WHERE (c.run_id,c.activity_id,c.attempt,c.artifact_id,c.cleanup_run_id,c.cleanup_activity_id,"
+        "c.cleanup_attempt,c.workspace_id,c.allocation_id)=(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (*key, *locator, ref.workspace_id, ref.allocation_id), records=1, octets=1, cells=1, identities=3)
+    if closed != [(1,)]:
+        raise _Unavailable
+    return locator
+
+
+def _require_unreserved(read, ref):
+    if read.query("SELECT 1 FROM cpk_configuration_cleanup_members "
+            "WHERE (workspace_id,allocation_id)=(%s,%s) LIMIT 1",
+            (ref.workspace_id, ref.allocation_id), records=1, octets=1, cells=1):
+        raise _Unavailable
+
+
 class ConfigurationPreparationStore:
     def __init__(self, connection):
         self._connection = connection
@@ -234,7 +297,7 @@ class ConfigurationPreparationStore:
             "workspace_id", "runtime_id", "node_id")
         columns = tuple((name, "int" if name == "attempt" else "text", cap)
             for name, cap in zip(names, (2048, 2048, 12, 63, 128, 128, 128, 128)))
-        sides = tuple(read.bounded_rows(table, columns, where, params,
+        sides = tuple(read.bounded_rows(table, columns, "protective AND (" + where + ")", params,
             maximum=maximum, point=False, order=order)
             for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"))
         if any(len(rows) > maximum for rows in sides):
@@ -257,6 +320,7 @@ class ConfigurationPreparationStore:
         claim = _decode(row, read)
         if (*row[:4], row[5], row[4], row[6], row[7]) != tuple(candidate):
             raise _Unavailable
+        _paired_disposition(read, candidate[:4], claim.ref, protective=True)
         # Only a freshly checked pair may populate the immutable material cache.
         read.refs[_key(row)] = row
         return claim
@@ -270,6 +334,7 @@ class ConfigurationPreparationStore:
         birth = _decode(roots[0], read)
         if birth.identity != birth.birth_identity or birth.ref != exact_ref:
             raise _Unavailable
+        _paired_disposition(read, tuple(roots[0][:4]), birth.ref)
         read.refs[_key(roots[0])] = roots[0]
         return birth
 
@@ -367,6 +432,12 @@ class ConfigurationPreparationStore:
         elif any(value is not None for value in selected):
             # A fresh birth must never silently adopt a historical allocation.
             raise _Unavailable
+        for ref, allocation in zip(refs, selected, strict=True):
+            _require_unreserved(read, ref)
+            if allocation is not None:
+                root = allocation.birth
+                _paired_disposition(read, (root.identity.run_id.value, root.identity.activity_id,
+                    root.identity.attempt, root.ref.artifact_id), ref, protective=True)
         total_claims = sum(len(value.claims) for value in allocations)
         # Fixed future envelope includes complete source context, both original
         # and direct 16KiB events, the full 8192-byte outcome, and its source links.
@@ -375,6 +446,7 @@ class ConfigurationPreparationStore:
         envelope = 192 * 1024 * count + 3 * 1024 * 1024 + 512 * 1024
         future = ConfigurationEvidenceFootprint(records,
             envelope - 128 * records - 16 * markers - 256 * statements, markers, statements)
+        future = future.plus(ConfigurationEvidenceFootprint(13 * count, 4118 * count, 48 * count, 8 * count))
         for index, ref in enumerate(refs):
             claim_keys = ()
             if selected[index] is not None:
@@ -389,6 +461,20 @@ class ConfigurationPreparationStore:
         prepared = _PreparedConfigurationStart(stores, guard, command.transition.identity, expected, births)
         self._issued = prepared
         return prepared
+
+    def _require_current(self, prepared):
+        """Selected allocation permission is never an issued-value cache."""
+        read = _EvidenceRead(self._connection)
+        try:
+            for ref, (birth, artifact) in zip(prepared.intent.configuration_instances.instances,
+                    prepared.births, strict=True):
+                _require_unreserved(read, ref)
+                # Absence is expected only for this new birth before insertion.
+                # Once either side exists, its complete pair must be protective.
+                _paired_disposition(read, (birth.run_id.value, birth.activity_id, birth.attempt, artifact),
+                    ref, protective=True, allow_absent=birth == prepared.identity)
+        except (_Capacity, _Unavailable):
+            raise OperationsRecordError("configuration start requires current allocation permission") from None
 
     def read_allocation_evidence(self, exact_ref):
         """Complete historical protection only; never permission to reuse/release."""
@@ -422,6 +508,8 @@ class ConfigurationPreparationStore:
             for row in rows:
                 read.refs[_key(row)] = row
             claims = tuple(_decode(row, read) for row in rows)
+            for row, claim in zip(rows, claims, strict=True):
+                _paired_disposition(read, tuple(row[:4]), claim.ref)
             if any(claim.ref != exact_ref for claim in claims):
                 raise _Unavailable
             births = {(claim.birth_identity, claim.birth_artifact_id) for claim in claims}
@@ -473,6 +561,8 @@ class ConfigurationPreparationStore:
                     or value.source.original_event_id != record.original_start_event.event_id for value in evidence)):
             raise OperationsRecordError("configuration protection is unavailable")
         for value in evidence:
+            _paired_disposition(read, (value.identity.run_id.value, value.identity.activity_id,
+                value.identity.attempt, value.ref.artifact_id), value.ref)
             key = (value.birth_identity.run_id.value, value.birth_identity.activity_id,
                 value.birth_identity.attempt, value.birth_artifact_id)
             roots = read.query(_SELECT + " WHERE (r.run_id,r.activity_id,r.attempt,r.artifact_id)=(%s,%s,%s,%s)",
@@ -480,6 +570,7 @@ class ConfigurationPreparationStore:
             if len(roots) != 1 or roots[0][16] is not True:
                 raise OperationsRecordError("configuration protection is unavailable")
             root = _decode(roots[0], read)
+            _paired_disposition(read, key, root.ref)
             if root.identity != root.birth_identity or root.ref != value.ref:
                 raise OperationsRecordError("configuration protection is unavailable")
 
@@ -497,6 +588,7 @@ def _validate_current_rows(connection):
         try:
             for row in rows:
                 evidence = _decode(row, read)
+                _paired_disposition(read, tuple(row[:4]), evidence.ref)
                 root_key = (evidence.birth_identity.run_id.value, evidence.birth_identity.activity_id,
                     evidence.birth_identity.attempt, evidence.birth_artifact_id)
                 roots = read.query(_SELECT + " WHERE (r.run_id,r.activity_id,r.attempt,r.artifact_id)=(%s,%s,%s,%s)",
