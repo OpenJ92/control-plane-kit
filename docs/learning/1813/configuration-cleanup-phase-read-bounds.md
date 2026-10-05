@@ -84,3 +84,53 @@ Security/data/history: no production or durable schema change; negative growth
 is a rolled-back test mutation. Bounds grant no capability and no actual
 topology/secret value is logged. Both cleanup refusals stay closed. Production
 source, #1936 public lifecycle, E4 and provider activation remain held.
+
+## Initial baseline and availability-red evidence
+
+At target commit `29a7cd62688a3142f5ba3b797662eda4dda05ffb`, tree
+`7ab57092fa845b9f2d1033938549e16141649b69`, the documented owning command ran
+four tests in106.205s: baseline PASS, three failures exactly at the in-method
+missing phase-bound-owner assertion after the real read chain. Exit1, no errors.
+Log SHA-256 `2844152137b1b685ce87432ae5ee7dc4d61bd834f4c1049f40c300f5c83381cd`.
+Exact `cpk-1941-target-postgres` container and `cpk-1941-target-test` network
+were absent afterward. Post-test compile/import phases did not run after red.
+
+Baseline measured prefix `(38,17151,311,38)` and final used
+`(489,424406,3725,371)`, independent physical weighted bytes639014,
+maximum outstanding reservation2793709 bytes. All fourteen raw graph and
+fourteen raw projection length probes and two acceptance-event readers executed.
+Later fixture instances had small timestamp-dependent octet differences. This
+is a measured read-chain baseline, not C-bound behavior, full future atomic-tail
+fit, full coordinator acceptance, or execution of the negative semantics behind
+the missing-owner assertion.
+
+Independent static review requested closing returned-cursor re-execution; the
+next checkpoint fails that unused entrance closed rather than associate a new
+query with the prior observation. No SQL/result substitution is introduced.
+Remaining contract targets are required before broad source release.
+
+## Expanded target checkpoint (not executed)
+
+The next checkpoint adds the fixed ten collection-count entrances with inner
+owner-cap/sentinel assertions; captured scope growth, shrink and same-count key
+replacement; a count-to-key race; real acceptance-history column-maxima and
+independently reconstructed full-fetch reservation; missing reciprocal claim
+through whole allocation/completion; same-width original-action corruption;
+bound raw-material growth followed by ordinary post-exit behavior; unmatched
+source history retaining ordinary limits; owner/accounting/inactive/task/thread/
+transaction/connection portability; probe-to-fetch growth and legitimate NULLs;
+foreign plan/intent/identity issuance; nested/unissued/exception-exit refusal.
+
+Fault injections use the existing metered query owner with a one-row RETURNING
+acknowledgement inside rollback-only test UoWs. The observer's after-row callback
+never changes returned values; it triggers those explicit race mutations only.
+Original graph-introduction FKs remain intact: the provenance negative changes
+the action JSON graph locator at identical byte width, so it exercises the cold
+proof rather than failing a database FK before the reader.
+
+These are authored future enforcement targets, not executed negative evidence.
+The baseline/availability-red result remains the only executed checkpoint.
+Independent static review precedes a next focused run; all production source and
+activation remain held. The future source pass must run the entire expanded
+matrix plus governing ordinary/#1939 regression groups, not only availability
+assertions or helper arithmetic.

@@ -27,6 +27,9 @@ class _PhaseRows(_ObservedRows):
         super().__init__(cursor, observations, query)
         self.entry = entry
 
+    def execute(self, *args, **kwargs):
+        raise AssertionError("returned cursor re-execution would bypass phase telemetry")
+
     def _record(self, row):
         if row is not None:
             result = self.cursor.pgresult
@@ -38,7 +41,11 @@ class _PhaseRows(_ObservedRows):
                     raw = result.get_value(self.position, column)
                     widths.append(0 if raw is None else len(raw))
             self.entry["widths"].append(tuple(widths))
-        return super()._record(row)
+        result = super()._record(row)
+        callback = self.observations.get("after_row")
+        if row is not None and callback is not None:
+            callback(self.entry, row)
+        return result
 
 
 class _PhaseConnection(_ObservedConnection):
@@ -47,7 +54,9 @@ class _PhaseConnection(_ObservedConnection):
         if accounting is not self.observations["accounting"]:
             raise AssertionError("reader replaced the caller accounting object")
         query = str(args[0] if args else kwargs["query"])
-        entry = dict(sql=query, peak=_components(accounting.used), widths=[])
+        params = args[1] if len(args) > 1 else kwargs.get("params", ())
+        limit = params[-1] if params and type(params[-1]) is int and "LIMIT %s" in query else None
+        entry = dict(sql=query, peak=_components(accounting.used), widths=[], limit=limit)
         self.observations["queries"].append(entry)
         self.observations["bytes"] += 256
         self.observations["statements"] += 1
