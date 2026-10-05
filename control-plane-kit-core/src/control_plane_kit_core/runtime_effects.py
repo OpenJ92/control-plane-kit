@@ -87,6 +87,10 @@ class RuntimeEffectKind(StrEnum):
     CONFIGURATION_ACTIVITY_V1 = "configuration-activity.v1"
 
 
+class ConfigurationCleanupCapacityError(RuntimeEffectContractError):
+    """A valid whole cleanup selection cannot fit every durable result."""
+
+
 @dataclass(frozen=True, order=True)
 class ImagePullAuthority:
     """Secret-free authority reference for pulling an OCI image."""
@@ -1279,10 +1283,9 @@ def _validate_configuration_effect(
     if type(operation) is CleanupConfigurationInstances:
         if selection is not None or products or deliveries:
             raise RuntimeEffectContractError("configuration cleanup has one candidate source")
-        operation.__post_init__()
+        require_configuration_cleanup_capacity(operation)
         if any(ref.workspace_id != workspace_id for ref in operation.instances):
             raise RuntimeEffectContractError("configuration cleanup workspace must match source")
-        _require_cleanup_capacity(operation)
         return
     if type(operation) not in (StartNode, ReconcileNode):
         raise RuntimeEffectContractError("operation does not support configuration instances")
@@ -1332,11 +1335,27 @@ def _require_cleanup_result_size(result: RuntimeEffectResult) -> None:
         document = rfc8785.dumps(result.descriptor())
     except (TypeError, ValueError, RecursionError):
         pass
-    if not document or len(document) > _CONFIGURATION_RESULT_MAX_BYTES:
-        raise RuntimeEffectContractError("configuration cleanup result exceeds durable capacity")
+    if not document:
+        raise RuntimeEffectContractError("configuration cleanup result is malformed")
+    if len(document) > _CONFIGURATION_RESULT_MAX_BYTES:
+        raise ConfigurationCleanupCapacityError("configuration cleanup result exceeds durable capacity")
 
 
-def _require_cleanup_capacity(operation: CleanupConfigurationInstances) -> None:
+def require_configuration_cleanup_capacity(operation: CleanupConfigurationInstances) -> None:
+    """Require representability of every total result before allocating IDs.
+
+    Malformed inputs remain contract errors. Only a structurally valid whole
+    selection exceeding the durable result bound is a capacity refusal.
+    """
+    if type(operation) is not CleanupConfigurationInstances:
+        raise RuntimeEffectContractError("configuration cleanup requires exact operation")
+    valid = True
+    try:
+        CleanupConfigurationInstances.__post_init__(operation)
+    except (TypeError, ValueError, AttributeError):
+        valid = False
+    if not valid:
+        raise RuntimeEffectContractError("configuration cleanup operation is malformed")
     # Preserve every full original ref. The longest legal row and every outer
     # aggregate deliberately overestimate, including maximal event-id escaping.
     outcomes = _maximum_cleanup_outcomes(operation.instances)

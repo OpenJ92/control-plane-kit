@@ -9,7 +9,11 @@ from control_plane_kit_core.configuration_invocation import (
     configuration_invocation_selection_fingerprint,
 )
 from control_plane_kit_core.operations import EffectAttemptStatus
+from control_plane_kit_core.planning import CleanupConfigurationInstances
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
+from control_plane_kit_core.runtime_effects import (
+    ConfigurationCleanupCapacityError, require_configuration_cleanup_capacity,
+)
 from control_plane_kit_operations.configuration_cleanup import (
     ConfigurationCleanupInspectionCodec, ConfigurationCleanupInspectionResult,
     ConfigurationCleanupProposalCodec, MAX_CANONICAL_REVISION,
@@ -110,6 +114,11 @@ def _inspect(stores, command, read):
         desired_graph_revision=workspace.desired_graph_revision)
     if pins != command.expected_context.descriptor():
         raise _Unavailable
+    try:
+        require_configuration_cleanup_capacity(CleanupConfigurationInstances(
+            tuple(selector.expected_ref for selector in command.selectors)))
+    except ConfigurationCleanupCapacityError:
+        raise _Capacity from None
     receipt = stores.configuration_acceptance._current_manifest(workspace, read)
     if receipt[0]["pinned_revision"] is None:
         occurrence = dict(kind="workspace-initialization",
