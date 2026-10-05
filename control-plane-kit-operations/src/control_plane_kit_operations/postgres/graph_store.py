@@ -637,10 +637,12 @@ class PostgresGraphTopologyStore:
 
     def get(self, graph_id: str) -> GraphVersionRecord:
         from .configuration_evidence import _active_read
+        from .configuration_cleanup_read_ceilings import _cleanup_original_columns
+        columns = _cleanup_original_columns(self._connection, "graph", graph_id,
+            (("graph_id", "text", 2048), ("workspace_id", "text", 2048), ("version", "int", 32),
+             ("graph_descriptor", "json", 1048576), ("created_by", "text", 2048),
+             ("created_at", "time", 64), ("metadata", "json", 1048576)))
         if (read := _active_read(self._connection)) is not None:
-            columns = (("graph_id", "text", 2048), ("workspace_id", "text", 2048), ("version", "int", 32),
-                ("graph_descriptor", "json", 1048576), ("created_by", "text", 2048),
-                ("created_at", "time", 64), ("metadata", "json", 1048576))
             rows = read.bounded_rows("cpk_graph_versions", columns, "graph_id=%s", (graph_id,))
             if not rows:
                 raise KeyError("graph is unavailable")
@@ -767,11 +769,13 @@ class PostgresRealizedGraphProjectionStore:
         return existing
     def get(self, projection_id: str) -> RealizedGraphProjectionRecord:
         from .configuration_evidence import _active_read
+        from .configuration_cleanup_read_ceilings import _cleanup_original_columns
+        names = ("projection_id", "workspace_id", "source_authored_graph_id", "projection_kind",
+            "projection_key", "projection_digest", "graph_descriptor", "created_by", "created_at")
+        columns = _cleanup_original_columns(self._connection, "projection", projection_id,
+            tuple((name, "json" if name == "graph_descriptor" else "time" if name == "created_at"
+                else "text", 1048576 if name == "graph_descriptor" else 2048) for name in names))
         if (read := _active_read(self._connection)) is not None:
-            names = ("projection_id", "workspace_id", "source_authored_graph_id", "projection_kind",
-                "projection_key", "projection_digest", "graph_descriptor", "created_by", "created_at")
-            columns = tuple((name, "json" if name == "graph_descriptor" else "time" if name == "created_at"
-                else "text", 1048576 if name == "graph_descriptor" else 2048) for name in names)
             rows = read.bounded_rows("cpk_realized_graph_projections", columns, "projection_id=%s", (projection_id,))
             if not rows:
                 raise KeyError("realized graph projection is unavailable")

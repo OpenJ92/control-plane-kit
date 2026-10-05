@@ -230,6 +230,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 "control_plane_kit_operations.records",
                 "configuration_evidence",
+                "configuration_cleanup_read_ceilings",
                 "configuration_preparation_store",
                 "configuration_source",
                 "receiver_execution_scopes",
@@ -267,6 +268,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
                 "tests/test_postgres_effect_attempt_intent_store.py",
                 "tests/test_postgres_effect_attempt_intent_schema.py",
                 "tests/test_postgres_effect_attempt_start_intent.py",
+                "tests/test_postgres_configuration_cleanup_read_ceilings.py",
             ),
         )
 
