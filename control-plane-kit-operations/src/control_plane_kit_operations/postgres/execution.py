@@ -328,7 +328,9 @@ class PostgresExecutionStore:
         )
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
-            read.query(sql + " RETURNING 1", params, records=1, octets=1, cells=1)
+            rows = read.query(sql + " RETURNING 1", params, records=1, octets=1, cells=1)
+            if rows != [(1,)]:
+                raise OperationsRecordError("execution command receipt is unavailable")
         else:
             self._connection.execute(sql, params)
         return record
