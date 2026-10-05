@@ -180,3 +180,39 @@ independent source review and hosted full acceptance remain required. The
 inventory includes the new modules, changed import companions, and the previously
 unlisted touched PostgreSQL activity-history owner. Both cleanup refusal gates
 remain asserted; whole-C capacity and mutable proof freshness remain #1936 work.
+
+## Focused source green and independent review
+
+At `a7e9bd39f834dc1b1ed883725aa5292183a24d01` (tree
+`2c314fdf7cd2c4b741aa9898cace12f98a9cb6dc`), the owning command was:
+
+```sh
+CPK_OPERATIONS_TEST_NETWORK_NAME=cpk-1939-target-test \
+CPK_OPERATIONS_TEST_POSTGRES_CONTAINER=cpk-1939-target-postgres \
+./control-plane-kit-operations/test.sh \
+  -k PostgresConfigurationCleanupReadCeilingsTests \
+  -k PostgresEffectAttemptIntentStoreContractTests \
+  -k ReceiverExecutionScopeTransportTests
+```
+
+The gate exited zero: 22 tests passed in 409.367 seconds (13 ceiling laws,
+five intent-store contract tests, four existing receiver transport tests).
+The normal compile and clean-import phases also passed. Its exact PostgreSQL
+container and Docker network were absent afterward. Log SHA256:
+`ec8a0004cde504e507156d25a870ae8537c33a92c61b464e9183dbd12d77172d`.
+This is focused Operations evidence, not full package or composed acceptance.
+
+Kepler's independent bounded source review passed at that same coordinate.
+All previously missing downstream laws executed successfully, including the
+separately recorded intent and ordinary receiver-history paths. No source changes
+occurred during validation. Hosted package and required backend acceptance remain
+next; no duplicate local full suite is planned.
+
+The normal capture statement count reconciles to 26 with coincident pins or 32
+with distinct pins: initial txid 1, fresh locked request 3, locked run recheck 3,
+original/scope proof 12/16, approvals 4, fixed width capture 3/5. These counts are
+source-traced. Each uncached, nonempty matching read adds txid, probe and guarded
+fetch; a cached application still checks txid, and an empty read stops after its
+probe. Existing bounded transport already remeasures every actual fetch. The new
+contract enforces an earlier measurement on later independent readers so future
+work can be forecast against it; it does not replace measured per-fetch charging.
