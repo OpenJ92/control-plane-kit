@@ -1,6 +1,7 @@
 """Public cleanup execution after the existing real receiver/D1 chronology."""
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService
+from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from tests.configuration_cleanup_read_ceilings_fixture import ConfigurationCleanupReadCeilingsFixture
 from tests.test_execution_admission import Sequence
 
@@ -28,3 +29,14 @@ class ConfigurationCleanupExecutionFixture(ConfigurationCleanupReadCeilingsFixtu
             id_factory=Sequence("execution-" + suffix, "action-execute-" + suffix)).execute(self.command(
                 plan_id=self.plan.plan_id, approval_request_id=self.approval.request_id,
                 scopes=tuple(PolicyScope), key="execute-" + suffix))
+
+    def ready_cleanup(self, suffix="cleanup-execution"):
+        self.prepare_cleanup_execution()
+        self.admit_cleanup(suffix)
+        return self.ready_run(suffix)
+
+    def start_cleanup(self, claimed, *, suffix="cleanup-execution", factory=None):
+        command = self.native_start_command(claimed, suffix)
+        started = EffectAttemptStartService(factory or self.unit_of_work,
+            id_factory=Sequence("cleanup-original")).execute(command)
+        return command, started
