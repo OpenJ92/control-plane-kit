@@ -49,12 +49,23 @@ changed row can never turn a small probe into an unbounded transported value.
         self.used -= reserved - actual
 
     def read(self, table, columns, where, params, *, order="", maximum=1,
-             point=False, cache=False, page=False, unique=False):
+             point=False, cache=False, page=False, unique=False, phase=None):
         """Read a complete point or prefix after row-count and size observation.
 
 Each column is (SQL expression, maximum bytes). Expressions explicitly cast
 scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
         """
+        if phase is not None:
+            from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_columns, _phase_rows
+            _phase_context(self.connection)
+            if point:
+                narrowed = _phase_columns(self.connection, *phase,
+                    tuple((name, "text", cap) for name, cap in columns))
+                columns = tuple((name, cap) for name, _, cap in narrowed)
+            elif self.configuration_read is not None:
+                rows = _phase_rows(self.configuration_read, *phase, maximum=maximum, text=True)
+                if rows is not None:
+                    return rows
         key = (table, columns, where, params, order, maximum, point, page, unique)
         _require(0 < len(columns) <= 32)
         if cache and key in self.cache:
@@ -196,7 +207,7 @@ class _ExecutionScopeStorage:
         _require(sessions == ((identity.workspace_id,),))
         rows = self.transport.read("cpk_activity_plans", _columns(_PLAN, json_columns=("payload",),
             ceilings=_cleanup_original_limits(self.connection, "plan", identity.plan_id)),
-            "plan_id=%s", (identity.plan_id,), point=True, cache=True)
+            "plan_id=%s", (identity.plan_id,), point=True, cache=True, phase=("plan", (identity.plan_id,)))
         _require(len(rows) == 1)
         plan = _plan_record(_decode(rows[0], _PLAN, json_columns=("payload",),
             int_columns=("desired_graph_revision",), time_columns=("created_at",)))
@@ -207,7 +218,8 @@ class _ExecutionScopeStorage:
             authored = self.transport.read("cpk_graph_versions",
                 _columns(_GRAPH, json_columns=("graph_descriptor", "metadata"),
                     ceilings=_cleanup_original_limits(self.connection, "graph", graph_id)),
-                "graph_id=%s AND workspace_id=%s", (graph_id, identity.workspace_id), point=True, cache=True)
+                "graph_id=%s AND workspace_id=%s", (graph_id, identity.workspace_id), point=True, cache=True,
+                phase=("graph", (graph_id,)))
             _require(len(authored) == 1)
             graph = _graph_record(_decode(authored[0], _GRAPH,
                 json_columns=("graph_descriptor", "metadata"), int_columns=("version",), time_columns=("created_at",)))
@@ -224,7 +236,8 @@ class _ExecutionScopeStorage:
                 _columns(_PROJECTION, json_columns=("graph_descriptor",),
                     ceilings=_cleanup_original_limits(self.connection, "projection", projection_id)),
                 "projection_id=%s AND workspace_id=%s AND source_authored_graph_id=%s",
-                (projection_id, identity.workspace_id, graph_id), point=True, cache=True)
+                (projection_id, identity.workspace_id, graph_id), point=True, cache=True,
+                phase=("projection", (projection_id,)))
             if not rows and expected is not None:
                 projection = expected
             else:
@@ -256,7 +269,8 @@ class _ExecutionScopeStorage:
         _require(headers == ((identity.workspace_id, identity.session_id, identity.plan_id,
                               str(len(derived.scopes)), derived.source_digest),))
         rows = self.transport.read("cpk_execution_receiver_scopes", _columns(_SCOPE),
-            "request_id=%s", (identity.request_id,), order="scope_ordinal", maximum=MAX_SCOPES)
+            "request_id=%s", (identity.request_id,), order="scope_ordinal", maximum=MAX_SCOPES,
+            phase=("scopes", (identity.request_id,)))
         expected = tuple((identity.request_id, identity.workspace_id, str(index), scope.scope_kind,
                           scope.runtime_id, scope.node_id) for index, scope in enumerate(derived.scopes))
         _require(rows == expected)
@@ -332,7 +346,8 @@ class _ExecutionScopeStorage:
     def request(self, workspace_id, request_id):
         from .execution import _execution_request
         rows = self.transport.read("cpk_execution_requests", _columns(_REQUEST),
-            "request_id=%s AND workspace_id=%s", (request_id, workspace_id), point=True)
+            "request_id=%s AND workspace_id=%s", (request_id, workspace_id), point=True,
+            phase=("request", (request_id,)))
         _require(len(rows) == 1)
         return _execution_request(_decode(rows[0], _REQUEST, int_columns=("claim_generation",),
             time_columns=("requested_at", "claimed_at", "lease_expires_at")))
@@ -342,7 +357,7 @@ class _ExecutionScopeStorage:
         from control_plane_kit_operations.revision_history import validate_retry_predecessor
         rows = self.transport.read("cpk_activity_runs", _columns(_RUN, json_columns=("metadata",),
             ceilings={"metadata": 65536}), "request_id=%s", (request.identity.request_id,),
-            order="attempt", maximum=MAX_RUNS - self.run_count)
+            order="attempt", maximum=MAX_RUNS - self.run_count, phase=("runs", (request.identity.request_id,)))
         self.run_count += len(rows)
         result = tuple(_activity_run(_decode(row, _RUN, json_columns=("metadata",),
             int_columns=("attempt",), time_columns=("created_at", "started_at", "settled_at"))) for row in rows)
@@ -362,7 +377,7 @@ class _ExecutionScopeStorage:
         from .execution import _activity_event
         rows = self.transport.read("cpk_activity_events", _columns(_EVENT, json_columns=("payload",),
             ceilings={"payload": 65536}), "run_id=%s", (run_id,),
-            order="ordinal", maximum=MAX_EVENTS - self.event_count)
+            order="ordinal", maximum=MAX_EVENTS - self.event_count, phase=("events", (run_id,)))
         self.event_count += len(rows)
         decoded = tuple(_decode(row, _EVENT, json_columns=("payload",),
             int_columns=("ordinal",), time_columns=("occurred_at",)) for row in rows)
@@ -375,7 +390,8 @@ class _ExecutionScopeStorage:
         rows = self.transport.read("cpk_operation_actions", _columns(_ACTION, json_columns=("payload",),
             ceilings={"payload": 65536}),
             "session_id=%s AND payload->>'run_id'=%s AND action_type='" + kind + "'",
-            (session_id, run_id), order="action_id", maximum=1, unique=True)
+            (session_id, run_id), order="action_id", maximum=1, unique=True,
+            phase=("advancement-actions", (session_id, run_id)) if kind == "advance-current-graph" else None)
         return tuple(_action_record(_decode(row, _ACTION, json_columns=("payload",),
             int_columns=("ordinal",), time_columns=("created_at",))) for row in rows)
 

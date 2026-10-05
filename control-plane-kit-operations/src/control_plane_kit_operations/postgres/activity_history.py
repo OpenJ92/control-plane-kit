@@ -120,6 +120,8 @@ class PostgresActivityHistoryStore:
             "closed_at", "metadata", "idempotency_key", "intent_fingerprint")
         columns = tuple((name, "json" if name == "metadata" else "time" if name in
             ("created_at", "closed_at") else "text", 65536 if name == "metadata" else 2048) for name in names)
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        columns = _phase_columns(self._connection, "session", (session_id,), columns)
         rows = read.bounded_rows("cpk_operation_sessions", columns, "session_id=%s", (session_id,))
         if not rows:
             raise KeyError("missing operation session")
@@ -572,7 +574,7 @@ class PostgresActivityHistoryStore:
                     (plan_id,), records=1, octets=1, cells=1)
             rows = _Transport(self._connection, read).read("cpk_activity_plans",
                 _columns(_PLAN, json_columns=("payload",), ceilings=ceilings),
-                "plan_id=%s", (plan_id,), point=True)
+                "plan_id=%s", (plan_id,), point=True, phase=("plan", (plan_id,)))
             if not rows:
                 raise KeyError("missing activity plan")
             return _plan_record(_decode(rows[0], _PLAN, json_columns=("payload",),

@@ -2,6 +2,85 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations._configuration_cleanup_phase_read_bounds",
+      "destination": "control_plane_kit_operations._configuration_cleanup_phase_read_bounds",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_cleanup_phase_read_bounds.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py"
+      ],
+      "motivation": "Private fixed-role point widths and complete collection keysets; no persisted material or permission."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
+      "destination": "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_cleanup_phase_read_bounds.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations._configuration_cleanup_phase_read_bounds",
+        "control_plane_kit_operations._configuration_cleanup_read_ceilings",
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.configuration_cleanup",
+        "control_plane_kit_operations.configuration_cleanup_planning",
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings",
+        "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes",
+        "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+        "control_plane_kit_operations.postgres.configuration_acceptance_store",
+        "control_plane_kit_operations.postgres.configuration_preparation_store",
+        "control_plane_kit_operations.postgres.configuration_cleanup_store",
+        "control_plane_kit_operations.postgres.configuration_source",
+        "control_plane_kit_operations.postgres.graph_store"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py"
+      ],
+      "motivation": "Single-use fixed cleanup proof bounds with cold capture, indexed capped counts, exact membership, and transaction/context confinement."
+    },
+    {
       "module": "control_plane_kit_operations.postgres.activity_history",
       "destination": "control_plane_kit_operations.postgres.activity_history",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/activity_history.py",
@@ -15,6 +94,7 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations.commands",
         "control_plane_kit_core.operations.lifecycle",
@@ -256,6 +336,7 @@
 
       ],
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.configuration_invocation",
         "control_plane_kit_core.operations",
@@ -384,6 +465,7 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.topology",
         "control_plane_kit_operations._configuration_acceptance",
         "control_plane_kit_operations._configuration_preparation",
@@ -595,6 +677,7 @@
         "ConfigurationPreparationStore"
       ],
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning",
@@ -12443,6 +12526,7 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_operations._configuration_acceptance",
         "control_plane_kit_operations.postgres.configuration_evidence",
@@ -12486,6 +12570,7 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.policies",
         "control_plane_kit_operations.execution_leases",

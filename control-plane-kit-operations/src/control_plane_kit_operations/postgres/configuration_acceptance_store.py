@@ -111,10 +111,13 @@ class ConfigurationAcceptanceStore:
         return bound
 
     def _originals(self, read, action_id, event_id):
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
         action_names = _ACTION + _LOCATOR + ("advancement_run_id",)
         event_names = _EVENT + _LOCATOR
-        actions = read.bounded_rows("cpk_operation_actions", _columns(action_names), "action_id=%s", (action_id,))
-        events = read.bounded_rows("cpk_activity_events", _columns(event_names), "event_id=%s", (event_id,))
+        actions = read.bounded_rows("cpk_operation_actions",
+            _phase_columns(self._connection, "receipt-action", (action_id,), _columns(action_names)), "action_id=%s", (action_id,))
+        events = read.bounded_rows("cpk_activity_events",
+            _phase_columns(self._connection, "receipt-event", (event_id,), _columns(event_names)), "event_id=%s", (event_id,))
         if len(actions) != 1 or len(events) != 1:
             raise _Unavailable
         payload = events[0][5]
@@ -217,7 +220,10 @@ class ConfigurationAcceptanceStore:
         return plan, request, run
 
     def _manifest(self, read, header, material):
-        rows = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
+        from .configuration_cleanup_phase_read_bounds import _phase_rows
+        rows = _phase_rows(read, "slots", (header["workspace_id"], header["pinned_revision"]))
+        if rows is None:
+            rows = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
             "workspace_id=%s AND pinned_revision=%s", (header["workspace_id"], header["pinned_revision"]),
             maximum=256, point=False, order="runtime_id,node_id,artifact_id")
         if (len(rows) != header["slot_count"] or _membership_digest(rows) != header["slot_digest"]
@@ -237,7 +243,9 @@ class ConfigurationAcceptanceStore:
         key = ("configuration-receipt-context", workspace_id, revision)
         if key in read.sources:
             return read.sources[key]
-        rows = read.bounded_rows("cpk_configuration_acceptances", _columns(_HEADER),
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        rows = read.bounded_rows("cpk_configuration_acceptances",
+            _phase_columns(self._connection, "header", (workspace_id, revision), _columns(_HEADER)),
             "workspace_id=%s AND pinned_revision=%s", (workspace_id, revision))
         if len(rows) != 1:
             raise _Unavailable

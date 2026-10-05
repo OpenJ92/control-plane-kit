@@ -537,6 +537,9 @@ class PostgresGraphTopologyStore:
             columns = tuple(("a." + name, "json" if name == "payload" else "int" if name == "ordinal"
                 else "time" if name == "created_at" else "text", 65536 if name == "payload" else 2048)
                 for name in names)
+            from .configuration_cleanup_phase_read_bounds import _phase_columns
+            columns = _phase_columns(self._connection, "origin-action",
+                (origin.introducing_action_id, origin.introducing_session_id, origin.workspace_id), columns)
             rows = read.bounded_rows("cpk_operation_actions a JOIN cpk_operation_sessions s ON s.session_id=a.session_id",
                 columns, "a.action_id=%s AND a.session_id=%s AND s.workspace_id=%s",
                 (origin.introducing_action_id, origin.introducing_session_id, origin.workspace_id), identities=2)
@@ -642,6 +645,8 @@ class PostgresGraphTopologyStore:
             (("graph_id", "text", 2048), ("workspace_id", "text", 2048), ("version", "int", 32),
              ("graph_descriptor", "json", 1048576), ("created_by", "text", 2048),
              ("created_at", "time", 64), ("metadata", "json", 1048576)))
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        columns = _phase_columns(self._connection, "graph", (graph_id,), columns)
         if (read := _active_read(self._connection)) is not None:
             rows = read.bounded_rows("cpk_graph_versions", columns, "graph_id=%s", (graph_id,))
             if not rows:
@@ -775,6 +780,8 @@ class PostgresRealizedGraphProjectionStore:
         columns = _cleanup_original_columns(self._connection, "projection", projection_id,
             tuple((name, "json" if name == "graph_descriptor" else "time" if name == "created_at"
                 else "text", 1048576 if name == "graph_descriptor" else 2048) for name in names))
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        columns = _phase_columns(self._connection, "projection", (projection_id,), columns)
         if (read := _active_read(self._connection)) is not None:
             rows = read.bounded_rows("cpk_realized_graph_projections", columns, "projection_id=%s", (projection_id,))
             if not rows:

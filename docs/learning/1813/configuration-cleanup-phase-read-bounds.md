@@ -200,3 +200,17 @@ remain unexecuted behind the missing owner; the result is not enforcement green,
 full18-method acceptance, measured C capture/tail fit, or full coordinator fit.
 Independent target-stage acceptance and coordinator production release are still
 required. Full18 targets and governing regressions remain the later source gate.
+# Initial production checkpoint (unvalidated)
+
+The fixed phase value and issuer now connect the reviewed historical points,
+raw lifecycle material, acceptance collections, complete allocation refs and
+claims, and whole invocation refs. The issuer runs cold receiver, cleanup and
+D1 proofs before measuring transport widths and complete ordered keysets.
+Collections use indexed inner capped counts and guarded keys plus lengths;
+application retains the existing bounded_rows transport and semantic decoders.
+
+Ordinary unmatched paths and #1939 original ownership remain unchanged. No
+schema, global budget, public default, cleanup activation or provider change is
+included. This checkpoint has only source inspection and diff whitespace
+validation; its authored negative branches have not yet passed against the
+implementation. The owning Docker run and independent source review follow.

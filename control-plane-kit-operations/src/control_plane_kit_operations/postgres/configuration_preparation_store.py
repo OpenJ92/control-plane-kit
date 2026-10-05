@@ -28,6 +28,16 @@ _SELECT += f", CASE WHEN {_VALID} THEN c.workspace_id END, CASE WHEN {_VALID} TH
 _SELECT += " FROM cpk_effect_configuration_refs r LEFT JOIN cpk_configuration_claims c ON "
 _SELECT += "(c.run_id,c.activity_id,c.attempt,c.artifact_id)=(r.run_id,r.activity_id,r.attempt,r.artifact_id)"
 
+# C uses the same guarded nineteen-cell join and native decoder as _SELECT.
+# Ordinary readers keep their existing fixed reservation and query shape.
+_PHASE_REF_TABLE = "cpk_effect_configuration_refs r LEFT JOIN cpk_configuration_claims c ON " + \
+    "(c.run_id,c.activity_id,c.attempt,c.artifact_id)=(r.run_id,r.activity_id,r.attempt,r.artifact_id)"
+_PHASE_REF_COLUMNS = tuple((f"CASE WHEN {_VALID} THEN r.{name} END",
+    "bytes" if name == "ref_preimage" else "bool" if name == "is_birth" else "int" if name in
+    ("attempt", "birth_attempt") else "text", 4096 if name == "ref_preimage" else 2048) for name in _NAMES)
+_PHASE_REF_COLUMNS += tuple((f"CASE WHEN {_VALID} THEN c.{name} END", "text", 128)
+    for name in ("workspace_id", "allocation_id"))
+
 
 def _key(row):
     return EffectAttemptIdentity(RunId(row[0]), row[1], row[2]), row[3]
@@ -483,7 +493,11 @@ class ConfigurationPreparationStore:
 
     def _allocation_evidence(self, exact_ref, read):
         try:
-            rows = read.query(_SELECT + " WHERE r.workspace_id=%s AND r.allocation_id=%s"
+            from .configuration_cleanup_phase_read_bounds import _phase_rows
+            key = (exact_ref.workspace_id, exact_ref.allocation_id)
+            rows = _phase_rows(read, "allocation-refs", key)
+            if rows is None:
+                rows = read.query(_SELECT + " WHERE r.workspace_id=%s AND r.allocation_id=%s"
                 " ORDER BY r.run_id,r.activity_id,r.attempt,r.artifact_id LIMIT 65",
                 (exact_ref.workspace_id, exact_ref.allocation_id), records=65,
                 octets=65 * 32768, cells=19, identities=2)
@@ -491,7 +505,9 @@ class ConfigurationPreparationStore:
                 raise _Capacity
             if not rows:
                 raise _Unavailable
-            claimed = read.query("SELECT "
+            claimed = _phase_rows(read, "allocation-claims", key)
+            if claimed is None:
+                claimed = read.query("SELECT "
                 "CASE WHEN octet_length(run_id)<=200 THEN run_id END,"
                 "CASE WHEN octet_length(activity_id)<=200 THEN activity_id END,attempt,"
                 "CASE WHEN octet_length(artifact_id)<=63 THEN artifact_id END "
