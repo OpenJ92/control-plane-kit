@@ -1179,6 +1179,33 @@ class ExecutionCoordinator:
             uow.commit()
         return intent, authority
 
+    def _cleanup_dispatch_matches(self, attempt, context, request):
+        """Prove the committed registration before using pre-start context."""
+        unavailable = False
+        reservation = None
+        try:
+            with self._unit_of_work_factory() as uow:
+                reservation = uow.stores.configuration_cleanup_ownership.get(attempt.state.identity)
+        except (OperationsRecordError, KeyError, ValueError):
+            unavailable = True
+        if (unavailable or reservation is None
+                or reservation.status is not EffectAttemptStatus.STARTED
+                or reservation.identity != attempt.state.identity
+                or reservation.original_event_id != request.effect_id
+                or reservation.request_fingerprint != attempt.state.request_fingerprint
+                or reservation.request_id != request.source.request_id
+                or reservation.workspace_id != request.source.workspace_id):
+            raise ExecutionCoordinatorConflict("cleanup dispatch evidence is unavailable")
+        selected = tuple(value for value in context.runtime_authorities
+            if type(value) is RegisteredRuntimeAuthority
+                and value.workspace_id == reservation.workspace_id
+                and value.authority_ref == reservation.authority_ref
+                and value.runtime_kind is reservation.runtime_kind)
+        return (len(selected) == 1 and selected[0].registration_id == reservation.registration_id
+            and selected[0].status.value == "active"
+            and request.authority_ref == reservation.authority_ref
+            and request.runtime_kind is reservation.runtime_kind)
+
     async def reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
         if type(command) is not ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
@@ -1649,18 +1676,25 @@ class ExecutionCoordinator:
                 )
                 runtime_result = None
                 uncertainty_reason = None
-                try:
-                    runtime_result = self._adapter.execute_runtime(
-                        realization,
-                        request,
-                    )
-                except Exception:  # noqa: BLE001 - provider faults become uncertainty.
-                    uncertainty_reason = "exception"
+                if (type(request.operation) is CleanupConfigurationInstances
+                        and not self._cleanup_dispatch_matches(attempt, realization, request)):
+                    runtime_result = _unsupported_runtime_result(request,
+                        "runtime.cleanup-registration-mismatch",
+                        "cleanup dispatch registration differs from its committed reservation",
+                        runtime_kind=request.runtime_kind)
                 else:
-                    if type(runtime_result) is not RuntimeEffectResult:
-                        uncertainty_reason = "invalid-result-type"
-                    elif runtime_result.effect_id != request.effect_id:
-                        uncertainty_reason = "effect-id-mismatch"
+                    try:
+                        runtime_result = self._adapter.execute_runtime(
+                            realization,
+                            request,
+                        )
+                    except Exception:  # noqa: BLE001 - provider faults become uncertainty.
+                        uncertainty_reason = "exception"
+                    else:
+                        if type(runtime_result) is not RuntimeEffectResult:
+                            uncertainty_reason = "invalid-result-type"
+                        elif runtime_result.effect_id != request.effect_id:
+                            uncertainty_reason = "effect-id-mismatch"
                 if uncertainty_reason is not None:
                     runtime_result = _uncertain_runtime_result(
                         request, boundary="adapter", reason=uncertainty_reason,

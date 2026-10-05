@@ -23,6 +23,8 @@ from control_plane_kit_operations._configuration_preparation import _ACCOUNTING,
 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
 from control_plane_kit_operations.coordinator import CoordinatorStatus, ExecutionCoordinatorConflict
 from control_plane_kit_operations.runtime_authorities import RemoteDockerTlsAuthority
+from control_plane_kit_operations.planning import DesiredGraphCommandError
+from control_plane_kit_operations.receiver_execution_scopes import ExecutionReceiverScope
 from tests.configuration_cleanup_execution_fixture import ConfigurationCleanupExecutionFixture
 from tests.test_execution_admission import Sequence
 from tests import test_postgres_configuration_cleanup_transactions as transactions
@@ -84,23 +86,23 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
         self.assertEqual(self.ceiling_truth(), before)
         # A schema-valid corrupt historical digest is an explicit below-owner
         # negative premise; replay must re-prove B instead of accepting generic history.
-        self.connection.execute("UPDATE cpk_configuration_cleanup_reservations "
-            "SET proposal_fingerprint=%s", ("0" * 64,))
+        def corrupted_connection():
+            connection = psycopg.connect(self.database_url)
+            connection.execute("UPDATE cpk_configuration_cleanup_reservations "
+                "SET proposal_fingerprint=%s", ("0" * 64,))
+            return connection
+
+        service, command = self.reconciliation(original, observer, allocate=False,
+            factory=lambda: PostgresUnitOfWork(corrupted_connection))
         before = self.ceiling_truth()
         with self.assertRaises(EffectAttemptReconciliationConflict):
             service.execute(command)
         self.assertEqual(observer.calls, [])
         self.assertEqual(self.ceiling_truth(), before)
 
-    def test_dispatched_result_retains_original_after_authority_and_desired_drift(self):
+    def test_dispatched_result_retains_original_after_authority_revocation(self):
         claimed = self.ready_cleanup()
         original, started = self.start_cleanup(claimed)
-        with self.unit_of_work() as uow:
-            previous = uow.stores.workspaces.get("workspace-a")
-        self.desired_receiver("after-cleanup-dispatch", graph=self.canonical_receiver_graph)
-        with self.unit_of_work() as uow:
-            changed = uow.stores.workspaces.get("workspace-a")
-            self.assertGreater(changed.desired_graph_revision, previous.desired_graph_revision)
         self.connection.execute("UPDATE cpk_runtime_authorities SET status='revoked' WHERE registration_id=%s",
             (self.registration.registration_id,))
         command = self.removed_fold(original, started)
@@ -126,6 +128,8 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
             ("DELETE FROM cpk_configuration_invocation_completions "
                 "WHERE (run_id,activity_id,attempt)=(%s,%s,%s) RETURNING 1",
                 (self.source_identity.run_id.value, self.source_identity.activity_id, self.source_identity.attempt)),
+            ("UPDATE cpk_workspaces SET desired_graph_revision=desired_graph_revision+1 "
+                "WHERE workspace_id='workspace-a' RETURNING 1", ()),
         )
         for query, params in cases:
             with self.subTest(query=query):
@@ -147,13 +151,50 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
                 self.assertEqual(changed, [True])
                 self.assertEqual(self.ceiling_truth(), before)
 
-    def test_fresh_start_refuses_new_desired_revision_before_ids(self):
+    def test_active_cleanup_conflict_refuses_public_desired_change_without_mutation(self):
         claimed = self.ready_cleanup()
-        command = self.native_start_command(claimed, "cleanup-execution")
-        self.desired_receiver("before-cleanup-dispatch", graph=self.canonical_receiver_graph)
+        for started in (False, True):
+            with self.subTest(started=started):
+                if started:
+                    self.start_cleanup(claimed)
+                classification = self.evidence(ExecutionReceiverScope("docker", "api"))
+                self.assertEqual(classification.disposition, "conflict")
+                self.assertIn(claimed.request.identity.request_id, classification.request_ids)
+                before = self.ceiling_truth()
+                with self.assertRaises(DesiredGraphCommandError):
+                    self.desired_receiver("during-cleanup", graph=self.canonical_receiver_graph)
+                self.assertEqual(self.ceiling_truth(), before)
+
+    def test_retained_fold_does_not_require_fresh_desired_pointers_in_rollback_only_fault(self):
+        claimed = self.ready_cleanup()
+        original, started = self.start_cleanup(claimed)
+        with self.unit_of_work() as uow:
+            source = uow.stores.effect_attempt_intents.get(self.source_identity)
+            historical = uow.stores.activity_history.get_plan(source.intent.source.plan_id)
         before = self.ceiling_truth()
-        with self.assertRaises((EffectAttemptStartConflict, EffectAttemptStartDenied)):
-            EffectAttemptStartService(self.unit_of_work, id_factory=self.no_ids).execute(command)
+        fault = RuntimeError("rollback-only historical pointer fault")
+        changed = []
+
+        def connect():
+            connection = psycopg.connect(self.database_url)
+            rows = connection.execute("UPDATE cpk_workspaces SET desired_graph_id=%s, "
+                "desired_realized_projection_id=%s, desired_graph_revision=desired_graph_revision+1 "
+                "WHERE workspace_id='workspace-a' RETURNING 1",
+                (historical.desired_graph_id, historical.desired_realized_projection_id)).fetchall()
+            if rows != [(1,)]:
+                connection.close()
+                raise AssertionError("historical pointer fault did not change the workspace")
+            changed.append(True)
+            return transactions._CommitFailureConnection(connection, fault)
+
+        # Deliberate below-owner fault, not a reachable approved graph edit.
+        # The exact injected commit error proves the entire real fold reached
+        # commit after validation; every tentative write and pointer rolls back.
+        with self.assertRaises(RuntimeError) as raised:
+            EffectAttemptFoldService(lambda: PostgresUnitOfWork(connect),
+                id_factory=Sequence("cleanup-terminal")).execute(self.removed_fold(original, started))
+        self.assertIs(raised.exception, fault)
+        self.assertEqual(changed, [True])
         self.assertEqual(self.ceiling_truth(), before)
 
     def test_new_registration_between_context_and_start_never_dispatches_stale_authority(self):
@@ -190,7 +231,7 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
         command = self.execution_command(claimed, "cleanup-execution")
         result = coordinator.execute(command)
         self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
-        self.assertEqual(adapter.runtime_calls, [], "stale dispatch authority must never be invoked")
+        self.assertEqual(len(adapter.runtime_calls), 0, "stale dispatch authority must never be invoked")
         self.assertEqual(len(selected), 1)
         with self.unit_of_work() as uow:
             retained = uow.stores.configuration_cleanup_ownership.get(selected[0])
@@ -236,6 +277,12 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
         coordinator._reconciliation_service = EffectAttemptReconciliationService(self.unit_of_work, observer, fold)
         self.assertIs(coordinator.execute(command).status, CoordinatorStatus.UNCERTAIN)
         self.assertEqual(len(adapter.runtime_calls), 1)
+        self.assertEqual(len(observer.calls), 0, "incomplete receipt never authorizes automatic recovery")
+        with self.unit_of_work() as uow:
+            self.assertIs(uow.stores.configuration_cleanup_ownership.get(identity).status, EffectAttemptStatus.STARTED)
+        reconciled = coordinator._reconciliation_service.execute(ReconcileEffectAttempt(
+            original.request_id, identity, command.authority, command.fence))
+        self.assertIs(type(reconciled), NewlyFolded)
         self.assertEqual(len(observer.calls), 1)
         with self.unit_of_work() as uow:
             retained = uow.stores.configuration_cleanup_ownership.get(identity)

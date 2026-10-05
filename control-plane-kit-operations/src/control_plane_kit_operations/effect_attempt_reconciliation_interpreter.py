@@ -336,8 +336,16 @@ def _existing_fold(
         )
     if not invalid:
         try:
+            from control_plane_kit_core.planning import CleanupConfigurationInstances
+            original = stores.effect_attempt_intents.get(attempt.state.identity)
+            if type(original.intent.operation) is CleanupConfigurationInstances:
+                retained = stores.configuration_cleanup_ownership.get(attempt.state.identity)
+                if (retained is None or retained.status is not attempt.state.status
+                        or retained.original_event_id != attempt.original_start_event.event_id
+                        or retained.outcome_fingerprint != outcome_record.outcome.outcome_fingerprint):
+                    raise OperationsRecordError(_INVALID_TRUTH_ERROR)
             result = ExistingFold(attempt, outcome_record)
-        except OperationsRecordError:
+        except (KeyError, OperationsRecordError):
             invalid = True
         else:
             invalid = type(result) is not ExistingFold

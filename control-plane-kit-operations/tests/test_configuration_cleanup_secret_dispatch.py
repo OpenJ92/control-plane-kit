@@ -3,7 +3,7 @@ import unittest
 from dataclasses import replace
 
 from control_plane_kit_core.operations import RunId
-from control_plane_kit_core.planning import CleanupConfigurationInstances, ActivityPlan, RiskLevel, ActivityImpact
+from control_plane_kit_core.planning import CleanupConfigurationInstances, ActivityPlan, RiskLevel, ActivityImpact, StartRuntime, RuntimeTarget
 from control_plane_kit_core.configuration_instances import ConfigurationCleanupReason, ConfigurationCleanupStatus
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effects import (
@@ -29,8 +29,10 @@ class ConfigurationCleanupSecretDispatchTests(unittest.TestCase):
                 SecretReference("secret://test/key")), admitted_by="operator-a",
             admitted_at="2026-10-03T12:00:00Z")
         operation = CleanupConfigurationInstances((configuration_ref(),))
-        context = context_for(operation, authority_ref=reference, runtime_authorities=(authority,))
-        activity = replace(context.activity, risk=RiskLevel.CRITICAL, impact=ActivityImpact.DESTRUCTIVE)
+        context = context_for(StartRuntime(RuntimeTarget("docker")), authority_ref=reference,
+            runtime_authorities=(authority,))
+        activity = replace(context.activity, operation=operation,
+            risk=RiskLevel.CRITICAL, impact=ActivityImpact.DESTRUCTIVE)
         context = replace(context, activity=activity, plan_record=replace(context.plan_record,
             plan=ActivityPlan((activity,))))
         request = RuntimeEffectRequest("event-intent", RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
