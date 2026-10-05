@@ -9,7 +9,11 @@ from control_plane_kit_core.configuration_invocation import (
     configuration_invocation_selection_fingerprint,
 )
 from control_plane_kit_core.operations import EffectAttemptStatus
+from control_plane_kit_core.planning import CleanupConfigurationInstances
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
+from control_plane_kit_core.runtime_effects import (
+    ConfigurationCleanupCapacityError, require_configuration_cleanup_capacity,
+)
 from control_plane_kit_operations.configuration_cleanup import (
     ConfigurationCleanupInspectionCodec, ConfigurationCleanupInspectionResult,
     ConfigurationCleanupProposalCodec, MAX_CANONICAL_REVISION,
@@ -19,7 +23,7 @@ from control_plane_kit_operations.configuration_cleanup import (
 from control_plane_kit_operations.records import OperationSessionStatus
 from .configuration_evidence import _Capacity, _Unavailable, _composed_read
 from .configuration_source import read_original_selection
-from .configuration_preparation_store import _decode_ref
+from .configuration_preparation_store import _decode_ref, _require_unreserved
 from .effect_attempt_store import _COLUMN_NAMES, _record_from_events
 from .effect_outcome_store import _configuration_event
 from .graph_store import _read_workspace_initialization
@@ -87,6 +91,12 @@ def _invocation(stores, source, selected, read):
             direct_event_ordinal=terminal.latest_transition_event.ordinal,
             outcome_fingerprint=terminal.state.outcome_fingerprint)
         if completion is not None:
+            admitted = stores.configuration_completions._get(source.identity, read)
+            if (admitted is None or admitted.request_fingerprint != source.request_fingerprint
+                    or admitted.selection_fingerprint != fingerprint
+                    or admitted.outcome_fingerprint != terminal.state.outcome_fingerprint):
+                raise _Unavailable
+            read.sources[("cleanup-admitted-completion", source.identity)] = admitted
             witness = {name: summary[name] for name in (
                 "source_identity", "original_event_id", "original_event_ordinal", "request_fingerprint",
                 "selection_fingerprint", "direct_event_id", "direct_event_ordinal", "result_kind", "outcome_fingerprint")}
@@ -110,6 +120,11 @@ def _inspect(stores, command, read):
         desired_graph_revision=workspace.desired_graph_revision)
     if pins != command.expected_context.descriptor():
         raise _Unavailable
+    try:
+        require_configuration_cleanup_capacity(CleanupConfigurationInstances(
+            tuple(selector.expected_ref for selector in command.selectors)))
+    except ConfigurationCleanupCapacityError:
+        raise _Capacity from None
     receipt = stores.configuration_acceptance._current_manifest(workspace, read)
     if receipt[0]["pinned_revision"] is None:
         occurrence = dict(kind="workspace-initialization",
@@ -131,6 +146,7 @@ def _inspect(stores, command, read):
     candidates, proposals, count = [], [], 0
     for selector in sorted(command.selectors, key=lambda item: item.expected_ref.allocation_id):
         ref = selector.expected_ref
+        _require_unreserved(read, ref)
         allocation = stores.configuration_preparation._allocation_evidence(ref, read)
         if allocation.state == "capacity":
             raise _Capacity

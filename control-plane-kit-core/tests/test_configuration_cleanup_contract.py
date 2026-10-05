@@ -83,6 +83,41 @@ class ConfigurationCleanupPlanTests(unittest.TestCase):
                         planning.ActivityPlan((activity,))
 
 
+class ConfigurationCleanupCapacityTests(unittest.TestCase):
+    def capacity_contract(self):
+        self.assertTrue(hasattr(effects, "require_configuration_cleanup_capacity"),
+            "#1936 requires whole-operation capacity validation before execution identities exist")
+        self.assertTrue(hasattr(effects, "ConfigurationCleanupCapacityError"),
+            "#1936 requires a typed capacity refusal distinct from malformed cleanup input")
+        self.assertTrue(issubclass(effects.ConfigurationCleanupCapacityError, effects.RuntimeEffectContractError))
+        return effects.require_configuration_cleanup_capacity, effects.ConfigurationCleanupCapacityError
+
+    def test_whole_operation_capacity_without_request_or_intent_ids(self):
+        require_capacity, capacity_error = self.capacity_contract()
+        path = "/" + "/".join(["a" * 127] * 4)
+        refs = tuple(instance(allocation_id=f"{i:02d}" + "a" * 126, workspace_id="w" * 128,
+            runtime_id="r" * 128, node_id="n" * 128, artifact_id="a" * 63,
+            target_path=path) for i in range(4))
+        fitting = cleanup(*refs[:3])
+        self.assertIsNone(require_capacity(fitting))
+        oversized = cleanup(*refs)
+        with self.assertRaises(capacity_error):
+            require_capacity(oversized)
+        self.assertEqual(oversized.instances, refs, "capacity refusal must not truncate the selection")
+        self.assertIsNone(require_capacity(cleanup(*(instance(allocation_id=f"a-{i}") for i in range(4)))))
+        self.assertEqual(fitting.instances, refs[:3])
+
+    def test_malformed_operation_is_not_reported_as_capacity(self):
+        require_capacity, capacity_error = self.capacity_contract()
+        duplicate = cleanup()
+        object.__setattr__(duplicate, "instances", duplicate.instances * 2)
+        for malformed in (None, {}, (), duplicate):
+            with self.subTest(value=type(malformed).__name__):
+                with self.assertRaises(effects.RuntimeEffectContractError) as raised:
+                    require_capacity(malformed)
+                self.assertNotIsInstance(raised.exception, capacity_error)
+
+
 class ConfigurationCleanupOutcomeTests(unittest.TestCase):
     def test_exact_total_outcomes_determine_status_and_fixed_redacted_failure(self):
         make, read = helpers()

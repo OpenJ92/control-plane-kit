@@ -2,6 +2,44 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations._configuration_cleanup_ownership",
+      "destination": "control_plane_kit_operations._configuration_cleanup_ownership",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_cleanup_ownership.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "validation",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
+        "control_plane_kit_operations.postgres.configuration_cleanup_ownership_store",
+        "control_plane_kit_operations.postgres.configuration_evidence"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_cleanup_execution.py",
+        "tests/test_postgres_configuration_cleanup_transactions.py"
+      ],
+      "motivation": "Private transaction-confined cleanup preparation and fixed remaining atomic-tail reservations; no independent commit or external effect."
+    },
+    {
       "module": "control_plane_kit_operations._configuration_cleanup_phase_read_bounds",
       "destination": "control_plane_kit_operations._configuration_cleanup_phase_read_bounds",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_cleanup_phase_read_bounds.py",

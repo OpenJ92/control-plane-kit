@@ -158,16 +158,83 @@ class ConfigurationPreparationStore:
             return
         raise CurrentGraphAdvancementConflict("configuration advancement evidence is unavailable") from None
 
-    def _configure_run(self, run_id):
+    def _configure_run(self, run_id, *, replay_request_id=None, replay_activity_id=None):
         """Bounded catalog-free routing from the plan's exact pinned graphs."""
         from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
         read = _EvidenceRead(self._connection)
+        if replay_request_id is not None or replay_activity_id is not None:
+            if type(replay_request_id) is not str or type(replay_activity_id) is not str:
+                return "unavailable"
+            # Select one original plan, not current material or lifetime history.
+            # LIMIT 2 bounds matching output; the scan is of this one stored plan.
+            rows = read.query("""
+                WITH pinned AS (
+                  SELECT CASE WHEN p.base_realized_projection_id IS NULL THEN b.graph_descriptor
+                              ELSE bp.graph_descriptor END AS base,
+                         CASE WHEN p.desired_realized_projection_id IS NULL THEN d.graph_descriptor
+                              ELSE dp.graph_descriptor END AS desired, p.payload
+                  FROM cpk_activity_runs r JOIN cpk_activity_plans p ON p.plan_id=r.plan_id
+                  LEFT JOIN cpk_graph_versions b ON b.graph_id=p.base_graph_id
+                  LEFT JOIN cpk_graph_versions d ON d.graph_id=p.desired_graph_id
+                  LEFT JOIN cpk_realized_graph_projections bp ON bp.projection_id=p.base_realized_projection_id
+                  LEFT JOIN cpk_realized_graph_projections dp ON dp.projection_id=p.desired_realized_projection_id
+                  WHERE r.run_id=%s AND r.request_id=%s
+                ), shaped AS (
+                  SELECT *, CASE
+                    WHEN jsonb_typeof(payload)='object'
+                      AND payload->>'schema'='control-plane-kit.activity-plan'
+                      AND jsonb_typeof(payload->'version')='number' AND payload->>'version'='1'
+                    THEN payload
+                    WHEN jsonb_typeof(payload)='object'
+                      AND payload->>'schema'='control-plane-kit.operations.activity-plan-record'
+                      AND jsonb_typeof(payload->'version')='number'
+                      AND ((payload->>'version'='1' AND payload->>'derivation_profile'
+                            IN ('structural-v1','management-graph-pair-v1'))
+                        OR (payload->>'version'='2' AND payload->>'derivation_profile'='configuration-cleanup-v1'))
+                    THEN payload->'plan'
+                    ELSE NULL END AS plan
+                  FROM pinned
+                )
+                SELECT jsonb_path_exists(base, '$.nodes.*.configuration_artifacts[*]')
+                    OR jsonb_path_exists(desired, '$.nodes.*.configuration_artifacts[*]'),
+                    base IS NOT NULL AND desired IS NOT NULL,
+                    coalesce(payload->>'derivation_profile'='configuration-cleanup-v1', false)
+                    OR payload ? 'cleanup_proposal' OR payload ? 'cleanup_proposal_fingerprint'
+                    OR (payload->>'schema'='control-plane-kit.operations.activity-plan-record'
+                        AND payload->'version'='2'::jsonb)
+                    OR jsonb_path_exists(payload,
+                        '$.**.operation ? (@.kind == "cleanup-configuration-instances")'),
+                    coalesce(jsonb_typeof(plan)='object'
+                      AND plan->>'schema'='control-plane-kit.activity-plan'
+                      AND jsonb_typeof(plan->'version')='number' AND plan->>'version'='1'
+                      AND jsonb_typeof(plan->'activities')='array'
+                      AND (SELECT count(*)=1 AND bool_and(
+                            jsonb_typeof(item->'operation')='object'
+                            AND jsonb_typeof(item->'operation'->'kind')='string'
+                            AND item->'operation'->>'kind'<>'')
+                           FROM (SELECT item FROM jsonb_array_elements(
+                             CASE WHEN jsonb_typeof(plan->'activities')='array'
+                                  THEN plan->'activities' ELSE '[]'::jsonb END) AS elements(item)
+                             WHERE jsonb_typeof(item)='object'
+                               AND jsonb_typeof(item->'activity_id')='string'
+                               AND item->>'activity_id'=%s LIMIT 2) matches), false)
+                FROM shaped LIMIT 1
+                """, (run_id, replay_request_id, replay_activity_id),
+                records=1, octets=4, cells=4, identities=6)
+            accounting = _ACCOUNTING.get()
+            if rows and (rows[0][0] is True or rows[0][2] is True):
+                accounting.active = True
+            if (len(rows) != 1 or any(type(value) is not bool for value in rows[0])
+                    or rows[0][1] is not True or rows[0][3] is not True):
+                return "unavailable"
+            return "cleanup" if rows[0][2] else "ordinary"
         rows = read.query("""
             WITH pinned AS (
               SELECT CASE WHEN p.base_realized_projection_id IS NULL THEN b.graph_descriptor
                           ELSE bp.graph_descriptor END AS base,
                      CASE WHEN p.desired_realized_projection_id IS NULL THEN d.graph_descriptor
-                          ELSE dp.graph_descriptor END AS desired
+                          ELSE dp.graph_descriptor END AS desired,
+                     p.payload
               FROM cpk_activity_runs r JOIN cpk_activity_plans p ON p.plan_id=r.plan_id
               LEFT JOIN cpk_graph_versions b ON b.graph_id=p.base_graph_id
               LEFT JOIN cpk_graph_versions d ON d.graph_id=p.desired_graph_id
@@ -177,12 +244,18 @@ class ConfigurationPreparationStore:
             )
             SELECT jsonb_path_exists(base, '$.nodes.*.configuration_artifacts[*]')
                 OR jsonb_path_exists(desired, '$.nodes.*.configuration_artifacts[*]'),
-                base IS NOT NULL AND desired IS NOT NULL
+                base IS NOT NULL AND desired IS NOT NULL,
+                coalesce(payload->>'derivation_profile'='configuration-cleanup-v1', false)
+                OR payload ? 'cleanup_proposal' OR payload ? 'cleanup_proposal_fingerprint'
+                OR jsonb_path_exists(payload,
+                    '$.**.operation ? (@.kind == "cleanup-configuration-instances")')
             FROM pinned LIMIT 1
-            """, (run_id,), records=1, octets=2, cells=2, identities=6)
+            """, (run_id,), records=1, octets=3, cells=3, identities=6)
         if rows and rows[0][1] is not True:
             raise _Unavailable
-        _ACCOUNTING.get().active = bool(rows and rows[0][0])
+        # Any cleanup marker keeps accounting active even when departure left
+        # no artifacts. This routing bit never validates or authorizes a plan.
+        _ACCOUNTING.get().active = bool(rows and (rows[0][0] or rows[0][2]))
 
     def _material(self, stores, request, run, activity, read, *, guard=None):
         from .receiver_execution_scopes import _ExecutionScopeStorage

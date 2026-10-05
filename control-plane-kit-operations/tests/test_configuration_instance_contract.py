@@ -70,12 +70,12 @@ class ConfigurationInstanceIntentTests(EffectAttemptIntentFixture, unittest.Test
 
 
 class ConfigurationCleanupTranslationTests(unittest.TestCase):
-    def test_valid_cleanup_refuses_translation_explicitly_before_generic_target_access(self):
+    def test_cleanup_without_pinned_runtime_refuses_before_generic_target_access(self):
         activity = configuration_cleanup_activity()
         context = _context(activity=activity)
         for translate in (lambda: runtime_effect_request_for_context(context),
                           lambda: _runtime_effect_intent_for_context(context, activity)):
-            with self.assertRaisesRegex(InvalidOperationCommand, "configuration cleanup.*unsupported"):
+            with self.assertRaisesRegex(InvalidOperationCommand, "cleanup requires the same authorized runtime in both pins"):
                 translate()
 
 

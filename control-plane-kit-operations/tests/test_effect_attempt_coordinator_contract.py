@@ -196,6 +196,15 @@ def _exact_imports(*rows: tuple[str, str | None, str | None]):
 
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
+    # #1936 uses Core's exact cleanup algebra and the existing plan profile.
+    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupOutcome", None),
+    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupOutcomeSet", None),
+    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupReason", None),
+    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupStatus", None),
+    ("control_plane_kit_core.planning", "CleanupConfigurationInstances", None),
+    ("control_plane_kit_core.runtime_effects", "configuration_cleanup_outcomes", None),
+    ("control_plane_kit_core.runtime_effects", "configuration_cleanup_result", None),
+    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
     ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectIntent", None),
     ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
     ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
@@ -477,6 +486,21 @@ def _exact_calls(*rows: tuple[str | None, int]):
 
 
 EXACT_COORDINATOR_CALLS = _exact_calls(
+    # #1936 exact cleanup dispatch correspondence and canonical uncertainty.
+    ("_admit_runtime_result", 2),
+    ("self._cleanup_dispatch_matches", 1),
+    ("self._unit_of_work_factory", 1),
+    ("uow.stores.configuration_cleanup_ownership.get", 1),
+    ("ExecutionCoordinatorConflict", 1),
+    ("tuple", 2),
+    ("type", 6),
+    ("len", 2),
+    ("_unsupported_runtime_result", 1),
+    ("_unknown_cleanup_result", 3),
+    ("control_plane_kit_core.runtime_effects.configuration_cleanup_result", 1),
+    ("control_plane_kit_core.runtime_effects.configuration_cleanup_outcomes", 1),
+    ("control_plane_kit_core.configuration_instances.ConfigurationCleanupOutcome", 1),
+    ("control_plane_kit_core.configuration_instances.ConfigurationCleanupOutcomeSet", 1),
     # B2 retains the reviewed proposal in the immutable coordinator context.
     ("dataclasses.replace", 1),
     ("control_plane_kit_core.operations.RunId", 1),
@@ -743,6 +767,17 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
 )
 
 EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
+    # #1936 exact cleanup branch resolves only its two pinned runtimes.
+    ("type", 1),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),
+    ("tuple", 2),
+    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 1),
+    (None, 1),
+    ("any", 1),
+    ("len", 1),
+    ("control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntent", 1),
+    ("control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntentSource", 1),
+    ("control_plane_kit_core.operations.RunId", 1),
     ("type", 2),
     ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),
     ("dataclasses.dataclass", 1),
@@ -828,7 +863,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("graph_id.strip", 2),
     ("hasattr", 2),
     ("int", 1),
-    ("isinstance", 17),
+    ("isinstance", 16),
     ("json.dumps", 1),
     ("len", 7),
     ("metadata.get", 2),

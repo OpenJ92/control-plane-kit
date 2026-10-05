@@ -124,7 +124,7 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
             self.assertNotIn("unresolved-invocation", row["blockers"])
             self.assertEqual({item["kind"] for item in row["invocations"]}, {"completed"})
 
-    def test_corrupt_status_event_source_result_or_present_profile_is_unavailable(self):
+    def test_corrupt_status_event_source_result_is_unavailable(self):
         identity = self.original.identity
         key = (identity.run_id.value, identity.activity_id, identity.attempt)
         before = self.truth()
@@ -133,17 +133,13 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
                 self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET outcome_fingerprint=%s "
                     "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", ("a" * 64, *key))
         self.assertEqual(self.truth(), before)
-        # Explicit archived no-link fixture: preserve corruption-reader laws
-        # without weakening the admitted completion's immutable-parent FK.
-        self.assertEqual(self.connection.execute("DELETE FROM cpk_configuration_invocation_completions "
-            "WHERE (run_id,activity_id,attempt)=(%s,%s,%s) RETURNING 1", key).fetchone(), (1,))
         cases = (
             ("cpk_effect_attempts", "status", "failed", "run_id='run-config'"),
             ("cpk_effect_attempt_intents", "preimage", b"bad-original-CANARY", "run_id='run-config'"),
             ("cpk_effect_attempt_outcomes", "preimage", b"bad-result-CANARY", "run_id='run-config'"),
-            ("cpk_effect_attempt_outcomes", "outcome_fingerprint", "a" * 64, "run_id='run-config'"),
         )
         for table, field, invalid, where in cases:
+            self.descriptors(self.inspect())
             original = self.connection.execute(f"SELECT {field} FROM {table} WHERE {where}").fetchone()[0]
             try:
                 self.connection.execute(f"UPDATE {table} SET {field}=%s WHERE {where}", (invalid,))
@@ -152,6 +148,30 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
                 self.assertEqual(self.truth(), before)
             finally:
                 self.connection.execute(f"UPDATE {table} SET {field}=%s WHERE {where}", (original,))
+
+    def test_missing_admitted_completion_refuses_in_rollback_only_scope(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.postgres.configuration_cleanup_store import _inspect
+
+        self.descriptors(self.inspect())
+        query, before = self.query(), self.truth()
+        identity = self.original.identity
+        # Below-owner corruption must not leak into any later positive premise.
+        # Exercise the actual inspection owner in this rollback-only transaction.
+        with _configuration_accounting("missing-completion"), self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.connection.execute(
+                "DELETE FROM cpk_configuration_invocation_completions "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s) RETURNING 1",
+                (identity.run_id.value, identity.activity_id, identity.attempt)).fetchone(), (1,))
+            with self.assertRaises(_Unavailable):
+                _inspect(uow.stores, query, _EvidenceRead(uow.stores.connection))
+        self.assertEqual(self.truth(), before)
+        self.descriptors(self.inspect())
+
+    def test_present_malformed_completion_profile_is_unavailable(self):
+        # A fresh fixture isolates the archived no-link corruption above. This
+        # law requires a complete admitted D1 premise before profile corruption.
+        self.descriptors(self.inspect())
         self.member.advance()
         command, _ = self.later_use("invalid-profile", producer=lambda request:
             replace(completion_result(request), observations=()))
