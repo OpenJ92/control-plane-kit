@@ -325,3 +325,40 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
             EffectAttemptFoldService(factory, id_factory=Sequence("cleanup-terminal")).execute(command)
         self.assertEqual(changed, [True])
         self.assertEqual(self.ceiling_truth(), before)
+
+    def test_start_and_fold_preflight_preserve_prefix_and_refuse_before_event_ids(self):
+        from control_plane_kit_operations import _configuration_cleanup_ownership as cleanup
+        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        claimed = self.ready_cleanup()
+        command = self.native_start_command(claimed, "cleanup-execution")
+
+        def run_depleted(name, invoke, conflict):
+            actual = getattr(cleanup, name)
+            reached = []
+            before = self.ceiling_truth()
+
+            def depleted(prepared):
+                accounting = prepared.owner.accounting
+                prefix = accounting.used
+                self.assertGreater(prefix.records, 0)
+                # Below-owner capacity fault: retain every real prefix charge
+                # and consume all but 100 KiB of remaining bytes. No SQL,
+                # record limit or future declaration is replaced.
+                extra = 16 * 1024 * 1024 - prefix.accounted_bytes - 100 * 1024
+                self.assertGreater(extra, 0)
+                accounting.used = prefix.plus(ConfigurationEvidenceFootprint(0, extra, 0, 0))
+                reached.append(accounting)
+                actual(prepared)
+
+            with mock.patch.object(cleanup, name, depleted), self.assertRaises(conflict):
+                invoke()
+            self.assertEqual(len(reached), 1)
+            self.assertEqual(self.ceiling_truth(), before)
+
+        run_depleted("_preflight_start", lambda: EffectAttemptStartService(self.unit_of_work,
+            id_factory=self.assert_no_ids).execute(command), EffectAttemptStartConflict)
+        started = EffectAttemptStartService(self.unit_of_work,
+            id_factory=Sequence("cleanup-original")).execute(command)
+        fold = self.removed_fold(command, started)
+        run_depleted("_preflight_fold", lambda: EffectAttemptFoldService(self.unit_of_work,
+            id_factory=self.assert_no_ids).execute(fold), EffectAttemptFoldConflict)
