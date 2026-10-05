@@ -17,7 +17,9 @@ from control_plane_kit_operations.effect_attempt_start import (
     ExistingAttempt, NewlyStarted, EffectAttemptStartDenied, EffectAttemptStartConflict,
 )
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
-from control_plane_kit_operations.effect_attempt_fold import ExistingFold, FoldEffectAttempt, NewlyFolded
+from control_plane_kit_operations.effect_attempt_fold import (
+    ExistingFold, FoldEffectAttempt, NewlyFolded, EffectAttemptFoldConflict,
+)
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_outcome_evidence import (
     ExecutionEffectOutcome, effect_outcome_failure, effect_outcome_transition,
@@ -66,6 +68,24 @@ class _RedirectCleanupApproval:
             if changed != [(1,)]:
                 raise AssertionError("foreign approval fault did not change exactly one reservation")
             self.observed["redirected"] = True
+        return result
+
+
+class _AlterCleanupMemberResult:
+    def __init__(self, connection, changed):
+        self.connection, self.changed = connection, changed
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+    def execute(self, query, params=(), **kwargs):
+        result = self.connection.execute(query, params, **kwargs)
+        if " ".join(str(query).lower().split()).startswith("insert into cpk_configuration_cleanup_member_outcomes"):
+            rows = self.connection.execute("UPDATE cpk_configuration_cleanup_member_outcomes "
+                "SET status='already-absent' WHERE status='removed' RETURNING 1").fetchall()
+            if rows != [(1,)]:
+                raise AssertionError("member result corruption must reach the actual written row")
+            self.changed.append(True)
         return result
 
 
@@ -292,4 +312,16 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
         before = self.ceiling_truth()
         with self.assertRaises(OperationsRecordError):
             real_insert(store, record, configuration_preparation=prepared)
+        self.assertEqual(self.ceiling_truth(), before)
+
+    def test_final_fold_proof_refusal_rolls_back_event_outcome_cas_and_member_result(self):
+        claimed = self.ready_cleanup()
+        original, started = self.start_cleanup(claimed)
+        command = self.removed_fold(original, started)
+        before, changed = self.ceiling_truth(), []
+        factory = lambda: PostgresUnitOfWork(lambda: _AlterCleanupMemberResult(
+            psycopg.connect(self.database_url), changed))
+        with self.assertRaises(EffectAttemptFoldConflict):
+            EffectAttemptFoldService(factory, id_factory=Sequence("cleanup-terminal")).execute(command)
+        self.assertEqual(changed, [True])
         self.assertEqual(self.ceiling_truth(), before)
