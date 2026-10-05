@@ -69,9 +69,11 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         with self.unit_of_work() as uow:
             self.registration = uow.stores.runtime_authorities.get("workspace-a", runtime.authority_ref)
         product = _configuration_product().descriptor_document.product
+        selected = tuple(artifact for artifact in product.runtime_contract.configuration_artifacts
+            if artifact.artifact_id == "settings")
+        self.assertEqual(tuple(artifact.artifact_id for artifact in selected), ("settings",))
         product = replace(product, identity=ProductIdentity("test", "cleanup-target", 1),
-            runtime_contract=replace(product.runtime_contract,
-                configuration_artifacts=product.runtime_contract.configuration_artifacts[:1]))
+            runtime_contract=replace(product.runtime_contract, configuration_artifacts=selected))
         with self.unit_of_work() as uow:
             uow.stores.registered_products.register(workspace_id="workspace-a",
                 descriptor_document=ProductDescriptorCodec().encode_document(product),

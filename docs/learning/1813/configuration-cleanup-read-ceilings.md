@@ -103,6 +103,17 @@ asserted. Final historical cleanup inspection still uses the actual owner. This
 sequence supplies reader premises, not managed-update or provider evidence.
 Exact fixture review and a new focused baseline remain required before credit.
 
+The reordered target checkpoint `7aa03d8c` ran four tests in 36.997 seconds and
+failed the same exact artifact assertion in each: the normalized descriptor's
+first artifact was `limits`, while this fixture requires `settings`. Ordinary
+initial planning, coordinator execution and correlated D1 admission had passed;
+departure and receiver deployment were not reached. This is another fixture
+failure, with zero causal-red credit. Log SHA256:
+`508bbc7af34983867d9ea06fdac92c76ed768750a9b3d139c72b1e9c1f32d2cb`.
+Select the artifact by its stable `artifact_id`, assert exactly one selection
+before registration, and retain the existing exact ref/query assertions. No
+production or policy correction is involved.
+
 Security: no runtime, network, authentication, secret transfer, durable production
 writer or activation change. The negative metadata mutation is confined to a
 rolled-back test transaction. The complete cleanup ledger and provider results
