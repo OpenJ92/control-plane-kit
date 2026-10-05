@@ -1,6 +1,7 @@
 """Cleanup freshness and retained-history laws through actual public owners."""
 import unittest
 import psycopg
+from unittest import mock
 
 from control_plane_kit_core.operations import EffectAttemptStatus
 from control_plane_kit_core.configuration_instances import ConfigurationCleanupReason, ConfigurationCleanupStatus
@@ -30,6 +31,7 @@ from tests.test_execution_admission import Sequence
 from tests import test_postgres_configuration_cleanup_transactions as transactions
 from tests.postgres_effect_attempt_reconciliation_fixture import RecordingObserver, UnitOfWorkLedger
 from tests.postgres_effect_attempt_coordinator_fixture import RecordingRuntimeAdapter
+from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection, _components
 
 
 class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixture, unittest.TestCase):
@@ -68,8 +70,40 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
         self.assertEqual(self.connection.execute(
             "SELECT count(*) FROM cpk_configuration_cleanup_member_outcomes").fetchone(), (0,))
         before = self.ceiling_truth()
+        observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
+            accounting=None, role_label=lambda _query, _params: None)
+
+        def measured_factory():
+            self.assertIs(_ACCOUNTING.get(), observed["accounting"])
+            return PostgresUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.database_url), observed))
+
+        service, command = self.reconciliation(original, observer, allocate=False, factory=measured_factory)
+        # Generic observed cleanup has no member-outcome evidence key. Joined
+        # active accounting must still route and demand the complete original B.
+        with _configuration_accounting(identity.run_id.value, active=True) as accounting:
+            observed["accounting"] = accounting
+            self.assertIs(type(service.execute(command)), ExistingFold)
+            self.assertEqual(accounting.used.statements, observed["statements"])
+            self.assertGreaterEqual(accounting.used.records, observed["rows"])
+            self.assertGreaterEqual(accounting.used.accounted_bytes, observed["bytes"])
+            self.assertLessEqual(accounting.used.records, 4096)
+            self.assertLessEqual(accounting.used.accounted_bytes, 16 * 1024 * 1024)
+            for entry in observed["queries"]:
+                records, octets, cells, statements = entry["peak"]
+                self.assertLessEqual(records, 4096)
+                self.assertLessEqual(octets + 128 * records + 16 * cells + 256 * statements, 16 * 1024 * 1024)
+            print("#1936 generic cleanup replay ledger", dict(used=_components(accounting.used),
+                physical_weighted_bytes=observed["bytes"], statements=observed["statements"]))
+        self.assertEqual(len(observer.calls), 1)
+        self.assertEqual(self.ceiling_truth(), before)
+        from control_plane_kit_operations.postgres.configuration_cleanup_ownership_store import ConfigurationCleanupOwnershipStore
         service, command = self.reconciliation(original, observer, allocate=False)
-        self.assertIs(type(service.execute(command)), ExistingFold)
+        # Explicit missing-proof read fault: never interpret None as ordinary
+        # replay or as permission to skip the reserved cleanup's original proof.
+        with mock.patch.object(ConfigurationCleanupOwnershipStore, "get", return_value=None) as missing:
+            with self.assertRaises(EffectAttemptReconciliationConflict):
+                service.execute(command)
+            missing.assert_called_once_with(identity)
         self.assertEqual(len(observer.calls), 1)
         self.assertEqual(self.ceiling_truth(), before)
 

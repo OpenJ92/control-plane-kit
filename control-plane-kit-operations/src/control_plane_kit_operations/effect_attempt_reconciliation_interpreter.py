@@ -126,7 +126,14 @@ class EffectAttemptReconciliationService:
             _require_current_claim(command, request, run, attempt)
             _require_historical_lineage(command, attempt)
             if attempt.state.status is not EffectAttemptStatus.STARTED:
-                return _existing_fold(stores, request, attempt)
+                try:
+                    route = stores.configuration_preparation._configure_run(command.identity.run_id.value,
+                        replay_request_id=request.identity.request_id, replay_activity_id=command.identity.activity_id)
+                except (OperationsRecordError, ValueError, KeyError):
+                    raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR) from None
+                if route not in ("ordinary", "cleanup"):
+                    raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR)
+                return _existing_fold(stores, request, attempt, cleanup=route == "cleanup")
 
             invalid_truth = False
             denied = False
@@ -317,6 +324,8 @@ def _existing_fold(
     stores: Any,
     request: ExecutionRequestRecord,
     attempt: EffectAttemptRecord,
+    *,
+    cleanup: bool,
 ) -> ExistingFold:
     invalid = False
     outcome_record = None
@@ -336,9 +345,17 @@ def _existing_fold(
         )
     if not invalid:
         try:
-            from control_plane_kit_core.planning import CleanupConfigurationInstances
-            original = stores.effect_attempt_intents.get(attempt.state.identity)
-            if type(original.intent.operation) is CleanupConfigurationInstances:
+            if cleanup:
+                from control_plane_kit_core.planning import CleanupConfigurationInstances
+                original = stores.effect_attempt_intents.get(attempt.state.identity)
+                if (type(original) is not EffectAttemptIntentRecord
+                        or type(original.intent.operation) is not CleanupConfigurationInstances
+                        or original.identity != attempt.state.identity
+                        or original.original_start_event != attempt.original_start_event
+                        or original.request_id != request.identity.request_id
+                        or original.workspace_id != request.identity.workspace_id
+                        or original.request_fingerprint != attempt.state.request_fingerprint):
+                    raise OperationsRecordError(_INVALID_TRUTH_ERROR)
                 retained = stores.configuration_cleanup_ownership.get(attempt.state.identity)
                 if (retained is None or retained.status is not attempt.state.status
                         or retained.original_event_id != attempt.original_start_event.event_id
