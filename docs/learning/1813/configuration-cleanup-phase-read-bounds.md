@@ -134,3 +134,32 @@ Independent static review precedes a next focused run; all production source and
 activation remain held. The future source pass must run the entire expanded
 matrix plus governing ordinary/#1939 regression groups, not only availability
 assertions or helper arithmetic.
+
+## Independent target-review corrections
+
+The unexecuted `4ead7a85` checkpoint was held for test quality. Count observations
+now label all ten roles using the primary SQL relation and exact known fixture
+selector parameters, retaining only a bounded label and optional limit (never
+parameters). Cleanup/acceptance scopes and allocation/invocation refs are
+distinct, invocation's owner maximum is32 plus sentinel, and the race fires only
+after the cleanup-scope count. Tighter legitimate limits remain allowed.
+
+The existing-owner baseline now proves differing event-column maxima from its
+already observed history rows before the owner-availability assertion. It also
+requires actual nonempty current-slot transport before the later slot-growth
+case can claim its premise. Neither assertion adds diagnostic SQL.
+
+A fixed test matrix now corrupts a later-read column below its ordinary cap at
+each historical getter/scope consumer, raw graph/projection, origin/acceptance
+action, receipt action/event/header, scope/run/event/action/binding collections,
+current manifest, allocation refs/claim keys and completion invocation refs.
+Every case requires the intended entrance's charged context guard and checks
+that the offending full column never crossed the real cursor, rather than
+crediting an ordinary semantic rejection after transport. Allocation specifically
+must report capacity, not ordinary unavailable. Introduction/header/binding
+negative rows preserve immediate FKs using explicit metered cloned test history;
+all changes roll back and confer no valid lifecycle or execution evidence.
+
+These corrections remain unexecuted until independent static review. The next
+sole owning run should select the amended baseline plus the count and per-role
+targets; source stays held. Earlier accepted evidence remains tied to29a7cd62.

@@ -1,5 +1,6 @@
 """Real receiver-bearing read rehearsal with independent wire/peak telemetry."""
 from contextlib import contextmanager
+import re
 
 import psycopg
 
@@ -56,7 +57,8 @@ class _PhaseConnection(_ObservedConnection):
         query = str(args[0] if args else kwargs["query"])
         params = args[1] if len(args) > 1 else kwargs.get("params", ())
         limit = params[-1] if params and type(params[-1]) is int and "LIMIT %s" in query else None
-        entry = dict(sql=query, peak=_components(accounting.used), widths=[], limit=limit)
+        entry = dict(sql=query, peak=_components(accounting.used), widths=[], limit=limit,
+            role=self.observations["role_label"](query, tuple(params or ())))
         self.observations["queries"].append(entry)
         self.observations["bytes"] += 256
         self.observations["statements"] += 1
@@ -67,11 +69,38 @@ class _PhaseConnection(_ObservedConnection):
 
 
 class ConfigurationCleanupPhaseReadBoundsFixture(ConfigurationCleanupReadCeilingsFixture):
+    def collection_role(self, query, params):
+        # Match fixture identities locally; retain/print only the bounded label.
+        acceptance = self.companion_acceptance
+        accepted_request = acceptance.action.payload["execution_request_id"]
+        identity = self.source_identity
+        roles = (
+            ("cleanup-scopes", "cpk_execution_receiver_scopes", (self.intent.source.request_id,)),
+            ("acceptance-scopes", "cpk_execution_receiver_scopes", (accepted_request,)),
+            ("acceptance-runs", "cpk_activity_runs", (accepted_request,)),
+            ("acceptance-events", "cpk_activity_events", (acceptance.run_id,)),
+            ("advancement-actions", "cpk_operation_actions", (acceptance.action.session_id, acceptance.run_id)),
+            ("bindings", "cpk_graph_receiver_bindings", ("workspace-a", self.plan.base_graph_id,
+                self.plan.base_realized_projection_id)),
+            ("allocation-refs", "cpk_effect_configuration_refs", ("workspace-a", self.selected_ref.allocation_id)),
+            ("allocation-claims", "cpk_configuration_claims", ("workspace-a", self.selected_ref.allocation_id)),
+            ("invocation-refs", "cpk_effect_configuration_refs", (identity.run_id.value, identity.activity_id,
+                identity.attempt)),
+            ("current-slots", "cpk_configuration_accepted_slots", ("workspace-a", acceptance.desired_graph_revision)),
+        )
+        relation = re.search(r"\bFROM\s+([a-z_]+)", query, re.I)
+        table = relation.group(1) if relation else None
+        matches = [role for role, expected_table, key in roles
+            if table == expected_table and params[:len(key)] == key]
+        if len(matches) > 1:
+            raise AssertionError("ambiguous fixed fixture role")
+        return matches[0] if matches else None
+
     @contextmanager
     def phase_premise(self):
         with _configuration_accounting(self.identity.run_id.value) as accounting:
             observed = dict(bytes=0, rows=0, largest_cell=0, statements=0,
-                queries=[], accounting=accounting)
+                queries=[], accounting=accounting, role_label=self.collection_role)
             factory = lambda: _PhaseConnection(psycopg.connect(self.database_url), observed)
             with PostgresUnitOfWork(factory) as uow, _joined_read(uow.stores.connection) as read:
                 guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
@@ -103,12 +132,27 @@ class ConfigurationCleanupPhaseReadBoundsFixture(ConfigurationCleanupReadCeiling
         histories = [q for q in permission_queries if q["sql"].startswith("SELECT octet_length(")
             and " FROM cpk_activity_events WHERE run_id=%s ORDER BY ordinal" in q["sql"]]
         self.assertEqual((len(raw_graphs), len(raw_projections), len(histories)), (14, 14, 2))
+        # Establish the cross-row prerequisite in ordinary source BEFORE any
+        # missing phase-owner assertion, using observed rows and no extra SQL.
+        event_fetches = [q for q in permission_queries if q["role"] == "acceptance-events"
+            and q["sql"].startswith("SELECT CASE WHEN")]
+        self.assertEqual(len(event_fetches), 2)
+        for query in event_fetches:
+            widths = [row[:-1] for row in query["widths"]]
+            self.assertGreater(len(widths), 1)
+            maxima = tuple(max(row[i] for row in widths) for i in range(6))
+            self.assertGreater(sum(maxima), max(map(sum, widths)),
+                "existing history must exercise maxima in different event rows")
         fresh = _EvidenceRead(uow.stores.connection)
         self.assertIs(fresh.accounting, read.accounting)
         inspected, proposal = _inspect(uow.stores, self.inspect_command(), fresh)
         self.assertEqual(inspected.state, "complete")
         self.assertEqual(proposal, self.plan.cleanup_proposal)
         self.assertEqual(uow.stores.configuration_completions._get(self.source_identity, fresh), self.completion)
+        slot_fetches = [q for q in observed["queries"][offset:] if q["role"] == "current-slots"
+            and q["sql"].startswith("SELECT CASE WHEN")]
+        self.assertTrue(slot_fetches and slot_fetches[0]["widths"],
+            "later manifest growth target requires a real nonempty accepted slot set")
         for after, prior in zip(_components(read.used), _components(before), strict=True):
             self.assertGreaterEqual(after, prior)
         self.assertLessEqual(read.used.records, 4096)
