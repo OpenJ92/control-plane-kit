@@ -167,7 +167,8 @@ class ConfigurationPreparationStore:
               SELECT CASE WHEN p.base_realized_projection_id IS NULL THEN b.graph_descriptor
                           ELSE bp.graph_descriptor END AS base,
                      CASE WHEN p.desired_realized_projection_id IS NULL THEN d.graph_descriptor
-                          ELSE dp.graph_descriptor END AS desired
+                          ELSE dp.graph_descriptor END AS desired,
+                     p.payload
               FROM cpk_activity_runs r JOIN cpk_activity_plans p ON p.plan_id=r.plan_id
               LEFT JOIN cpk_graph_versions b ON b.graph_id=p.base_graph_id
               LEFT JOIN cpk_graph_versions d ON d.graph_id=p.desired_graph_id
@@ -177,12 +178,18 @@ class ConfigurationPreparationStore:
             )
             SELECT jsonb_path_exists(base, '$.nodes.*.configuration_artifacts[*]')
                 OR jsonb_path_exists(desired, '$.nodes.*.configuration_artifacts[*]'),
-                base IS NOT NULL AND desired IS NOT NULL
+                base IS NOT NULL AND desired IS NOT NULL,
+                coalesce(payload->>'derivation_profile'='configuration-cleanup-v1', false)
+                OR payload ? 'cleanup_proposal' OR payload ? 'cleanup_proposal_fingerprint'
+                OR jsonb_path_exists(payload,
+                    '$.**.operation ? (@.kind == "cleanup-configuration-instances")')
             FROM pinned LIMIT 1
-            """, (run_id,), records=1, octets=2, cells=2, identities=6)
+            """, (run_id,), records=1, octets=3, cells=3, identities=6)
         if rows and rows[0][1] is not True:
             raise _Unavailable
-        _ACCOUNTING.get().active = bool(rows and rows[0][0])
+        # Any cleanup marker keeps accounting active even when departure left
+        # no artifacts. This routing bit never validates or authorizes a plan.
+        _ACCOUNTING.get().active = bool(rows and (rows[0][0] or rows[0][2]))
 
     def _material(self, stores, request, run, activity, read, *, guard=None):
         from .receiver_execution_scopes import _ExecutionScopeStorage
