@@ -73,7 +73,7 @@ class _CeilingObservedConnection(_ObservedConnection):
 class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture):
     accept_receiver = ReceiverAcceptanceAdvancementTests.accept_receiver
 
-    def prepare_ceiling_premise(self, *, distinct_pins=False):
+    def prepare_ceiling_premise(self, *, distinct_pins=False, recorded_cleanup=True):
         """No second setup, direct receiver graph save, or cleanup admission."""
         canonical = self.canonical_receiver_graph
         runtime = canonical.runtimes["docker"]
@@ -167,14 +167,14 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         self.assertEqual(self.receiver_origin(), self.companion_origin)
         if distinct_pins:
             self.desired_receiver("ceilings-distinct", graph=canonical)
-        self._publish_cleanup(runtime, distinct_pins=distinct_pins)
+        self._publish_cleanup(runtime, distinct_pins=distinct_pins, recorded_cleanup=recorded_cleanup)
 
     def assert_registration_unchanged(self):
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.runtime_authorities.get("workspace-a", self.registration.authority_ref),
                 self.registration)
 
-    def _publish_cleanup(self, runtime, *, distinct_pins):
+    def _publish_cleanup(self, runtime, *, distinct_pins, recorded_cleanup):
         with self.unit_of_work() as uow:
             workspace = uow.stores.workspaces.get("workspace-a")
         pins = ConfigurationCleanupExpectedContext(workspace.current_graph_id,
@@ -198,6 +198,8 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             tuple(PolicyScope), IdempotencyKey("ceilings-ask"))).request
         self.decision = approvals.execute(DecideApproval("session-a", self.approval.request_id, "manager-a",
             tuple(PolicyScope), ApprovalDecisionKind.APPROVED, IdempotencyKey("ceilings-decide"))).decision
+        if not recorded_cleanup:
+            return
         activity = self.plan.plan.activities[0]
         self.identity = EffectAttemptIdentity(RunId("read-ceilings-run"), activity.activity_id.value, 1)
         self.intent = RuntimeEffectIntent(RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, runtime.kind,

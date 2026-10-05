@@ -220,5 +220,47 @@ class ConfigurationCleanupPlanningTests(ConfigurationCleanupPostgresFixture, uni
         self.assertTrue(replay.replayed)
 
 
+class ConfigurationCleanupWholeResultCapacityTests(ConfigurationCleanupPostgresFixture, unittest.TestCase):
+    def setUp(self):
+        from control_plane_kit_core.products import ProductDescriptorCodec
+        from control_plane_kit_operations.products import RegisteredProduct
+        from tests.test_runtime_effect_translation import _configuration_product
+        registered = _configuration_product()
+        product = registered.descriptor_document.product
+        prototype = product.runtime_contract.configuration_artifacts[0]
+        artifacts = tuple(replace(prototype, artifact_id=f"artifact-{i:02d}-" + "a" * 51,
+            target_path="/" + "/".join(["a" * 127] * 3 + [f"{i:02d}" + "b" * 125]))
+            for i in range(8))
+        product = replace(product, runtime_contract=replace(product.runtime_contract,
+            configuration_artifacts=artifacts))
+        self.registered_product = RegisteredProduct.from_document(workspace_id="workspace-a",
+            descriptor_document=ProductDescriptorCodec().encode_document(product), source=registered.source,
+            imported_by=registered.imported_by, imported_at=registered.imported_at)
+        super().setUp()
+
+    def test_oversized_whole_result_refuses_inspection_and_publication_before_ids(self):
+        # Every selected ref came from an actual ordinary public start/fold and
+        # admitted D1 completion. None is a manufactured cleanup allocation.
+        self.assertEqual(len(self.refs), 8)
+        self.assertTrue(all(len(ref.target_path) == 512 for ref in self.refs))
+        with self.unit_of_work() as uow:
+            self.assertIsNotNone(uow.stores.configuration_completions.get(self.original.identity))
+        query = self.query()
+        before = self.truth()
+        inspected = self.inspect(query)
+        with self.subTest(boundary="inspection"):
+            self.assert_unavailable(inspected, "capacity")
+        fingerprint = (inspected.inspection.evidence_digest
+            if inspected.inspection is not None else "0" * 64)
+        command = self.commands.RequestConfigurationCleanupPlan(query.session_id, query.workspace_id,
+            IdempotencyKey("oversized-whole-result"), query.expected_context, query.selectors, fingerprint)
+        with self.subTest(boundary="publication"):
+            with self.assertRaises(self.commands.ConfigurationCleanupCommandError):
+                self.publish(command)
+        with self.subTest(boundary="no-ids-or-writes"):
+            self.assertEqual(self.sampled, [])
+            self.assertEqual(self.truth(), before)
+
+
 if __name__ == "__main__":
     unittest.main()
