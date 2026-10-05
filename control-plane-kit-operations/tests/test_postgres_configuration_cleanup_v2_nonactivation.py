@@ -101,7 +101,7 @@ class PostgresConfigurationCleanupV2NonactivationTests(ConfigurationCleanupExecu
         self.assertEqual(adapter.runtime_calls, [])
         self.assertEqual(self.ceiling_truth(), before)
 
-    def test_v2_guard_also_denies_nonmanagement_shape_and_preserves_terminal_classification(self):
+    def test_v2_guard_precedes_shape_predicate_and_preserves_terminal_classification(self):
         from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
         claimed = self.ready_cleanup("v2-guard")
         coordinator = self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), "v2-guard")
@@ -115,7 +115,7 @@ class PostgresConfigurationCleanupV2NonactivationTests(ConfigurationCleanupExecu
             result = coordinator._guard_runtime_management(changed, 0)
             self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
             capability.assert_not_called()
-            terminal = replace(changed, run=replace(changed.run, status=ActivityRunStatus.COMPLETED,
+            terminal = replace(changed, run=replace(changed.run, status=ActivityRunStatus.SUCCEEDED,
                 settled_at=self.now()))
             self.assertIsNone(coordinator._guard_runtime_management(terminal, 0))
 
