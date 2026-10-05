@@ -163,3 +163,40 @@ all changes roll back and confer no valid lifecycle or execution evidence.
 These corrections remain unexecuted until independent static review. The next
 sole owning run should select the amended baseline plus the count and per-role
 targets; source stays held. Earlier accepted evidence remains tied to29a7cd62.
+
+## Amended narrow baseline and availability-red evidence
+
+After independent static PASS, target commit
+`11ae6e8ee7c0401ccab9f1a0985fd6148de88b9a`, tree
+`e6e2a591128c8c5799a8f71fe57cbdf15be2b711`, ran:
+
+```sh
+CPK_OPERATIONS_TEST_NETWORK_NAME=cpk-1941-target-test \
+CPK_OPERATIONS_TEST_POSTGRES_CONTAINER=cpk-1941-target-postgres \
+./control-plane-kit-operations/test.sh \
+  -k test_00_existing_receiver_read_rehearsal_precedes_missing_bounds \
+  -k test_capture_counts_have_inner_caps_for_every_fixed_collection \
+  -k test_each_fixed_consumer_enforces_later_width_before_full_transport \
+  -k test_fk_constrained_introduction_header_and_binding_widths_are_enforced
+```
+
+Four methods ran in147.059s: existing-owner baseline PASS, thirty failures
+exactly at the missing-owner assertion (one count target,25 consumer subcases,
+four FK-constrained subcases), zero errors. Exit1 is expected availability-red.
+Integrity2356 declared tests/12 existing mocks/zero skips. Log SHA-256:
+`38fe611d09f9799a7d2570d89d42f5b9982d123be188f0d6a4a935b4b8670e4b`.
+
+The ordinary baseline and each pre-owner rehearsal now establish differing
+event-column maxima and a real nonempty accepted-slot set, without diagnostic
+SQL. Baseline prefix `(38,17151,311,38)`, used `(489,424408,3725,371)`,
+physical weighted transport639016 bytes and maximum outstanding reservation
+2793711 bytes. All fourteen raw graph/projection pairs and both acceptance-event
+reads executed. Instance timestamps cause small other-case octet differences.
+
+The suite's exact container and network were independently checked absent by
+the runner owner. Compile/import phases were not reached after expected red.
+No production source changed during the run. Negative cap/FK mutation branches
+remain unexecuted behind the missing owner; the result is not enforcement green,
+full18-method acceptance, measured C capture/tail fit, or full coordinator fit.
+Independent target-stage acceptance and coordinator production release are still
+required. Full18 targets and governing regressions remain the later source gate.
