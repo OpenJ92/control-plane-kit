@@ -55,7 +55,14 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectFailure,
     RuntimeEffectRequest,
     RuntimeEffectResult,
+    configuration_cleanup_outcomes,
+    configuration_cleanup_result,
 )
+from control_plane_kit_core.configuration_instances import (
+    ConfigurationCleanupOutcome, ConfigurationCleanupOutcomeSet,
+    ConfigurationCleanupReason, ConfigurationCleanupStatus,
+)
+from control_plane_kit_core.planning import CleanupConfigurationInstances
 from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
 )
@@ -744,7 +751,7 @@ class RuntimeInterpreterDispatcher:
             return _uncertain_runtime_result(
                 request, boundary="interpreter", reason=uncertainty_reason,
             )
-        return result
+        return _admit_runtime_result(request, result)
 
     def _authorize_secret_resolutions(
         self,
@@ -1658,6 +1665,7 @@ class ExecutionCoordinator:
                     runtime_result = _uncertain_runtime_result(
                         request, boundary="adapter", reason=uncertainty_reason,
                     )
+                runtime_result = _admit_runtime_result(request, runtime_result)
                 outcome = ExecutionEffectOutcome(
                     attempt.state.identity,
                     attempt.state.request_fingerprint,
@@ -2447,6 +2455,8 @@ def _uncertain_runtime_result(
     boundary: str,
     reason: str,
 ) -> RuntimeEffectResult:
+    if type(request.operation) is CleanupConfigurationInstances:
+        return _unknown_cleanup_result(request, ConfigurationCleanupReason.PROVIDER_UNCERTAIN)
     return RuntimeEffectResult.uncertain(
         request.effect_id,
         RuntimeEffectFailure(
@@ -2464,6 +2474,8 @@ def _unsupported_runtime_result(
     *,
     runtime_kind: RuntimeKind | None = None,
 ) -> RuntimeEffectResult:
+    if type(request.operation) is CleanupConfigurationInstances:
+        return _unknown_cleanup_result(request, ConfigurationCleanupReason.NOT_ATTEMPTED)
     details: dict[str, object] = {
         "activity_id": request.activity_id.value,
         "operation": type(request.operation).__name__,
@@ -2478,6 +2490,21 @@ def _unsupported_runtime_result(
             details,
         )
     )
+
+
+def _unknown_cleanup_result(request, reason):
+    return configuration_cleanup_result(request, ConfigurationCleanupOutcomeSet(tuple(
+        ConfigurationCleanupOutcome(ref, ConfigurationCleanupStatus.UNKNOWN, reason)
+        for ref in request.operation.instances)))
+
+
+def _admit_runtime_result(request, result):
+    if type(request.operation) is CleanupConfigurationInstances:
+        try:
+            configuration_cleanup_outcomes(request, result)
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            return _unknown_cleanup_result(request, ConfigurationCleanupReason.PROVIDER_UNCERTAIN)
+    return result
 
 
 def _required_text(value: object, field: str) -> None:

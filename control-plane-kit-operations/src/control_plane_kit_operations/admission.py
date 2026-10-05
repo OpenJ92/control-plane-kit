@@ -283,9 +283,16 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionConflict(
                     "activity plan contains no executable changes"
                 )
-            if any(isinstance(activity.operation, CleanupConfigurationInstances)
-                   for activity in plan.plan.activities):
-                raise ExecutionAdmissionConflict("configuration cleanup execution is unsupported")
+            cleanup = any(type(activity.operation) is CleanupConfigurationInstances
+                for activity in plan.plan.activities)
+            if cleanup:
+                from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+                from control_plane_kit_operations.configuration_cleanup import configuration_cleanup_proposal_fingerprint
+                if (plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+                        or plan.cleanup_proposal is None
+                        or approval.subject != ActivityPlanApprovalSubject(plan.plan_id,
+                            proposal_fingerprint=configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal))):
+                    raise ExecutionAdmissionConflict("cleanup requires its exact approved proposal")
             if not plan.plan.ready_for_execution:
                 raise ExecutionAdmissionConflict("plan contains unresolved review blockers")
             decision = history.approval_decision_for_request(
@@ -371,6 +378,21 @@ class ExecutionAdmissionCommandService:
             )
             _require_receiver_execution_provenance(stores, workspace,
                 plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
+            if cleanup:
+                from control_plane_kit_operations.configuration_cleanup_planning import revalidate_cleanup_proposal
+                try:
+                    revalidate_cleanup_proposal(stores, plan)
+                    runtime_id = plan.plan.activities[0].operation.instances[0].runtime_id
+                    runtime, other = current.runtimes.get(runtime_id), desired.runtimes.get(runtime_id)
+                    if (runtime is None or other is None or runtime.authority_ref is None
+                            or (runtime.kind, runtime.authority_ref) != (other.kind, other.authority_ref)):
+                        raise ValueError("cleanup runtime pins differ")
+                    registration = stores.runtime_authorities.get_active_for_update(
+                        command.workspace_id, runtime.authority_ref)
+                    if registration.runtime_kind is not runtime.kind:
+                        raise ValueError("cleanup runtime registration differs")
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    raise ExecutionAdmissionConflict("cleanup execution evidence is unavailable") from None
             if rotation_subject is not None:
                 _require_gateway_rotation_child_authorization(
                     stores,

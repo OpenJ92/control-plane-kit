@@ -8,7 +8,7 @@ from threading import get_ident
 import asyncio
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRef, ConfigurationInstanceSelection
-from control_plane_kit_core.planning import StartNode, ReconcileNode
+from control_plane_kit_core.planning import StartNode, ReconcileNode, CleanupConfigurationInstances
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint, _birth_selection
 from control_plane_kit_operations.records import OperationsRecordError
@@ -71,6 +71,10 @@ def _require_prepared(value, connection, identity, intent):
 
 def _require_prepared_intent(value, connection, identity, intent):
     if intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+        if type(intent.operation) is CleanupConfigurationInstances:
+            from control_plane_kit_operations._configuration_cleanup_ownership import _require_cleanup_start
+            _require_cleanup_start(value, connection, identity, intent)
+            return
         _require_prepared(value, connection, identity, intent)
 
 

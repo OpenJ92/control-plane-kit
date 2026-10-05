@@ -21,7 +21,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
-from control_plane_kit_core.planning import resolve_management_observation
+from control_plane_kit_core.planning import resolve_management_observation, CleanupConfigurationInstances
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure, RuntimeEffectKind
 from control_plane_kit_operations.effect_attempt_fold import (
@@ -372,7 +372,11 @@ def _execute_fold_once(
             if replay_error is None:
                 try:
                     if configuration_request is not None:
-                        stores.configuration_completions.get(identity)
+                        if type(original.intent.operation) is CleanupConfigurationInstances:
+                            if stores.configuration_cleanup_ownership.get(identity) is None:
+                                raise OperationsRecordError(_INVALID_TRUTH_ERROR)
+                        else:
+                            stores.configuration_completions.get(identity)
                     result = ExistingFold(attempt, outcome_record)
                 except OperationsRecordError:
                     replay_error = _INVALID_TRUTH_ERROR
@@ -381,6 +385,8 @@ def _execute_fold_once(
         else:
             denied = False
             completion_prepared = None
+            cleanup_store = None
+            cleanup_prepared = None
             if configuration_guard is not None:
                 stores.activity_history.get_session_for_update(request.identity.session_id)
             intent_record = (located_health_intent if health is not None else
@@ -391,7 +397,8 @@ def _execute_fold_once(
                     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
                 stores.graphs._require_receiver_lifecycle(configuration_guard, request.identity.workspace_id)
                 from .postgres.configuration_evidence import _active_read
-                stores.configuration_preparation._require_original(intent_record, read=_active_read(stores.connection))
+                if type(intent_record.intent.operation) is not CleanupConfigurationInstances:
+                    stores.configuration_preparation._require_original(intent_record, read=_active_read(stores.connection))
             observation = None
             if (not invalid_truth and native is None
                     and is_native_connection_operation(intent_record.intent.operation)):
@@ -454,9 +461,14 @@ def _execute_fold_once(
             if denied:
                 raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
             if configuration_guard is not None and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
-                completion_prepared = stores.configuration_completions._prepare(
-                    stores, configuration_guard, intent_record, attempt, command.outcome,
-                    unit_of_work=unit_of_work, prefix=configuration_prefix, request=request, fence=fence)
+                if type(intent_record.intent.operation) is CleanupConfigurationInstances:
+                    cleanup_store = stores.configuration_cleanup_ownership
+                    cleanup_prepared = evidence_contexts.enter_context(cleanup_store._fold_scope(unit_of_work,
+                        configuration_guard, configuration_prefix, intent_record, attempt, command.outcome, request, fence))
+                else:
+                    completion_prepared = stores.configuration_completions._prepare(
+                        stores, configuration_guard, intent_record, attempt, command.outcome,
+                        unit_of_work=unit_of_work, prefix=configuration_prefix, request=request, fence=fence)
             event_ordinal = stores.execution.next_event_ordinal(run.run_id)
             result = self._plan_result(
                 command,
@@ -470,6 +482,8 @@ def _execute_fold_once(
             event = result.attempt.latest_transition_event
             if completion_prepared is not None:
                 stores.configuration_completions._bind(completion_prepared, result.outcome_record)
+            if cleanup_prepared is not None:
+                cleanup_store._bind_fold(cleanup_prepared, result.outcome_record)
             event_acknowledgement = stores.execution.add_event(event)
             changed = (
                 type(event_acknowledgement) is not ActivityEventRecord
@@ -508,6 +522,9 @@ def _execute_fold_once(
                 raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
             if completion_prepared is not None:
                 stores.configuration_completions._insert(completion_prepared, result.outcome_record)
+            if cleanup_prepared is not None:
+                cleanup_store._insert_fold(cleanup_prepared, result.outcome_record)
+        evidence_contexts.close()
         unit_of_work.commit()
         return result
 

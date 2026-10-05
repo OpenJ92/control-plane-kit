@@ -158,8 +158,27 @@ def _runtime_effect_intent_for_context(
 def _runtime_effect_intent_for_material(context: _RuntimeEffectMaterial, activity: object) -> RuntimeEffectIntent:
     if type(context) is not _RuntimeEffectMaterial:
         raise InvalidOperationCommand("runtime effect material is invalid")
-    if isinstance(activity.operation, CleanupConfigurationInstances):
-        raise InvalidOperationCommand("configuration cleanup execution is unsupported")
+    if type(activity.operation) is CleanupConfigurationInstances:
+        if context.compensation:
+            raise InvalidOperationCommand("configuration cleanup compensation is unavailable")
+        runtime_id = activity.operation.instances[0].runtime_id
+        runtimes = tuple(DEFAULT_GRAPH_CODEC.decode(value.graph_descriptor).runtimes.get(runtime_id)
+            for value in (context.base_graph, context.desired_graph))
+        if (any(value is None or value.authority_ref is None for value in runtimes)
+                or (runtimes[0].kind, runtimes[0].authority_ref) != (runtimes[1].kind, runtimes[1].authority_ref)):
+            raise InvalidOperationCommand("cleanup requires the same authorized runtime in both pins")
+        runtime = runtimes[0]
+        registrations = tuple(value for value in context.runtime_authorities
+            if value.authority_ref == runtime.authority_ref
+            and value.workspace_id == context.request.identity.workspace_id
+            and value.runtime_kind is runtime.kind and value.status.value == "active")
+        if len(registrations) != 1:
+            raise InvalidOperationCommand("cleanup requires exact active runtime registration")
+        return RuntimeEffectIntent(RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, runtime.kind,
+            RuntimeEffectIntentSource(context.request.identity.workspace_id, context.request.identity.request_id,
+                RunId(context.run.run_id), context.plan_record.plan_id,
+                context.plan_record.base_graph_id, context.plan_record.desired_graph_id),
+            activity.activity_id, activity.operation, runtime.authority_ref, (), ())
     if runtime_management_execution_is_unsupported(
         DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
         DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),

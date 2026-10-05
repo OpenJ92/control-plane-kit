@@ -1,5 +1,6 @@
-"""Bounded retained cleanup proof. No reserve, release or retirement writer."""
+"""Complete cleanup ownership proof and caller-transactional compound writes."""
 from hashlib import sha256
+from contextlib import contextmanager, ExitStack
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
@@ -65,10 +66,171 @@ def _ref(read, key):
     return _decode(rows[0], read)
 
 
+def _expected_rows(record):
+    cleanup = _key(record.identity)
+    header = (*cleanup, record.workspace_id, record.request_id, record.request_fingerprint,
+        record.original_event_id, record.plan_id, record.approval_request_id, record.approval_decision_id,
+        record.proposal_fingerprint, record.runtime_id, record.runtime_kind.value,
+        record.authority_ref.reference_id, record.registration_id,
+        len(record.members), len(record.completions), len(record.claims))
+    members = tuple((*cleanup, value.ref.workspace_id, value.ref.allocation_id, *_key(value.identity),
+        value.ref.artifact_id, sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(value.ref)).hexdigest())
+        for value in record.members)
+    invocations = tuple((*_key(value.identity), *cleanup, value.workspace_id, value.request_fingerprint,
+        value.selection_fingerprint, value.outcome_fingerprint) for value in record.completions)
+    claims = tuple((*_key(value.identity), value.ref.artifact_id, *cleanup,
+        value.ref.workspace_id, value.ref.allocation_id) for value in record.claims)
+    return header, members, invocations, claims, ()
+
+
+def _prepared_owner(prepared, store):
+    from control_plane_kit_operations._configuration_cleanup_ownership import (
+        _CleanupPreparationOwner, _PreparedCleanupStart, _PreparedCleanupFold,
+    )
+    if (type(prepared) not in (_PreparedCleanupStart, _PreparedCleanupFold)
+            or type(prepared.owner) is not _CleanupPreparationOwner or prepared.owner.store is not store):
+        raise OperationsRecordError(_ERROR)
+    return prepared.owner
+
+
 class ConfigurationCleanupOwnershipStore:
     def __init__(self, stores):
         self._stores = stores
         self._connection = stores.connection
+
+    @contextmanager
+    def _start_scope(self, unit_of_work, command, request, plan, guard, prefix):
+        from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+        from control_plane_kit_operations._configuration_cleanup_ownership import (
+            _CleanupPreparationOwner, _PreparedCleanupStart,
+        )
+        from .configuration_cleanup_read_ceilings import _CleanupOriginalReadCeilingsOwner
+        from .configuration_cleanup_phase_read_bounds import _CleanupPhaseReadBoundsOwner
+        owner = _CleanupPreparationOwner(unit_of_work, self, guard, prefix)
+        if (request != prefix.request or command.transition.request_fingerprint
+                != runtime_effect_intent_fingerprint(command.intent)):
+            raise _Unavailable
+        owner.plan = plan
+        prepared = _PreparedCleanupStart(owner, command.transition.identity, command.intent)
+        owner.issued = prepared
+        try:
+            with ExitStack() as contexts:
+                contexts.enter_context(_joined_read(self._connection))
+                original_owner = _CleanupOriginalReadCeilingsOwner(unit_of_work)
+                original_bounds = original_owner.capture(guard, prefix, plan,
+                    intent_identity=prepared.identity, prospective_intent=prepared.intent)
+                contexts.enter_context(original_owner.bind(original_bounds))
+                phase_owner = _CleanupPhaseReadBoundsOwner(unit_of_work)
+                phase_bounds = phase_owner.capture(guard, prefix, plan,
+                    intent_identity=prepared.identity, prospective_intent=prepared.intent)
+                contexts.enter_context(phase_owner.bind(phase_bounds))
+                owner.original_bounds, owner.phase_bounds = original_bounds, phase_bounds
+                owner.require(prepared, self._connection, write=True)
+                owner.fresh = self._fresh_start(prepared)
+                from control_plane_kit_operations._configuration_cleanup_ownership import _preflight_start
+                _preflight_start(prepared)
+                yield prepared
+        finally:
+            owner.close()
+
+    def _require_current(self, prepared):
+        if self._fresh_start(prepared) != prepared.owner.fresh:
+            raise OperationsRecordError(_ERROR)
+
+    def _fresh_start(self, prepared):
+        from control_plane_kit_operations.configuration_cleanup import (
+            ConfigurationCleanupExpectedContext, ConfigurationCleanupSourceSelector,
+        )
+        from control_plane_kit_operations.configuration_cleanup_planning import InspectConfigurationCleanup
+        from control_plane_kit_core.operations.lifecycle import ActivityRunStatus, ExecutionRequestStatus
+        from .configuration_cleanup_store import _inspect
+        from .configuration_evidence import _EvidenceRead, _COMPOSED_READ
+        owner = prepared.owner
+        stores, request, plan = self._stores, owner.prefix.request, owner.plan
+        read = _EvidenceRead(self._connection)
+        token = _COMPOSED_READ.set(read)
+        try:
+            owner.prefix.require(owner.uow, request, prepared.identity.run_id.value, latest_required=True)
+            if (owner.prefix.latest_run != owner.prefix.requested_run
+                    or owner.prefix.requested_run.status is not ActivityRunStatus.RUNNING
+                    or request.status is not ExecutionRequestStatus.CLAIMED
+                    or stores.execution.get_request(request.identity.request_id) != request
+                    or stores.activity_history.get_plan(plan.plan_id) != plan):
+                raise _Unavailable
+            approval = stores.activity_history.get_approval_request(request.approval_request_id)
+            decision = stores.activity_history.approval_decision_for_request(request.approval_request_id)
+            requirement = ApprovalPolicy().requirement_for(plan.plan)
+            if (approval.session_id != plan.session_id
+                    or approval.subject != ActivityPlanApprovalSubject(plan.plan_id,
+                        proposal_fingerprint=configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal))
+                    or (approval.required_scope, approval.max_risk, approval.destructive)
+                        != (requirement.required_scope, requirement.max_risk, requirement.destructive)
+                    or decision is None or decision.decision_id != request.approval_decision_id
+                    or decision.decision is not ApprovalDecisionKind.APPROVED or decision.scope != approval.required_scope):
+                raise _Unavailable
+            registration = stores.runtime_authorities.get_active_for_update(
+                request.identity.workspace_id, prepared.intent.authority_ref)
+            if (registration.runtime_kind is not prepared.intent.runtime_kind
+                    or registration.authority_ref != prepared.intent.authority_ref):
+                raise _Unavailable
+            document = plan.cleanup_proposal.descriptor()
+            context = document["context"]
+            def identity(value):
+                return EffectAttemptIdentity(RunId(value["run_id"]), value["activity_id"], value["attempt"])
+            selectors = tuple(ConfigurationCleanupSourceSelector(identity(row["seed"]["source_identity"]),
+                row["seed"]["artifact_id"], ConfigurationInstanceRefCodec().decode(row["ref"]))
+                for row in document["candidates"])
+            pins = ConfigurationCleanupExpectedContext(**{name: context[name] for name in (
+                "base_graph_id", "base_realized_projection_id", "desired_graph_id",
+                "desired_realized_projection_id", "desired_graph_revision")})
+            result, proposal = _inspect(stores, InspectConfigurationCleanup(context["session_id"],
+                context["workspace_id"], pins, selectors), read)
+            if (result.state != "complete" or proposal != plan.cleanup_proposal
+                    or tuple(value.expected_ref for value in selectors) != prepared.intent.operation.instances
+                    or prepared.identity.activity_id != prepared.intent.activity_id.value):
+                raise _Unavailable
+            # Every candidate's complete claim set and every whole admitted D1
+            # are required; a terminal provider profile alone is insufficient.
+            # _inspect just proved these complete allocations into this new
+            # read's immutable ref cache. Project its exact proposal keys;
+            # never reuse the previous F's mutable eligibility or rowsets.
+            def evidence(locator, artifact):
+                return _decode(read.refs[(identity(locator), artifact)], read)
+            members = tuple(evidence(row["birth"]["source_identity"], row["birth"]["artifact_id"])
+                for row in document["candidates"])
+            claims = tuple(sorted((evidence(value, selector.artifact_id)
+                for row, selector in zip(document["candidates"], selectors, strict=True)
+                for value in row["protecting_uses"]),
+                key=lambda value: (*_key(value.identity), value.ref.artifact_id)))
+            identities = tuple(sorted({claim.identity for claim in claims}, key=_key))
+            completions = tuple(read.sources.get(("cleanup-admitted-completion", value)) for value in identities)
+            if any(value is None for value in completions):
+                raise _Unavailable
+            for completion in completions:
+                selected = tuple(claim for claim in claims if claim.identity == completion.identity)
+                whole = read_original_selection(self._connection, completion.identity, selected[0].ref, read=read)
+                if tuple(value.ref for value in selected) != tuple(value.ref for value in whole):
+                    raise _Unavailable
+            for value in members:
+                self._require_absent(read, "cpk_configuration_cleanup_members",
+                    "workspace_id=%s AND allocation_id=%s", (value.ref.workspace_id, value.ref.allocation_id))
+            for value in completions:
+                self._require_absent(read, "cpk_configuration_invocation_closures",
+                    "run_id=%s AND activity_id=%s AND attempt=%s", _key(value.identity))
+            for value in claims:
+                key = (*_key(value.identity), value.ref.artifact_id)
+                self._require_absent(read, "cpk_configuration_claim_closures",
+                    "run_id=%s AND activity_id=%s AND attempt=%s AND artifact_id=%s", key)
+                _paired_disposition(read, key, value.ref, protective=True)
+            return registration, members, claims, completions
+        finally:
+            _COMPOSED_READ.reset(token)
+
+    @staticmethod
+    def _require_absent(read, table, where, values):
+        if read.query("SELECT 1 FROM " + table + " WHERE " + where + " LIMIT 1", values,
+                records=1, octets=1, cells=1):
+            raise _Unavailable
 
     def get(self, identity):
         try:
@@ -77,13 +239,17 @@ class ConfigurationCleanupOwnershipStore:
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
             raise OperationsRecordError(_ERROR) from None
 
-    def _get(self, identity, read):
+    def _rows(self, identity, read, *, expected=None):
         cleanup = _key(identity)
         from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_require
         _phase_context(self._connection, read=read)
         headers = read.bounded_rows(_TABLE, _columns(_HEADER), _WHERE, cleanup)
         if not headers:
+            if expected is not None:
+                raise _Unavailable
             return None
+        if expected is not None and headers != (expected[0],):
+            raise _Unavailable
         h = dict(zip(_HEADER, headers[0], strict=True))
         _phase_require(self._connection, "retained", cleanup, "plan", (h["plan_id"],))
         if (tuple(headers[0][:3]) != cleanup or any(value is None for value in headers[0])
@@ -101,6 +267,17 @@ class ConfigurationCleanupOwnershipStore:
             if table != "cpk_configuration_cleanup_member_outcomes" and len(rows) != count:
                 raise _Unavailable
             children.append(rows)
+        if expected is not None and tuple(tuple(rows) for rows in children) != expected[1:]:
+            raise _Unavailable
+        return h, children
+
+    def _get(self, identity, read, *, expected=None):
+        retained = self._rows(identity, read, expected=expected)
+        if retained is None:
+            return None
+        h, children = retained
+        cleanup = _key(identity)
+        from .configuration_cleanup_phase_read_bounds import _phase_require
         members, invocations, closures, member_outcomes = children
         original, attempt, plan = self._original(identity, h, read)
         roots = tuple(_ref(read, row[5:9]) for row in members)
@@ -146,6 +323,217 @@ class ConfigurationCleanupOwnershipStore:
             members=roots, claims=claims, completions=tuple(completions), status=attempt.state.status,
             outcome_fingerprint=None if outcome is None else outcome.outcome_fingerprint,
             outcome_profile=None if outcome is None else outcome.profile, outcomes=outcomes)
+
+    def _bind_start(self, prepared, original):
+        from control_plane_kit_operations._configuration_cleanup_ownership import _PreparedCleanupStart
+        if type(prepared) is not _PreparedCleanupStart or prepared.owner.store is not self:
+            raise OperationsRecordError(_ERROR)
+        owner = _prepared_owner(prepared, self)
+        # Binding is in-memory only. The next write entrance performs the
+        # third cold fresh proof; it cannot substitute this record for it.
+        owner.require_context(prepared, self._connection, write=True)
+        if (owner.bound is not None or original.identity != prepared.identity
+                or original.intent != prepared.intent):
+            raise OperationsRecordError(_ERROR)
+        request, plan = owner.prefix.request, owner.plan
+        registration, members, claims, completions = owner.fresh
+        owner.record = ConfigurationCleanupReservationRecord(
+            identity=original.identity, workspace_id=original.intent.source.workspace_id,
+            request_id=request.identity.request_id, request_fingerprint=original.request_fingerprint,
+            original_event_id=original.original_start_event.event_id, plan_id=plan.plan_id,
+            approval_request_id=request.approval_request_id, approval_decision_id=request.approval_decision_id,
+            proposal_fingerprint=configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal),
+            runtime_id=original.intent.operation.instances[0].runtime_id, runtime_kind=original.intent.runtime_kind,
+            authority_ref=original.intent.authority_ref, registration_id=registration.registration_id,
+            members=members, claims=claims, completions=completions, status=EffectAttemptStatus.STARTED)
+        owner.bound = original
+
+    def _insert_start(self, prepared, original):
+        owner = _prepared_owner(prepared, self)
+        owner.require(prepared, self._connection, write=True)
+        if owner.store is not self or owner.bound is not original:
+            raise OperationsRecordError(_ERROR)
+        self._require_current(prepared)
+        from .configuration_evidence import _active_read
+        read = _active_read(self._connection)
+        rows = _expected_rows(owner.record)
+        for table, columns, values in (
+                (_TABLE, _HEADER, (rows[0],)),
+                ("cpk_configuration_cleanup_members", _MEMBERS, rows[1]),
+                ("cpk_configuration_invocation_closures", _INVOCATIONS, rows[2]),
+                ("cpk_configuration_claim_closures", _CLAIMS, rows[3])):
+            for value in values:
+                self._insert_row(read, table, columns, value)
+        cleanup = _key(owner.record.identity)
+        for claim in owner.record.claims:
+            ref = claim.ref
+            for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+                changed = read.query("UPDATE " + table + " SET protective=false,cleanup_run_id=%s,"
+                    "cleanup_activity_id=%s,cleanup_attempt=%s WHERE "
+                    "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s) "
+                    "AND (workspace_id,allocation_id,runtime_id,node_id)=(%s,%s,%s,%s) "
+                    "AND protective AND cleanup_run_id IS NULL AND cleanup_activity_id IS NULL "
+                    "AND cleanup_attempt IS NULL RETURNING 1",
+                    (*cleanup, *_key(claim.identity), ref.artifact_id,
+                        ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id),
+                    records=1, octets=1, cells=1)
+                if changed != [(1,)]:
+                    raise _Unavailable
+        owner.spent = True
+
+    @staticmethod
+    def _insert_row(read, table, columns, values):
+        rows = read.query("INSERT INTO " + table + " (" + ",".join(columns) + ") VALUES ("
+            + ",".join("%s" for _ in columns) + ") RETURNING 1", values,
+            records=1, octets=1, cells=1)
+        if rows != [(1,)]:
+            raise _Unavailable
+
+    def _verify_start(self, prepared):
+        owner = _prepared_owner(prepared, self)
+        owner.require(prepared, self._connection)
+        if owner.store is not self or not owner.spent or owner.record is None:
+            raise OperationsRecordError(_ERROR)
+        with _joined_read(self._connection) as read:
+            actual = self._get(prepared.identity, read, expected=_expected_rows(owner.record))
+        if actual != owner.record:
+            raise _Unavailable
+        return actual
+
+    @contextmanager
+    def _fold_scope(self, unit_of_work, guard, prefix, original, attempt, outcome, request, fence):
+        from control_plane_kit_operations._configuration_cleanup_ownership import (
+            _CleanupPreparationOwner, _PreparedCleanupFold, _preflight_fold,
+        )
+        from control_plane_kit_core.operations.lifecycle import ActivityRunStatus, ExecutionRequestStatus
+        from .configuration_cleanup_read_ceilings import _CleanupOriginalReadCeilingsOwner
+        from .configuration_cleanup_phase_read_bounds import _CleanupPhaseReadBoundsOwner
+        owner = _CleanupPreparationOwner(unit_of_work, self, guard, prefix)
+        prepared = _PreparedCleanupFold(owner, original, attempt, outcome, request, fence)
+        owner.issued = prepared
+        try:
+            with ExitStack() as contexts:
+                read = contexts.enter_context(_joined_read(self._connection))
+                owner.plan = self._stores.activity_history.get_plan(original.intent.source.plan_id)
+                original_owner = _CleanupOriginalReadCeilingsOwner(unit_of_work)
+                owner.original_bounds = original_owner.capture(guard, prefix, owner.plan,
+                    intent_identity=original.identity, prospective_intent=original.intent)
+                contexts.enter_context(original_owner.bind(owner.original_bounds))
+                phase_owner = _CleanupPhaseReadBoundsOwner(unit_of_work)
+                owner.phase_bounds = phase_owner.capture_retained(guard, prefix, owner.plan,
+                    original_identity=original.identity)
+                contexts.enter_context(phase_owner.bind(owner.phase_bounds))
+                owner.require(prepared, self._connection, write=True)
+                prefix.require(unit_of_work, request, original.identity.run_id.value, latest_required=True)
+                if (prefix.request != request or prefix.latest_run != prefix.requested_run
+                        or prefix.requested_run.status is not ActivityRunStatus.RUNNING
+                        or request.status is not ExecutionRequestStatus.CLAIMED or request.claim is None
+                        or (request.claim.worker_id, request.claim.generation) != (fence.worker_id, fence.generation)
+                        or self._stores.execution.get_request(request.identity.request_id) != request
+                        or attempt.state.status is not EffectAttemptStatus.STARTED or attempt.state.fence != fence
+                        or original.identity != attempt.state.identity
+                        or original.original_start_event != attempt.original_start_event
+                        or original.request_fingerprint != attempt.state.request_fingerprint
+                        or self._stores.effect_attempt_intents.get(original.identity) != original
+                        or self._stores.effect_attempts.get(original.identity) != attempt
+                        or type(outcome) not in (ExecutionEffectOutcome, ObservedEffectOutcome)
+                        or outcome.identity != original.identity
+                        or outcome.request_fingerprint != original.request_fingerprint):
+                    raise _Unavailable
+                owner.record = self._get(original.identity, read)
+                if owner.record is None or owner.record.status is not EffectAttemptStatus.STARTED:
+                    raise _Unavailable
+                owner.outcomes = (configuration_cleanup_outcomes(runtime_effect_request_for_intent(original.intent,
+                    effect_id=original.original_start_event.event_id), outcome.result)
+                    if type(outcome) is ExecutionEffectOutcome else None)
+                _preflight_fold(prepared)
+                yield prepared
+        finally:
+            owner.close()
+
+    def _bind_fold(self, prepared, outcome_record):
+        from control_plane_kit_core.operations import fold_effect_attempt
+        from control_plane_kit_operations._configuration_cleanup_ownership import _PreparedCleanupFold
+        from control_plane_kit_operations.effect_outcome_evidence import EffectAttemptOutcomeRecord, effect_outcome_transition
+        owner = _prepared_owner(prepared, self)
+        owner.require(prepared, self._connection, write=True)
+        if (type(prepared) is not _PreparedCleanupFold or owner.store is not self or owner.bound is not None
+                or type(outcome_record) is not EffectAttemptOutcomeRecord
+                or outcome_record.outcome != prepared.outcome
+                or outcome_record.workspace_id != owner.record.workspace_id
+                or outcome_record.attempt.original_start_event != prepared.attempt.original_start_event
+                or outcome_record.attempt.state != fold_effect_attempt(prepared.attempt.state,
+                    effect_outcome_transition(prepared.outcome), fence=prepared.fence)):
+            raise OperationsRecordError(_ERROR)
+        EffectAttemptOutcomeRecord.__post_init__(outcome_record)
+        owner.bound = outcome_record
+
+    def _insert_fold(self, prepared, outcome_record):
+        from .configuration_evidence import _active_read
+        owner = _prepared_owner(prepared, self)
+        owner.require(prepared, self._connection, write=True)
+        if owner.store is not self or owner.bound is not outcome_record:
+            raise OperationsRecordError(_ERROR)
+        read = _active_read(self._connection)
+        record, terminal = owner.record, outcome_record.attempt
+        # Normal outcome/CAS now exist, but member results do not. Compare
+        # the prepared rows and reciprocal closure without invoking terminal B.
+        self._rows(record.identity, read, expected=_expected_rows(record))
+        for claim in record.claims:
+            _paired_disposition(read, (*_key(claim.identity), claim.ref.artifact_id), claim.ref,
+                expected=_key(record.identity))
+        rows = read.query("""
+            SELECT 1 FROM cpk_configuration_cleanup_reservations c
+            JOIN cpk_execution_requests q ON q.request_id=c.request_id
+            JOIN LATERAL (SELECT * FROM cpk_activity_runs
+                WHERE request_id=q.request_id ORDER BY attempt DESC LIMIT 1) r ON r.run_id=c.cleanup_run_id
+            JOIN cpk_effect_attempts a ON (a.run_id,a.activity_id,a.attempt)=
+                (c.cleanup_run_id,c.cleanup_activity_id,c.cleanup_attempt)
+            JOIN cpk_effect_attempt_intents i ON (i.run_id,i.activity_id,i.attempt)=(a.run_id,a.activity_id,a.attempt)
+            JOIN cpk_activity_events e0 ON e0.event_id=a.original_event_id
+            JOIN cpk_activity_events e1 ON e1.event_id=a.latest_event_id
+            JOIN cpk_effect_attempt_outcomes o ON (o.run_id,o.activity_id,o.attempt)=(a.run_id,a.activity_id,a.attempt)
+            WHERE (c.cleanup_run_id,c.cleanup_activity_id,c.cleanup_attempt)=(%s,%s,%s)
+              AND a.request_fingerprint=%s AND a.outcome_fingerprint=%s AND a.status=%s
+              AND a.fence_worker_id=%s AND a.fence_generation=%s
+              AND a.original_event_id=%s AND a.original_event_ordinal=%s
+              AND a.latest_event_id=%s AND a.latest_event_ordinal=%s
+              AND o.workspace_id=%s AND o.request_fingerprint=a.request_fingerprint
+              AND o.outcome_fingerprint=a.outcome_fingerprint
+              AND o.original_event_id=a.original_event_id AND o.original_event_ordinal=a.original_event_ordinal
+              AND o.direct_event_id=a.latest_event_id AND o.direct_event_ordinal=a.latest_event_ordinal
+              AND q.request_id=%s AND q.workspace_id=o.workspace_id AND q.status='claimed'
+              AND q.claim_worker_id=a.fence_worker_id AND q.claim_generation=a.fence_generation
+              AND r.status='running' AND r.plan_id=q.plan_id
+              AND i.request_id=q.request_id AND i.workspace_id=q.workspace_id
+              AND i.request_fingerprint=a.request_fingerprint AND i.original_event_id=a.original_event_id
+              AND i.original_event_run_id=a.run_id AND i.original_event_ordinal=a.original_event_ordinal
+              AND e0.run_id=a.run_id AND e0.ordinal=a.original_event_ordinal
+              AND e1.run_id=a.run_id AND e1.ordinal=a.latest_event_ordinal
+              AND c.workspace_id=q.workspace_id AND c.plan_id=q.plan_id
+              AND c.original_event_id=a.original_event_id AND c.request_fingerprint=a.request_fingerprint
+            LIMIT 1
+            """, (*_key(record.identity), record.request_fingerprint, terminal.state.outcome_fingerprint,
+                terminal.state.status.value, prepared.fence.worker_id, prepared.fence.generation,
+                terminal.original_start_event.event_id, terminal.original_start_event.ordinal,
+                terminal.latest_transition_event.event_id, terminal.latest_transition_event.ordinal,
+                record.workspace_id, record.request_id), records=1, octets=1, cells=1, identities=8)
+        if rows != [(1,)]:
+            raise _Unavailable
+        if owner.outcomes is not None:
+            for value in owner.outcomes.outcomes:
+                self._insert_row(read, "cpk_configuration_cleanup_member_outcomes", _OUTCOMES,
+                    (*_key(record.identity), value.ref.workspace_id, value.ref.allocation_id,
+                        record.request_fingerprint, terminal.state.outcome_fingerprint, value.status.value,
+                        None if value.reason is None else value.reason.value))
+        owner.spent = True
+        # Full B proves the completed aggregate exactly once after all K rows.
+        retained = self._get(record.identity, read)
+        if (retained is None or retained.status is not terminal.state.status
+                or retained.outcome_fingerprint != terminal.state.outcome_fingerprint
+                or retained.outcomes != owner.outcomes):
+            raise _Unavailable
+        return retained
 
     def _original(self, identity, h, read):
         stores = self._stores

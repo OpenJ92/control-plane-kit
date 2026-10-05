@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from contextlib import ExitStack
+from control_plane_kit_core.planning import CleanupConfigurationInstances
 from typing import Any, Callable
 
 from control_plane_kit_core.operations import (
@@ -137,7 +139,7 @@ class EffectAttemptStartService:
             )
         fence = _translate_fence(command)
 
-        with self._unit_of_work_factory() as unit_of_work:
+        with self._unit_of_work_factory() as unit_of_work, ExitStack() as evidence_contexts:
             stores = unit_of_work.stores
             try:
                 locator = stores.execution.get_request(command.request_id)
@@ -188,6 +190,13 @@ class EffectAttemptStartService:
             if attempt is not None:
                 _require_replay(command, fence, request, run, attempt)
                 _require_intent_replay(stores, command, attempt)
+                if type(command.intent.operation) is CleanupConfigurationInstances:
+                    try:
+                        retained = stores.configuration_cleanup_ownership.get(attempt.state.identity)
+                        if retained is None:
+                            raise ValueError("cleanup original is unavailable")
+                    except (ValueError, TypeError, KeyError, AttributeError):
+                        raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
                 result = ExistingAttempt(attempt)
                 if is_signed_management_health_operation(command.intent.operation):
                     preparation = health_replay(stores, attempt, health)
@@ -251,10 +260,18 @@ class EffectAttemptStartService:
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             configuration_preparation = None
+            cleanup_store = None
             if command.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
                 try:
-                    configuration_preparation = stores.configuration_preparation._prepare(
-                        stores, command, request, run, plan, guard, event_kind)
+                    if type(command.intent.operation) is CleanupConfigurationInstances:
+                        if event_kind is not ActivityEventKind.STEP_STARTED:
+                            raise ValueError("cleanup compensation is unavailable")
+                        cleanup_store = stores.configuration_cleanup_ownership
+                        configuration_preparation = evidence_contexts.enter_context(cleanup_store._start_scope(
+                            unit_of_work, command, request, plan, guard, prefix))
+                    else:
+                        configuration_preparation = stores.configuration_preparation._prepare(
+                            stores, command, request, run, plan, guard, event_kind)
                 except (KeyError, ValueError, TypeError, AttributeError):
                     configuration_preparation = None
                 if configuration_preparation is None:
@@ -286,6 +303,8 @@ class EffectAttemptStartService:
                 event,
                 command.intent,
             )
+            if cleanup_store is not None:
+                cleanup_store._bind_start(configuration_preparation, intent_record)
             if stores.execution.add_event(event) != event:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             try:
@@ -303,8 +322,11 @@ class EffectAttemptStartService:
                         **({"configuration_preparation": configuration_preparation} if configuration_preparation else {})) != expected_attempt:
                     raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
                 if configuration_preparation is not None:
-                    stores.configuration_preparation._insert_original(intent_record, configuration_preparation)
-            except OperationsRecordError:
+                    if cleanup_store is not None:
+                        cleanup_store._insert_start(configuration_preparation, intent_record)
+                    else:
+                        stores.configuration_preparation._insert_original(intent_record, configuration_preparation)
+            except (OperationsRecordError, ValueError, TypeError, KeyError, AttributeError):
                 if configuration_preparation is None:
                     raise
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
@@ -319,13 +341,17 @@ class EffectAttemptStartService:
                         or stores.effect_attempts.get(expected_attempt.state.identity) != expected_attempt):
                     raise ValueError("persisted start changed")
                 if configuration_preparation is not None:
-                    stores.configuration_preparation._require_original(intent_record)
+                    if cleanup_store is not None:
+                        cleanup_store._verify_start(configuration_preparation)
+                    else:
+                        stores.configuration_preparation._require_original(intent_record)
             except (KeyError, ValueError, TypeError, AttributeError):
                 permission_failed = True
             else:
                 permission_failed = False
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            evidence_contexts.close()
             unit_of_work.commit()
             return result
 
