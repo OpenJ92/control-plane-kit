@@ -206,9 +206,8 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
         command = self.native_start_command(claimed, "cleanup-execution")
         pids = queue.Queue()
         first_id = concurrency._BlockingId("cleanup-original")
-        other_ids = Sequence("must-not-be-used")
         first = EffectAttemptStartService(self._factory_with_pids(pids), id_factory=first_id)
-        second = EffectAttemptStartService(self._factory_with_pids(pids), id_factory=other_ids)
+        second = EffectAttemptStartService(self._factory_with_pids(pids), id_factory=self.assert_no_ids)
         with ThreadPoolExecutor(max_workers=2) as executor:
             first_future = executor.submit(first.execute, command)
             try:
@@ -225,7 +224,6 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
                 first_id.release.set()
         self.assertCountEqual(tuple(type(value) for value in results), (NewlyStarted, ExistingAttempt))
         self.assertEqual(results[0].attempt, results[1].attempt)
-        self.assertEqual(other_ids.calls, [])
         with self.unit_of_work() as uow:
             reservation = uow.stores.configuration_cleanup_ownership.get(command.transition.identity)
             self.assertEqual((len(reservation.members), len(reservation.completions), len(reservation.claims)), (1, 1, 1))
