@@ -114,6 +114,25 @@ Select the artifact by its stable `artifact_id`, assert exactly one selection
 before registration, and retain the existing exact ref/query assertions. No
 production or policy correction is involved.
 
+## Existing-owner baseline and causal red
+
+At `58f7bc99ae73819799985a1794b0ee897b2b7c4e` (tree
+`e2c9ab0472e9403b80f91b6226ee94c61e224746`), the same owning focused gate ran four
+tests in 149.793 seconds. The existing-owner baseline passed. All three new-law
+methods passed their complete fixture premises and failed exactly at the
+in-method missing private issuer assertion, with no errors. This is causal-red
+evidence, not source implementation or package acceptance. Log SHA256:
+`6afe790dba61f3540ae7a1b24d1eac93ad4c08cff6c7c73531c518bc42c8464d`.
+
+The gate exited one as expected and removed its exact test container/network.
+Its post-test compile/import phases did not run after expected red; no such
+credit is claimed. The successful control preserves both public cleanup
+refusals, checks real PostgreSQL representation, proves the complete receiver
+bindings and actual source/approval/history premises, and leaves durable truth
+unchanged. Independent evidence review and coordinator source release remain
+required before implementing the private owner. Remaining target laws above
+must still be completed before source-green.
+
 Security: no runtime, network, authentication, secret transfer, durable production
 writer or activation change. The negative metadata mutation is confined to a
 rolled-back test transaction. The complete cleanup ledger and provider results
