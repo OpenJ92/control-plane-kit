@@ -277,3 +277,52 @@ delta against independently observed transport, statements and records.
 These residual corrections are unexecuted. The prior failed head and hosted
 results cannot accept the corrected source. Both cleanup activation guards
 remain closed; no provider, schema, credential or durable writer change occurs.
+
+## Corrected-source execution and fixture-only follow-up
+
+The owning gate at `f8c7b93e69da7bdee0075161dcbc9f0e87ebbf52`
+completed 130 tests in 1792.791 seconds, with three failures and two errors.
+Log SHA-256:
+`fe7b5a5f0961dab55a8942c983f4a1590d4b9e3ed355c5aeea79d2c09b374ff0`.
+All original 18 phase methods, all five retained phase methods and the governing
+regressions passed. The reports are confined to two new fixture methods:
+
+- Both parent-plan errors violate the immediate base graph/projection composite
+  FK before the consumer. The corrected fixture constructs a valid foreign
+  projection using `RealizedGraphProjectionRecord.from_graph`, proves both
+  children readable, updates both plan pins together and keeps the cleanup
+  proposal occurrence pair/digest coherent. Neither FK constraints nor the
+  pre-transport refusal assertion is weakened.
+- All three warm-cache failures stop at `404 != 420` before their fault branch.
+  The existing query owner reserves `(1,20,1,1)` / 420 bytes, then settles to
+  actual transported transaction-ID width. The corrected test separately checks
+  the exact outstanding reservation, independently observed settled width and
+  exact row/cell/statement counts, then runs the same fault refusals.
+
+No production source changes follow that gate. Its exact corrected test container
+and network are absent. Compile/import were not reached after exit 1.
+The next owning gate selects the two corrected methods and the existing positive
+cold read-chain method, now also reporting fresh-application segment-local wire
+and peak values separately from the existing cumulative rehearsal report.
+These fixture corrections remain unexecuted until that gate passes.
+
+Executed retained measurements use tuples `(records,value_octets,cells,statements)`.
+Both unchanged and revoked-registration/changed-current premises produced the
+same measurements below. Physical values are per-stage independent transport;
+peaks include the cumulative prefix plus outstanding reservations.
+
+| Stage | Prefix | End | Physical bytes | Peak bytes |
+| --- | --- | --- | ---: | ---: |
+| Retained ordinary baseline | `(44,13505,361,44)` | `(134,38140,1059,113)` | 62427 | 1191627 |
+| Retained capture | `(134,38140,1059,113)` | `(241,70848,1872,196)` | 77844 | 1258643 |
+| Retained application | `(242,70852,1873,197)` | `(365,100264,2801,284)` | 77924 | 336309 |
+
+Fresh capture at that head used prefix `(489,424446,3725,371)`, end
+`(1203,930809,9010,837)`, physical transport 798155 bytes and peak 3575369 bytes.
+The subsequent full read chain ended at `(1749,1338543,12559,1263)` and retained
+all 14 raw graph/projection pairs and both acceptance-event readers. Its printed
+physical total 2077855 and maximum 3575369 are cumulative, not isolated
+application-stage values. The focused follow-up will report that stage directly.
+These are reader evidence only; no #1936 coordinator/tail fit or activation is
+inferred. Source acceptance remains pending the corrected focused gate and
+required integration evidence.

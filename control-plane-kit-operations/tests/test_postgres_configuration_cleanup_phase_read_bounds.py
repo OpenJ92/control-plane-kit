@@ -570,10 +570,21 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                 revision = self.companion_acceptance.desired_graph_revision
                 with owner.bind(issued):
                     receipt = uow.stores.configuration_acceptance._receipt_context("workspace-a", revision, fresh)
-                    before, offset = read.used.accounted_bytes, len(observed["queries"])
+                    footprint, offset = read.used, len(observed["queries"])
+                    before = footprint.accounted_bytes
                     self.assertEqual(uow.stores.configuration_acceptance._receipt_context("workspace-a", revision, fresh), receipt)
                     self.assertEqual([q["sql"] for q in observed["queries"][offset:]], ["SELECT txid_current()"])
-                    self.assertEqual(read.used.accounted_bytes - before, 420)
+                    charged = observed["queries"][offset]
+                    self.assertEqual(charged["peak"], (footprint.records + 1, footprint.value_octets + 20,
+                        footprint.scalar_markers + 1, footprint.statements + 1))
+                    r, b, c, s = charged["peak"]
+                    self.assertEqual(b + 128*r + 16*c + 256*s - before, 420)
+                    self.assertEqual(len(charged["widths"]), 1)
+                    self.assertEqual(len(charged["widths"][0]), 1)
+                    self.assertEqual(read.used.accounted_bytes - before, 400 + sum(charged["widths"][0]))
+                    self.assertLessEqual(read.used.accounted_bytes - before, 420)
+                    self.assertEqual((read.used.records-footprint.records, read.used.scalar_markers-footprint.scalar_markers,
+                        read.used.statements-footprint.statements), (1, 1, 1))
                     offset = len(observed["queries"])
                     if fault == "transaction":
                         uow.stores.connection.commit()
@@ -611,7 +622,7 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                         self.mutate(read, "UPDATE cpk_graph_receiver_introductions SET introducing_action_id=%s "
                             "WHERE workspace_id='workspace-a' AND receiver_id=%s", (foreign, self.companion_origin.receiver_id))
                         consume = lambda: stores.graphs.receiver_introduction("workspace-a", self.companion_origin.receiver_id)
-                    forbidden_table = "cpk_operation_actions"
+                    forbidden_tables = ("cpk_operation_actions",)
                 else:
                     old = a.from_authored_graph_id if parent == "historical-plan" else self.plan.base_graph_id
                     foreign = ("z" if old[0] != "z" else "y") + old[1:]
@@ -623,29 +634,52 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                     plan_id = a.plan_id if parent == "historical-plan" else self.plan.plan_id
                     request_id = a.action.payload["execution_request_id"] if parent == "historical-plan" else prefix.request.identity.request_id
                     request = stores.execution.get_request(request_id)
+                    from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+                    from control_plane_kit_operations.records import RealizedGraphProjectionRecord
+                    old_projection_id = a.from_realized_projection_id if parent == "historical-plan" else self.plan.base_realized_projection_id
+                    old_projection = stores.realized_graphs.get(old_projection_id)
+                    foreign_projection_id = ("z" if old_projection_id[0] != "z" else "y") + old_projection_id[1:]
+                    foreign_projection = RealizedGraphProjectionRecord.from_graph(
+                        projection_id=foreign_projection_id, workspace_id=old_projection.workspace_id,
+                        source_authored_graph_id=foreign, projection_kind=old_projection.projection_kind,
+                        projection_key=old_projection.projection_key,
+                        graph=DEFAULT_GRAPH_CODEC.decode(old_projection.graph_descriptor),
+                        created_by=old_projection.created_by, created_at=old_projection.created_at)
+                    self.mutate(read, "INSERT INTO cpk_realized_graph_projections "
+                        "(projection_id,workspace_id,source_authored_graph_id,projection_kind,projection_key,"
+                        "projection_digest,graph_descriptor,created_by,created_at) "
+                        "SELECT %s,workspace_id,%s,projection_kind,projection_key,%s,graph_descriptor,created_by,created_at "
+                        "FROM cpk_realized_graph_projections WHERE projection_id=%s",
+                        (foreign_projection_id, foreign, foreign_projection.projection_digest, old_projection_id))
+                    self.assertEqual(stores.realized_graphs.get(foreign_projection_id), foreign_projection)
+                    self.assertEqual(stores.graphs.get(foreign).graph_id, foreign)
                     if parent == "original-plan":
                         from control_plane_kit_operations.configuration_cleanup import ConfigurationCleanupProposalCodec
                         from control_plane_kit_operations.plan_derivation import encode_stored_activity_plan
                         document = self.plan.cleanup_proposal.descriptor()
                         document["context"]["base_graph_id"] = foreign
+                        document["context"]["base_realized_projection_id"] = foreign_projection_id
                         document["context"]["current_occurrence"]["graph_id"] = foreign
+                        document["context"]["current_occurrence"]["projection_id"] = foreign_projection_id
+                        document["context"]["current_occurrence"]["projection_digest"] = foreign_projection.projection_digest
                         proposal = ConfigurationCleanupProposalCodec().decode(document)
                         payload = encode_stored_activity_plan(self.plan.plan, profile=self.plan.derivation_profile,
                             cleanup_proposal=proposal)
-                        self.mutate(read, "UPDATE cpk_activity_plans SET base_graph_id=%s,payload=%s::jsonb WHERE plan_id=%s",
-                            (foreign, json.dumps(payload), plan_id))
+                        self.mutate(read, "UPDATE cpk_activity_plans SET base_graph_id=%s,base_realized_projection_id=%s,"
+                            "payload=%s::jsonb WHERE plan_id=%s", (foreign, foreign_projection_id, json.dumps(payload), plan_id))
                     else:
-                        self.mutate(read, "UPDATE cpk_activity_plans SET base_graph_id=%s WHERE plan_id=%s", (foreign, plan_id))
+                        self.mutate(read, "UPDATE cpk_activity_plans SET base_graph_id=%s,base_realized_projection_id=%s "
+                            "WHERE plan_id=%s", (foreign, foreign_projection_id, plan_id))
                     # It is a readable retained plan pointing at a real row,
                     # not an import/decoder/FK failure before the child entrance.
                     self.assertEqual(stores.activity_history.get_plan(plan_id).base_graph_id, foreign)
                     consume = lambda: _ExecutionScopeStorage(stores.connection, type(read)(stores.connection)).verify(request.identity)
-                    forbidden_table = "cpk_graph_versions"
+                    forbidden_tables = ("cpk_graph_versions", "cpk_realized_graph_projections")
                 offset = len(observed["queries"])
                 with owner.bind(issued), self.assertRaises(ValueError):
                     consume()
                 segment = observed["queries"][offset:]
-                self.assertFalse(any(" FROM " + forbidden_table in q["sql"] for q in segment),
+                self.assertFalse(any(" FROM " + table in q["sql"] for table in forbidden_tables for q in segment),
                     "captured parent reached an uncaptured child query")
         self.assertEqual(self.ceiling_truth(), before)
 
@@ -777,7 +811,18 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                 physical_weighted_bytes=physical, maximum_reservation_bytes=max(peaks)))
             self.assertNotIn(self.plan.plan_id, repr(issued))
             with owner.bind(issued):
+                application_prefix, offset = read.used, len(observed["queries"])
                 self.read_chain(uow, guard, prefix, read, observed)
+                segment = observed["queries"][offset:]
+                physical = sum(256 + sum(128 + 16*len(row) + sum(row) for row in q["widths"]) for q in segment)
+                self.assertGreaterEqual(read.used.accounted_bytes - application_prefix.accounted_bytes, physical)
+                self.assertEqual(read.used.statements - application_prefix.statements, len(segment))
+                self.assertGreaterEqual(read.used.records - application_prefix.records,
+                    sum(len(q["widths"]) for q in segment))
+                peaks = [b+128*r+16*c+256*s for r,b,c,s in (q["peak"] for q in segment)]
+                self.assertLessEqual(max(peaks), 16*1024*1024)
+                print("#1941 start application", dict(prefix=_components(application_prefix), used=_components(read.used),
+                    physical_weighted_bytes=physical, maximum_reservation_bytes=max(peaks)))
         self.assertEqual(self.ceiling_truth(), before)
 
     def test_raw_material_growth_is_rejected_before_full_transport(self):
