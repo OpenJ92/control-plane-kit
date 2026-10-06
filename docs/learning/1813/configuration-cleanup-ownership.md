@@ -1,4 +1,4 @@
-## Current disposition — 2026-10-05
+## Current disposition — 2026-10-06
 
 D1 #1931 and D2 #1932 are accepted and closed. D2's final actual merge is
 `a28e58675893a0aa842903e11d7dffb508750004`, tree
@@ -15,11 +15,16 @@ ordered planning topology [A #1944](https://github.com/OpenJ92/control-plane-kit
 → [B1 #1945](https://github.com/OpenJ92/control-plane-kit/issues/1945)
 → [B2 #1946](https://github.com/OpenJ92/control-plane-kit/issues/1946)
 → [C #1947](https://github.com/OpenJ92/control-plane-kit/issues/1947).
-All are children of D with native blockers in that order. Project 5: A is
-In Progress / Ready after North and Kepler's exact planning PASS; later children
-are Todo / Hold. North released A's focused targets, with implementation following
-Kepler's causal-red confirmation within the frozen ceiling. Later exact interfaces
-and all provider work remain held.
+All are children of D with native blockers in that order. A is accepted through
+PR #1949, actual merge `9282714d91e6df553b61920d01a20105cf0f4848`, tree
+`4d3df407557a32c832507373d269e0f891328ff2`, exact parents `090930e6` and `8eb03194`.
+Kepler's final independent PASS covers hosted Core 945 + 21 support, Operations
+2494 tests / 6854.806s plus compilation/import, and all nine locked-backend stages.
+The earlier A focused failures remain historical evidence below. Project 5: A is
+Done; B1 is In Progress / Refining for exact-interface planning only. North's
+[B1 handoff](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6010353985)
+releases the bounded law/source/schema design; target tests and production changes
+await review. B2/C and all provider work remain held.
 This supersedes the earlier D3/D4 recommendation. D2 does not release I177 or
 Servers225, which remains the governing delivery objective.
 
@@ -651,3 +656,464 @@ idempotent. B1 #1945 must prove each own disposition from retained originals;
 B2 #1946 must compose explicit profile selection and complete fresh proof before
 activation; C #1947 owns qualified atomic transfer and real growth/race/rollback
 evidence. None is released by this focused A result.
+
+### B1 exact design proposal — review pending (#1945)
+
+Planning base: actual A merge `9282714d91e6df553b61920d01a20105cf0f4848`.
+This proposal reuses E4-L04/05/06/09/10 and the trace above. ADRs 0004, 0005,
+0006, 0008 and the package-boundary/math notes govern. No target or production
+file has changed and no executable gate is released at this planning checkpoint.
+
+#### Governing tests and the law they carry
+
+All paths below are Operations tests. Each new negative must first establish its
+own genuine positive prefix and an internally consistent recorded transfer suffix.
+
+| Governing test | Classification and B1 obligation |
+| --- | --- |
+| `test_postgres_configuration_completion.py::test_success_and_failure_admit_exact_original_completion_without_releasing_claims` and `test_unprofiled_terminal_outcomes_remain_unadmitted` | Isomorphic: completion alone never transfers; failure/unprofiled success stays outstanding. Strengthened: transfer proof requires this same source's admitted success, never a neighbor. |
+| Same file, `test_historical_profile_without_link_replays_without_backfill_or_permission` and `test_generic_outcome_store_does_not_recreate_admission` | Isomorphic: replay, retained reads and generic stores never synthesize missing admission or transfer. |
+| Same file, corruption/FK/issued-owner tests | Strengthened: wrong own completion/selection/outcome, missing exact slot/header/action/event, reconstructed or foreign-UoW preparation cannot yield permission. |
+| `test_postgres_configuration_preparation_transactions.py::test_deleting_reciprocal_claim_cannot_commit_a_prepared_ref_without_protection` and current-schema drift test | Strengthened: reciprocal scope and disposition agree; one-sided or mixed closure/transfer state cannot commit. Failed verification makes no repair. |
+| `test_postgres_configuration_acceptance_membership.py::test_real_installation_accepts_complete_original_slots_and_retains_claims` and late-commit rollback | Isomorphic: B1's real acceptance still retains newly accepted claims. Only defensive readers consume recorded transfers; no lawful-writer or growth credit. |
+| `test_postgres_configuration_acceptance_latest.py` numeric newest/ABA and missing-newest cases | Strengthened: current membership is independent, exact newest receipt still required, old matching material never substitutes. Carry point-proves the source's own original receipt. |
+| `test_configuration_acceptance_preflight.py` cold-consumer and publication boundary tests; existing preparation capacity and shared-ledger tests | Strengthened: complete transfer proof and repeated owner checks fit one cumulative ledger; exact limit/one-over, prior work, cold/warm and query peaks remain distinct. |
+| `test_current_schema_installation.py` exact protection contract, query-only reentry, drift/no-repair, installer rollback/concurrency | Strengthened: one new exact baseline; old baseline or altered relation/FK/index requires reset, without mutation. No migration/backfill. |
+| A's same-u and unrelated-u transfer cases; E4 sibling example | New B1 database law: exact own-source proof survives later departure/retirement as provenance; it never grants permission to reuse a reserved allocation. |
+
+Discard the structural assumption that every reusable birth is still protective.
+Retain exact originals, direct birth, current slot and exclusion proofs. Do not
+reuse A's recorded-plan suffix as a claim of real v2 approval/admission.
+
+#### Relation and reciprocal state
+
+Propose exactly one new relation, `cpk_configuration_claim_transfers`, in the
+existing acceptance owner. No new store service or module is proposed.
+
+Let K = `(run_id, activity_id, attempt, artifact_id)`, W = workspace, A =
+allocation, R/N = runtime/node, D = full canonical ref digest. Columns are K,
+`workspace_id`, `allocation_id`, `runtime_id`, `node_id`, `ref_digest`,
+`request_fingerprint`, `selection_fingerprint`, `outcome_fingerprint`, and
+`acceptance_revision`. K is the primary key: exactly one immutable own-claim
+disposition, never one per carry. Digests are 64 lowercase hex; native revision is
+0..9007199254740991 to remain representable in A. Identity/scope/artifact bounds
+match existing Core and cleanup commitments; no arbitrary string status field.
+
+Exact constraints proposed:
+
+- FK `(K,W,A,D)` to existing refs' birth-material key and `(K,W,A,R,N)` to refs'
+  scope key; exact original key, material and allocation scope all agree.
+- FK `(run_id,activity_id,attempt,W,request_fingerprint,selection_fingerprint,
+  outcome_fingerprint)` to the existing admitted-completion exact key.
+- New acceptance header unique key `(workspace_id,pinned_revision,run_id)`;
+  transfer FK `(W,acceptance_revision,run_id)` requires acceptance by the same
+  original run. Full proof additionally checks the original request and plan.
+- On accepted slots, add `CHECK (source_artifact_id = artifact_id)` and a unique
+  key `(workspace_id,pinned_revision,runtime_id,node_id,artifact_id,
+  source_run_id,source_activity_id,source_attempt,full_ref_digest)`. The transfer
+  FK to that key binds its K/R/N/D to its own exact source slot. The existing
+  slot decoder already enforces this artifact equality; the new SQL constraint
+  makes the new correlation declarative without duplicate FK columns.
+- Each original ref and claim gains nullable `accepted_revision`. Cleanup
+  locator and accepted revision are mutually exclusive. `protective` remains
+  generated and is true exactly when both locators are absent. Keep both active
+  allocation and node indexes with the same `WHERE protective` semantics.
+- Add generated closed `disposition_kind` (`outstanding`, `accepted-current`,
+  `cleanup-closed`) on both sides. Replace the existing reciprocal protective
+  key/FKs with scope plus this discriminator; retain the underlying reciprocal
+  scope constraints. Both directions remain deferred, enforcing equal kind as
+  well as scope without a freely writable Boolean.
+- Both originals have a unique `(K,W,A,accepted_revision)` and FK to the same
+  unique key of the transfer relation. Reciprocal deferred FKs from transfer to
+  BOTH originals require the exact accepted revision on both sides. Thus an
+  orphan transfer, one-sided locator, changed revision or closure/transfer mix
+  cannot commit. Existing closure identities/relations remain unchanged.
+
+These are fresh-baseline definitions, not an upgrade program. Installer behavior
+remains empty install / exact current query-only verification / reset-required
+for other owned schemas. No live reset, export/import, backfill or migration is
+part of B1. Direct privileged SQL is not an application mutation API; write-once
+semantics belong to the sole guarded future producer and retained verification,
+not an assertion that FKs alone make arbitrary administrator rewrites impossible.
+
+Exact additional baseline constraint expressions (shown as design fragments,
+not a migration script):
+
+```sql
+-- On BOTH original relations, keeping their existing cleanup shape check:
+accepted_revision bigint CHECK (accepted_revision BETWEEN 0 AND 9007199254740991)
+disposition_kind text GENERATED ALWAYS AS
+  (CASE WHEN accepted_revision IS NOT NULL THEN 'accepted-current'
+        WHEN cleanup_run_id IS NOT NULL THEN 'cleanup-closed'
+        ELSE 'outstanding' END) STORED NOT NULL
+CHECK (accepted_revision IS NULL OR
+       (cleanup_run_id IS NULL AND cleanup_activity_id IS NULL AND cleanup_attempt IS NULL))
+-- Replace their protective generated expression with:
+((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND
+ (cleanup_attempt IS NULL) AND (accepted_revision IS NULL))
+UNIQUE (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,
+        runtime_id,node_id,disposition_kind)
+UNIQUE (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,accepted_revision)
+-- Reciprocal original-to-original FK, on each side to the opposite relation:
+FOREIGN KEY (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,
+             runtime_id,node_id,disposition_kind)
+  REFERENCES opposite_original_relation
+    (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,
+     runtime_id,node_id,disposition_kind) DEFERRABLE INITIALLY DEFERRED
+-- Each original-to-transfer FK:
+FOREIGN KEY (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,accepted_revision)
+  REFERENCES cpk_configuration_claim_transfers
+    (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,acceptance_revision)
+  DEFERRABLE INITIALLY DEFERRED
+-- Transfer-to-original FK (one to refs and one to claims):
+FOREIGN KEY (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,acceptance_revision)
+  REFERENCES original_relation
+    (run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,accepted_revision)
+  DEFERRABLE INITIALLY DEFERRED
+-- Transfer own acceptance:
+FOREIGN KEY (workspace_id,acceptance_revision,run_id)
+  REFERENCES cpk_configuration_acceptances (workspace_id,pinned_revision,run_id)
+-- Transfer own original slot:
+FOREIGN KEY (workspace_id,acceptance_revision,runtime_id,node_id,artifact_id,
+             run_id,activity_id,attempt,ref_digest)
+  REFERENCES cpk_configuration_accepted_slots
+    (workspace_id,pinned_revision,runtime_id,node_id,artifact_id,
+     source_run_id,source_activity_id,source_attempt,full_ref_digest)
+```
+
+The two placeholder relation names above mean only the enumerated refs/claims
+substitution, not dynamic SQL. Transfer fields are non-null, so the reciprocal
+transfer-to-original FKs cannot be skipped by SQL NULL semantics. Original
+outstanding/cleanup rows have no accepted revision and no transfer row. Every
+transfer row must be reciprocally named by both originals at commit. Equal
+`cleanup-closed` kinds still bind the original K to the existing unique closure
+row, so their exact cleanup identity cannot differ. A non-null accepted revision
+of zero is a real locator, never false/absent.
+
+#### Two-layer proof and consumer matrix
+
+`_paired_disposition` remains a finite uncached structural correspondence check:
+exact ref/claim scope, same closed kind, exact locator and its relational anchors.
+It returns an explicit structural variant, never an admitted-transfer proof or
+permission. Preserve existing expected-cleanup/protective/allow-absent meanings;
+callers ignoring the result must be reviewed individually.
+
+Proposed exact return type: private frozen `_ConfigurationClaimDisposition` in
+existing `configuration_preparation.py`, with `kind` exactly `outstanding`,
+`accepted-current` or `cleanup-closed`; `cleanup_identity` is an exact
+`EffectAttemptIdentity` only for cleanup-closed; `acceptance_revision` is an exact
+canonical-range integer only for accepted-current. Outstanding has neither.
+There is no truthiness/duck-typed permission test. `None` is reserved for the
+existing explicitly allowed both-originals-absent fresh-birth case. Keep the
+existing `expected` cleanup tuple parameter as an exact closed-case constraint,
+and `protective=True` as an outstanding-only requirement.
+
+Add the full point proof to existing `ConfigurationAcceptanceStore`, proposed
+private method `_accepted_transfer(read, key, ref, revision)`. Its immutable
+result is an Operations `ConfigurationAcceptedTransferRecord` in existing
+`configuration_preparation.py`: identity, full ref, acceptance revision and exact
+request/selection/outcome commitments. It is a nonauthorizing value with fixed
+errors and no root export, route or writer.
+Concretely its fields are `identity`, `ref`, `acceptance_revision`,
+`request_fingerprint`, `selection_fingerprint`, `outcome_fingerprint`; the frozen
+constructor validates exact identity/ref/scalar domains but cannot manufacture
+the store's proof. Use a redacted representation.
+
+The nonrecursive call graph is:
+
+```text
+acceptance-owned full transfer proof
+  -> structural paired disposition / exact transfer row
+  -> completion._get -> original source/selection + direct terminal outcome
+                      -> structural paired disposition only
+  -> acceptance._receipt_context (exact historical pair, not current selection)
+  -> exact original source-slot point read and material correspondence
+```
+
+Require original `StartNode`/`ReconcileNode`, admitted successful completion,
+request/selection/outcome equality, source run/request/plan/workspace equality to
+the original acceptance header, exact revision and accepted source slot/ref.
+Read the original complete selection through D1; do not reconstruct it from
+member hashes. This proof never calls `_current_receipt`, `_receipt`, `_prove_use`
+or itself. A current carry is not the original transfer receipt. Its own admitted
+source and positive original receipt are both mandatory.
+
+| Consumer | Required boundary in B1 |
+| --- | --- |
+| Original intent/completion correlation | Structural pairing plus existing full original correlation; no omission, reuse, cleanup or transfer authority follows. |
+| Ordinary `_prepare` birth reuse | Full transfer proof when the birth is transferred, plus exact current binding and independent reservation/retirement exclusion. Outstanding remains supported; cleanup-closed refuses. |
+| `_require_current` issued-start recheck | Fresh structural/exclusion read and full transfer proof in the same issued owner/connection/lifecycle lock. An issued value never caches mutable permission. |
+| Acceptance `_prove_use`, current observations and carried-source proof | Prove source AND direct birth transfers when present. Exact original receipt/slot, newest-current rules and whole manifest remain; missing newest never falls back. |
+| `_known_birth` for current-use observation | A transferred root receives full original transfer proof even when absent from current membership. This is provenance, not permission to reuse or delete; reserved/retired historical roots remain readable as history. |
+| Acceptance `_require_current_slots` and prepared recheck | Fresh pair/exclusion checks; full proof must precede issuing preparation. Rechecks may reuse only an immutable proof validated in that same prepared read/connection; never a structural locator alone. |
+| Legacy v1 cleanup `_allocation_evidence`, inspection and phase preflight | Explicitly refuse transferred roots/claims. B1 does not make an outward complete/eligible v1 result from unsupported transferred evidence; B2 owns full new-profile composition. |
+| Bounded outstanding discovery | Keep both active indexes and independent direct-root lookup. Discovery alone conveys no eligibility; the selected consumer must fully prove a transferred root or refuse it. |
+| Retained/current schema validation | Scan every transfer by bounded original-key pages and fully point-prove each one. Also keep independent ref/claim scans so dangling or asymmetric corruption cannot hide. Never write or backfill. |
+
+Corruption after startup and between observation and fresh command must refuse;
+successful schema entry is never a permanent trust certificate. Full proof memo
+keys include K, full ref commitment and original acceptance revision, and belong
+to the existing connection-bound read/accounting scope. No cache of mutable
+current selection, pair disposition or reservation is allowed.
+
+Zero outstanding claims is a required positive, not only an empty-discovery case.
+Today `_historical_protection` builds allocations from active node groups, so
+`_prepare` rejects `selected is None` even when a genuine current binding names a
+transferred birth. Retain bounded node/allocation discovery, but independently
+point-read each selected binding's exact direct root when absent from those
+groups. Verify full ref/direct-birth identity, transfer and current binding; keep
+`claims=()` in the private protective-allocation value. Never resurrect that root
+into outstanding discovery or count, and never search lifetime history. A missing
+binding/root/positive transfer still refuses rather than minting a new birth.
+The real ordinary-start positive must consume such a recorded transferred root,
+create exactly its new outstanding claim and preserve the old immutable transfer.
+Carry and both issued rechecks must work with the same zero-outstanding prefix.
+
+Exhaustive existing low-level caller disposition: preparation
+`_paired_protective_ref` remains outstanding-only; `_protective_root` is
+structural discovery whose consumer must fully prove or refuse transfer;
+`_prepare` and `_require_current` use full proof for reusable transferred births;
+`_allocation_evidence` refuses any transfer rather than producing complete v1
+cleanup evidence; `_require_original` retains structural original correlation;
+`_validate_current_rows` retains structural validation followed by the independent
+full transfer scan. Completion `_get` remains structural below its own full D1
+correlation. Acceptance `_require_current_slots` performs fresh structural and
+exclusion checks, with full source/birth proof before preparation and in issued
+rechecks. Cleanup ownership `_fresh_start` stays outstanding-only; `_get` and
+`_insert_fold` keep exact expected-cleanup identity, which refuses transferred
+claims. No default/ignored result at these call sites may become a transfer grant.
+
+The full verifier explicitly calls existing `_configuration_success` after D1's
+`_get`: the completion record by itself permits admitted failure. Its transfer
+memo is keyed by original K, workspace, allocation, full canonical ref digest
+and acceptance revision; exact cached commitments are compared again. It is
+created only after full proof, on the existing read's connection/accounting and
+execution context, never as a store-global cache or across UoWs. Issued mutation
+paths also require object identity and the existing transaction-bound lifecycle
+guard before any cache can be consumed. Raw provenance verification cannot return
+this full-proof result, and even the full record is not a mutation capability.
+
+#### Bounded reads and preflight proposal
+
+Use the existing `_EvidenceRead` ledger; no new budget, lifetime scan or nested
+standalone accounting. Original selections remain <=32; roots/claims use exact
+keys; outstanding limits remain 64 per allocation and 256 per composition.
+Independent full-schema scans are offline bounded pages, not a hot read path.
+
+The paired query can keep its original nine cells plus both accepted revisions:
+11 cells, at most 855 value octets, two original identities, one statement. This
+is `P=(2,855,11,1)`, a declared ceiling before actual refund, not a measurement.
+An accepted anchor query returns one Boolean over transfer/completion/slot/header
+identities: `T=(4,1,1,1)`. The unreserved check remains `U=(1,1,1,1)`; cleanup's
+existing closure-anchor cost remains separate. SQL guards must ensure malformed
+or oversized locators return bounded NULL/false instead of transporting them.
+The 13 transfer columns total at most 1257 value octets under the declared bounds;
+their length and guarded value passes and all joined identities are charged.
+
+Exact P projection order is the two three-field cleanup locators, the two native
+accepted revisions, the two protective Booleans and one validity Boolean. The
+validity expression compares full scope/ref digest, closed shape and both
+disposition kinds; guarded locator projections prevent corrupt text transport.
+T joins exactly the transfer, completion, accepted slot and acceptance header by
+the FK columns above and returns only `1`, checking requested K/scope/D/revision.
+The transfer-row decoder's declared valid-point ceiling is
+`D=(2,1414,27,2)`: 13 length cells (<=156 octets), 13 bounded values (<=1257 octets)
+and the guarded validity cell. P/T/D are additive where actually executed;
+immutable memo hits execute no D query, but fresh P/T/exclusion work is never
+silently refunded. Tests must retain the actual joined-identity multiplier.
+
+Full proof includes existing D1 complete selection/outcome work, original receipt
+context and exact slot, not just P/T. Do not add a guessed universal full-proof
+constant. For fresh ordinary start, use a fresh-cache proof pass across all
+transferred births before issuance, measure its entire footprint Q under the
+same cumulative ledger, and reserve two further cold proof passes for the two
+existing issued-owner rechecks (intent insert and ref/claim insert), in addition
+to the existing future envelope and amended fixed pair/exclusion allowances,
+plus the transient-query allowance M defined below.
+This can conservatively overlap a fixed allowance; report that explicitly rather
+than calling it measured transport. Untransferred starts do not pay Q.
+Fresh-cache means empty transfer-proof, source and ref caches for the exact
+transferred-root set, with the same ledger and lifecycle-locked immutable inputs.
+A warm pass cannot forecast these cold rechecks. Existing per-read original
+source/selection/outcome caches may deduplicate work within that cold pass;
+do not add a store-global cache or a second invocation-accounting framework.
+
+For acceptance, include full transfer proof in `_prove_use`'s existing measured
+`proof_footprint`; do not hide it in the material-only 3 MiB snapshot. Cold-consumer
+admission includes that proof plus M. Prepared rechecks/readback require already-validated
+immutable point evidence but always re-read pair/exclusion state, with their full
+P/T/U tail reserved. A missing exact immutable memo in an issued acceptance
+recheck refuses instead of unexpectedly starting a new cold proof after writes.
+Keep existing 4096-record /16 MiB cumulative, 3 MiB snapshot,
+and original event/result ceilings. Capacity refuses the whole command before
+first mutation. Required tests compare cold/warm actual footprint and reserved
+tail, exercise prior-ledger and one-over failures, and verify every physical
+statement/returned cell and post-preparation recheck remains charged. Numbers
+must be confirmed against the exact SQL before target release; no supported-fit
+claim follows merely from these finite maxima.
+
+Settled Q alone is insufficient: `_EvidenceRead.query` reserves the declared
+maximum before refunding to actual rows/bytes, and `bounded_rows` includes length,
+guarded value and sentinel phases. Propose the conservative componentwise maximum
+single-query reservation `M=(66,2103393,627,1)` for this closed full-transfer call
+graph. Its dimensions deliberately come from different queries:
+
+- D1's original-ref query is `LIMIT 33`, `identities=2`, `cells=19`,
+  `octets=33*32768`: at most 66 records and 627 markers.
+- The original graph point's two 1 MiB columns, three 2048-byte identifiers,
+  32-byte version, 64-byte time and guarded validity cell give 2103393 octets.
+- Each physical query adds one statement. Source's fixed compact 80032-octet
+  query, completion/transfer rows, outcome/events, owner/request/run/plan/session,
+  projection, receipt action/header and exact slot point/length queries lie below
+  these componentwise limits. No full historical manifest or lifetime selection
+  enters this call graph; phase narrowing can only reduce these declarations.
+
+Before any new start mutation require capacity of `prior + F + 2Q + M`, where F
+is the existing remaining envelope with amended fixed pair/exclusion work and
+all intervening fixed/tail work. Here `prior` is the cumulative used footprint
+AFTER the Q measurement, including that measurement and earlier command work. At
+any later cold-proof query, its settled prefix is bounded by the full remaining
+2Q and its temporary reservation by M; charging all of F at once conservatively
+covers interleaving. This is sufficient rather than tight and can refuse before
+a smaller exact peak would. It is not a new universal proof-size budget, and no
+generic peak-accounting framework is proposed. Acceptance cold-consumer admission
+uses its complete settled consumer footprint plus M when transferred proof is
+present; untransferred paths retain their existing behavior. Its mutation tail
+contains only already-proved immutable memo hits plus fresh bounded P/T/U work.
+
+Required extra capacity target: a valid recorded-transfer composition whose
+settled `prior + F + 2Q` fits but the declared per-query peak allowance does not,
+refused before clock/IDs/writes/adapter. Pair this with a genuine observed query
+reservation peak under the normal owning gate so conservative declared M is not
+misreported as actual transport. Inspect the exact selected SQL before targets
+to confirm every reachable query fits M; any wider path is a planning finding,
+not permission to inflate the ledger or add an unreviewed accounting subsystem.
+
+#### Concrete target composition and focused release
+
+Use the existing membership/current-read/carry/reuse fixture chain for ordinary
+owner tests. `PostgresConfigurationAcceptanceMembershipTests.setUp` already has
+the `configuration_result_for_request` callback. Pass that optional callback
+through the existing current-read and carry setup wrappers. The B1 callback
+constructs a genuine Core `ConfigurationInvocationCompletion` from
+`configuration_invocation_correlation_for_request(request)` and the full original
+selection fingerprint, then returns it through the simulated adapter. Assert the
+actual admitted D1 completion for each original before real acceptance. Default
+fixture behavior remains unprofiled so existing no-backfill tests retain meaning.
+This is an Operations owner composition, not native/provider execution evidence.
+
+After this genuine prefix, a test-only helper records the exact transfer row and
+both accepted-revision locators in one transaction from the original completion
+and its real acceptance receipt/slot. It must verify the positive prefix first,
+commit the mutually consistent recorded suffix, and assert zero outstanding
+claims for the selected allocation. Never rewrite plan, receiver scope, source
+selection, outcome or acceptance evidence to manufacture that premise. Do not
+reuse the cleanup fixture's recorded-v2-plan suffix. The existing
+`ConfigurationCleanupReadCeilingsFixture` remains the separate native-scope
+cleanup-defense premise, where needed; no new alternate admission harness.
+
+New focused test modules/classes (all under Operations `tests/`):
+
+- `test_configuration_claim_disposition.py::ConfigurationClaimDispositionTests`:
+  exact closed variants, revision zero/canonical maximum, bool/negative/over-bound
+  revisions, mixed/missing locators, nonauthorizing transfer-record constructors.
+- `test_postgres_configuration_transfers.py::PostgresConfigurationTransferTests`:
+  genuine D1/acceptance prefix plus recorded suffix; exact own-source proof,
+  reciprocal/FK commit refusal, wrong source/selection/outcome/member/revision,
+  absent admission, failed/unprofiled sources, missing original header/action/
+  event, and query-only schema verification. Each retained-corruption negative
+  restores its deliberate damage or rolls it back before fixture cleanup.
+- `test_postgres_configuration_transfer_reuse.py::PostgresConfigurationTransferReuseTests`:
+  zero-outstanding selected birth still yields the exact accepted allocation;
+  a genuine fresh ReconcileNode start adds only its own outstanding claim and
+  leaves the old transfer untouched. Exercise both issued start rechecks,
+  forged/cross-UoW preparation, changed pair and reserved/retired exclusions.
+  Existing ordinary replay remains historical and does not backfill transfers.
+- `test_postgres_configuration_transfer_carry.py::PostgresConfigurationTransferCarryTests`:
+  unrelated runtime addition/removal carries the exact original source from the
+  zero-outstanding prefix; both acceptance checks use prevalidated immutable
+  proof plus fresh membership/exclusion state. Missing memo refuses before a
+  cold fallback after writes. Newest-receipt/ABA corruption refuses; historical
+  proof remains readable after departure without granting reuse permission.
+- `test_postgres_configuration_transfer_capacity.py::PostgresConfigurationTransferCapacityTests`:
+  actual cold/warm transport, fresh-cache Q over the exact root set, actual query
+  reservations bounded by M, prior-ledger work, and settled-fits/peak-forecast-
+  over refusal before clock/IDs/writes/adapter. Observe both real rechecks and
+  acceptance readback, preserving physical statements/cells/identity charges.
+
+Extend the existing current-schema installation and v1 cleanup defenses for the
+single new exact baseline and explicit transfer refusal; do not activate v2.
+Add cases to the existing acceptance-membership test proving real advancement,
+retry and replay still produce no transfer rows. Recorded suffixes earn only
+reader/schema defense credit, never producer, growth, race or native-effect
+credit. A compact test fixture helper may share the recorded suffix and callback;
+it owns no production semantics and must not duplicate full-proof logic.
+
+The first focused target-red slice is the closed disposition and exact transfer
+schema/proof boundary. Run through `./control-plane-kit-operations/test.sh` with
+repeatable `-k ConfigurationClaimDispositionTests` and
+`-k PostgresConfigurationTransferTests` only after exact-artifact planning PASS.
+Collection/import/setup failures are apparatus evidence, not the intended red.
+Subsequent reuse/carry/capacity targets precede their corresponding application
+edits and use the same owning Docker script. Each target's assertion must fail
+for the named missing law, not a weakened fixture, absent import or invented
+writer. Preserve immutable red coordinates/logs and the same assertions green.
+Full package/current-backend acceptance follows at the PR boundary; focused
+results are not full acceptance. No B1 test gate is claimed by this document.
+
+The start proof pass and both rechecks call the existing acceptance owner through
+`stores.configuration_acceptance`; no reverse import from preparation to the
+acceptance module is introduced. The measured Q is used locally before issuing
+preparation, so no new private preparation field is currently needed. Acceptance
+uses its existing `prepared.evidence_read` for immutable proof memoization. Raw
+correlation paths do not call back into the full acceptance proof. Historical
+`_receipt` may verify a transfer after later retirement without treating the old
+slot as currently reusable; fresh ordinary/carry consumers apply the independent
+current/reservation exclusions at their existing owner boundary.
+
+#### Transaction and no-producer boundary
+
+B1 creates no transfer writer, service, route or production call site. Real fresh
+acceptance, retries and historical replay continue without inserting dispositions.
+Recorded test transfers are below-owner read/defense premises only. Forge/cross-UoW
+tests exercise the existing preparation owners, not an invented B1 writer token.
+
+C's future write sequence is constrained now: existing fresh advancement under L
+and exact original owner; complete eligible set and cold/tail preflight before
+CAS/IDs; actual acceptance action/event/header/slots; transfer rows and paired
+original locators; full verification; one UoW commit. Only own successful sources
+of this fresh advancing run qualify; carried/historical neighbors do not. All
+eligible rows transfer atomically, while partial-slot eligibility remains C's
+explicit planning decision. Original keys/ref material/claim identity stay intact.
+Conditional outstanding-to-exact-transfer updates require exact row counts, no
+upsert/clear/reopen/repoint. Replay reads immutable receipt/disposition or valid
+historical absence without repair. Crash/failure rolls the transaction back; no
+external effect or compensation is added. No later historical row lock may invert L.
+
+#### Proposed source ceiling and unresolved review decisions
+
+Existing production files only: `configuration_preparation.py`,
+`postgres/configuration_preparation_store.py`,
+`postgres/configuration_acceptance_store.py`, `postgres/current_schema.sql`, exact
+schema contract and current-data validation companions, narrowly required
+cleanup read/phase-bound companions, and module inventory. No Core, advancement
+producer, public cleanup profile activation, new table beyond the single relation,
+new service or new module. Preserve existing owner and error boundaries.
+
+Before targets, North/Kepler must accept or revise the proposed structural variant
+and per-consumer policy; final reciprocal/FK SQL; existing-read immutable proof
+reuse; exact P/T/Q tail accounting; and concrete ordinary start/carry positive/
+negative fixture compositions. The canonical revision cap is intentional for new
+transfers; existing untransferred historical receipts retain their prior range.
+If full proof requires a new dependency
+or owner, refine this ceiling before implementation. The tests split naturally
+into pure/disposition shape, exact schema/retained proof, ordinary reuse/recheck,
+current/carry/ABA, and cumulative capacity/rollback; this is one concept with
+one acceptance owner, but split B1 if review finds independently meaningful
+ownership changes rather than pushing through a larger implicit scope.
+
+Security/history: all new evidence is nonauthorizing until the existing owner
+finishes its proof; fixed redacted errors, no secrets or new network exposure.
+Transfer truth retains original completion and exact acceptance provenance,
+never log-derived success. B1 adds no new durable action/event writer. B2/C stay
+held; real >64 accepted-use growth, transfer races and writer rollback remain C.
