@@ -111,6 +111,18 @@ class PostgresConfigurationPreparationTests(ConfigurationPreparationFixture, uni
             self.assertEqual(original.intent, command.intent)
             self.assertEqual(original.original_start_event, result.attempt.original_start_event)
 
+    def test_1950_receiverless_feasibility(self):
+        from tests.configuration_cleanup_phase_read_bounds_fixture import ordinary_start_feasibility
+        command = self.configuration_command()
+        with ordinary_start_feasibility(self, "receiverless") as reports:
+            result = self.start_service("configuration-feasibility").execute(command)
+        self.assertIsInstance(result, NewlyStarted)
+        self.assertEqual(len(reports), 1)
+        self.assertIn("after_revalidation", reports[0])
+        refs, claims = self.protection_rows()
+        self.assertEqual(len(refs), len(command.intent.configuration_instances.instances))
+        self.assertEqual(len(claims), len(refs))
+
     def test_caller_chosen_allocation_is_refused_before_ids_or_durable_writes(self):
         intent = self.intent()
         proposed = intent.configuration_instances.instances

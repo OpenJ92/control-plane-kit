@@ -68,6 +68,122 @@ class _PhaseConnection(_ObservedConnection):
         raise AssertionError("rehearsal must not hide an unobserved cursor execution")
 
 
+@contextmanager
+def ordinary_start_feasibility(case, label):
+    """#1950 test-only observations; no bound issuance or production correction.
+
+    Existing capture queries and the extra permission pass really consume the
+    start ledger. Neither a rollback nor this observer refunds that consumption.
+    """
+    from hashlib import sha256
+    import json
+    from unittest import mock
+    from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+    from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
+    from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
+    from control_plane_kit_operations.postgres import configuration_cleanup_phase_read_bounds as bounds
+
+    point_roles = frozenset(("plan", "graph", "projection", "raw-graph", "raw-projection",
+        "introduction", "origin-action", "request", "session"))
+    collection_roles = frozenset(("scopes", "bindings"))
+    original_execute = EffectAttemptStartService._execute_once
+    original_prepare = ConfigurationPreparationStore._prepare
+    original_columns, original_rows = bounds._phase_columns, bounds._phase_rows
+    original_query = _EvidenceRead.query
+    reports, active = [], {}
+
+    def columns(connection, role, identity, declared):
+        if active.get("stage") == "existing" and role in point_roles:
+            active["points"].add((role, identity))
+        return original_columns(connection, role, identity, declared)
+
+    def rows(read, role, identity, **kwargs):
+        if active.get("stage") == "existing" and role in collection_roles:
+            active["collections"].add((role, identity))
+        return original_rows(read, role, identity, **kwargs)
+
+    def query(reader, sql, params, **kwargs):
+        entry = None
+        if active and reader.accounting is active["accounting"]:
+            entry = dict(stage=active["stage"], before=_components(reader.used),
+                reserve=(kwargs["records"] * kwargs.get("identities", 1), kwargs["octets"],
+                    kwargs["records"] * kwargs["cells"], 1))
+            active["ledger_queries"].append(entry)
+        try:
+            return original_query(reader, sql, params, **kwargs)
+        finally:
+            if entry is not None:
+                entry["after"] = _components(reader.used)
+
+    def prepare(store, stores, command, request, run, plan, guard, event_kind):
+        if not active:
+            return original_prepare(store, stores, command, request, run, plan, guard, event_kind)
+        active["before_preparation"] = _components(active["accounting"].used)
+        prepared = original_prepare(store, stores, command, request, run, plan, guard, event_kind)
+        active["after_preparation"] = _components(active["accounting"].used)
+        active["ref_count"] = len(prepared.intent.configuration_instances.instances)
+        active["stage"] = "capture"
+        read = _EvidenceRead(stores.connection)
+        for role, identity in sorted(active["points"]):
+            bound = bounds._capture_point(read, role, identity)
+            active["bounds"].append(dict(role=role, rows=1, widths=bound.widths))
+        for role, identity in sorted(active["collections"]):
+            table, declared, where, order, maximum, keys, identities = bounds._shape(role)
+            if role == "bindings":
+                # Existing semantic owner derives the complete expected set.
+                expected = stores.graphs.receiver_bindings(*identity)
+                expected = tuple((value.node_id, value.provider_socket_name) for value in expected)
+            else:
+                actual = read.bounded_rows(table, declared, where, identity,
+                    maximum=maximum, point=False, order=order, identities=identities)
+                expected = tuple(tuple(None if row[i] is None else str(row[i]) for i in keys) for row in actual)
+            bound = bounds._capture_collection(read, role, identity, expected)
+            active["bounds"].append(dict(role=role, rows=len(bound.keys), widths=bound.widths,
+                key_digest=sha256(json.dumps(bound.keys, separators=(",", ":")).encode()).hexdigest()))
+        active["after_capture"] = _components(read.used)
+        active["stage"] = "revalidation"
+        _require_fresh_effect_receiver_permission(stores, request, guard, command.intent, compensation=False)
+        active["after_revalidation"] = _components(read.used)
+        active["stage"] = "suffix"
+        return prepared
+
+    def execute(service, command, health):
+        if command.intent.kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+            return original_execute(service, command, health)
+        case.assertFalse(active, "nested diagnostic start")
+        accounting = _ACCOUNTING.get()
+        active.update(stage="existing", accounting=accounting, points=set(), collections=set(),
+            bounds=[], ledger_queries=[])
+        observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
+            accounting=accounting, role_label=lambda sql, params: active["stage"])
+        factory = service._unit_of_work_factory
+        service._unit_of_work_factory = lambda: PostgresUnitOfWork(
+            lambda: _PhaseConnection(psycopg.connect(case.database_url), observed))
+        outcome = "refused"
+        try:
+            result = original_execute(service, command, health)
+            outcome = type(result).__name__
+            return result
+        finally:
+            service._unit_of_work_factory = factory
+            report = {key: active[key] for key in ("before_preparation", "after_preparation",
+                "after_capture", "after_revalidation", "ref_count") if key in active}
+            report.update(label=label, outcome=outcome, final=_components(accounting.used),
+                bounds=active["bounds"], ledger_queries=active["ledger_queries"],
+                physical=dict(rows=observed["rows"], accounted_bytes=observed["bytes"],
+                    statements=observed["statements"]))
+            reports.append(report)
+            print("#1950 feasibility " + json.dumps(report, sort_keys=True))
+            active.clear()
+
+    with mock.patch.object(EffectAttemptStartService, "_execute_once", execute), \
+            mock.patch.object(ConfigurationPreparationStore, "_prepare", prepare), \
+            mock.patch.object(bounds, "_phase_columns", columns), \
+            mock.patch.object(bounds, "_phase_rows", rows), \
+            mock.patch.object(_EvidenceRead, "query", query):
+        yield reports
+
+
 class ConfigurationCleanupPhaseReadBoundsFixture(ConfigurationCleanupReadCeilingsFixture):
     def collection_role(self, query, params):
         # Match fixture identities locally; retain/print only the bounded label.

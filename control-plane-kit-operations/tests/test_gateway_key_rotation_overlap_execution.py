@@ -222,6 +222,26 @@ class GatewayKeyRotationOverlapExecutionTests(
             id_factory=ids,
         )
 
+    def test_1950_configuration_gateway_feasibility(self):
+        from gateway_rotation_overlap_fixture import GATEWAY_PRODUCT
+        from tests.test_runtime_effect_translation import _configuration_product
+        from tests.configuration_cleanup_phase_read_bounds_fixture import ordinary_start_feasibility
+        artifacts = _configuration_product().descriptor_document.product.runtime_contract.configuration_artifacts[:1]
+        self.assertTrue(artifacts)
+        self.feasibility_configuration_product = replace(GATEWAY_PRODUCT,
+            runtime_contract=replace(GATEWAY_PRODUCT.runtime_contract, configuration_artifacts=artifacts))
+        self.reset_truth()
+        adapter = RecordingAdapter(*(ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping({"runtime": "configuration-feasibility"})),) * self._plan_activity_count())
+        program = self.program(adapter, prefix="configuration-feasibility")
+        with ordinary_start_feasibility(self, "gateway-configuration") as reports:
+            for position in range(self._plan_activity_count()):
+                program.progress(self.command(idempotency_key=f"configuration-feasibility-{position}"))
+        self.assertTrue(reports, "gateway did not reach a configuration-bearing start")
+        self.assertTrue(all(report["outcome"] == "NewlyStarted" for report in reports))
+        self.assertTrue(all(report["ref_count"] > 0 for report in reports))
+        self.assertTrue(all("after_revalidation" in report for report in reports))
+
     def test_dispatches_accepts_advances_and_replays_without_duplicate_effect(self) -> None:
         activity_count = self._plan_activity_count()
         accepted_outcome = ActivityExecutionOutcome.succeeded(
