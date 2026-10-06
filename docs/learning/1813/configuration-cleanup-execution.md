@@ -160,3 +160,46 @@ Terminal focused log SHA256:
 Renewed required hosted candidate-package/backend gates and North's acceptance
 remain necessary. D2 parent disposition cannot waive mandatory E4, complete D,
 release I177, or authorize Servers225/provider work.
+
+## Final D2 acceptance — 2026-10-05
+
+The pending gates above are now resolved by the [D2 acceptance record](https://github.com/OpenJ92/control-plane-kit/issues/1932#issuecomment-6004734859).
+North merged PR #1943 at `a28e58675893a0aa842903e11d7dffb508750004`,
+parents `215d8366c4d1e66507bc008a43d7b8749f918f7f` and reviewed head
+`19fa48b1fd5eb2f5900d618446c6ccd79aa55f3e`. Actual merge, reviewed head and
+tested merge `68e9a76b97c6974fe94cdf7161eacb15bbfaf3d3` share tree
+`109b1e04412f04a9bb894905dca39ba52b171e50`. Kepler issued final independent
+PASS; Meridian approval is not claimed. #1936 and parent D2 #1932 are closed.
+
+The renewed hosted set initially failed before execution: no runner acquired any
+of its three jobs. That attempt earns no behavioral credit. The authorized
+same-candidate recovery attempt 2 passed [package validation](https://github.com/OpenJ92/control-plane-kit/actions/runs/37369311405):
+Core 945 tests plus 21 support tests, Operations 2479 tests in 7061.088 seconds,
+and compilation/import checks. [Locked backend validation](https://github.com/OpenJ92/control-plane-kit/actions/runs/37369311513)
+passed all nine stages. Its older pinned dependency family proves composition
+compatibility, not adoption of current D2 Operations. Final Operations log
+SHA256: `d5ba1c831c64abf18b836564110953019d3f1637a0d1a7e50764dafbe59eb924`.
+The earlier 15-failure source run and all causal correction evidence above
+remain part of the record.
+
+Accepted capability is exact approved admission, atomic complete-set reservation,
+committed dispatch permission, conserved outcome fold and observation-only
+original replay. Full-suite ordinary replay, architecture, independent corruption,
+routing, original registration and complete retained-proof tests pass. The K1
+cumulative ledger and actual remaining-phase measurements also pass; this is not
+a universal K/U/D size guarantee. Actual PostgreSQL transactions and simulated
+adapters prove Operations behavior, not provider deletion or terminality.
+
+Retained limits: a complete cleanup result must fit 8192 bytes even when an
+ordinary 32-artifact installation was accepted; an approved whole invocation
+cannot be silently split. Cleanup still requires the same runtime kind/reference
+in both exact pinned graphs. Graphless cleanup and desired-empty sequencing
+remain downstream work. Uncertain, retained-in-use and refused outcomes retain
+exclusion. No compensation, automatic retry, backfill or live cleanup is added.
+
+Security/data/history: exact authority and destructive approval remain required;
+no database lock spans provider I/O; original evidence and reservations remain
+durable. CPK serialization does not fence external administrators. There was no
+live deployment, provider deletion, image publication, credential change, or
+change to the retained tunnel/DNS/token. E4 planning under D #1921 is the next
+released boundary. D/Core #1886 remain open; I177 and Servers225 remain separate.
