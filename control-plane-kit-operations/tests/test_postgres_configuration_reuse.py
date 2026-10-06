@@ -25,6 +25,7 @@ from tests.test_runtime_effect_translation import _configuration_product
 class PostgresConfigurationReuseTests(unittest.TestCase):
     def setUp(self):
         self.carry = carry_fixture.PostgresConfigurationCarryTests()
+        self.carry.configuration_result_for_request = getattr(self, "configuration_result_for_request", None)
         self.addCleanup(self.cleanup_fixture)
         self.carry.setUp()
         self.base, self.fixture, self.reader = self.carry.base, self.carry.fixture, self.carry.reader

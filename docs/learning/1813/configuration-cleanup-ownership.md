@@ -21,10 +21,12 @@ PR #1949, actual merge `9282714d91e6df553b61920d01a20105cf0f4848`, tree
 Kepler's final independent PASS covers hosted Core 945 + 21 support, Operations
 2494 tests / 6854.806s plus compilation/import, and all nine locked-backend stages.
 The earlier A focused failures remain historical evidence below. Project 5: A is
-Done; B1 is In Progress / Refining for exact-interface planning only. North's
-[B1 handoff](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6010353985)
-releases the bounded law/source/schema design; target tests and production changes
-await review. B2/C and all provider work remain held.
+Done; B1 implementation is released after Kepler's exact-artifact planning PASS
+and North's confirmation, recorded in the
+[B1 disposition](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6016739756).
+The value/schema and own-source proof slices have focused green evidence below;
+ordinary reuse/carry/capacity work remains in progress. B2/C and all provider work
+remain held.
 This supersedes the earlier D3/D4 recommendation. D2 does not release I177 or
 Servers225, which remains the governing delivery objective.
 
@@ -659,6 +661,11 @@ evidence. None is released by this focused A result.
 
 ### B1 exact design proposal — review pending (#1945)
 
+Historical submitted proposal: frozen at `e28b53cd`, artifact SHA256
+`2c273617bd1f23343875c0d74efac8f7846c63eecf240146473a25e5cd1ce937`.
+The planning PASS and subsequent implementation checkpoints below supersede its
+original review-pending status and planning-only release statements.
+
 Planning base: actual A merge `9282714d91e6df553b61920d01a20105cf0f4848`.
 This proposal reuses E4-L04/05/06/09/10 and the trace above. ADRs 0004, 0005,
 0006, 0008 and the package-boundary/math notes govern. No target or production
@@ -1117,3 +1124,44 @@ finishes its proof; fixed redacted errors, no secrets or new network exposure.
 Transfer truth retains original completion and exact acceptance provenance,
 never log-derived success. B1 adds no new durable action/event writer. B2/C stay
 held; real >64 accepted-use growth, transfer races and writer rollback remain C.
+
+### B1 value/schema and point-proof checkpoints — 2026-10-06
+
+Kepler reviewed the exact proposal and North released bounded implementation.
+No separate documentation PR or duplicate full CI was created. The immutable
+checkpoints on `codex/1945-typed-transfer-proofs` are:
+
+- `d47f3c5c`: first target-only checkpoint; owning Docker gate ran 9 tests /
+  36.532s with nine intended missing-value/relation assertions. Every database
+  case first established genuine simulated-adapter D1 and real acceptance.
+  Log SHA256 `76bfc37bbf605bf7509f280c05b0ff19ea80cc7c979eb69f688e565edce6bd7d`.
+- `4432afb3`: closed values and exact schema foundation; 12 focused tests /
+  9.110s plus compile/import passed. The live PostgreSQL catalog matched all
+  56 relations / 714 columns / 631 constraints / 194 indexes. Log SHA256
+  `0110c7f6bbb888ccec15723a2e9d3db60c6506c1dfc07fbd5ae5517c330a15df`.
+- `27fdb843`: own-source negative targets; 11 tests / 58.304s, three green,
+  six missing-point-proof assertions and two expected old-reader test-body
+  refusals. No setup/collection failure. Log SHA256
+  `64ad8f39c26c2c8ad700b99a757fde0e00e6df95ce051bbd7ed54df6a5643a6d`.
+- `993eb238`: typed structural pairing, acceptance-owned full point proof and
+  independent bounded retained verification. The unchanged 11 targets passed /
+  62.264s, with compilation and clean import, exit 0. Log SHA256
+  `11fb589899a8b72a8f6ddc32894022bc86ce44a73bcbd5bbbed822d19cfbef64`.
+
+The last green actually executes absent-own-admission, admitted failed own source,
+unprofiled own success and real same-run neighbor refusal. The failed source's
+ordinary D1 and terminal readers first agree on that exact admitted failure;
+the full transfer proof then refuses. These deliberately impossible retained
+history suffixes exist only in rolled-back test transactions, after a genuine
+positive prefix. They are not lawful failed acceptance or producer evidence.
+All dedicated gate containers/networks were removed. Exact commands, terminal
+classification and source coordinates are recorded on
+[#1945](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6017494780).
+
+Remaining before B1 acceptance: zero-outstanding ordinary reuse and both issued
+checks; full source/birth policy for current/use observations and carried
+acceptance; explicit v1 transfer refusal; cold/warm/prior-ledger and transient
+query peak capacity; all affected existing pair-query reservations; independent
+final source review and required full package/backend gates. These next consumer
+edits remain behind their own targets. No transfer producer, v2 activation,
+provider effect or full B1 acceptance follows from these focused checkpoints.

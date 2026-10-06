@@ -37,6 +37,7 @@ class PostgresConfigurationCarryTests(unittest.TestCase):
         self.reader = read_fixture.PostgresConfigurationCurrentReadTests()
         self.reader.node_ids = getattr(self, "node_ids", ("api", "worker"))
         self.reader.registered_product = getattr(self, "registered_product", None)
+        self.reader.configuration_result_for_request = getattr(self, "configuration_result_for_request", None)
         self.addCleanup(self.cleanup_fixture)
         self.reader.setUp()
         self.fixture, self.base = self.reader.fixture, self.reader.base

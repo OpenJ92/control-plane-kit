@@ -140,7 +140,10 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         self.assertTrue(self.fixture.doCleanups(), "nested acceptance fixture cleanup failed")
 
     def protective_claims(self):
-        return self.connection.execute("SELECT * FROM cpk_configuration_claims "
+        # Preserve the existing twelve-field retained-claim contract, including
+        # nonprotective rows. B1 separately asserts its new typed locators.
+        return self.connection.execute("SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,"
+            "runtime_id,node_id,cleanup_run_id,cleanup_activity_id,cleanup_attempt,protective FROM cpk_configuration_claims "
             "ORDER BY run_id,activity_id,attempt,artifact_id").fetchall()
 
     def command(self):

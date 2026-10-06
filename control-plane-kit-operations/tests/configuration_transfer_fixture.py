@@ -162,3 +162,65 @@ class ConfigurationTransferFixture:
         connection.execute(f"UPDATE {TRANSFER_TABLE} SET outcome_fingerprint=%s "
             "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", (state.outcome_fingerprint, *key))
         return record
+
+
+class ConfigurationTransferredConsumerFixture(ConfigurationTransferFixture):
+    """Existing real reuse/carry owners with a mixed recorded transfer prefix."""
+    def setUp(self):
+        from tests import test_postgres_configuration_reuse as reuse
+        self.reuse = reuse.PostgresConfigurationReuseTests()
+        self.reuse.configuration_result_for_request = profiled_configuration_result
+        self.addCleanup(self.cleanup_reuse)
+        self.reuse.setUp()
+        self.carry, self.membership, self.base = self.reuse.carry, self.reuse.fixture, self.reuse.base
+        self.connection, self.original = self.base.connection, self.membership.original
+        self.refs = self.original.intent.configuration_instances.instances
+        with self.base.unit_of_work() as uow:
+            self.completion = uow.stores.configuration_completions.get(self.original.identity)
+            self.assertIsNotNone(self.completion)
+        self.acceptance = self.carry.original_acceptance
+        self.revision = self.acceptance.desired_graph_revision
+        self.record_transfer()
+        self.membership.claims = self.membership.protective_claims()
+        proposed = [row for row in self.reuse.expected_claims if row[0] == self.reuse.identity.run_id.value]
+        self.reuse.expected_claims = sorted(self.membership.claims + proposed)
+        self.assert_zero_active_api()
+        with self.base.unit_of_work() as uow:
+            for ref in self.refs:
+                self.prove_transfer(uow, ref)
+
+    def cleanup_reuse(self):
+        self.assertTrue(self.reuse.doCleanups(), "nested transferred consumer cleanup failed")
+
+    def assert_zero_active_api(self):
+        for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+            self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {table} "
+                "WHERE node_id='api' AND protective").fetchone(), (0,))
+            self.assertEqual(self.connection.execute(f"SELECT accepted_revision,disposition_kind FROM {table} "
+                "WHERE node_id='api' ORDER BY artifact_id").fetchall(),
+                [(self.revision, "accepted-current")] * len(self.refs))
+            self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {table} "
+                "WHERE node_id='worker' AND protective AND accepted_revision IS NULL "
+                "AND disposition_kind='outstanding'").fetchone(), (2,))
+
+    def assert_original_rows_preserved(self, before):
+        after = self.transfer_snapshot()
+        self.assertEqual(after[0], before[0], "ordinary owner must not produce or rewrite transfers")
+        for old_rows, new_rows in zip(before[1:], after[1:], strict=True):
+            by_key = {row[:4]: row for row in new_rows}
+            for row in old_rows:
+                self.assertEqual(by_key[row[:4]], row)
+
+    def assert_missing_birth_admission_refuses_reads(self):
+        before = self.proof_snapshot()
+        with self.base.unit_of_work() as uow:
+            store = uow.stores.configuration_acceptance
+            self.assertEqual(store.read_current_configuration("workspace-a", node_id="api").state, "complete")
+            uow.stores.connection.execute(f"ALTER TABLE {TRANSFER_TABLE} DROP CONSTRAINT cpk_claim_transfers_completion_fk")
+            uow.stores.connection.execute("DELETE FROM cpk_configuration_invocation_completions "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", self.key(self.refs[0])[:3])
+            current = store.read_current_configuration("workspace-a", node_id="api")
+            inverse = store.read_configuration_use("workspace-a", self.refs)
+            self.assertEqual((current.state, current.bindings), ("unavailable", ()))
+            self.assertEqual((inverse.state, inverse.bindings), ("unavailable", ()))
+        self.assertEqual(self.proof_snapshot(), before)
