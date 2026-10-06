@@ -65,8 +65,9 @@ class PostgresConfigurationStartTailTests(ConfigurationPreparationFixture, unitt
         self.assertEqual(raw, (1, count, count))
         self.assertEqual(sum(raw), 1 + 2 * count)
         self.assertEqual(delta[3], physical.statements, "raw start SQL escaped its command ledger")
-        for index, actual in enumerate(_components(physical)):
-            self.assertGreaterEqual(delta[index], actual)
+        self.assertGreaterEqual(delta[0], physical.records)
+        self.assertEqual(delta[1], physical.value_octets)
+        self.assertEqual(delta[2], physical.scalar_markers)
         forecast = tuple(max(_components(value)[i] for value in forecasts) for i in range(4))
         for index, actual in enumerate(delta):
             self.assertLessEqual(actual, forecast[index], "complete suffix exceeded capacity forecast")
@@ -97,8 +98,12 @@ class PostgresConfigurationStartTailTests(ConfigurationPreparationFixture, unitt
                     self.assertGreater(extra, 0)
                     accounting.used = accounting.used.plus(Footprint(0, extra, 0, 0))
                     self.assertEqual(accounting.used.plus(future).accounted_bytes, 16 * 1024 * 1024)
-            calls.append(accounting.used)
-            return actual_capacity(**dict(kwargs, current=accounting.used))
+            decision = actual_capacity(**dict(kwargs, current=accounting.used))
+            calls.append((accounting.used, kwargs["reserved_future"], decision))
+            if len(calls) == 1:
+                self.assertIs(decision, values.ConfigurationCapacityDecision.WITHIN_LIMITS,
+                    "the successful-settlement forecast must fit before testing peak refusal")
+            return decision
 
         with mock.patch.object(values, "configuration_preparation_capacity", capacity), \
                 mock.patch.object(start_owner, "_observation", side_effect=AssertionError(
@@ -106,6 +111,13 @@ class PostgresConfigurationStartTailTests(ConfigurationPreparationFixture, unitt
                 self.assertRaises(EffectAttemptStartConflict):
             service.execute(command)
         self.assertTrue(calls, "test missed the real start capacity decision")
+        self.assertGreaterEqual(len(calls), 2, "missing the separate peak admission decision")
+        expected = (values.ConfigurationCapacityDecision.RECORD_LIMIT if component == "records"
+            else values.ConfigurationCapacityDecision.BYTE_LIMIT)
+        self.assertIs(calls[-1][2], expected)
+        self.assertEqual(calls[-1][0], calls[0][0], "admission must not discard injected prior work")
+        self.assertGreater(getattr(calls[-1][1], "records" if component == "records" else "accounted_bytes"),
+            getattr(calls[0][1], "records" if component == "records" else "accounted_bytes"))
         self.assertEqual(ids.calls, [])
         self.assertEqual(self.complete_start_snapshot(), before)
 
