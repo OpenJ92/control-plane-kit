@@ -241,6 +241,9 @@ class GatewayKeyRotationOverlapExecutionTests(
         self.assertTrue(all(report["outcome"] == "NewlyStarted" for report in reports))
         self.assertTrue(all(report["ref_count"] > 0 for report in reports))
         self.assertTrue(all("after_revalidation" in report for report in reports))
+        self.assertTrue(all(report["approval_kinds"] == ["gateway-key-rotation"] for report in reports))
+        self.assertTrue(all(report["physical"]["publication_action_widths"] for report in reports),
+            "configuration start did not traverse the gateway publication selector")
 
     def test_dispatches_accepts_advances_and_replays_without_duplicate_effect(self) -> None:
         activity_count = self._plan_activity_count()
