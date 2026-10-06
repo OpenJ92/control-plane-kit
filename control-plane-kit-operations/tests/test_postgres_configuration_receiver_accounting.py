@@ -60,9 +60,7 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
     def test_1950_initial_receiver_feasibility_and_update_refusal(self):
         from dataclasses import replace
         from unittest import mock
-        from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
-        from control_plane_kit_core.products import ProductInstanceConfiguration, instantiate_product
-        from control_plane_kit_core.topology import compile_topology
+        from control_plane_kit_core.planning import StartNode
         from control_plane_kit_core.policies import PolicyScope
         from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval
         from control_plane_kit_operations.coordinator import CoordinatorStatus
@@ -72,37 +70,29 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
         from control_plane_kit_operations.workflows import IdempotencyKey
         from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
         from tests.configuration_cleanup_phase_read_bounds_fixture import ordinary_start_feasibility
-        from tests.test_runtime_effect_translation import _configuration_product
 
-        registered = _configuration_product()
-        product = registered.descriptor_document.product
-        runtime = self.canonical_receiver_graph.runtimes["docker"]
-        with self.unit_of_work() as uow:
-            uow.stores.registered_products.register(workspace_id="workspace-a",
-                descriptor_document=registered.descriptor_document, source=registered.source,
-                imported_by="operator-a", imported_at=self.now())
-            uow.commit()
-        block = instantiate_product(product, "diagnostic-config",
-            ProductInstanceConfiguration.from_contract(product.runtime_contract))
-        selected = compile_topology(DeploymentTopology("diagnostic", DockerRuntime(
-            runtime_id="docker", authority_ref=runtime.authority_ref, children=(block,))))
-        node = selected.nodes["diagnostic-config"]
-        graph = replace(self.canonical_receiver_graph,
-            nodes={**self.canonical_receiver_graph.nodes, node.node_id: node},
-            runtimes={**self.canonical_receiver_graph.runtimes, "docker": replace(runtime,
-                children=tuple(sorted((*runtime.children, node.node_id))))})
+        graph = self.canonical_receiver_graph
+        node = graph.nodes["api"]
         self.desired_receiver("diagnostic-initial", graph=graph)
         self.assertIsNone(self.receiver_origin().first_accepted_action_id)
         with ordinary_start_feasibility(self, "initial-managed-configuration") as reports:
-            claimed, _, _ = self.retained_success("diagnostic-initial")
+            claimed, _, plan = self.retained_success("diagnostic-initial")
+        self.assertTrue(plan.plan.ready_for_execution)
+        configured_starts = [activity for activity in plan.plan.activities
+            if isinstance(activity.operation, StartNode)
+            and graph.nodes[activity.operation.target.node_id].configuration_artifacts]
+        self.assertEqual([activity.operation.target.node_id for activity in configured_starts], ["api"])
         self.assertTrue(reports, "initial managed plan did not reach configuration start")
+        self.assertEqual(len(reports), len(configured_starts))
+        self.assertEqual(reports[0]["ref_count"], len(node.configuration_artifacts))
         self.assertTrue(all(report["outcome"] == "NewlyStarted" for report in reports))
         self.assertTrue(all("after_revalidation" in report for report in reports))
         self.advance(claimed, "diagnostic-initial")
         self.assertIsNotNone(self.receiver_origin().first_accepted_action_id)
 
         changed = replace(node, configuration_artifacts=tuple(replace(artifact,
-            content='{"diagnostic":"changed"}') for artifact in node.configuration_artifacts))
+            content='{"diagnostic":"changed"}') if artifact.artifact_id == "application" else artifact
+            for artifact in node.configuration_artifacts))
         self.desired_receiver("diagnostic-update", graph=replace(graph, nodes={**graph.nodes, node.node_id: changed}))
         with self.unit_of_work() as uow:
             workspace = uow.stores.workspaces.get("workspace-a")
