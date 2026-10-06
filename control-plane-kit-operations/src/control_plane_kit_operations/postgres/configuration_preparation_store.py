@@ -11,7 +11,7 @@ from control_plane_kit_operations.configuration_preparation import (
 )
 from control_plane_kit_operations._configuration_protection import _ProtectiveConfigurationAllocation
 from control_plane_kit_operations.records import OperationsRecordError
-from .configuration_evidence import _Capacity, _EvidenceRead, _Unavailable
+from .configuration_evidence import _Capacity, _EvidenceRead, _Unavailable, _COMPOSED_READ
 from .configuration_source import read_source
 
 
@@ -540,18 +540,34 @@ class ConfigurationPreparationStore:
         by_allocation = {value.birth.ref.allocation_id: value for value in allocations}
         selected = tuple(by_allocation.get(ref.allocation_id) for ref in refs)
         if bindings:
-            if (any(value is None for value in selected)
-                    or tuple(value.birth for value in selected) != tuple(binding.birth for binding in bindings)):
+            resolved = []
+            for ref, allocation in zip(refs, selected, strict=True):
+                if allocation is None:
+                    # Active-node discovery cannot find a transferred birth
+                    # with zero outstanding uses. Prove that exact root and
+                    # allocation independently, without recreating protection.
+                    allocation = self._protective_allocation_evidence(ref, read)
+                    if allocation.claims:
+                        raise _Unavailable
+                resolved.append(allocation)
+            selected = tuple(resolved)
+            if tuple(value.birth for value in selected) != tuple(binding.birth for binding in bindings):
                 raise _Unavailable
         elif any(value is not None for value in selected):
             # A fresh birth must never silently adopt a historical allocation.
             raise _Unavailable
+        transfers = []
         for ref, allocation in zip(refs, selected, strict=True):
             _require_unreserved(read, ref)
             if allocation is not None:
                 root = allocation.birth
-                _paired_disposition(read, (root.identity.run_id.value, root.identity.activity_id,
-                    root.identity.attempt, root.ref.artifact_id), ref, protective=True)
+                key = (root.identity.run_id.value, root.identity.activity_id, root.identity.attempt, root.ref.artifact_id)
+                disposition = _paired_disposition(read, key, ref)
+                if disposition.kind == "cleanup-closed":
+                    raise _Unavailable
+                if disposition.kind == "accepted-current":
+                    transfers.append((key, ref, disposition.acceptance_revision))
+        proof = self._prove_transferred_roots(stores.configuration_acceptance, transfers) if transfers else None
         total_claims = sum(len(value.claims) for value in allocations)
         # Fixed future envelope includes complete source context, both original
         # and direct 16KiB events, the full 8192-byte outcome, and its source links.
@@ -560,7 +576,14 @@ class ConfigurationPreparationStore:
         envelope = 192 * 1024 * count + 3 * 1024 * 1024 + 512 * 1024
         future = ConfigurationEvidenceFootprint(records,
             envelope - 128 * records - 16 * markers - 256 * statements, markers, statements)
-        future = future.plus(ConfigurationEvidenceFootprint(13 * count, 4118 * count, 48 * count, 8 * count))
+        transferred = len(transfers)
+        # Three issued classification pairs plus the final original/birth pair
+        # checks: 5cP+3cU+4tT. Each full cold proof has its own P/T inside Q.
+        future = future.plus(ConfigurationEvidenceFootprint(13 * count + 16 * transferred,
+            4278 * count + 4 * transferred, 58 * count + 4 * transferred, 8 * count + 4 * transferred))
+        if proof is not None:
+            future = future.plus(proof).plus(proof).plus(proof).plus(
+                ConfigurationEvidenceFootprint(66, 2103393, 627, 1))
         for index, ref in enumerate(refs):
             claim_keys = ()
             if selected[index] is not None:
@@ -576,17 +599,40 @@ class ConfigurationPreparationStore:
         self._issued = prepared
         return prepared
 
+    def _prove_transferred_roots(self, acceptance, transfers):
+        """Cold exact-root pass on the caller ledger, including nested owners."""
+        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        read = _EvidenceRead(self._connection)
+        before = read.used
+        token = _COMPOSED_READ.set(read)
+        try:
+            for key, ref, revision in transfers:
+                acceptance._accepted_transfer(read, key, ref, revision)
+        finally:
+            _COMPOSED_READ.reset(token)
+        return ConfigurationEvidenceFootprint(*(getattr(read.used, field) - getattr(before, field)
+            for field in ("records", "value_octets", "scalar_markers", "statements")))
+
     def _require_current(self, prepared):
         """Selected allocation permission is never an issued-value cache."""
         read = _EvidenceRead(self._connection)
         try:
+            transfers = []
             for ref, (birth, artifact) in zip(prepared.intent.configuration_instances.instances,
                     prepared.births, strict=True):
                 _require_unreserved(read, ref)
                 # Absence is expected only for this new birth before insertion.
-                # Once either side exists, its complete pair must be protective.
-                _paired_disposition(read, (birth.run_id.value, birth.activity_id, birth.attempt, artifact),
-                    ref, protective=True, allow_absent=birth == prepared.identity)
+                # Existing transferred roots require their own complete proof;
+                # cleanup closure never grants fresh allocation permission.
+                key = (birth.run_id.value, birth.activity_id, birth.attempt, artifact)
+                disposition = _paired_disposition(read, key, ref, allow_absent=birth == prepared.identity)
+                if disposition is not None:
+                    if disposition.kind == "cleanup-closed":
+                        raise _Unavailable
+                    if disposition.kind == "accepted-current":
+                        transfers.append((key, ref, disposition.acceptance_revision))
+            if transfers:
+                self._prove_transferred_roots(prepared.stores.configuration_acceptance, transfers)
         except (_Capacity, _Unavailable):
             raise OperationsRecordError("configuration start requires current allocation permission") from None
 
