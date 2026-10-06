@@ -43,8 +43,8 @@ class PostgresConfigurationTransferCarryTests(ConfigurationTransferredConsumerFi
         before = self.transfer_snapshot()
         with mock.patch.object(ConfigurationAcceptanceStore, "_require_current", probe):
             self.carry.add_runtime()
-        self.assertTrue(calls)
-        self.assertEqual(set(calls), {"plan-add-runtime"})
+        # Current CAS, original event, original action, then receipt insertion.
+        self.assertEqual(calls, ["plan-add-runtime"] * 4)
         self.assertEqual(self.transfer_snapshot(), before)
 
     def test_unrelated_runtime_round_trip_carries_transferred_and_protective_sources(self):

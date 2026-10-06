@@ -213,9 +213,15 @@ class ConfigurationTransferredConsumerFixture(ConfigurationTransferFixture):
 
     def assert_missing_birth_admission_refuses_reads(self):
         before = self.proof_snapshot()
+        def positive(store):
+            current = store.read_current_configuration("workspace-a", node_id="api")
+            inverse = store.read_configuration_use("workspace-a", self.refs)
+            self.assertEqual((current.state, inverse.state), ("complete", "complete"))
+            self.assertEqual(tuple(binding.ref for binding in current.bindings), self.refs)
+            self.assertEqual(inverse.bindings, current.bindings)
         with self.base.unit_of_work() as uow:
             store = uow.stores.configuration_acceptance
-            self.assertEqual(store.read_current_configuration("workspace-a", node_id="api").state, "complete")
+            positive(store)
             uow.stores.connection.execute(f"ALTER TABLE {TRANSFER_TABLE} DROP CONSTRAINT cpk_claim_transfers_completion_fk")
             uow.stores.connection.execute("DELETE FROM cpk_configuration_invocation_completions "
                 "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", self.key(self.refs[0])[:3])
@@ -224,3 +230,5 @@ class ConfigurationTransferredConsumerFixture(ConfigurationTransferFixture):
             self.assertEqual((current.state, current.bindings), ("unavailable", ()))
             self.assertEqual((inverse.state, inverse.bindings), ("unavailable", ()))
         self.assertEqual(self.proof_snapshot(), before)
+        with self.base.unit_of_work() as uow:
+            positive(uow.stores.configuration_acceptance)
