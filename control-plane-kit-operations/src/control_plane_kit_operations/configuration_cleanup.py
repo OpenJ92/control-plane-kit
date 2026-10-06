@@ -374,21 +374,275 @@ class ConfigurationCleanupInspectionCodec:
 
 
 def configuration_cleanup_proposal_fingerprint(proposal):
-    _require(type(proposal) is ConfigurationCleanupProposal)
+    domains = {
+        ConfigurationCleanupProposal: b"control-plane-kit.configuration-cleanup-proposal.v1\x00",
+        ConfigurationCleanupProposalV2: b"control-plane-kit.configuration-cleanup-proposal.v2\x00",
+    }
+    domain = domains.get(type(proposal))
+    _require(domain is not None)
     proposal.__post_init__()
-    return sha256(b"control-plane-kit.configuration-cleanup-proposal.v1\x00" + proposal.canonical).hexdigest()
+    return sha256(domain + proposal.canonical).hexdigest()
 
 
 @dataclass(frozen=True)
 class ConfigurationCleanupInspectionResult:
     state: str
-    inspection: ConfigurationCleanupInspection | None = None
+    inspection: ConfigurationCleanupInspection | ConfigurationCleanupInspectionV2 | None = None
     reason: str | None = None
 
     def __post_init__(self):
         _require(type(self.state) is str and self.state in ("complete", "unavailable", "capacity"))
         if self.state == "complete":
-            _require(type(self.inspection) is ConfigurationCleanupInspection and self.reason is None)
+            _require(type(self.inspection) in (ConfigurationCleanupInspection, ConfigurationCleanupInspectionV2)
+                     and self.reason is None)
             self.inspection.__post_init__()
         else:
             _require(self.inspection is None and self.reason == "evidence-" + self.state)
+
+
+# V2 separates physical candidates from original-selection provenance. These
+# detached commitments express a proof obligation; only the store can prove it.
+_V2_MEMBER = {"artifact_id", "allocation_id", "ref_fingerprint"}
+_V2_TRANSFER = _V2_MEMBER | {"source_identity", "acceptance_revision"}
+_V2_WITNESS = (_WITNESS - {"selection_allocations"}) | {"selection_members"}
+
+
+def _member(value):
+    _object(value, _V2_MEMBER)
+    _require(type(value["artifact_id"]) is str and _ARTIFACT.fullmatch(value["artifact_id"]) is not None)
+    _scope(value["allocation_id"])
+    _digest(value["ref_fingerprint"])
+    return value["artifact_id"], value["allocation_id"], value["ref_fingerprint"]
+
+
+def _ref_member(ref):
+    return ref.artifact_id, ref.allocation_id, sha256(
+        ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
+
+
+def _selection_members(values):
+    _require(type(values) is list and 1 <= len(values) <= 32)
+    members = tuple(_member(value) for value in values)
+    # Ordinary Core selection has unique artifacts and sorts artifact first;
+    # physical cleanup candidates instead sort allocation identity.
+    artifacts = tuple(value[0] for value in members)
+    _require(artifacts == tuple(sorted(set(artifacts))))
+    _require(len({value[1] for value in members}) == len(members))
+    return members
+
+
+def _v2_sources(values):
+    _require(type(values) is list and len(values) <= 64)
+    keys = tuple(_identity_key(_identity(value)) for value in values)
+    _require(keys == tuple(sorted(set(keys))))
+    return keys
+
+
+def _transfers(values):
+    _require(type(values) is list and len(values) <= 8256)
+    result, ordered = {}, []
+    for value in values:
+        _object(value, _V2_TRANSFER)
+        identity = _identity_key(_identity(value["source_identity"]))
+        member = _member({field: value[field] for field in _V2_MEMBER})
+        _integer(value["acceptance_revision"])
+        key = identity, member[0]
+        ordered.append(key)
+        result[key] = member
+    _require(tuple(ordered) == tuple(sorted(set(ordered))))
+    return result
+
+
+def _v2_witness(value, node_id):
+    _object(value, _V2_WITNESS)
+    identity = _identity_key(_identity(value["source_identity"]))
+    _require(value["effect_kind"] == "configuration-activity.v1")
+    operation = activity_operation_from_descriptor(value["operation"])
+    _require(type(operation) in (StartNode, ReconcileNode) and type(operation.target) is NodeTarget)
+    _require(activity_operation_descriptor(operation) == value["operation"] and operation.target.node_id == node_id)
+    for name in ("request_fingerprint", "selection_fingerprint", "outcome_fingerprint"):
+        _digest(value[name])
+    _event(value, "original_")
+    _event(value, "direct_")
+    _require(value["direct_event_ordinal"] > value["original_event_ordinal"])
+    _require(value["direct_event_id"] != value["original_event_id"])
+    _require(value["result_kind"] in ("succeeded", "failed"))
+    return identity, _selection_members(value["selection_members"])
+
+
+def _v2_coverage(candidates, refs, uses, selections, transfers):
+    """Validate exact N/T coverage and positive roots, without asserting DB truth."""
+    _require(sum(len(value) for value in uses.values()) <= 256)
+    _require(len(selections) <= 256 and sum(len(value) for value in selections.values()) <= 8192)
+    pairs = {(identity, artifact): member for identity, members in uses.items()
+             for artifact, member in members.items()}
+    _require(set(pairs).isdisjoint(transfers))
+    known = {ref.allocation_id: _ref_member(ref) for ref in refs.values()}
+    required = set()
+    for identity, members in selections.items():
+        selected = {member[0]: member for member in members}
+        _require(identity in uses and set(uses[identity]) <= set(selected))
+        for member in members:
+            artifact, allocation, _ = member
+            _require(allocation not in known or known[allocation] == member)
+            known[allocation] = member
+            pair = identity, artifact
+            if pair in pairs:
+                _require(pairs[pair] == member)
+            else:
+                _require(transfers.get(pair) == member)
+                required.add(pair)
+    for candidate in candidates:
+        member = _ref_member(refs[candidate["ref"]["allocation_id"]])
+        for name in ("seed", "birth"):
+            locator = candidate[name]
+            pair = _identity_key(_identity(locator["source_identity"])), locator["artifact_id"]
+            if pair in pairs:
+                _require(pairs[pair] == member)
+            else:
+                _require(transfers.get(pair) == member)
+                required.add(pair)
+    _require(set(transfers) == required)
+
+
+def _add_uses(uses, identities, member):
+    for identity in identities:
+        existing = uses.setdefault(identity, {})
+        _require(member[0] not in existing)
+        existing[member[0]] = member
+
+
+def _proposal_v2(document):
+    _object(document, {"profile", "context", "candidates", "invocations", "accepted_transfers"})
+    _require(document["profile"] == "configuration-cleanup-proposal.v2")
+    refs = _candidates(document, {"ref", "seed", "birth", "protecting_uses", "proposed_closures"})
+    uses = {}
+    for row in document["candidates"]:
+        identities = _v2_sources(row["protecting_uses"])
+        _require(identities == _v2_sources(row["proposed_closures"]))
+        _add_uses(uses, identities, _ref_member(refs[row["ref"]["allocation_id"]]))
+    values = document["invocations"]
+    _require(type(values) is list and len(values) <= 256)
+    witnesses = tuple(_v2_witness(value, next(iter(refs.values())).node_id) for value in values)
+    identities = tuple(identity for identity, _ in witnesses)
+    _require(identities == tuple(sorted(set(identities))) and set(identities) == set(uses))
+    _v2_coverage(document["candidates"], refs, uses, dict(witnesses), _transfers(document["accepted_transfers"]))
+    return _canonical(document)
+
+
+def _summary_v2(value):
+    _require(type(value) is dict and "unselected_count" not in value and "uncovered_outstanding_count" in value)
+    return _summary({("unselected_count" if field == "uncovered_outstanding_count" else field): item
+                     for field, item in value.items()})
+
+
+def _inspection_v2(document):
+    _object(document, {"profile", "context", "candidates", "accepted_transfers", "invocation_accounting"})
+    _require(document["profile"] == "configuration-cleanup-inspection.v2")
+    refs = _candidates(document, {"ref", "seed", "birth", "invocations", "blockers"})
+    summaries, uses = {}, {}
+    for row in document["candidates"]:
+        values, blockers = row["invocations"], row["blockers"]
+        _require(type(values) is list and len(values) <= 64)
+        _require(type(blockers) is list and all(type(value) is str and value in _BLOCKERS for value in blockers))
+        _require(blockers == sorted(set(blockers)))
+        identities = []
+        for value in values:
+            identity = _summary_v2(value)
+            _require(identity not in summaries or summaries[identity] == value)
+            summaries[identity] = value
+            identities.append(identity)
+        _require(tuple(identities) == tuple(sorted(set(identities))))
+        _add_uses(uses, identities, _ref_member(refs[row["ref"]["allocation_id"]]))
+        _require(("unresolved-invocation" in blockers) == any(value["kind"] != "completed" for value in values))
+        _require(("incomplete-invocation-selection" in blockers) == any(
+            value["uncovered_outstanding_count"] > 0 for value in values))
+    rows = document["invocation_accounting"]
+    _require(type(rows) is list and len(rows) <= 256)
+    selections, ordered = {}, []
+    for row in rows:
+        _object(row, {"source_identity", "selection_members"})
+        identity = _identity_key(_identity(row["source_identity"]))
+        selections[identity] = _selection_members(row["selection_members"])
+        ordered.append(identity)
+    _require(tuple(ordered) == tuple(sorted(set(ordered))))
+    complete = {identity for identity, value in summaries.items() if value["uncovered_outstanding_count"] == 0}
+    _require(set(selections) == complete)
+    for identity, value in summaries.items():
+        _require(value["uncovered_outstanding_count"] <= value["selection_count"] - len(uses[identity]))
+        if identity in selections:
+            _require(len(selections[identity]) == value["selection_count"])
+    _v2_coverage(document["candidates"], refs, uses, selections, _transfers(document["accepted_transfers"]))
+    return _canonical(document)
+
+
+@dataclass(frozen=True, repr=False)
+class ConfigurationCleanupProposalV2:
+    """Full selection accounting; decoding never admits a transfer or deletion."""
+    canonical: bytes
+
+    def __post_init__(self):
+        _validated_bytes(self.canonical, _proposal_v2)
+
+    def descriptor(self):
+        self.__post_init__()
+        return json.loads(self.canonical)
+
+
+@dataclass(frozen=True, repr=False)
+class ConfigurationCleanupInspectionV2:
+    """Bounded observed commitments; a complete inspection may still be blocked."""
+    canonical: bytes
+
+    def __post_init__(self):
+        _validated_bytes(self.canonical, _inspection_v2)
+
+    def descriptor(self):
+        self.__post_init__()
+        return json.loads(self.canonical)
+
+    @property
+    def evidence_digest(self):
+        self.__post_init__()
+        return sha256(b"control-plane-kit.configuration-cleanup-inspection.v2\x00" + self.canonical).hexdigest()
+
+
+class ConfigurationCleanupProposalV2Codec:
+    def decode(self, document):
+        return ConfigurationCleanupProposalV2(_validated(document, _proposal_v2))
+
+    def encode(self, value):
+        _require(type(value) is ConfigurationCleanupProposalV2)
+        return value.descriptor()
+
+
+class ConfigurationCleanupInspectionV2Codec:
+    def decode(self, document):
+        return ConfigurationCleanupInspectionV2(_validated(document, _inspection_v2))
+
+    def encode(self, value):
+        _require(type(value) is ConfigurationCleanupInspectionV2)
+        return value.descriptor()
+
+
+def configuration_cleanup_inspection_from_proposal(proposal: ConfigurationCleanupProposalV2) -> ConfigurationCleanupInspectionV2:
+    """Project an eligible v2 review deterministically, without reading live truth."""
+    document = ConfigurationCleanupProposalV2Codec().encode(proposal)
+    witnesses = {_identity_key(_identity(value["source_identity"])): value for value in document["invocations"]}
+    fields = ("source_identity", "original_event_id", "original_event_ordinal", "request_fingerprint",
+              "selection_fingerprint", "direct_event_id", "direct_event_ordinal", "result_kind", "outcome_fingerprint")
+    candidates = []
+    for row in document["candidates"]:
+        summaries = []
+        for identity in row["protecting_uses"]:
+            witness = witnesses[_identity_key(_identity(identity))]
+            summary = {field: witness[field] for field in fields}
+            summary.update(kind="completed", attempt_status=witness["result_kind"],
+                selection_count=len(witness["selection_members"]), uncovered_outstanding_count=0)
+            summaries.append(summary)
+        candidates.append(dict(ref=row["ref"], seed=row["seed"], birth=row["birth"], invocations=summaries, blockers=[]))
+    accounting = [dict(source_identity=value["source_identity"], selection_members=value["selection_members"])
+                  for value in document["invocations"]]
+    return ConfigurationCleanupInspectionV2Codec().decode(dict(profile="configuration-cleanup-inspection.v2",
+        context=document["context"], candidates=candidates, accepted_transfers=document["accepted_transfers"],
+        invocation_accounting=accounting))

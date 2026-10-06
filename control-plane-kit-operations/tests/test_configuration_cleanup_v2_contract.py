@@ -199,6 +199,10 @@ class ConfigurationCleanupV2ContractTests(unittest.TestCase):
         self.assertEqual(encoded["version"], 2)
         self.assertEqual(encoded["derivation_profile"], "configuration-cleanup-v2")
         self.assertEqual(plans.decode_stored_activity_plan_record(encoded).cleanup_proposal, proposal)
+        for wrong_profile in (None, plans.PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+                              plans.PlanDerivationProfile.STRUCTURAL_V1):
+            with self.subTest(profile=wrong_profile), self.assertRaises(ValueError):
+                plans.StoredActivityPlan(plan, wrong_profile, proposal)
         digest = values.configuration_cleanup_proposal_fingerprint(proposal)
         subject = ActivityPlanApprovalSubject("plan", proposal_fingerprint=digest)
         self.assertEqual(approval_subject_from_descriptor(subject.descriptor()), subject)
@@ -213,6 +217,8 @@ class ConfigurationCleanupV2ContractTests(unittest.TestCase):
             cleanup_proposal=proposal)
         with self.assertRaises(ValueError):
             replace(record, derivation_profile=plans.PlanDerivationProfile.CONFIGURATION_CLEANUP_V1)
+        with self.assertRaises(ValueError):
+            replace(record, desired_graph_revision=record.desired_graph_revision + 1)
         with self.assertRaises(ValueError):
             plans.decode_stored_activity_plan(encoded)
         empty = validate_graph(DeploymentGraph("empty"))

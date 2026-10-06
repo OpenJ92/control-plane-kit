@@ -26,6 +26,7 @@ from control_plane_kit_operations.deployment_transitions import (
 )
 from control_plane_kit_operations.configuration_cleanup import (
     ConfigurationCleanupProposal, ConfigurationCleanupProposalCodec,
+    ConfigurationCleanupProposalV2, ConfigurationCleanupProposalV2Codec,
     MAX_CLEANUP_DOCUMENT_BYTES, configuration_cleanup_proposal_fingerprint,
 )
 
@@ -34,6 +35,7 @@ class PlanDerivationProfile(StrEnum):
     STRUCTURAL_V1 = "structural-v1"
     MANAGEMENT_GRAPH_PAIR_V1 = "management-graph-pair-v1"
     CONFIGURATION_CLEANUP_V1 = "configuration-cleanup-v1"
+    CONFIGURATION_CLEANUP_V2 = "configuration-cleanup-v2"
 
 
 class PlanDerivationError(ValueError):
@@ -42,6 +44,10 @@ class PlanDerivationError(ValueError):
 
 _STORED_PLAN_SCHEMA = "control-plane-kit.operations.activity-plan-record"
 _STORED_PLAN_KEYS = {"schema", "version", "derivation_profile", "plan"}
+_CLEANUP_CODECS = {
+    PlanDerivationProfile.CONFIGURATION_CLEANUP_V1: ConfigurationCleanupProposalCodec,
+    PlanDerivationProfile.CONFIGURATION_CLEANUP_V2: ConfigurationCleanupProposalV2Codec,
+}
 
 
 def _require_profile(profile: PlanDerivationProfile | None) -> None:
@@ -56,7 +62,7 @@ def derive_activity_plan(
 ) -> ActivityPlan:
     """Select exactly one declared interpretation, before any comparison."""
     _require_profile(profile)
-    if profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+    if profile in _CLEANUP_CODECS:
         raise PlanDerivationError("cleanup planning requires original allocation evidence")
     if type(transition) not in (
         InitialDeployment, UpdateDeployment, TeardownDeployment, NoOpDeployment,
@@ -84,14 +90,15 @@ def encode_stored_activity_plan(
     plan: ActivityPlan,
     *,
     profile: PlanDerivationProfile | None,
-    cleanup_proposal: ConfigurationCleanupProposal | None = None,
+    cleanup_proposal: ConfigurationCleanupProposal | ConfigurationCleanupProposalV2 | None = None,
 ) -> dict[str, object]:
     _require_profile(profile)
-    if profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+    if profile in _CLEANUP_CODECS:
+        proposal_document = _CLEANUP_CODECS[profile]().encode(cleanup_proposal)
         validate_cleanup_activity_plan(plan, cleanup_proposal)
         descriptor = {"schema": _STORED_PLAN_SCHEMA, "version": 2,
             "derivation_profile": profile.value, "plan": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan),
-            "cleanup_proposal": ConfigurationCleanupProposalCodec().encode(cleanup_proposal),
+            "cleanup_proposal": proposal_document,
             "cleanup_proposal_fingerprint": configuration_cleanup_proposal_fingerprint(cleanup_proposal)}
         if len(rfc8785.dumps(descriptor)) > MAX_CLEANUP_DOCUMENT_BYTES:
             raise PlanDerivationError("stored cleanup plan exceeds its capacity")
@@ -152,7 +159,7 @@ def _decode_stored_activity_plan(
         (value for value in PlanDerivationProfile if value.value == descriptor["derivation_profile"]),
         None,
     )
-    if profile is None or profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+    if profile is None or profile in _CLEANUP_CODECS:
         raise PlanDerivationError("stored activity plan is malformed")
     return DEFAULT_ACTIVITY_PLAN_CODEC.decode(descriptor["plan"]), profile
 
@@ -161,7 +168,15 @@ def _decode_stored_activity_plan(
 class StoredActivityPlan:
     plan: ActivityPlan
     profile: PlanDerivationProfile | None
-    cleanup_proposal: ConfigurationCleanupProposal | None = None
+    cleanup_proposal: ConfigurationCleanupProposal | ConfigurationCleanupProposalV2 | None = None
+
+    def __post_init__(self):
+        _require_profile(self.profile)
+        if self.profile in _CLEANUP_CODECS:
+            _CLEANUP_CODECS[self.profile]().encode(self.cleanup_proposal)
+            validate_cleanup_activity_plan(self.plan, self.cleanup_proposal)
+        elif self.cleanup_proposal is not None:
+            raise PlanDerivationError("stored activity plan profile is inconsistent")
 
 
 def validate_cleanup_activity_plan(plan, proposal):
@@ -172,7 +187,9 @@ def validate_cleanup_activity_plan(plan, proposal):
     )
     valid = False
     try:
-        document = ConfigurationCleanupProposalCodec().encode(proposal)
+        codec = (ConfigurationCleanupProposalCodec if type(proposal) is ConfigurationCleanupProposal
+                 else ConfigurationCleanupProposalV2Codec)
+        document = codec().encode(proposal)
         DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)
         if type(plan) is ActivityPlan and len(plan.activities) == 1:
             activity = plan.activities[0]
@@ -195,16 +212,18 @@ def decode_stored_activity_plan_record(descriptor: object) -> StoredActivityPlan
         return StoredActivityPlan(plan, profile)
     result = None
     try:
+        profile = next((value for value in _CLEANUP_CODECS
+                        if value.value == descriptor.get("derivation_profile")), None)
         if (type(descriptor) is dict and type(descriptor["version"]) is int
                 and set(descriptor) == _STORED_PLAN_KEYS | {"cleanup_proposal", "cleanup_proposal_fingerprint"}
                 and type(descriptor["derivation_profile"]) is str
-                and descriptor["derivation_profile"] == PlanDerivationProfile.CONFIGURATION_CLEANUP_V1.value
+                and profile is not None
                 and len(rfc8785.dumps(descriptor)) <= MAX_CLEANUP_DOCUMENT_BYTES):
-            proposal = ConfigurationCleanupProposalCodec().decode(descriptor["cleanup_proposal"])
+            proposal = _CLEANUP_CODECS[profile]().decode(descriptor["cleanup_proposal"])
             plan = DEFAULT_ACTIVITY_PLAN_CODEC.decode(descriptor["plan"])
             validate_cleanup_activity_plan(plan, proposal)
             if descriptor["cleanup_proposal_fingerprint"] == configuration_cleanup_proposal_fingerprint(proposal):
-                result = StoredActivityPlan(plan, PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, proposal)
+                result = StoredActivityPlan(plan, profile, proposal)
     except (TypeError, ValueError, KeyError, AttributeError, RecursionError, OverflowError):
         pass
     if result is None:

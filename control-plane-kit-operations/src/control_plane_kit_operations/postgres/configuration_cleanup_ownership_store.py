@@ -100,6 +100,9 @@ class ConfigurationCleanupOwnershipStore:
 
     @contextmanager
     def _start_scope(self, unit_of_work, command, request, plan, guard, prefix):
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        if plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+            raise _Unavailable
         from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
         from control_plane_kit_operations._configuration_cleanup_ownership import (
             _CleanupPreparationOwner, _PreparedCleanupStart,
