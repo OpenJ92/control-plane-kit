@@ -1492,17 +1492,52 @@ Exact test selection is fixed after design review. Add only
 distinct missing laws and establish causal red through the owning Operations
 runner. No duplicate baseline, matrix, standalone script or host Python.
 
-**Branch proposal for North's explicit decision:** after this documentation
-checkpoint, create `codex/1950-ordinary-start-tail` from the exact B1 checkpoint,
-and one PR targeting `codex/1945-typed-transfer-proofs`. Freeze B1 application
-edits while that child is open. This is an explicit stacked dependency because
-the accepted transferred-reader and current failing test are not merged; do
-not target the roadmap directly or cherry-pick a second implementation. Merge
-the reviewed child into B1, then resume B1 acceptance/carry work and ultimately
-its PR into `roadmap/1813-runtime-control`. Child focused/full Operations gates
-and the remaining parent Core/backend boundary must be recorded without treating
-unmerged B1 acceptance reds as #1950 passes. North must settle that gate placement
-before execution; a full suite failure cannot be waived by branch topology.
+**Revised branch proposal after North's review:** the initial proposed stacked
+PR is withdrawn. No stacked branch/PR may be created without the user's explicit
+request. Inspection of accepted A `9282714d` confirms that the ordinary
+`_prepare`, three issued checks, fixed envelope, raw intent/ref/claim writes,
+receiver permission suffix and closed phase transport already exist there.
+The defect and its repair therefore have an independently meaningful boundary.
+
+Propose `codex/1950-ordinary-start-tail` from accepted A, with one PR into
+`roadmap/1813-runtime-control`. This child implements the complete **A ordinary**
+suffix and receiver/gateway transport accounting with A's protective pair
+`P_A=(2,823,9,1)`, all three issued checks, `5cP_A+3cU`, and no transfer term.
+The bridge at this boundary needs the receiver point/history roles and the
+conditional gateway selectors; it does not issue transfer receipt-header,
+receipt-action/event or invocation-ref bounds merely for future B1 use. No
+unmerged transfer schema, values, tests or producer is copied into the child.
+
+The full transferred-root expression above remains the **B1 integration
+contract**, not #1950 source on A: B1 consumes the reviewed child merge, extends
+the same existing ordinary owner with its concrete typed pair/anchor/Q terms
+and selected transfer receipt/invocation bounds, and reruns its preserved causal
+red. This adds no callback, registry, extension protocol or duplicate calculator
+to make the branch topology work. Resolve the known `_prepare`/`_require_current`
+conflicts explicitly; preserve B1's independent transferred-reader/read-policy
+commits, zero-active-root proof, and all diagnostic evidence. No branch reset
+or history rewrite is part of this proposal.
+
+Child tests must exist on A: `test_postgres_configuration_preparation.py`,
+`test_postgres_configuration_preparation_transactions.py`,
+`test_postgres_configuration_capacity_boundary.py` and
+`test_postgres_configuration_receiver_accounting.py`, with
+`configuration_preparation_fixture.py` and the named receiver fixtures. Reuse
+their real first-start/accepted-outstanding-reuse paths for raw, whole-tail,
+capacity and rollback laws. The conditional gateway fixture/test pair remains
+subject to its reachability blocker. B1 transfer fixture/target edits stay on
+B1. This distinguishes new A-local causal red from the preserved B1 red; it
+does not duplicate the historical baseline or claim one proves the other.
+
+After design/target/source release, run the focused child laws through the
+owning Operations runner, then the full child Operations gate including cleanup
+regressions and the existing 64-use law. Run required Core and current-backend
+checks at the child PR boundary according to the governing issue/AGENTS. Merge
+only with required checks green. B1 then consumes that merge and must turn its
+transfer-specific whole-tail red green before its own full acceptance gates.
+No failing B1 suite is imported into the child and no full-suite waiver is
+requested. North must approve this independent branch and precise gate boundary
+before executable work begins.
 
 ### Risks, alternatives and handoff
 
