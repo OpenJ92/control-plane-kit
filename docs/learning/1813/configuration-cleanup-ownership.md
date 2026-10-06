@@ -1672,3 +1672,74 @@ replacement runner. Missing receiver/gateway composition, earlier capacity
 refusal or lack of headroom is a design finding: preserve it and stop, without
 weakening assertions, fixing production, repeating the gate or declaring PASS.
 No full suite or provider action belongs to this diagnostic release.
+
+### Operative supported-path amendment — 2026-10-06
+
+North and Kepler accepted this narrowing after tracing actual public support.
+It supersedes the retained-managed-receiver positive and historical collection
+capture portions of the #1950 child proposal above. It does not remove existing
+generic historical readers or change any execution permission.
+
+At accepted A, `runtime_management_execution_is_unsupported` requires an exact
+MANAGEMENT_GRAPH_PAIR_V1 InitialDeployment or TeardownDeployment for nonempty
+managed execution. The coordinator's `_guard_runtime_management` applies it
+before dispatch, and `_runtime_effect_intent_for_material` repeats it, including
+ordinary preparation's `_proposal` lowering. Adding/reconciling configuration
+beside an accepted managed receiver is UpdateDeployment and cannot reach a
+supported ordinary configuration start. A direct Start command does not bypass
+the latter check. Cleanup has its own exception and is outside this child.
+
+For supported initial managed StartNode, current topology is structurally empty.
+The desired receiver introduction must be pending: `_receiver_sources` requires
+an accepted desired origin to match an accepted current origin. Consequently the
+ordinary initial suffix reads pending introduction/action/bindings, not accepted
+receiver request/run/event history. Bound own request/run/session/plan/graphs,
+scope and binding collections and pending introduction/origin-action points.
+Drop the historical acceptance request/run-history/event-history/advancement-
+action subexpression from child capture, revalidation and suffix arithmetic.
+Retain the three issued checks, raw W at entrance, complete fixed suffix,
+guard/sentinel costs and error alternatives. B1's transfer receipt/invocation
+extension remains independently necessary when B1 later consumes the child.
+The future owner that enables managed Update must explicitly reintroduce and
+budget its newly reachable historical traversal; this is not a waiver for it.
+
+Gateway is distinct: its existing graph has no runtime management, control
+surfaces or gateway transit; matching configuration artifacts alone do not
+trigger this management refusal. Its approved projection Reconcile composition
+must still be demonstrated through actual owners. Keep the conditional gateway
+approval/session-idempotency/publication selector and cost subexpression.
+
+North explicitly authorized a seventh diagnostic-only file,
+`tests/accepted_graph_origin_fixture.py`. Its default complete/zero-slot/empty
+assertion is unchanged. The opt-in configured origin receives expected authored
+artifacts with origin activity/runtime/node coordinates, proves real successful
+CONFIGURATION_ACTIVITY_V1 intents, derives exact birth refs from those inputs
+and the actual origin identity, and compares the entire accepted slot/binding
+set plus source/direct-birth identities and refs. No count-only option, observed
+rows copied as expectations, raw history writes, or relaxed provenance.
+
+The pending-origin diagnostic now lives in
+`test_postgres_configuration_receiver_accounting.py` as
+`test_1950_initial_receiver_feasibility_and_update_refusal`. It composes a
+configuration product into the supported initial managed graph, reaches the
+actual start owner through the existing canonical fixture, then checks managed
+Update returns UNSUPPORTED with zero effect-start calls, zero adapter calls and
+unchanged execution history. Recorded completion premises for other activities
+remain labeled; the configuration start itself must be real. Existing generic
+historical accounting tests are unchanged, not relabeled as this positive.
+
+Diagnostic drafts `0e1536ca` and `4c5a5340` are on the isolated accepted-A branch
+`codex/1950-ordinary-start-tail`, checkout `/tmp/cpk-1950-ordinary-start-tail`.
+They change exactly the seven authorized test files and no production source.
+The observer uses existing `_PhaseConnection`/`_PhaseRows`, records actual shared
+ledger usage without refunds, and reports redacted source roles, widths, counts
+and vectors. The existing 64-use test is observed only at uses 64/65; its exact
+64 accepted uses, cold readers and replay assertions remain mandatory.
+
+The one two-pattern owning runner command above is unchanged. Before it runs,
+Kepler must review this amended premise and the configured-origin fixture diff,
+then record the exact final diagnostic commit/tree and command on #1950.
+No test run has occurred at these draft coordinates. These observations measure
+existing queries plus explicit capture/revalidation; they are not a prototype
+ordinary bound owner, implementation PASS or a substitute for source-derived
+feasibility calculations and later target-red/full gates.
