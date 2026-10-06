@@ -105,7 +105,11 @@ def ordinary_start_feasibility(case, label):
     def query(reader, sql, params, **kwargs):
         entry = None
         if active and reader.accounting is active["accounting"]:
-            entry = dict(stage=active["stage"], before=_components(reader.used),
+            matched = re.search(r"(?:FROM|INTO) (cpk_[a-z_]+)", sql)
+            entry = dict(stage=active["stage"], role=matched.group(1) if matched else "scalar-or-control",
+                kind="length" if sql.startswith("SELECT octet_length(") else
+                    "write" if sql.startswith("INSERT") else "read",
+                before=_components(reader.used),
                 reserve=(kwargs["records"] * kwargs.get("identities", 1), kwargs["octets"],
                     kwargs["records"] * kwargs["cells"], 1))
             active["ledger_queries"].append(entry)
@@ -171,7 +175,8 @@ def ordinary_start_feasibility(case, label):
             report.update(label=label, outcome=outcome, final=_components(accounting.used),
                 bounds=active["bounds"], ledger_queries=active["ledger_queries"],
                 physical=dict(rows=observed["rows"], accounted_bytes=observed["bytes"],
-                    statements=observed["statements"]))
+                    statements=observed["statements"], publication_action_widths=[entry["widths"]
+                        for entry in observed["queries"] if "payload->>'desired_realized_projection_id'" in entry["sql"]]))
             reports.append(report)
             print("#1950 feasibility " + json.dumps(report, sort_keys=True))
             active.clear()
