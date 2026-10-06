@@ -1,13 +1,26 @@
 """Genuine simulated D1/acceptance prefix; recorded B1 reader-defense suffix."""
+from dataclasses import replace
 from hashlib import sha256
+
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.configuration_invocation import (
     ConfigurationInvocationCompletion, configuration_invocation_correlation_for_request,
     configuration_invocation_selection_fingerprint,
 )
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult
+from control_plane_kit_core.operations import ActivityEventKind, EffectAttemptStatus, fold_effect_attempt
+from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
+from control_plane_kit_operations.effect_attempt_fold_interpreter import _event_kind
+from control_plane_kit_operations.effect_attempts import (
+    EffectAttemptEventEvidence, EffectAttemptRecord, effect_attempt_state_fingerprint,
+)
+from control_plane_kit_operations.effect_outcome_evidence import (
+    ExecutionEffectOutcome, effect_outcome_failure, effect_outcome_transition,
+)
 from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
+from control_plane_kit_operations.postgres.effect_outcome_store import _encode_preimage
+from control_plane_kit_operations.records import BoundedEvidence
 from tests import test_postgres_configuration_acceptance_membership as membership
 
 
@@ -26,13 +39,14 @@ def profiled_configuration_result(request):
 class ConfigurationTransferFixture:
     def setUp(self):
         self.membership = membership.PostgresConfigurationAcceptanceMembershipTests()
+        self.membership.node_ids = getattr(self, "transfer_node_ids", ("api",))
         self.membership.configuration_result_for_request = profiled_configuration_result
         self.addCleanup(self.cleanup_membership)
         self.membership.setUp()
         self.base = self.membership.fixture
         self.connection = self.base.connection
         self.original = self.membership.original
-        self.refs = self.membership.refs
+        self.refs = self.original.intent.configuration_instances.instances
         with self.base.unit_of_work() as uow:
             self.completion = uow.stores.configuration_completions.get(self.original.identity)
             self.assertIsNotNone(self.completion, "genuine original fold must admit D1 before recording a transfer")
@@ -87,3 +101,64 @@ class ConfigurationTransferFixture:
     def transfer_snapshot(self):
         return tuple(self.connection.execute(f"SELECT * FROM {table} ORDER BY run_id,activity_id,attempt,artifact_id").fetchall()
             for table in (TRANSFER_TABLE, "cpk_effect_configuration_refs", "cpk_configuration_claims"))
+
+    def proof_snapshot(self):
+        return self.base.retained_snapshot(), self.transfer_snapshot(), tuple(
+            self.connection.execute(f"SELECT * FROM {table} ORDER BY run_id,activity_id,attempt").fetchall()
+            for table in ("cpk_effect_attempt_outcomes", "cpk_effect_attempts", "cpk_configuration_invocation_completions"))
+
+    def corrupt_same_terminal(self, uow, *, failed):
+        """Impossible retained history, only in a caller's rollback-only UoW.
+
+        Preserve source/selection/receipt; change one correlated direct terminal.
+        This does not simulate a lawful failed or unprofiled transfer writer.
+        """
+        original = uow.stores.effect_outcomes.get(self.original.identity, self.membership.direct_event_id)
+        self.assertIs(type(original.outcome), ExecutionEffectOutcome)
+        self.assertIs(original.attempt.state.status, EffectAttemptStatus.SUCCEEDED)
+        self.assertIs(original.attempt.original_start_event.kind, ActivityEventKind.STEP_STARTED)
+        self.assertIsNone(original.attempt.state.recovery_decision)
+        self.assertEqual(original.endpoint_observations, ())
+        self.assertEqual(original.outcome.result.observations, ())
+        evidence = dict(original.outcome.result.evidence)
+        self.assertIn("configuration_invocation_completion", evidence)
+        if failed:
+            result = replace(RuntimeEffectResult.failed(original.outcome.effect_id,
+                RuntimeEffectFailure("configuration.recorded-failure", "Recorded history corruption.")), evidence=evidence)
+        else:
+            del evidence["configuration_invocation_completion"]
+            result = RuntimeEffectResult.succeeded(original.outcome.effect_id, evidence=evidence)
+        outcome = ExecutionEffectOutcome(self.original.identity, original.outcome.request_fingerprint, result)
+        started = replace(original.attempt.state, status=EffectAttemptStatus.STARTED, outcome_fingerprint=None)
+        state = fold_effect_attempt(started, effect_outcome_transition(outcome), fence=started.fence)
+        event = replace(original.attempt.latest_transition_event, kind=_event_kind(original.attempt, state),
+            evidence=BoundedEvidence.from_mapping({"effect_attempt": EffectAttemptEventEvidence(
+                state.identity.attempt, effect_attempt_state_fingerprint(state)).descriptor()}),
+            failure=effect_outcome_failure(outcome))
+        attempt = EffectAttemptRecord(state, original.attempt.original_start_event, event)
+        record = replace(original, outcome=outcome, attempt=attempt)
+        connection = uow.stores.connection
+        connection.execute("ALTER TABLE cpk_configuration_invocation_completions "
+            "DROP CONSTRAINT cpk_configuration_completions_outcome_fk")
+        connection.execute(f"ALTER TABLE {TRANSFER_TABLE} DROP CONSTRAINT cpk_claim_transfers_completion_fk")
+        failure = event.failure
+        payload = {"activity_id": event.activity_id, "evidence": event.evidence.descriptor(),
+            "failure": None if failure is None else {"category": failure.category.value, "code": failure.code,
+                "message": failure.message, "details": failure.details.descriptor()}, "recovery": None}
+        connection.execute("UPDATE cpk_activity_events SET event_type=%s,payload=%s WHERE event_id=%s",
+            (event.kind.value, Jsonb(payload), event.event_id))
+        key = self.key(self.refs[0])[:3]
+        connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s,status=%s,outcome_fingerprint=%s "
+            "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", (_encode_preimage(record), state.status.value,
+             state.outcome_fingerprint, *key))
+        connection.execute("UPDATE cpk_effect_attempts SET status=%s,outcome_fingerprint=%s "
+            "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", (state.status.value, state.outcome_fingerprint, *key))
+        if failed:
+            connection.execute("UPDATE cpk_configuration_invocation_completions SET outcome_fingerprint=%s "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", (state.outcome_fingerprint, *key))
+        else:
+            connection.execute("DELETE FROM cpk_configuration_invocation_completions "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", key)
+        connection.execute(f"UPDATE {TRANSFER_TABLE} SET outcome_fingerprint=%s "
+            "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", (state.outcome_fingerprint, *key))
+        return record

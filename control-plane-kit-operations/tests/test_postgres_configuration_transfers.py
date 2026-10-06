@@ -3,12 +3,27 @@ import unittest
 
 import psycopg
 
+from control_plane_kit_core.operations import EffectAttemptStatus
 from control_plane_kit_operations.postgres import install_schema
-from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable
+from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable, _joined_read
+from control_plane_kit_operations.postgres.configuration_preparation_store import _paired_disposition
+from control_plane_kit_operations.postgres.configuration_source import read_source
+from control_plane_kit_operations.postgres.effect_outcome_store import EffectAttemptOutcomeStore
 from tests.configuration_transfer_fixture import ConfigurationTransferFixture, TRANSFER_TABLE
 
 
 class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.TestCase):
+    def test_structural_pair_keeps_original_correlation_without_issuing_permission(self):
+        self.record_transfer()
+        with self.base.unit_of_work() as uow, _joined_read(uow.stores.connection) as read:
+            ref = self.refs[0]
+            paired = _paired_disposition(read, self.key(ref), ref)
+            self.assertEqual((paired.kind, paired.acceptance_revision, paired.cleanup_identity),
+                ("accepted-current", self.revision, None))
+            self.assertEqual(uow.stores.configuration_completions.get(self.original.identity), self.completion)
+            with self.assertRaises(_Unavailable):
+                _paired_disposition(read, self.key(ref), ref, protective=True)
+
     def test_genuine_completion_and_acceptance_do_not_produce_transfers(self):
         self.require_transfer_schema()
         self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {TRANSFER_TABLE}").fetchone(), (0,))
@@ -82,3 +97,82 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
         before = self.base.retained_snapshot(), self.transfer_snapshot()
         install_schema(self.connection)
         self.assertEqual((self.base.retained_snapshot(), self.transfer_snapshot()), before)
+
+    def test_absent_own_admission_refuses_without_repair(self):
+        self.record_transfer()
+        with self.base.unit_of_work() as uow:
+            self.prove_transfer(uow)
+        before = self.proof_snapshot()
+        with self.base.unit_of_work() as uow:
+            # Deliberate retained corruption, never committed. Otherwise the
+            # immediate FK would reject before the defensive reader runs.
+            uow.stores.connection.execute(f"ALTER TABLE {TRANSFER_TABLE} DROP CONSTRAINT cpk_claim_transfers_completion_fk")
+            uow.stores.connection.execute("DELETE FROM cpk_configuration_invocation_completions "
+                "WHERE (run_id,activity_id,attempt)=(%s,%s,%s)", self.key(self.refs[0])[:3])
+            self.assertIsNone(uow.stores.configuration_completions.get(self.original.identity))
+            with self.assertRaises(_Unavailable):
+                self.prove_transfer(uow)
+        self.assertEqual(self.proof_snapshot(), before)
+        with self.base.unit_of_work() as uow:
+            self.prove_transfer(uow)
+
+    def test_admitted_failed_own_source_is_not_successful_transfer_proof(self):
+        self.assert_recorded_terminal_refuses(failed=True)
+
+    def test_unprofiled_own_success_without_admission_is_not_transfer_proof(self):
+        self.assert_recorded_terminal_refuses(failed=False)
+
+    def assert_recorded_terminal_refuses(self, *, failed):
+        self.record_transfer()
+        with self.base.unit_of_work() as uow:
+            self.prove_transfer(uow)
+        before = self.proof_snapshot()
+        with self.base.unit_of_work() as uow:
+            recorded = self.corrupt_same_terminal(uow, failed=failed)
+            with _joined_read(uow.stores.connection) as read:
+                completion = uow.stores.configuration_completions.get(self.original.identity)
+                if failed:
+                    self.assertIsNotNone(completion, "the distinct failed-completion law needs admitted D1")
+                    self.assertEqual((completion.identity, completion.request_fingerprint,
+                        completion.selection_fingerprint, completion.outcome_fingerprint),
+                        (self.completion.identity, self.completion.request_fingerprint,
+                         self.completion.selection_fingerprint, recorded.outcome.outcome_fingerprint))
+                else:
+                    self.assertIsNone(completion)
+                source = read_source(uow.stores.connection, self.original.identity, self.refs[0], read=read)
+                self.assertEqual(source.state, "complete")
+                outcome, attempt = EffectAttemptOutcomeStore(uow.stores.connection)._configuration_terminal(source.source, read)
+                self.assertEqual((outcome, attempt), (recorded.outcome, recorded.attempt))
+                self.assertIs(attempt.state.status, EffectAttemptStatus.FAILED if failed else EffectAttemptStatus.SUCCEEDED)
+            with self.assertRaises(_Unavailable):
+                self.prove_transfer(uow)
+            # No commit: impossible post-acceptance history and FK drops roll back.
+        self.assertEqual(self.proof_snapshot(), before)
+        with self.base.unit_of_work() as uow:
+            self.prove_transfer(uow)
+
+
+class PostgresConfigurationTransferNeighborTests(ConfigurationTransferFixture, unittest.TestCase):
+    transfer_node_ids = ("api", "worker")
+
+    def test_real_same_run_neighbor_completion_cannot_replace_own_commitments(self):
+        self.record_transfer()
+        with self.base.unit_of_work() as uow:
+            self.prove_transfer(uow)
+            neighbor = uow.stores.configuration_completions.get(self.membership.originals["worker"].identity)
+            self.assertIsNotNone(neighbor)
+            self.assertEqual(neighbor.identity.run_id, self.completion.identity.run_id)
+            self.assertNotEqual(neighbor.identity, self.completion.identity)
+            self.assertNotEqual(neighbor.selection_fingerprint, self.completion.selection_fingerprint)
+        before = self.proof_snapshot()
+        with self.base.unit_of_work() as uow:
+            uow.stores.connection.execute(f"ALTER TABLE {TRANSFER_TABLE} DROP CONSTRAINT cpk_claim_transfers_completion_fk")
+            uow.stores.connection.execute(f"UPDATE {TRANSFER_TABLE} SET request_fingerprint=%s,"
+                "selection_fingerprint=%s,outcome_fingerprint=%s WHERE (run_id,activity_id,attempt)=(%s,%s,%s)",
+                (neighbor.request_fingerprint, neighbor.selection_fingerprint, neighbor.outcome_fingerprint,
+                 *self.key(self.refs[0])[:3]))
+            with self.assertRaises(_Unavailable):
+                self.prove_transfer(uow)
+        self.assertEqual(self.proof_snapshot(), before)
+        with self.base.unit_of_work() as uow:
+            self.prove_transfer(uow)
