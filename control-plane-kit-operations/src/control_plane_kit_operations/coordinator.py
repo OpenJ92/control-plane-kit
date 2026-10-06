@@ -1791,6 +1791,8 @@ class ExecutionCoordinator:
         if context.run.status is not ActivityRunStatus.RUNNING:
             return None
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        unsupported_cleanup = (context.plan_record.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+            and any(type(activity.operation) is CleanupConfigurationInstances for activity in context.plan.activities))
         if (context.plan_record.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
                 and context.plan_record.cleanup_proposal is not None
                 and len(context.plan.activities) == 1
@@ -1802,7 +1804,7 @@ class ExecutionCoordinator:
             type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth)
             for activity in context.plan.activities
         )
-        if (managed_execution or not has_health) and not runtime_management_execution_is_unsupported(
+        if not unsupported_cleanup and (managed_execution or not has_health) and not runtime_management_execution_is_unsupported(
             DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
             DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
             context.plan,
