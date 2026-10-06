@@ -1859,3 +1859,304 @@ SELECT charge. Use-64 prelude overcapture is not mandatory production capture.
 Production edits, broader execution and further retries remain held pending
 review/release. Security: no production authority or exposure changed; reports
 contain bounded role/width/count evidence, not secrets.
+
+### #1950 supported ordinary suffix: instantiated source worksheet
+
+Planning candidate, independently reviewable, not source release. Selected
+production source is accepted A (`9282714d`), unchanged by the seven diagnostic
+files through `160ae7c4`. The four measured premises and widths are recorded in
+[#1950 first results](https://github.com/OpenJ92/control-plane-kit/issues/1950#issuecomment-6027299714)
+and [corrected initial results](https://github.com/OpenJ92/control-plane-kit/issues/1950#issuecomment-6027410375).
+This section supersedes the earlier broad capture list and provisional gateway
+session-action/publication capture machinery. It does not supersede their
+semantic checks or claim production validation.
+
+#### Selected owners and closure
+
+The suffix comes from `effect_attempt_start_interpreter.py:271-350`;
+`_require_fresh_effect_receiver_permission` at 629 composes
+`receiver_lifecycle.py:216-272` and `postgres/execution.py:161-166`.
+The latter calls `receiver_execution_scopes.py:185-286` (guard, originals,
+headers, complete scopes). Binding/origin expansion is owned by
+`receiver_lifecycle.py:104-174,209-249`,
+`postgres/receiver_lifecycle_store.py:304-399`, and
+`postgres/graph_store.py:530-572`. Original ref/source verification is
+`configuration_preparation_store.py:624-667` plus
+`configuration_source.py:138-158`. These are paths relative to the Operations
+source package, except the explicitly named test coordinates above.
+
+Capture only own plan/request, own and gateway approval sessions, selected
+base/desired and pending introducing graph/projection pairs (including their
+distinct raw selectors), pending introduction/origin-action points, own scopes,
+and complete bindings for those pairs. Deduplicate capture by exact selector;
+never deduplicate semantic revalidation calls by identity alone. No accepted
+receiver-history, transfer, receipt, outcome or arbitrary historical selectors
+are admitted. Fixed source/ref/intent/attempt/event readers retain native caps.
+
+Gateway simplification, accepted for planning by Kepler: keep both existing
+session/idempotency action lookups as native bounded nine-column points, each
+with payload cap 65536 and eight other caps 2048. They need no invented widths,
+capture roles or extra bound lookup. The fifth production companion is only
+the publication reader: the original selector/decoder with exact two-candidate
+bounded transport, two queries, and those same caps. Use maximum=2 point-shaped
+transport (or reviewed equivalent), not maximum=2 collection transport fetching
+three. Zero/one/two candidates retain their existing meaning; the consumer still
+requires exactly one. Both named fixed exceptions are explicit, not missing-
+selector fallbacks. The ordinary owner cannot activate cleanup authority.
+
+#### Arithmetic primitives
+
+Vectors are `(records,value_octets,scalar_markers,statements)`.
+`R(r,b,k,i)=(r*i,b,r*k,1)`, with identity multiplier i defaulting to one.
+For a query, S bounds successful settlement and R its full reservation.
+Sequence composition is `(Sa+Sb, max(Ha,Sa+Hb))`, componentwise. The final
+capacity checks both prior+S and prior+H. Accounted bytes are
+`b+128*r+16*k+256*q`; limits remain 4096 records and 16777216 accounted bytes.
+
+For a native or captured point with k columns and cap sum w, `N(k,w,i)` is:
+
+```text
+length: S=R=R(1,12*k,k,i)
+value:  S=R=R(1,w+1,k+1,i)
+```
+
+Captured point `Q(role)=T;N(role)` includes exactly one transaction check
+`T=R(1,20,1,1)` per matching entrance, even before a transport-cache hit.
+Context/object/parent-child checks add no SQL. This worksheet conservatively
+charges both graph value pairs when two loop sides share a cached graph; their
+two guard entrances are mandatory regardless. It never discounts that guard.
+
+Captured collection `C(role,n)` starts with T, then:
+
+```text
+length: R=R(n+1,12*k*(n+1),k,i), S=R(n,12*k*n,k,i)
+value:  R=R(n+1,(w+1)*(n+1),k+1,i), S=R(n,(w+1)*n,k+1,i)
+```
+
+The value query is absent for n=0. Length and value sentinels are not settled
+as n+1 on success; their complete reservations remain in H/refusal paths.
+Captured exact keysets and guarded per-column predicates remain mandatory.
+
+Fixed primitives used below:
+
+| Name | Source-owned expression |
+| --- | --- |
+| A | R(1,1,1,1), acknowledgment or optional EXISTS |
+| U | R=A; successful absence S=(0,0,0,1) |
+| P | R=S=R(1,823,9,2), conservative even for a not-yet-inserted birth |
+| K | R=S=R(1,1,1,3), conservative possible closure witness after a nonprotective original pair |
+| Z | R=S=(0,0,0,1), savepoint/control statement |
+| W | (0,0,0,1+2c), all raw INSERT charge at suffix entrance |
+| I | N(10,1048576+9*2048); N(3,128+64+16384) |
+| E | N(6,2*2048+32+128+64+16384) |
+| J | N(21,21*2048); E; E |
+| F | Z; R(1,80032,17,3); Z, one fresh source join per actual invocation key |
+| run prefix | A; N(10,65536+9*2048) per held run |
+| workspace | A; N(9,65536+8*2048) |
+| approval | N(15,15*16384); N(9,9*16384) |
+| session-action | N(9,65536+8*2048) |
+| publication | R(2,216,9); R(2,2*(65536+8*2048+1),10) |
+
+Publication S conservatively equals both full two-candidate reservations,
+covering the two-row semantic refusal even though continuation requires one.
+No diagnostic width is invented for these native action readers. K is charged
+after each of the two original-verifier pairs per ref as a safe branch upper
+bound, including paths where inserted/locked truth makes it unnecessary.
+There is no K after protective=True issued checks, which refuse before it.
+
+#### Source expression and multiplicities
+
+Let B(p)=Q(raw-graph-p);Q(raw-projection-p);C(bindings-p,n_p).
+Let L(p)=Q(graph-p);Q(projection-p);B(p).
+Let O(o)=Q(introduction-o);B(introducing-pair-o);Q(origin-action-o);
+Q(projection-o);Q(graph-o);optional-A(draft witness).
+The joined origin-action point has i=2; the other points here have i=1.
+No draft head is followed. An origin introduced through a draft can still
+require the fixed graph-store EXISTS query; charge it per O occurrence.
+
+One material verification M is:
+
+```text
+T; N(1,2048) [session workspace]
+; Q(plan)
+; Q(base graph); Q(base projection)
+; Q(desired graph); Q(desired projection)
+; N(5,5*2048) [request scope header]; C(scopes,n)
+```
+
+Permission V is:
+
+```text
+Q(request); Q(session); workspace; M; B(base); B(desired)
+; pending-receiver extension if membership exists
+; approval; gateway extension if gateway subject; M
+```
+
+For current-empty initial deployment, the pending extension has six L calls
+(three base and three desired) and 3d O calls for d desired binding occurrences.
+This follows the two `_validate_receiver_reference` calls: each rechecks
+current/desired sources and its selected pair. Each O additionally reads its
+complete introducing B, so it is not counted as just an introduction point.
+Distinct origins can have distinct introducing binding cardinalities; retain
+each n_p. The measured initial case has d=1 and n_origin=1. All other measured
+cases have zero receiver memberships, so this extension is empty. All three
+optional draft witnesses are conservatively included in the initial numbers.
+
+The gateway extension is three Q(session), two native session-action points,
+one Q(plan), two Q(projection) and publication, in the source order in
+`_gateway_child_association.py:42-119`. The request session and review session
+are both captured; the old accepted-origin session is not a suffix selector.
+
+One issued check D is T followed by c repetitions of U;P. The complete future
+expression preserves its actual ordering:
+
+```text
+W
+; A; Q(request); R(1,65,2) [lease]
+; A; R(1,20,1) [ordinal]; A [event insert]
+; D; I; D; R(1,200,1) [attempt insert]; D
+; run prefix; V; E; I; J
+; original manifest; F(new source)
+; for each ref: P; K; birth-row; F(birth source if new cache key); P; K
+; T [owner close]
+```
+
+Raw intent/ref/claim INSERTs occur at their original positions but add no
+further ledger charge after W. Original manifest has
+`R=R(33,33*32768,19,2)`, `S=R(c,c*32768,19,2)`; every birth row has
+`R=S=R(1,32768,19,2)`. Source cache sharing is only within this verifier's
+fresh read. Receiverless/initial/gateway have one distinct source invocation;
+use 64 has two. Each measured prefix holds one distinct run; a two-run prefix
+adds another native run-prefix expression, not a silently narrowed point.
+
+Phase T counts per V are 20 (receiverless/use64), 26 (gateway) and 71 (initial).
+The lease adds one phase T, each suffix also has three issued lifecycle T, two
+material lifecycle T, and one owner-close T. Capture creation and binding add
+two separate T before capacity. No helper may later add hidden guard SQL.
+
+On any suffix query failure, retain its full reservation and allow owner-close
+T. On source join DataError, add ROLLBACK TO SAVEPOINT and RELEASE (2Z) before
+close; the other source-query exception adds RELEASE (Z). A failure during
+SAVEPOINT itself has no inner release. Calculate every alternative from its
+own prefix, not from final success S. Owner-close itself has no recursive close.
+This assumes the proposed owner closes once on either successful or exceptional
+scope exit, in the same UoW, with no extra locks or cleanup authority.
+
+#### Width and count inputs
+
+The following w values are sums of **columnwise maxima**, not maxima of row
+totals. Column vectors remain in the preserved redacted diagnostic records.
+Using a maximum across observed selectors can overbound a selected point;
+it does not authorize capturing those other selectors. Use64's maxima include
+its historical diagnostic observations, solely as conservative numeric caps.
+
+| Role (k) | Receiverless w | Gateway w | Use64 w | Initial w |
+| --- | ---: | ---: | ---: | ---: |
+| plan (10) | 670 | 1507 | 655 | 5246 |
+| graph (7) | 2249 | 2559 | 1842 | 5358 |
+| projection (9) | 2401 | 4024 | 1993 | 5434 |
+| raw-graph (7) | 2249 | 2559 | 1809 | 5358 |
+| raw-projection (9) | 2401 | 4024 | 1960 | 5434 |
+| request (15) | 269 | 386 | 262 | 332 |
+| session (10) | 83 | 375 | 105 | 139 |
+| scopes (6) | 34 | 40 | 39 | 62 |
+| bindings (9) | 0 | 0 | 0 | 291 |
+| introduction (14) | absent | absent | absent | 204 |
+| origin-action (9, i=2) | absent | absent | absent | 1355 |
+
+Scopes cardinality is 1/1/1/4 respectively. The base/desired binding sets are
+(0,0)/(0,0)/(0,0)/(0,1); initial's introducing set is the desired set.
+Capture selects one plan and one request in every case, two graph/raw-graph
+points except gateway's one, two projection/raw-projection points, one session
+except gateway's two, and initial's one introduction plus one origin action.
+It also captures one scopes set and two binding sets in every case.
+
+#### Discovery, capture and actual prior
+
+Use the `_material` result already loaded by preparation to derive scopes and
+base/desired binding identities through existing pure owners
+(`derive_execution_receiver_scopes`, `derive_receiver_bindings`), not copied
+SQL payloads or a new permission cache. Pay one native approval-request point
+to determine the review session. For each distinct selected receiver, pay one
+native 14-column introduction point to discover its introducing pair/action.
+If an introducing pair is not already loaded, load its graph/projection through
+their existing owners before deriving its complete bindings; retain those
+actual charges. All four measured cases have zero additional pairs. Capture
+does not itself authorize these identities: the full bounded V reruns their
+owner proofs before final capacity and every later permission check remains.
+
+Point capture is one R(1,12*k,k,i). Collection capture has count R(1,20,1),
+then key/length query with R(n+1,(n+1)*(2048*j+12*k),j+k,i) and
+S=R(n,n*(2048*j+12*k),j+k,i), where j is one scope key or two binding keys.
+The native count maximum and complete expected ordered keys remain checked.
+Two additional T cover owner transaction capture and bind. Scope/binding keys
+come from the existing pure model, so no uncharged collection discovery query
+is assumed. Native point discovery is not treated as a free cached read.
+
+Take the actually charged **after-original-preparation** vector, preserving
+every historical prelude read. Add discovery, capture, then bounded V. Gateway
+also adds the full fixed publication expression for its earlier permission
+pass, whose original raw SELECT was unmetered. This is a proposed upper bound
+on the new prior, not a claim that these guards executed in the diagnostics.
+Do not take diagnostic after_revalidation and subtract estimates/refund charges.
+Use64's 338-record diagnostic overcapture is replaced by the selected source
+capture below; its 3053-record real preparation remains intact.
+
+| Case | Original preparation | Added discovery S | Capture/bind S | Revalidation V S | Proposed prior upper |
+| --- | --- | --- | --- | --- | --- |
+| Receiverless | (118,35021,997,127) | (2,245941,31,2) | (17,3408,111,19) | (73,532214,444,75) | (210,816584,1583,223) |
+| Gateway | (266,125826,2290,250) | (2,245941,31,2) | (16,3360,107,18) | (99,885525,648,99) | (387,1424710,3114,371) |
+| Use64 | (3053,794153,29972,2293) | (2,245941,31,2) | (17,3408,111,19) | (73,527187,444,75) | (3145,1570689,30558,2389) |
+| Initial | (240,222502,1954,222) | (4,274782,60,4) | (24,14248,166,21) | (243,786285,1465,229) | (511,1297817,3645,476) |
+
+Gateway's prior additionally includes publication S=(4,164058,38,2).
+Capture H is (17,7592,121,19)/(16,7544,117,18)/(17,7592,121,19)/
+(24,18432,176,21). V H, including exceptional close T, is respectively
+(75,532271,452,76)/(101,885586,656,100)/(75,527247,452,76)/
+(245,786368,1473,230). Combining discovery/capture/revalidation peaks with
+their actual preceding prefixes does not exceed the total H below.
+
+#### Instantiated future and feasibility result
+
+| Case | Future S upper | Future H upper | prior+S | prior+H | Accounted bytes at prior+H |
+| --- | --- | --- | --- | --- | ---: |
+| Receiverless | (148,3109556,834,138) | (183,3976500,1328,138) | (358,3926140,2417,361) | (393,4793084,2911,361) | 4982380 |
+| Gateway | (154,3393331,953,149) | (203,4327459,1505,149) | (541,4818041,4067,520) | (590,5752169,4619,520) | 6034713 |
+| Use64 | (131,3114901,766,128) | (177,3968997,1301,128) | (3276,4685590,31324,2517) | (3322,5539686,31859,2517) | 7118998 |
+| Initial | (318,3363690,1855,292) | (353,4230634,2349,292) | (829,4661507,5500,768) | (864,5528451,5994,768) | 5931555 |
+
+The first three H components are dominated by the full 33-row original
+manifest reservation plus exceptional close T at that prefix. Statement H
+is the successful whole-tail upper bound. Components may have different
+witnesses; accounted bytes evaluated at their componentwise maximum is safe.
+These are conservative source bounds, not tight measured costs.
+
+Competing source-join DataError tails, relative to suffix entrance and already
+including full join reservation, 2Z and close T, are:
+
+| Case / source | Prefix before failed join | DataError alternative |
+| --- | --- | --- |
+| Receiverless / new | (120,2960672,738,125) | (124,3040724,756,129) |
+| Gateway / new | (138,3278863,896,141) | (142,3358915,914,145) |
+| Use64 / new | (112,2920401,692,117) | (116,3000453,710,121) |
+| Use64 / old birth | (122,3034025,738,123) | (126,3114077,756,127) |
+| Initial / new | (290,3214806,1759,279) | (294,3294858,1777,283) |
+
+The other source-query exception has exactly one fewer control statement.
+Each alternative is dominated by its source-derived success/query-peak H;
+none is inferred by adding a statement to final success S.
+
+Planning result: all four instantiated upper bounds fit the unchanged record
+and accounted-byte limits, including prior work. Use64 has 774 records of
+headroom at this conservative peak. Other source inputs must be instantiated
+from their own exact selected keys/cardinalities/column caps and actual ledger;
+this does not guarantee every allowed topology fits. Larger or concurrent
+material refuses boundedly, with the caller UoW rolling back any late writes.
+
+Review remains required before target/source release. The later implementation
+must match the declared guard/close cadence, fixed exceptions, discovery and
+source expression; test actual physical queries and ledger reservations at the
+owning boundary without replacing the expression with diagnostic query replay.
+No runner, application import, production edit, schema change, new lock,
+external effect, or changed limit was used for this worksheet. Security: bounds
+restrict transport only; original fresh authorization remains authoritative.
