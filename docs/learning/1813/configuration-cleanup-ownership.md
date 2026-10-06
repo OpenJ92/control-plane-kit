@@ -1366,9 +1366,14 @@ componentwise peak relative to its entrance. Sequential composition is
 This is private arithmetic in the preparation owner, not an executable SQL
 registry. It covers temporary reservations without charging or summing all of
 them as settled data. Preflight checks both `prior+S` and `prior+H` against the
-existing limits. For a failed query, retained reservation fits that query's
-peak; source-read error cleanup additionally reserves its one rollback-to-
-savepoint statement. No later success tail runs after refusal.
+existing limits. Error alternatives are explicit, not derived by adding one
+statement to the successful final bound: if a source query fails after prefix
+`B`, its FULL query reservation `Rq` remains charged. The DataError alternative
+has peak `B+Rq+ROLLBACK_TO_SAVEPOINT+RELEASE`; the other query-failure alternative
+that executes the finally block has `B+Rq+RELEASE`. Compare those alternatives
+componentwise with success H, including W already charged at the entrance.
+This preserves the reservation even when successful settlement would have been
+much smaller. No later success tail runs after refusal.
 
 Use these fixed primitives from their actual owners:
 
@@ -1392,13 +1397,16 @@ Use these fixed primitives from their actual owners:
   invocations, two fresh pairs per ref, and an extra anchor for each transferred
   birth. Keep the full query; do not replace it with a fixture-sized LIMIT.
 
-In exact execution order the forecast is:
+Because the implementation precharges all raw statements before issuance,
+the ledger forecast starts with **all W**, before any tracked suffix query.
+Later raw INSERTs have zero additional ledger delta (their physical statement
+count is still verified). The actual ordered ledger forecast is:
 
 ```text
-lease ; ordinal ; event-INSERT(A)
-; issued-check-1 ; raw-intent-statement
+W ; lease ; ordinal ; event-INSERT(A)
+; issued-check-1 ; raw-intent-INSERT(no additional charge)
 ; I ; issued-check-2 ; attempt-INSERT(R(1,200,1,1))
-; issued-check-3 ; raw-ref/claim-statements(2c)
+; issued-check-3 ; raw-ref/claim-INSERTs(no additional charge)
 ; prefix ; permission ; E ; I ; J ; original-verification ; owner-close
 ```
 
@@ -1563,3 +1571,104 @@ permission-loop multiplicities, cold-proof cache scope and stacked gate boundary
 then North's explicit target/source release. This is not a design PASS or a
 claim of executable feasibility. #1945 still owns acceptance/carry-tail work;
 #1946/#1947 and provider/live/image/DNS/token/reset actions remain held.
+
+### Corrected arithmetic and proposed feasibility diagnostic
+
+Kepler's review held the first proposal on two accounting errors. The ordered
+expression above now places all W at the entrance and includes the complete
+failed reservation plus rollback/release continuations. North accepts the
+independent accepted-A branch direction. Design feasibility is still unproved:
+
+| Quantity | Available evidence | Missing evidence |
+| --- | --- | --- |
+| Closed source bounds | Query shapes, native caps, selector roles, three check sites, raw counts, cache lifetimes and failure branches | Instantiation against the actual selected widths/cardinalities |
+| Existing B1 suffix | Preserved `(404,128172,2647,277)` charged suffix and independent physical/peak observations | A-local command prior and proposed capture; B1 is not the child baseline |
+| Successful A 64th start | Existing law and accepted green baseline | Per-boundary prior, transport widths and capture cost for this design |
+| Proposed capture | Explicit count/key/length query bounds and existing capture helpers | Measured selector set, actual query cost and bounded revalidation cost |
+| Gateway | Conditional source path and artifact-free existing fixture | Supported configuration-bearing composition reaching that path |
+
+Do not substitute the historical #1924 65th-refusal prior for a successful
+A 64th-start measurement. Do not claim the earlier B1 suffix has already paid
+for the new capture. The independently derived worksheet uses the closed
+source expression above; observations supply widths/cardinalities and check
+query attribution, never replace source-derived multiplicity bounds.
+
+North conditionally authorizes **one A-local test-only feasibility diagnostic**
+after Kepler accepts the corrected arithmetic and this concrete premise/command
+package. No further North approval round is needed once those conditions hold.
+This is not source release, target-red credit or full acceptance.
+
+Exact proposed diagnostic edit ceiling (all under
+`control-plane-kit-operations/tests/`):
+
+1. `test_postgres_configuration_preparation.py`: add
+   `test_1950_receiverless_feasibility`, reusing
+   `ConfigurationPreparationFixture.configuration_command()` and
+   `start_service()` and the existing complete protection/snapshot assertions.
+2. `test_postgres_configuration_receiver_accounting.py`: add
+   `test_1950_receiver_origin_feasibility`. Reuse
+   `ReceiverCanonicalAcceptanceFixture`/`ReceiverAcceptanceAdvancementTests`
+   setup, `desired_receiver`, `plan_and_admit`, `ready_run`, `advance` and the
+   existing coordinator/start translation. First establish the actual original
+   receiver introduction and accepted action through their owners; compose a
+   registered configuration product alongside that retained receiver and reach
+   a real ordinary configuration start. Recorded completion premises, where
+   reused by these fixtures, remain labeled as such; neither a direct call to
+   the permission helper nor a raw fabricated acceptance counts as this start.
+3. `test_postgres_configuration_capacity_boundary.py`: instrument the existing
+   `test_compact_accepted_uses_reach_a_measured_owner_boundary_without_partial_publication`.
+   Observe the successful 64th start and the existing 65th refusal. Preserve all
+   64 admissions/acceptances, cold-reader and replay assertions without editing
+   limits or reducing the loop. Do not run a second 64-use diagnostic variant.
+4. `test_gateway_key_rotation_overlap_execution.py`: add
+   `test_1950_configuration_gateway_feasibility` using
+   `GatewayRotationOverlapFixture`, its real overlap preparation/admission,
+   coordinator/start and retained gateway association. Demonstrate nonempty,
+   matching registered-product and node configuration artifacts and actual
+   `CONFIGURATION_ACTIVITY_V1` at start; retain the original rotation subject.
+5. `gateway_rotation_overlap_fixture.py`: only the explicit test-product/node
+   parameterization needed for that composition, with current defaults and
+   all existing fixture assertions preserved. No source or gateway-key changes.
+6. `configuration_cleanup_phase_read_bounds_fixture.py`: reuse its existing
+   `_PhaseConnection`/`_PhaseRows` observation machinery; at most add a small
+   ordinary-case observation context/role label helper. No second connection
+   wrapper, SQL executor, ledger implementation, bound issuer or generic registry.
+
+Use accepted-A `_capture_point` and `_capture_collection` only as existing
+read-only length/key/count helpers, on keys derived by the real existing
+semantic traversal. They do not issue a cleanup or ordinary grant. A bounded
+rollback-only observation at the pre-mutation seam may measure these queries
+and one fresh permission revalidation without running a prototype owner or
+writing a second capture implementation. Do not silently add unrelated queries
+or substitute hardcoded fixture widths for actual PostgreSQL text transport.
+
+Collect: four-component ledger prior before preparation, after original
+preparation and after the capture/revalidation observation; held-run count;
+selected-ref count; receiver binding occurrence counts; unique point selectors
+by closed role; collection cardinality, complete-key count/digest and per-column
+maxima; length/value/guard/raw statement counts; every reservation entry and
+settled exit; complete normal suffix physical rows/bytes/cells/statements;
+first-write/ID/adapter counters and final positive or refusal/rollback result.
+Keep raw keys/SQL parameters/payloads in memory only. Print closed role labels,
+counts, byte lengths, digests and vectors, with separate existing-prefix,
+capture/revalidation, static S/H and `prior+S/H` values. No credentials, product
+contents, raw database records or provider material in output.
+
+Proposed single owning command, after the exact clean architecture-testing
+sibling `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef` is verified:
+
+```bash
+./control-plane-kit-operations/test.sh \
+  -k test_1950_ \
+  -k test_compact_accepted_uses_reach_a_measured_owner_boundary_without_partial_publication
+```
+
+Record the isolated accepted-A diagnostic commit/tree and command on #1950
+before running. Preserve stdout/stderr at `/tmp/cpk-1950-feasibility.log`, its
+SHA256, terminal status, fixture positives/failures and worksheet on #1950.
+Only the owning runner manages disposable PostgreSQL/container/network state;
+verify its cleanup afterward. Apparatus failure stops immediately without a
+replacement runner. Missing receiver/gateway composition, earlier capacity
+refusal or lack of headroom is a design finding: preserve it and stop, without
+weakening assertions, fixing production, repeating the gate or declaring PASS.
+No full suite or provider action belongs to this diagnostic release.
