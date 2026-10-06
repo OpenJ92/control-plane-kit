@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_operations.configuration_preparation import (
-    ConfigurationAllocationEvidence, ConfigurationRefEvidence, _ref,
+    ConfigurationAllocationEvidence, ConfigurationRefEvidence, _ConfigurationClaimDisposition, _ref,
 )
 from control_plane_kit_operations._configuration_protection import _ProtectiveConfigurationAllocation
 from control_plane_kit_operations.records import OperationsRecordError
@@ -72,21 +72,28 @@ def _decode(row, read):
 
 
 def _paired_disposition(read, key, ref, *, expected=None, protective=False, allow_absent=False):
-    """Fresh nine-cell correspondence, below all full history proofs."""
-    valid = " AND ".join((
-        "(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id,r.ref_digest)=(%s,%s,%s,%s,%s)",
-        "(c.workspace_id,c.allocation_id,c.runtime_id,c.node_id)=(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id)",
-        "r.protective=((r.cleanup_run_id IS NULL) AND (r.cleanup_activity_id IS NULL) AND (r.cleanup_attempt IS NULL))",
-        "c.protective=((c.cleanup_run_id IS NULL) AND (c.cleanup_activity_id IS NULL) AND (c.cleanup_attempt IS NULL))",
-    ))
+    """Fresh bounded structural correspondence, below full history proofs."""
     shape = " AND ".join(
         f"(({side}.cleanup_run_id IS NULL AND {side}.cleanup_activity_id IS NULL AND {side}.cleanup_attempt IS NULL) OR "
         f"({side}.cleanup_run_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND "
-        f"{side}.cleanup_activity_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND {side}.cleanup_attempt>0))"
+        f"{side}.cleanup_activity_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND {side}.cleanup_attempt>0)) "
+        f"AND ({side}.accepted_revision IS NULL OR ({side}.accepted_revision BETWEEN 0 AND 9007199254740991 "
+        f"AND {side}.cleanup_run_id IS NULL AND {side}.cleanup_activity_id IS NULL AND {side}.cleanup_attempt IS NULL))"
         for side in ("r", "c"))
+    valid = " AND ".join((shape,
+        "(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id,r.ref_digest)=(%s,%s,%s,%s,%s)",
+        "(c.workspace_id,c.allocation_id,c.runtime_id,c.node_id)=(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id)",
+        "r.disposition_kind=c.disposition_kind",
+        *(f"{side}.protective=({side}.cleanup_run_id IS NULL AND {side}.cleanup_activity_id IS NULL "
+          f"AND {side}.cleanup_attempt IS NULL AND {side}.accepted_revision IS NULL) AND "
+          f"{side}.disposition_kind=(CASE WHEN {side}.accepted_revision IS NOT NULL THEN 'accepted-current' "
+          f"WHEN {side}.cleanup_run_id IS NOT NULL THEN 'cleanup-closed' ELSE 'outstanding' END)"
+          for side in ("r", "c")),
+    ))
     # Invalid or oversized metadata is represented only as NULL/false.
     projections = [f"CASE WHEN {shape} THEN {side}.{name} END"
         for side in ("r", "c") for name in ("cleanup_run_id", "cleanup_activity_id", "cleanup_attempt")]
+    projections += [f"CASE WHEN {shape} THEN {side}.accepted_revision END" for side in ("r", "c")]
     rows = read.query("SELECT " + ",".join(projections) + ",r.protective,c.protective,(" + valid + ") "
         "FROM (SELECT * FROM cpk_effect_configuration_refs WHERE "
         "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)) r FULL JOIN "
@@ -95,20 +102,43 @@ def _paired_disposition(read, key, ref, *, expected=None, protective=False, allo
         "",
         (ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id,
          sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(), *key, *key),
-        records=1, octets=823, cells=9, identities=2)
+        records=1, octets=855, cells=11, identities=2)
     if not rows and allow_absent:
         return None
     if len(rows) != 1:
         raise _Unavailable
     row = rows[0]
     locator = row[:3]
-    if (row[8] is not True or locator != row[3:6] or type(row[6]) is not bool
-            or row[6] != row[7] or row[6] != (locator == (None, None, None))
-            or (protective and row[6] is not True)
-            or (expected is not None and locator != expected)):
+    revision = row[6]
+    if (row[10] is not True or locator != row[3:6] or revision != row[7]
+            or type(row[8]) is not bool or type(row[9]) is not bool or row[8] != row[9]
+            or row[8] != (locator == (None, None, None) and revision is None)
+            or (protective and row[8] is not True)
+            or (expected is not None and (locator != expected or revision is not None))):
         raise _Unavailable
-    if row[6]:
-        return None
+    if row[8]:
+        return _ConfigurationClaimDisposition("outstanding")
+    if revision is not None:
+        # Four exact relational identities, not successful-completion proof.
+        accepted = read.query("SELECT 1 FROM cpk_configuration_claim_transfers t "
+            "JOIN cpk_configuration_invocation_completions d ON "
+            "(d.run_id,d.activity_id,d.attempt,d.workspace_id,d.request_fingerprint,d.selection_fingerprint,d.outcome_fingerprint)="
+            "(t.run_id,t.activity_id,t.attempt,t.workspace_id,t.request_fingerprint,t.selection_fingerprint,t.outcome_fingerprint) "
+            "JOIN cpk_configuration_acceptances h ON (h.workspace_id,h.pinned_revision,h.run_id)="
+            "(t.workspace_id,t.acceptance_revision,t.run_id) "
+            "JOIN cpk_configuration_accepted_slots s ON "
+            "(s.workspace_id,s.pinned_revision,s.runtime_id,s.node_id,s.artifact_id,s.source_run_id,"
+            "s.source_activity_id,s.source_attempt,s.source_artifact_id,s.full_ref_digest)="
+            "(t.workspace_id,t.acceptance_revision,t.runtime_id,t.node_id,t.artifact_id,t.run_id,"
+            "t.activity_id,t.attempt,t.artifact_id,t.ref_digest) "
+            "WHERE (t.run_id,t.activity_id,t.attempt,t.artifact_id,t.workspace_id,t.allocation_id,"
+            "t.runtime_id,t.node_id,t.ref_digest,t.acceptance_revision)=(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id,
+             sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(), revision),
+            records=1, octets=1, cells=1, identities=4)
+        if accepted != [(1,)]:
+            raise _Unavailable
+        return _ConfigurationClaimDisposition("accepted-current", acceptance_revision=revision)
     if any(value is None for value in locator):
         raise _Unavailable
     # Exact key proof only. No D1/outcome/reservation recursion here.
@@ -124,7 +154,8 @@ def _paired_disposition(read, key, ref, *, expected=None, protective=False, allo
         (*key, *locator, ref.workspace_id, ref.allocation_id), records=1, octets=1, cells=1, identities=3)
     if closed != [(1,)]:
         raise _Unavailable
-    return locator
+    return _ConfigurationClaimDisposition("cleanup-closed",
+        cleanup_identity=EffectAttemptIdentity(RunId(locator[0]), locator[1], locator[2]))
 
 
 def _require_unreserved(read, ref):

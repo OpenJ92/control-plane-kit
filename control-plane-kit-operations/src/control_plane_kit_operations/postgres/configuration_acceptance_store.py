@@ -7,23 +7,25 @@ import json
 import rfc8785
 
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.planning import ActivityId, StartNode, ReconcileNode
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting, _ACCOUNTING, _execution_context
 from control_plane_kit_operations.configuration_preparation import (
-    ConfigurationAcceptedBinding, ConfigurationCurrentEvidence, _ref as _validate_ref,
+    ConfigurationAcceptedBinding, ConfigurationCurrentEvidence, ConfigurationAcceptedTransferRecord,
+    _ref as _validate_ref,
 )
 from control_plane_kit_operations.revision_history import historical_advancement
 from control_plane_kit_operations.records import OperationsRecordError
-from .configuration_evidence import _EvidenceRead, _Unavailable, _Capacity
+from .configuration_evidence import _EvidenceRead, _Unavailable, _Capacity, _joined_read
 from .activity_history import PostgresActivityHistoryStore, _action_record
 from .execution import PostgresExecutionStore, _activity_event
 from .graph_store import (
     PostgresGraphTopologyStore, PostgresRealizedGraphProjectionStore, PostgresWorkspaceStore,
     _read_workspace_initialization,
 )
-from .configuration_preparation_store import _SELECT as _REF_SELECT, _decode_ref, _decode
+from .configuration_preparation_store import _SELECT as _REF_SELECT, _decode_ref, _decode, _paired_disposition
 from .effect_outcome_store import EffectAttemptOutcomeStore
 
 
@@ -37,6 +39,11 @@ _SLOT = ("runtime_id", "node_id", "artifact_id", "source_run_id", "source_activi
     "source_artifact_id", "birth_run_id", "birth_activity_id", "birth_attempt", "birth_artifact_id", "full_ref_digest")
 _REF_KEY_COLUMNS = (("run_id", "text", 2048), ("activity_id", "text", 2048),
     ("attempt", "int", 16), ("artifact_id", "text", 2048))
+_TRANSFER_COLUMNS = (("run_id", "text", 200), ("activity_id", "text", 200), ("attempt", "int", 10),
+    ("artifact_id", "text", 63), ("workspace_id", "text", 128), ("allocation_id", "text", 128),
+    ("runtime_id", "text", 128), ("node_id", "text", 128), ("ref_digest", "text", 64),
+    ("request_fingerprint", "text", 64), ("selection_fingerprint", "text", 64),
+    ("outcome_fingerprint", "text", 64), ("acceptance_revision", "int", 16))
 
 
 def _membership_digest(slots):
@@ -99,6 +106,67 @@ class ConfigurationAcceptanceStore:
         if (self._issued is not prepared or prepared.stores.configuration_acceptance is not self
                 or prepared.stores.connection is not self._connection):
             raise OperationsRecordError("advancement requires owner-issued preparation")
+
+    @_closed_evidence
+    def _accepted_transfer(self, read, key, ref, revision):
+        """Own successful completion and original receipt; never current permission."""
+        accounting = _ACCOUNTING.get()
+        if (accounting is None or not accounting.active or read.accounting is not accounting
+                or read.connection is not self._connection or accounting.execution_context != _execution_context()
+                or type(key) is not tuple or len(key) != 4
+                or type(revision) is not int or not 0 <= revision <= 9007199254740991):
+            raise _Unavailable
+        _validate_ref(ref)
+        identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+        if key[3] != ref.artifact_id:
+            raise _Unavailable
+        paired = _paired_disposition(read, key, ref)
+        if paired.kind != "accepted-current" or paired.acceptance_revision != revision:
+            raise _Unavailable
+        digest = sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
+        memo = ("configuration-accepted-transfer", *key, ref.workspace_id, ref.allocation_id, digest, revision)
+        if memo in read.sources:
+            return read.sources[memo]
+        rows = read.bounded_rows("cpk_configuration_claim_transfers", _TRANSFER_COLUMNS,
+            "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key)
+        if len(rows) != 1:
+            raise _Unavailable
+        row = rows[0]
+        if (row[:9] != (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id, digest)
+                or row[12] != revision):
+            raise _Unavailable
+        from .configuration_completion_store import ConfigurationCompletionStore
+        completion = ConfigurationCompletionStore(self._connection)._get(identity, read)
+        if (completion is None or completion.identity != identity or completion.workspace_id != ref.workspace_id
+                or row[9:12] != (completion.request_fingerprint, completion.selection_fingerprint,
+                    completion.outcome_fingerprint)):
+            raise _Unavailable
+        original = self._ref(read, key)
+        evidence = _decode(original, read)
+        if evidence.ref != ref:
+            raise _Unavailable
+        source = evidence.source
+        EffectAttemptOutcomeStore(self._connection)._configuration_success(source, read)
+        header, _, _, plan, request, run, material = self._receipt_context(ref.workspace_id, revision, read)
+        activity = plan.plan.activity(ActivityId(identity.activity_id))
+        if (run.run_id != identity.run_id.value or source.identity != identity
+                or source.source.request_id != request.identity.request_id
+                or source.source.workspace_id != request.identity.workspace_id
+                or source.source.plan_id != plan.plan_id
+                or (source.source.base_graph_id, source.source.desired_graph_id) != (plan.base_graph_id, plan.desired_graph_id)
+                or header["pinned_revision"] != revision
+                or type(activity.operation) not in (StartNode, ReconcileNode) or activity.operation != source.operation):
+            raise _Unavailable
+        slots = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
+            "(workspace_id,pinned_revision,runtime_id,node_id,artifact_id)=(%s,%s,%s,%s,%s)",
+            (ref.workspace_id, revision, ref.runtime_id, ref.node_id, ref.artifact_id))
+        if len(slots) != 1 or slots[0][3:7] != key:
+            raise _Unavailable
+        if self._material_ref(read, slots[0], material, ref.workspace_id) != original:
+            raise _Unavailable
+        result = ConfigurationAcceptedTransferRecord(identity, ref, revision, *row[9:12])
+        read.sources[memo] = result
+        return result
 
     def _bind_records(self, prepared, event, action):
         self._require_issued(prepared)
@@ -601,6 +669,7 @@ class ConfigurationAcceptanceStore:
 def validate_configuration_advancement_rows(connection):
     """Bounded original-side scans; no backfill, adoption or repair."""
     store = ConfigurationAcceptanceStore(connection)
+    _validate_transfer_rows(connection, store)
     for table, key, kind, value in (("cpk_operation_actions", "action_id", "action_type", "advance-current-graph"),
             ("cpk_activity_events", "event_id", "event_type", "current_graph_advanced")):
         cursor = ""
@@ -633,3 +702,22 @@ def validate_configuration_advancement_rows(connection):
                     store._current_receipt(PostgresWorkspaceStore(connection).get(workspace_id))
                     previous_workspace = workspace_id
         cursor = rows[-1]
+
+
+def _validate_transfer_rows(connection, store):
+    """Independent original-key pages; every retained disposition is point-proved."""
+    cursor = ("", "", 0, "")
+    columns = _TRANSFER_COLUMNS[:4] + (_TRANSFER_COLUMNS[-1],)
+    while True:
+        rows = _EvidenceRead(connection, standalone=True).bounded_rows("cpk_configuration_claim_transfers",
+            columns, "(run_id,activity_id,attempt,artifact_id)>(%s,%s,%s,%s)", cursor,
+            maximum=32, order="run_id,activity_id,attempt,artifact_id")
+        if not rows:
+            return
+        for row in rows:
+            key = row[:4]
+            with _configuration_accounting(("configuration-transfer-verification", *key)):
+                with _joined_read(connection) as read:
+                    ref = _decode(store._ref(read, key), read).ref
+                    store._accepted_transfer(read, key, ref, row[4])
+            cursor = key
