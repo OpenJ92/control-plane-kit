@@ -2042,6 +2042,14 @@ own prefix, not from final success S. Owner-close itself has no recursive close.
 This assumes the proposed owner closes once on either successful or exceptional
 scope exit, in the same UoW, with no extra locks or cleanup authority.
 
+Ownership activation is precise: capture does not issue an active owner. The
+bind transaction query must succeed and the context must be installed before
+the owner becomes active. A failed capture or failed bind runs no owner-close
+query. Once binding succeeds, exactly one close T runs on normal or exceptional
+exit, including revalidation/capacity refusal. The close query itself cannot
+trigger another close. Target tests must distinguish these cases and verify
+the actual guard cadence; no implicit extra finally-query is permitted.
+
 #### Width and count inputs
 
 The following w values are sums of **columnwise maxima**, not maxima of row
@@ -2115,6 +2123,13 @@ Capture H is (17,7592,121,19)/(16,7544,117,18)/(17,7592,121,19)/
 (75,532271,452,76)/(101,885586,656,100)/(75,527247,452,76)/
 (245,786368,1473,230). Combining discovery/capture/revalidation peaks with
 their actual preceding prefixes does not exceed the total H below.
+
+The capture H entries are conservative upper bounds, not claims of an executed
+close before activation. Kepler's independent capture-only recomputation is
+20 value octets and one scalar marker lower; retaining that numerical slack
+does not add a query to the declared cadence. Even an additional record at this
+early phase would be dominated by the final H, but the implementation must use
+the explicit successful-bind activation rule above, rather than that slack.
 
 #### Instantiated future and feasibility result
 
