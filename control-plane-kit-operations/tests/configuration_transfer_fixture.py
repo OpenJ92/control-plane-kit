@@ -1,6 +1,7 @@
 """Genuine simulated D1/acceptance prefix; recorded B1 reader-defense suffix."""
 from dataclasses import replace
 from hashlib import sha256
+from contextlib import contextmanager
 
 from psycopg.types.json import Jsonb
 
@@ -191,6 +192,31 @@ class ConfigurationTransferredConsumerFixture(ConfigurationTransferFixture):
 
     def cleanup_reuse(self):
         self.assertTrue(self.reuse.doCleanups(), "nested transferred consumer cleanup failed")
+
+    @contextmanager
+    def recorded_exclusion(self, connection):
+        """Impossible member only inside a savepoint; no B1 cleanup writer."""
+        before = connection.execute("SELECT * FROM cpk_configuration_cleanup_members "
+            "ORDER BY workspace_id,allocation_id").fetchall()
+        connection.execute("SAVEPOINT transferred_exclusion_probe")
+        try:
+            connection.execute("ALTER TABLE cpk_configuration_cleanup_members "
+                "DROP CONSTRAINT cpk_cleanup_members_reservation_fk")
+            connection.execute("INSERT INTO cpk_configuration_cleanup_members "
+                "(cleanup_run_id,cleanup_activity_id,cleanup_attempt,workspace_id,allocation_id,"
+                "birth_run_id,birth_activity_id,birth_attempt,birth_artifact_id,full_ref_digest) "
+                "SELECT 'recorded-exclusion','recorded-cleanup',1,workspace_id,allocation_id,"
+                "run_id,activity_id,attempt,artifact_id,ref_digest FROM cpk_effect_configuration_refs "
+                "WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", self.key(self.refs[0]))
+            self.assertEqual(connection.execute("SELECT count(*) FROM cpk_configuration_cleanup_members "
+                "WHERE workspace_id=%s AND allocation_id=%s",
+                (self.refs[0].workspace_id, self.refs[0].allocation_id)).fetchone(), (1,))
+            yield
+        finally:
+            connection.execute("ROLLBACK TO SAVEPOINT transferred_exclusion_probe")
+            connection.execute("RELEASE SAVEPOINT transferred_exclusion_probe")
+        self.assertEqual(connection.execute("SELECT * FROM cpk_configuration_cleanup_members "
+            "ORDER BY workspace_id,allocation_id").fetchall(), before)
 
     def assert_zero_active_api(self):
         for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):

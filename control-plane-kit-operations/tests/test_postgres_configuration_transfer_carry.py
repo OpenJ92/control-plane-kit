@@ -65,6 +65,9 @@ class PostgresConfigurationTransferCarryTests(ConfigurationTransferredConsumerFi
             finally:
                 connection.execute("ROLLBACK TO SAVEPOINT transferred_carry_pair_probe")
                 connection.execute("RELEASE SAVEPOINT transferred_carry_pair_probe")
+            with self.recorded_exclusion(connection):
+                with self.assertRaises(_Unavailable):
+                    actual(store, prepared)
             return actual(store, prepared)
 
         before = self.transfer_snapshot()

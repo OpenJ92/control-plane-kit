@@ -17,6 +17,7 @@ class PostgresConfigurationTransferReuseTests(ConfigurationTransferredConsumerFi
 
         def probe(store, prepared):
             calls.append(prepared.identity)
+            actual(store, prepared)
             for forged in (None, replace(prepared)):
                 with self.assertRaises(OperationsRecordError):
                     _require_prepared(forged, store._connection, prepared.identity, prepared.intent)
@@ -35,6 +36,9 @@ class PostgresConfigurationTransferReuseTests(ConfigurationTransferredConsumerFi
             finally:
                 connection.execute("ROLLBACK TO SAVEPOINT transferred_pair_probe")
                 connection.execute("RELEASE SAVEPOINT transferred_pair_probe")
+            with self.recorded_exclusion(connection):
+                with self.assertRaises(OperationsRecordError):
+                    actual(store, prepared)
             return actual(store, prepared)
 
         with mock.patch.object(ConfigurationPreparationStore, "_require_current", probe):
