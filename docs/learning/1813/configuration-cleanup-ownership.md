@@ -582,3 +582,72 @@ Keep D2's 8192-byte whole-result and same-runtime-in-both-pins limitations, unch
 relevant claims. No automatic split of an approved invocation. D/Core #1886,
 I177 and Servers225 remain distinct; E4 completion requires coordinator acceptance
 and does not establish provider non-use, deletion, image or live deployment proof.
+
+### A implementation and focused evidence (#1944)
+
+A now defines separate immutable v2 proposal/inspection values and codecs in
+Operations `configuration_cleanup.py`, the `configuration-cleanup-v2` derivation
+profile, exact stored-envelope and record correspondence, and the pure
+`configuration_cleanup_inspection_from_proposal` projection. V1 codecs, bytes and
+digest domains remain unchanged. The existing Core approval subject binds the
+new domain digest without a Core change or a parallel approval flow.
+
+The value law separates physical deletion refs from original-selection members:
+zero outstanding uses still require positive seed/birth transfer commitments;
+every represented selection has exact disjoint N/T coverage; and transfer rows
+are the minimal union of root obligations and selection complements. Revisions
+and member digests are locators/commitments, never evidence of database authority.
+The 512 KiB document/envelope cap, 64 uses per ref, 256 outstanding pairs, finite
+selection/transfer arrays and unchanged downstream transport limits all remain.
+Focused tests demonstrate the required 64-use representation, not universal fit
+of all Cartesian maxima or actual B1/B2 evidence-read costs.
+
+Review found an additional consistency law visible entirely in the value. A
+transfer for represented source u requires that same source's admitted successful
+completion; failed, active or terminal-unprofiled u cannot simultaneously supply
+its own transferred claim. This applies to root-required T entries as well as
+selection complements. An unrepresented transferred root u0 does not prohibit a
+different outstanding u1 from failing. All-N failed proposals and blocked
+active/unprofiled inspections remain valid. The nine rejection subcases failed
+causally at `cdcb5a0a` (one test, 0.115 seconds, `ValueError not raised`) before the
+narrow coverage correction. The previous active-with-T example was an impossible
+composition; its replacement preserves unresolved-observation coverage with all-N.
+
+The [nonactivation clarification](https://github.com/OpenJ92/control-plane-kit/issues/1944#issuecomment-6005077043)
+permits truthful coordinator command denial receipts. Existing fresh approval and
+admission refusals remain; a coordinator profile guard and native-start profile
+guard close the two reviewed execution boundaries. No new effect attempt,
+reservation, closure, disposition, lifecycle advancement or adapter call follows
+from recorded v2 material. Existing replay/terminal classifications and v1 cleanup
+remain. The guard-precedence test is private predicate-order evidence, not a
+separate public non-management topology execution.
+
+The first source gate at `ca396ac6` ran 54 tests in 94.291 seconds with four
+errors. The recorded future-version fixture changed the plan and approval digest
+but omitted the execution request's receiver-scope commitment to the full plan.
+Native scope verification correctly refused it; three subsequent setups then
+refused the retained inconsistent row before truncation. North and Kepler approved
+a target-only correction: prove the genuine v1 commitment, derive the v2 digest
+using the same pins and existing public function, assert exact scopes unchanged,
+update only the existing recorded request digest, and require native verification
+and ordinary current-schema verification before testing denial. No production
+receiver, schema, material or verification change was made. This is explicitly
+recorded future-version history, not public v2 approval or admission evidence.
+
+At `a6bc2cdab061ab2cc52e3488ec53902e0f1433ba`, the corrected owning focused gate
+passed **56 tests in 184.978 seconds**, then compilation and clean import, and
+terminated exit zero. It covers v1/v2 pure contracts, plan derivation, exact
+coordinator contract, all four v2 owner refusal targets and the real public v1 K1
+cleanup control. The gate removed its exact test container/network. Kepler's
+independent corrected source/fixture review passed. The [correction record](https://github.com/OpenJ92/control-plane-kit/issues/1944#issuecomment-6008987484)
+preserves causal-red and fixture provenance; supporting green log SHA256 is
+`e5c6bcde4040edddf45f682edcbae1569112ce716db816574bb07f31fde604e1`.
+Full hosted package/composition acceptance and coordinator merge remain pending.
+
+Security/data/history: this adds a bounded nonauthorizing representation and
+explicit refusal, with fixed redacted errors and no route, secret, network,
+schema or provider surface. Coordinator denial receipts remain truthful and
+idempotent. B1 #1945 must prove each own disposition from retained originals;
+B2 #1946 must compose explicit profile selection and complete fresh proof before
+activation; C #1947 owns qualified atomic transfer and real growth/race/rollback
+evidence. None is released by this focused A result.
