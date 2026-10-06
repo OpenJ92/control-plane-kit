@@ -1918,22 +1918,75 @@ ALTER TABLE ONLY cpk_configuration_cleanup_member_outcomes ADD CONSTRAINT cpk_cl
 ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN cleanup_run_id text;
 ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN cleanup_activity_id text;
 ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN cleanup_attempt integer;
-ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN protective boolean GENERATED ALWAYS AS (((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL))) STORED NOT NULL;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN accepted_revision bigint;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN disposition_kind text GENERATED ALWAYS AS (CASE WHEN accepted_revision IS NOT NULL THEN 'accepted-current' WHEN cleanup_run_id IS NOT NULL THEN 'cleanup-closed' ELSE 'outstanding' END) STORED NOT NULL;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_accepted_revision_check CHECK ((accepted_revision >= 0) AND (accepted_revision <= 9007199254740991));
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_disposition_shape_check CHECK ((accepted_revision IS NULL) OR ((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL)));
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD COLUMN protective boolean GENERATED ALWAYS AS (((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL) AND (accepted_revision IS NULL))) STORED NOT NULL;
 ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_cleanup_shape_check CHECK ((((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL)) OR ((cleanup_run_id IS NOT NULL) AND (cleanup_activity_id IS NOT NULL) AND (cleanup_attempt IS NOT NULL))));
 ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_cleanup_identity_check CHECK (((cleanup_attempt > 0) AND ((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)));
 ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_closure_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id) REFERENCES cpk_configuration_claim_closures (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
-ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_protective_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective);
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_disposition_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind);
 CREATE INDEX cpk_configuration_refs_active_allocation ON cpk_effect_configuration_refs USING btree (workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id) WHERE protective;
 CREATE INDEX cpk_configuration_refs_active_slot ON cpk_effect_configuration_refs USING btree (workspace_id, runtime_id, node_id, artifact_id, run_id, activity_id, attempt) WHERE protective;
 ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN cleanup_run_id text;
 ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN cleanup_activity_id text;
 ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN cleanup_attempt integer;
-ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN protective boolean GENERATED ALWAYS AS (((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL))) STORED NOT NULL;
+ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN accepted_revision bigint;
+ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN disposition_kind text GENERATED ALWAYS AS (CASE WHEN accepted_revision IS NOT NULL THEN 'accepted-current' WHEN cleanup_run_id IS NOT NULL THEN 'cleanup-closed' ELSE 'outstanding' END) STORED NOT NULL;
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_accepted_revision_check CHECK ((accepted_revision >= 0) AND (accepted_revision <= 9007199254740991));
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_disposition_shape_check CHECK ((accepted_revision IS NULL) OR ((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL)));
+ALTER TABLE ONLY cpk_configuration_claims ADD COLUMN protective boolean GENERATED ALWAYS AS (((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL) AND (accepted_revision IS NULL))) STORED NOT NULL;
 ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_cleanup_shape_check CHECK ((((cleanup_run_id IS NULL) AND (cleanup_activity_id IS NULL) AND (cleanup_attempt IS NULL)) OR ((cleanup_run_id IS NOT NULL) AND (cleanup_activity_id IS NOT NULL) AND (cleanup_attempt IS NOT NULL))));
 ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_cleanup_identity_check CHECK (((cleanup_attempt > 0) AND ((cleanup_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((cleanup_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)));
 ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_closure_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id) REFERENCES cpk_configuration_claim_closures (run_id, activity_id, attempt, artifact_id, cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id, allocation_id);
-ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_protective_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective);
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_disposition_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind);
 CREATE INDEX cpk_configuration_claims_active_allocation ON cpk_configuration_claims USING btree (workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id) WHERE protective;
 CREATE INDEX cpk_configuration_claims_active_slot ON cpk_configuration_claims USING btree (workspace_id, runtime_id, node_id, artifact_id, run_id, activity_id, attempt) WHERE protective;
-ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_protective_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) REFERENCES cpk_configuration_claims (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) DEFERRABLE INITIALLY DEFERRED;
-ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_protective_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, protective) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_disposition_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind) REFERENCES cpk_configuration_claims (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_disposition_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind) DEFERRABLE INITIALLY DEFERRED;
+
+CREATE TABLE cpk_configuration_claim_transfers (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    artifact_id text NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    ref_digest text NOT NULL,
+    request_fingerprint text NOT NULL,
+    selection_fingerprint text NOT NULL,
+    outcome_fingerprint text NOT NULL,
+    acceptance_revision bigint NOT NULL
+);
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id);
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_revision_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, acceptance_revision);
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_run_key UNIQUE (workspace_id, pinned_revision, run_id);
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_accepted_slots_source_key UNIQUE (workspace_id, pinned_revision, runtime_id, node_id, artifact_id, source_run_id, source_activity_id, source_attempt, full_ref_digest);
+ALTER TABLE ONLY cpk_configuration_accepted_slots ADD CONSTRAINT cpk_accepted_slots_artifact_check CHECK ((source_artifact_id = artifact_id));
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_accepted_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, accepted_revision);
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_accepted_key UNIQUE (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, accepted_revision);
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_material_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, ref_digest) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, ref_digest);
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_scope_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id);
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_completion_fk FOREIGN KEY (run_id, activity_id, attempt, workspace_id, request_fingerprint, selection_fingerprint, outcome_fingerprint) REFERENCES cpk_configuration_invocation_completions (run_id, activity_id, attempt, workspace_id, request_fingerprint, selection_fingerprint, outcome_fingerprint);
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_acceptance_fk FOREIGN KEY (workspace_id, acceptance_revision, run_id) REFERENCES cpk_configuration_acceptances (workspace_id, pinned_revision, run_id);
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_slot_fk FOREIGN KEY (workspace_id, acceptance_revision, runtime_id, node_id, artifact_id, run_id, activity_id, attempt, ref_digest) REFERENCES cpk_configuration_accepted_slots (workspace_id, pinned_revision, runtime_id, node_id, artifact_id, source_run_id, source_activity_id, source_attempt, full_ref_digest);
+ALTER TABLE ONLY cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_transfer_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, accepted_revision) REFERENCES cpk_configuration_claim_transfers (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, acceptance_revision) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_ref_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, acceptance_revision) REFERENCES cpk_effect_configuration_refs (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, accepted_revision) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_configuration_claims ADD CONSTRAINT cpk_configuration_claims_transfer_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, accepted_revision) REFERENCES cpk_configuration_claim_transfers (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, acceptance_revision) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_claim_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, acceptance_revision) REFERENCES cpk_configuration_claims (run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, accepted_revision) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_run_id_check CHECK (((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_activity_id_check CHECK (((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_attempt_check CHECK ((attempt > 0));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_artifact_id_check CHECK (((artifact_id COLLATE "C") ~ '^[a-z][a-z0-9-]{0,62}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_workspace_id_check CHECK (((workspace_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_allocation_id_check CHECK (((allocation_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_runtime_id_check CHECK (((runtime_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_node_id_check CHECK (((node_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_ref_digest_check CHECK ((ref_digest ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_request_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_selection_fingerprint_check CHECK ((selection_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_outcome_fingerprint_check CHECK ((outcome_fingerprint ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_acceptance_revision_check CHECK (((acceptance_revision >= 0) AND (acceptance_revision <= '9007199254740991'::bigint)));

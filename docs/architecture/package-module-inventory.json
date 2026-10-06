@@ -546,6 +546,7 @@
         "ConfigurationSourceProjection",
         "ConfigurationSourceEvidence",
         "ConfigurationRefEvidence",
+        "ConfigurationAcceptedTransferRecord",
         "ConfigurationAllocationEvidence",
         "ConfigurationAcceptedBinding",
         "ConfigurationCurrentEvidence",
