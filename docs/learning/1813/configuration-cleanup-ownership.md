@@ -1,3 +1,28 @@
+## Current disposition — 2026-10-05
+
+D1 #1931 and D2 #1932 are accepted and closed. D2's final actual merge is
+`a28e58675893a0aa842903e11d7dffb508750004`, tree
+`109b1e04412f04a9bb894905dca39ba52b171e50`. The [coordinator acceptance](https://github.com/OpenJ92/control-plane-kit/issues/1932#issuecomment-6004734859)
+records Core 945 + 21, Operations 2479 / 7061.088s plus compile/import, all nine
+locked-backend stages, and Kepler's independent PASS. See
+[final execution evidence](configuration-cleanup-execution.md#final-d2-acceptance--2026-10-05)
+for the corrected candidate, prior failures and limits. Historical planning and
+unvalidated checkpoint passages below retain their original temporal meaning;
+they do not describe the current D1/D2 release status.
+
+E4 remains mandatory within open D #1921. North accepted and authorized the native
+ordered planning topology [A #1944](https://github.com/OpenJ92/control-plane-kit/issues/1944)
+→ [B1 #1945](https://github.com/OpenJ92/control-plane-kit/issues/1945)
+→ [B2 #1946](https://github.com/OpenJ92/control-plane-kit/issues/1946)
+→ [C #1947](https://github.com/OpenJ92/control-plane-kit/issues/1947).
+All are children of D with native blockers in that order. Project 5: A is
+In Progress / Ready after North and Kepler's exact planning PASS; later children
+are Todo / Hold. North released A's focused targets, with implementation following
+Kepler's causal-red confirmation within the frozen ceiling. Later exact interfaces
+and all provider work remain held.
+This supersedes the earlier D3/D4 recommendation. D2 does not release I177 or
+Servers225, which remains the governing delivery objective.
+
 ## D shared foundation released for planning — 2026-10-03
 
 D1 source implementation was subsequently released after the [focused causal-red review](https://github.com/OpenJ92/control-plane-kit/issues/1931#issuecomment-5976226037). The [initial source checkpoint](https://github.com/OpenJ92/control-plane-kit/issues/1931#issuecomment-5976319124), `8b697dcd`, remains unvalidated: independent review held the focused gate on private historical backfill and an incomplete supported-verification tail reserve. Corrections and three narrow regressions are being reviewed before any source gate. These findings preserve the existing no-backfill and complete pre-ID capacity laws; no budgets, cleanup guards or parent scope have been relaxed.
@@ -281,3 +306,279 @@ The single owning focused correction run selected
 9.968 seconds, followed by compilation and clean import (terminal exit zero).
 The gate removed its exact test container and network. This is focused evidence;
 the corrected commit still requires full hosted acceptance before merge.
+
+## E4 bounded planning consultation — 2026-10-05
+
+Planning branch `codex/1921-e4-planning` starts at accepted D2 merge
+`a28e58675893a0aa842903e11d7dffb508750004`; the merged candidate is unchanged.
+The four child boundaries below are accepted; A subsequently received exact
+interface acceptance and focused-target release as recorded above. The trace
+reuses the earlier D2 handoff and [frozen E4/E5 contract](https://github.com/OpenJ92/control-plane-kit/issues/1919#issuecomment-5946799775),
+as retained by the [operative D staging decision](https://github.com/OpenJ92/control-plane-kit/issues/1921#issuecomment-5976074207).
+Only affected tests and consumer/writer paths were revisited; no duplicate D2
+validation or provider work was run.
+
+Servers #225 remains the governing delivery objective. This is only its retained
+necessary E4 dependency work under D; it is not a separate architecture program.
+No optional hardening project, generalized claim service, performance target,
+new UI/API, retention policy or provider integration is proposed.
+
+### Test context established before the affected source dry run
+
+Accepted current-package green is the final D2 evidence above. This is not a
+request to rerun retired reference tests. Classifications below identify laws
+to preserve or add; test organization and old fixture construction are not the
+future interface. New targets follow each child's reviewed interface and must
+fail for missing behavior through the owning Docker gate before implementation.
+
+| Law / classification | Inspected governing identity | Observable law, negatives and structural assumption to discard | Future owner |
+| --- | --- | --- | --- |
+| E4-L01 isomorphic | `test_configuration_cleanup_contract.py::test_proposal_roundtrip_binds_every_ref_context_and_whole_selection`, `test_repeated_witnesses_require_identical_complete_commitments`, `test_stored_cleanup_envelope_preserves_proposal_and_refuses_legacy_fallback` | Existing v1 canonical bytes, digest, seed/birth membership, whole-selection commitments and no-fallback decoding remain exact. Do not repurpose v1's nonempty list validator for zero-use semantics. | Operations versioned proposal/envelope |
+| E4-L02 new-law E4 | Frozen E4/E5 plus L01's negative mutations | A distinct version/domain separates independently proved seed/birth from 0..64 outstanding uses. Empty uses require positive root/disposition/current-exclusion proof. Missing root, duplicate identity, wrong scope/version, contradictory commitments and overflow refuse. Historical transferred roots do not become new outstanding closures. | Operations values, inspection |
+| E4-L03 isomorphic + strengthened | `test_configuration_cleanup_approvals.py::test_destructive_approval_binds_profile_digest_scope_and_distinct_principal`, `test_fresh_request_and_decision_revalidate_under_lifecycle_lock`; planning `test_stale_occurrence_desired_revision_aba_or_claim_outcome_change_requires_replan` | Exact version/domain digest, actor, scope, desired/current occurrence and fresh evidence bind approval. Changing protection invalidates fresh execution of either profile. Old exact history replays without acquiring authority. Reject cross-profile downgrade and stale ABA even when material is equal. | Planning, approval, admission/start |
+| E4-L04 isomorphic | Completion `test_success_and_failure_admit_exact_original_completion_without_releasing_claims`, `test_unprofiled_terminal_outcomes_remain_unadmitted`, `test_historical_profile_without_link_replays_without_backfill_or_permission` | Completion admission alone leaves claims intact, including failed completion. Success without admitted linkage and historical replay never create eligibility. Do not convert fold into the transfer owner. | Completion/fold remains unchanged |
+| E4-L05 isomorphic + new-law E5 | Membership `test_real_installation_accepts_complete_original_slots_and_retains_claims`, `test_late_commit_failure_rolls_back_complete_slots_and_preserves_claims`; frozen same-UoW law | Unprofiled acceptance continues to retain claims. New eligibility requires that claim's own admitted successful original completion plus exact accepted slot/receipt in the same fresh advancement transaction. No neighboring, carried or historically accepted use qualifies merely because another use advances. | Existing advancement and acceptance owner |
+| E4-L06 strengthened | Acceptance-latest `test_numeric_newest_pair_supports_real_continuation_and_schema_reentry`, newest missing-header/action/event and duplicate-highest tests | Current membership protects independently; reuse/carry must verify the exact immutable transferred disposition when applicable. Missing newest receipt cannot fall back to older matching material. No arbitrary nonprotective ref becomes reusable. | Current read, preparation, acceptance |
+| E4-L07 isomorphic + strengthened | Evidence `test_partial_selection_reports_counts_without_sibling_disclosure_or_expansion`, `test_shared_completed_invocations_require_every_explicit_full_selection`, `test_all_current_and_old_claims_protect_without_desired_digest_inference` | V1 whole-selection closure remains unchanged. V2 must completely account for every relevant original selection with disjoint newly closed outstanding pairs and each omitted pair's own immutable transfer proof. Physical candidates and provenance-only members remain distinct; unknown protection on a deletion candidate blocks. No silent omission, sibling deletion or unreviewed disclosure. A zero-outstanding historical invocation is root provenance, not by itself a new closure. | Inspection and cleanup owner |
+| E4-L08 new-law + retained capacity law | Evidence `test_64_claim_owner_history_is_complete_and_65th_claim_is_capacity`; frozen E4 | Real successful accepted reuse beyond 64 historical uses must leave bounded outstanding protection. The existing test proves 64 real accepted uses and a corrupt 65th reader sentinel, not E4 growth. Preserve the 64-outstanding and 256-total refusal laws; adapt only the explicitly qualified fixture case and retain unqualified capacity coverage. | Advancement activation tests |
+| E4-L09 strengthened | Evidence `test_shared_reads_charge_actual_transport_once_and_never_reset_global_budget`, D2 phase/read-ceiling laws | One cumulative 4096-record/16MiB ledger, bounded active allocation and node indexes, independent point roots, pre-ID/write tail reserve and all physical statements/query peaks charged. No lifetime scan, budget reset or larger limit to accommodate transfer. | Evidence readers, preflight, writer |
+| E4-L10 strengthened | Membership late-commit rollback; completion `test_event_outcome_attempt_link_and_commit_faults_roll_back_the_entire_fold`; frozen E5/E6 | Advancement CAS/event/action/receipt/slots/transfer and paired disposition updates commit together or all roll back. Both competing cleanup/advancement schedules preserve one valid owner; no later historical lock breaks ordering. Replay verifies original transfer or its valid historical absence and never backfills. | Advancement UoW, schema/guard, races |
+| E4-L11 new-law + isomorphic | Frozen E4 zero-use departure law; D2 cleanup history and result conservation | After qualified transfer and current departure, zero-use cleanup still requires exact approved roots, no reservation/retirement/current membership, same runtime in both pins and full result conservation. Unknown outcomes retain exclusion; retained v1 receipts remain readable after version extension. | New-profile cleanup consumer integration |
+
+Short filenames above are under `control-plane-kit-operations/tests/`; they are
+law provenance, not a prescription to duplicate the entire test suite. Completion
+FK/forged-owner/current-schema corruption cases remain regression constraints.
+Each new corruption case needs its own valid positive premise so an earlier
+missing proof cannot mask the assertion, as the D2 correction demonstrated.
+
+### Affected source trace at the accepted merge
+
+Current computation and missing connections:
+
+- `configuration_cleanup.py:180,235`: v1 requires 1..64 identities, exact
+  protectors = closures = witnesses, seed/birth inside that set, and complete
+  cross-candidate selection. A new operational value/profile must express roots
+  separately; Core's existing cleanup operation/result language remains reusable.
+- `postgres/configuration_preparation_store.py:74,411,430`: paired disposition
+  currently recognizes protective or exact cleanup-closed truth. Direct birth
+  proof is already independent and private active evidence can be empty. Extend
+  the finite disposition proof, not authority inferred from an empty query.
+- `postgres/configuration_preparation_store.py:523,556`: fresh reuse and its
+  issued-owner recheck explicitly require the birth pair to be protective.
+  Transferring birth without updating both consumers would break genuine reuse.
+  A verified accepted-current disposition must be distinguished from cleanup
+  closure; reservation/retirement remains a separate refusal.
+- `postgres/configuration_cleanup_store.py:109`: inspection requires the seed
+  to occur in active claims before building a v1 proposal. New-profile inspection
+  must point-prove seed/root and disposition independently, then enumerate only
+  bounded outstanding uses. Current membership remains an independent blocker.
+- `configuration_cleanup_planning.py:184,216`: fresh proposal revalidation
+  reconstructs an inspection and compares exact proposal; publication explicitly
+  emits the v1 derivation profile. A new profile needs explicit routing throughout
+  publication, approval, admission/start and historical reading; no default
+  reinterpretation of stored v1 plans.
+- `postgres/configuration_acceptance_store.py:428,491,503`: preparation proves
+  all exact slots but requires protective pairs even for carried sources. Insert
+  writes acceptance header/slots and verifies the actual receipt; it writes no
+  transfer. Consumer proof for previously transferred carry must precede writer
+  activation. Carry verifies old disposition; it must not create a new one.
+- `advancement.py:323,366,412–441`: replay verifies the original receipt;
+  fresh preparation occurs under L, then preflight, current CAS, event/action,
+  receipt/slots, receiver finish and one UoW commit. Transfer belongs inside this
+  same owner after its exact receipt/slot prerequisites exist, with all future
+  proof/write work reserved before mutation. No public transfer command or
+  independently committing store is proposed.
+- `postgres/current_schema.sql:1917–1939`: protective flags and reciprocal
+  constraints currently derive solely from cleanup locators. A new finite
+  accepted-current disposition needs exact own-completion and acceptance-slot
+  keys, mutually exclusive shape, write-once semantics and symmetric ref/claim
+  correspondence. Precise relation/FK/write order is a child planning gate.
+- `postgres/configuration_cleanup_ownership_store.py:176,588`: fresh reservation
+  and retained reconstruction compare exact proposal roots, claims, closures and
+  completion witnesses. Both need explicit new-profile semantics, including zero
+  closure rows with positive member/root evidence, while preserving old B proof.
+
+This trace confirms the handoff's missing behavior; it does not repeat unchanged
+D2 execution internals. Dependencies remain the accepted local Core/Operations
+tree and owning suite's clean architecture-testing sibling
+`7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`. Published/provider adoption is separate.
+
+### Accepted ordered planning boundaries
+
+North accepted the following four children after Kepler's planning/docs review.
+Each depends natively on its predecessor; B1/B2/C exact interfaces remain held.
+
+1. **[A #1944 — versioned root/outstanding-use language](https://github.com/OpenJ92/control-plane-kit/issues/1944).** Operations values/codecs, exact
+   domain-separated fingerprint and stored plan envelope with v1 compatibility.
+   Freeze whether the existing approval subject can bind the new digest without
+   changing its wire form. No active transfer or new-profile dispatch. Pure
+   roundtrip/negative/capacity tests prove an independently reviewable contract.
+2. **[B1 #1945 — typed dispositions and ordinary consumers](https://github.com/OpenJ92/control-plane-kit/issues/1945).** Exact schema/typed proof and current
+   verification, bounded roots/active discovery, ordinary birth reuse and carried
+   acceptance permission. No advancement transfer writer.
+   Recorded dispositions can test defensive readers but must be labeled as such;
+   they cannot establish lawful transfer or real growth. Freeze precise
+   schema/guard/proof ceilings before targets. No unproved transferred allocation
+   may become reusable.
+3. **[B2 #1946 — new-profile cleanup composition](https://github.com/OpenJ92/control-plane-kit/issues/1946).** Inspection/publication/approval and complete cleanup
+   admission/start/fold/replay, including zero-use positive root/disposition
+   accounting and exact retained v2 proof. Existing genuine untransferred histories
+   establish profile compatibility; recorded transfer fixtures remain reader
+   evidence. Enable new-profile execution only when this entire consumer path is
+   coherent. No advancement transfer producer.
+4. **[C #1947 — atomic qualified advancement transfer and growth](https://github.com/OpenJ92/control-plane-kit/issues/1947).** Activate the exact
+   own-completion/receipt/slot transition within the existing advancement UoW;
+   guard all write entrances. Mandatory targets in this same child include real
+   >64 accepted uses, independent current protection, zero-use departure cleanup,
+   mixed unknown/unprofiled neighbors, old/new stale approvals, ABA/corrupt newest
+   receipt, both concurrency winners, every write/commit rollback and measured
+   cumulative/tail bounds. Growth/race proof is not postponed to a test-only leaf.
+
+Alternative rejected for now: one combined versioning/transfer implementation
+would mix public language and durable mutation decisions. An activation child
+followed by a separate mandatory-testing child would merge unproved E4 behavior.
+The former combined consumer-readiness proposal mixed two independently
+reviewable contracts and is superseded by B1/B2. All consumers must be ready
+before any transfer writer becomes reachable. No separate architecture project
+or optional hardening leaf was added.
+
+Kepler's bounded planning/docs review supports consumer-before-producer ordering and
+keeping real growth/race/rollback evidence inside activation acceptance. This is
+a planning opinion based on the trace, not independent source/implementation
+PASS. A's meaningful acceptance is the independently testable closed public
+representation and compatibility contract. North accepted this topology while
+holding exact A interface/targets on the cross-candidate accounting law below.
+
+### Proposed affected-path ceiling
+
+All implementation ownership remains Operations; paths below are relative to
+`control-plane-kit-operations/src/control_plane_kit_operations/`. These are the
+bounded parent-level ceiling proposed for review, not permission to change every
+listed file. Each child must freeze a smaller exact list before targets. A new
+module or a discovered additional owner requires a concrete refinement of this
+plan, not an opportunistic expansion.
+
+| Boundary | Necessary paths | Acceptance and exclusion |
+| --- | --- | --- |
+| Language | `configuration_cleanup.py`, `plan_derivation.py`, `records.py`; existing approval subject codec only if exact domain-binding review requires it | Versioned immutable values, envelope and fingerprint with full v1 compatibility; no reachable new-profile execution or claim mutation. |
+| Consumer readiness | `postgres/configuration_preparation_store.py`, `postgres/configuration_acceptance_store.py`, `postgres/configuration_cleanup_store.py`, `postgres/configuration_cleanup_ownership_store.py`; `configuration_cleanup_planning.py`, `configuration_cleanup_ownership.py`, `_configuration_cleanup_ownership.py`; explicit profile branches in `approvals.py`, `admission.py`, `coordinator.py` | Exact typed proof at root reuse, carried acceptance, fresh/retained cleanup and approved execution; no transfer writer. Existing start/fold/reconciliation owners should consume the revised store contract without semantic expansion; touch them only if the reviewed profile trace proves necessity. |
+| Exact schema and bounded proof companions (within consumer work) | `postgres/current_schema.sql`, `postgres/current_schema_contract.py`, `postgres/current_data_validation.py`; existing schema installers/validators only where the new relation is registered; `_configuration_cleanup_phase_read_bounds.py`, `postgres/configuration_cleanup_phase_read_bounds.py`, `_configuration_cleanup_read_ceilings.py`, `postgres/configuration_cleanup_read_ceilings.py` only for added bounded fields/queries | Object-free install/current verification/drift refusal, reciprocal immutable evidence, charged transport and finite tails. No data migration, reset, backfill, limit change or new general accounting framework. |
+| Transfer activation | `advancement.py`, `_configuration_acceptance.py`, `postgres/configuration_acceptance_store.py`, necessary typed schema/store preparation finalized in consumer work | Same-UoW prepared eligibility and exact writes; unchanged lock ordering and replay semantics, all mandatory growth/race/rollback evidence in this child. No public transfer endpoint or separate transaction. |
+
+Tests stay in the corresponding existing Operations contract, acceptance,
+preparation, completion, cleanup evidence/planning/approval/ownership/execution,
+transaction/history/race and budget families. Add focused behavioral targets for
+the new laws; update exact schema/inventory companions only for the reviewed
+change. Completion/fold behavior remains regression context, not a second
+completion implementation. Root exports, if genuinely needed for the reviewed
+public value, require the existing ownership review; no Core algebra change,
+interpreter/server code, packaging or provider harness is currently indicated.
+
+### Concrete interface decisions required before targets
+
+- Choose exact new profile/type/envelope tags and digest domain; retain every v1
+  byte and replay law. The approval subject currently carries a proposal digest;
+  prove cross-version binding and fail-closed decoding before choosing reuse of
+  that envelope. Do not invent parallel approval semantics unnecessarily.
+- Specify transferred-disposition relation, claim/ref discriminant, reciprocal
+  keys, exact own-completion/outcome and receipt/slot foreign keys. Historical
+  acceptance without disposition remains valid nonauthorizing history; no
+  retrospective transfer on carry, schema verification or replay.
+- Transfer qualification is per claim's own admitted completion and exact accepted
+  membership/receipt in the same advancement UoW; all eligible shared claims
+  transfer atomically. Frozen E4/E5 does NOT impose full-original-selection
+  all-or-none discharge. C must freeze exact partial-slot eligibility before its
+  targets. A must express full original-selection accounting without imposing
+  the stronger all-or-none policy for decoder convenience.
+- Bind prepared transfer to the actual UoW/connection/L owner and original
+  advancement, with pre-ID discovery and finite budgets. Exact new write ordering
+  must respect acceptance receipt verification and deferred reciprocal checks.
+- Decide explicit profile selection/default behavior in the existing inspect and
+  publication API; old stored plans and their command fingerprints must retain
+  meaning. Version support must be closed and routed without fallback through
+  original replay and current-schema validation as well as fresh execution.
+
+### Accepted complete-accounting principle and exact A interface
+
+North accepted this planning law after Kepler's two-allocation analysis. For every
+relevant original invocation u, its full original selection S(u) has disjoint
+complete coverage by outstanding pairs N(u) closed by this cleanup and every
+omitted pair's own immutable typed accepted-transfer proof T(u):
+`S(u) = N(u) disjoint-union T(u)`. Identity, current membership, generic retirement
+or absence cannot substitute for that proof. Physical deletion candidates remain
+the exact approved refs; other full-selection members are provenance only.
+
+Example: u used a and b; u/a was lawfully transferred while u/b remains
+outstanding. After current a departs, zero-use a can be cleaned first using its
+positive root/transfer proof, without closing u/b or recording a whole-u closure.
+Later b cleanup accounts for u/a through the still-immutable original transfer,
+without making retired a a new deletion candidate or rewriting a's disposition.
+If a instead remains current, it cannot be physically deleted; a's provenance-only
+role does not authorize deletion and does not by itself block eligible b cleanup.
+Unknown/unprofiled protection on an affected deletion candidate still blocks.
+Missing/duplicate/overlapping/foreign transfer evidence refuses. A prior whole-u
+closure together with supposedly outstanding u/b is inconsistent, not permission
+to insert a second invocation closure.
+
+If u has zero outstanding pairs, its old full selection is root provenance and
+does not automatically create a new closure obligation. Point-prove needed roots;
+do not scan lifetime history. This avoids stranding b through an earlier supported
+a-only cleanup and avoids inventing all-or-none advancement. V1 remains unchanged.
+B2 must explicitly extend retained aggregate reconstruction to account for these
+typed prior dispositions; D2's all-selected-refs-equal-new-claims check cannot be
+silently removed without the replacement complete proof.
+
+The [exact A interface](https://github.com/OpenJ92/control-plane-kit/issues/1944#issuecomment-6005025811)
+received Kepler's independent planning PASS at SHA256
+`1a9d55cc16d61b6ce08301fddf775d1c300a756fc6ca72b45f31479a921a4212`.
+It specifies separate v2 proposal/inspection types/codecs and
+digest domains; unchanged stored-envelope structural version 2 with closed
+profile/type routing; unchanged approval subject binding the new proposal digest;
+explicit keyword-only v2 opt-in in B2 while the v1 default and old fingerprints
+remain unchanged. The reviewed contract now fixes full-selection/member commitments,
+root-only and transferred-sibling locators, nonnegative canonical receipt revisions,
+exact proposal-to-inspection projection, uncovered-outstanding counts, blocked
+inspection privacy and finite array ceilings. It requires explicit pre-B2 fresh
+approval/admission/start/dispatch denial, not incidental malformed-shape refusal.
+Kepler's PASS is planning-only. North released focused targets; implementation
+follows causal-red review within the frozen ceiling, without another routine
+permission round. A real owner-guard/semantic mismatch must return for narrow
+disposition. Pure value tests prove syntax/commitments;
+B1/B2 prove actual database truth and C proves real transfer/no-stranding.
+
+Do not claim finite complete accounting always fits: 256 invocations times 32
+members can reach 8192 pairs before deduplication. Reserve complete proof, use
+exact bounded keys, preserve the 4096-record/16MiB limit and refuse capacity as a
+whole. Actual proof costs and supported-case fit require B1/B2 measurement; no
+budget increase or synthetic green substitutes for that evidence.
+
+### Review, validation and retained limits
+
+The language boundary gets a compatibility/security review before consumer work.
+Consumer readiness gets schema, data, security and test-integrity review before
+transfer activation. Final D acceptance requires complete real growth/concurrency/
+rollback evidence plus owning full Core/Operations and named locked-backend gates.
+Per-child tests use only existing Docker scripts with their pinned sibling; no
+baseline rerun, host Python, custom harness, fixture repair, weakened assertions,
+live reset or provider effects are part of planning.
+
+Data transformation: own completed use + exact new accepted receipt/slot becomes
+an immutable typed disposition, while original refs/claims remain retained.
+Current membership independently protects the allocation. Later desired intent
+can yield an inspectable approved cleanup plan; it does not imply non-use. One
+advancement UoW is the transaction boundary, retries replay immutable evidence,
+failure rolls back the whole transition, and later cleanup uses its existing
+separate reservation/effect/fold protocol. No automatic compensation or pruning.
+
+Security: this planning change adds no executable surface. Proposed implementation
+must preserve auth/destructive approval, redacted bounded evidence, original
+identity, reservation exclusion and fail-closed unknown state. No route or network
+exposure is needed. Typed durable history must explain both accepted transfer and
+later cleanup; process logs cannot be the sole record. External administrators
+remain outside CPK's serialization.
+
+Keep D2's 8192-byte whole-result and same-runtime-in-both-pins limitations, unchanged
+4096-record/16MiB aggregate budget, 64 outstanding uses per ref and 256 total
+relevant claims. No automatic split of an approved invocation. D/Core #1886,
+I177 and Servers225 remain distinct; E4 completion requires coordinator acceptance
+and does not establish provider non-use, deletion, image or live deployment proof.
