@@ -632,7 +632,11 @@ class ConfigurationPreparationStore:
                 read.refs[_key(row)] = row
             claims = tuple(_decode(row, read) for row in rows)
             for row, claim in zip(rows, claims, strict=True):
-                _paired_disposition(read, tuple(row[:4]), claim.ref)
+                disposition = _paired_disposition(read, tuple(row[:4]), claim.ref)
+                # This is v1 lifetime protection evidence. Accepted transfer
+                # requires the later v2 cleanup policy, never an implicit grant.
+                if disposition.kind == "accepted-current":
+                    raise _Unavailable
             if any(claim.ref != exact_ref for claim in claims):
                 raise _Unavailable
             births = {(claim.birth_identity, claim.birth_artifact_id) for claim in claims}

@@ -242,6 +242,12 @@ class ConfigurationAcceptanceStore:
         if (root[16] is not True or birth.identity != birth.birth_identity
                 or birth.ref != evidence.ref or birth.identity != evidence.birth_identity):
             raise _Unavailable
+        # A newer outstanding use does not erase its direct birth's transfer
+        # provenance. Each distinct original must prove its own disposition.
+        for key in dict.fromkeys((tuple(row[3:7]), tuple(row[7:11]))):
+            disposition = _paired_disposition(read, key, evidence.ref)
+            if disposition.kind == "accepted-current":
+                self._accepted_transfer(read, key, evidence.ref, disposition.acceptance_revision)
         source = evidence.source
         if source.identity.run_id.value != run.run_id:
             plan, request, run = self._original_use(read, row, source)
@@ -459,6 +465,9 @@ class ConfigurationAcceptanceStore:
         birth = _decode(row, read)
         if row[16] is not True or birth.identity != birth.birth_identity or birth.ref != exact_ref:
             raise _Unavailable
+        disposition = _paired_disposition(read, tuple(row[:4]), exact_ref)
+        if disposition.kind == "accepted-current":
+            self._accepted_transfer(read, tuple(row[:4]), exact_ref, disposition.acceptance_revision)
         # Known pending/failed/staged allocations need no successful outcome
         # merely to be observed absent. Their reciprocal claim remains protective.
         return birth
