@@ -10,7 +10,7 @@ from tests.configuration_transfer_fixture import ConfigurationTransferredConsume
 
 
 class PostgresConfigurationTransferReuseTests(ConfigurationTransferredConsumerFixture, unittest.TestCase):
-    def test_zero_outstanding_birth_reuses_and_both_issued_checks_remain_live(self):
+    def test_zero_outstanding_birth_reuses_and_three_issued_checks_remain_live(self):
         before = self.transfer_snapshot()
         calls = []
         actual = ConfigurationPreparationStore._require_current
@@ -39,7 +39,8 @@ class PostgresConfigurationTransferReuseTests(ConfigurationTransferredConsumerFi
 
         with mock.patch.object(ConfigurationPreparationStore, "_require_current", probe):
             command, original, _ = self.reuse.execute_reuse()
-        self.assertEqual(calls, [self.reuse.identity, self.reuse.identity])
+        # Intent insertion, attempt insertion, then configuration ref insertion.
+        self.assertEqual(calls, [self.reuse.identity] * 3)
         self.assertEqual(original.intent.configuration_instances.instances, self.refs)
         self.assert_original_rows_preserved(before)
         for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
@@ -66,3 +67,29 @@ class PostgresConfigurationTransferReuseTests(ConfigurationTransferredConsumerFi
                 self.assertEqual(evidence.state, "unavailable")
                 self.assertIsNone(evidence.birth)
                 self.assertEqual(evidence.claims, ())
+
+    def test_public_v1_inspection_refuses_transfer_but_reads_outstanding_worker(self):
+        from control_plane_kit_operations.configuration_cleanup import (
+            ConfigurationCleanupExpectedContext, ConfigurationCleanupSourceSelector,
+        )
+        from control_plane_kit_operations.configuration_cleanup_planning import (
+            ConfigurationCleanupPlanningService, InspectConfigurationCleanup,
+        )
+        from tests.configuration_cleanup_postgres_fixture import command_context
+        with self.base.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+        expected = ConfigurationCleanupExpectedContext(workspace.current_graph_id,
+            workspace.current_realized_projection_id, workspace.desired_graph_id,
+            workspace.desired_realized_projection_id, workspace.desired_graph_revision)
+        service = ConfigurationCleanupPlanningService(self.base.unit_of_work,
+            clock=lambda: self.fail("inspection sampled publication clock"),
+            id_factory=lambda: self.fail("inspection allocated publication ID"))
+        before = self.proof_snapshot()
+        for node, state in (("worker", "complete"), ("api", "unavailable")):
+            original = self.membership.originals[node]
+            command = InspectConfigurationCleanup("session-config", "workspace-a", expected,
+                tuple(ConfigurationCleanupSourceSelector(original.identity, ref.artifact_id, ref)
+                    for ref in original.intent.configuration_instances.instances))
+            result = service.inspect(command, context=command_context())
+            self.assertEqual(result.state, state)
+        self.assertEqual(self.proof_snapshot(), before)

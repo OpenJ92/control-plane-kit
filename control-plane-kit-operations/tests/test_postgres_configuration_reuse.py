@@ -38,7 +38,7 @@ class PostgresConfigurationReuseTests(unittest.TestCase):
     def cleanup_fixture(self):
         self.assertTrue(self.carry.doCleanups(), "nested reuse fixture cleanup failed")
 
-    def execute_reuse(self):
+    def reuse_graph(self):
         product = _configuration_product().descriptor_document.product
         original = ProductInstanceConfiguration.from_contract(product.runtime_contract)
         changed = replace(original, public_environment=(PublicStaticEnvironmentBinding("HELLO_MESSAGE", "New deployment message"),))
@@ -47,6 +47,10 @@ class PostgresConfigurationReuseTests(unittest.TestCase):
         self.assertNotEqual(graph.nodes["api"], self.carry.graph.nodes["api"])
         self.assertEqual(graph.nodes["api"].configuration_artifacts, self.carry.graph.nodes["api"].configuration_artifacts)
         self.assertEqual(graph.nodes["worker"], self.carry.graph.nodes["worker"])
+        return graph
+
+    def execute_reuse(self):
+        graph = self.reuse_graph()
         # Explicitly approved, nonempty Operations plan for a real environment
         # change. No planner-generated/end-to-end or native-effect claim.
         try:

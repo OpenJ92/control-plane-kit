@@ -1,5 +1,6 @@
 """Mixed transferred/protective carry retains exact original provenance."""
 import unittest
+from dataclasses import replace
 from unittest import mock
 
 from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
@@ -8,6 +9,32 @@ from tests.configuration_transfer_fixture import ConfigurationTransferredConsume
 
 
 class PostgresConfigurationTransferCarryTests(ConfigurationTransferredConsumerFixture, unittest.TestCase):
+    def test_missing_latest_aba_receipt_does_not_fall_back_to_original_transfer(self):
+        _, latest = self.carry.carry_twice()
+        self.carry.remove_occurrence(latest)
+        before = self.proof_snapshot()
+        with self.base.unit_of_work() as uow:
+            store = uow.stores.configuration_acceptance
+            self.assertEqual(store.read_current_configuration("workspace-a", node_id="api").state, "unavailable")
+            self.assertEqual(store.read_configuration_use("workspace-a", self.refs).state, "unavailable")
+            for ref in self.refs:
+                self.assertEqual(self.prove_transfer(uow, ref).acceptance_revision, self.revision)
+        self.assertEqual(self.proof_snapshot(), before)
+
+    def test_departed_transfer_remains_known_provenance_without_current_membership(self):
+        from control_plane_kit_core.planning import NodeTarget, RemoveNodeResource
+        graph = replace(self.carry.graph, nodes={"worker": self.carry.graph.nodes["worker"]},
+            runtimes={"runtime-a": replace(self.carry.graph.runtimes["runtime-a"], children=("worker",))})
+        self.carry.advance(self.carry.prepare("remove-api", "graph-worker-only",
+            RemoveNodeResource(NodeTarget("api")), graph=graph))
+        before = self.proof_snapshot()
+        with self.base.unit_of_work() as uow:
+            value = uow.stores.configuration_acceptance.read_configuration_use("workspace-a", self.refs)
+            self.assertEqual((value.state, value.bindings), ("complete", ()))
+            for ref in self.refs:
+                self.assertEqual(self.prove_transfer(uow, ref).acceptance_revision, self.revision)
+        self.assertEqual(self.proof_snapshot(), before)
+
     def test_issued_carry_requires_live_pair_and_existing_proof_memo(self):
         actual = ConfigurationAcceptanceStore._require_current
         calls = []

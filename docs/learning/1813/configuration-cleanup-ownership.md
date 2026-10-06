@@ -1165,3 +1165,43 @@ query peak capacity; all affected existing pair-query reservations; independent
 final source review and required full package/backend gates. These next consumer
 edits remain behind their own targets. No transfer producer, v2 activation,
 provider effect or full B1 acceptance follows from these focused checkpoints.
+
+### B1 consumer evidence and corrected start suffix — 2026-10-06
+
+The original proposal above described two issued start checks and `2Q`. Source
+traversal and Kepler's independent review found that description incomplete.
+This correction supersedes that count without changing limits or ownership.
+Fresh start performs three `_require_prepared_intent`/`_require_prepared` checks:
+intent insertion, attempt insertion, and configuration-ref insertion. The middle
+intent lookup sees the row/event already inserted in the same transaction; it
+does not depend on the not-yet-created attempt. All three remain mandatory.
+Acceptance has four checks: current CAS, event insertion, action insertion and
+receipt insertion. No check may be removed to match the older forecast.
+
+For `c` selected refs and `t` selected transferred direct births, the start's fixed
+pair/exclusion addition is `5cP + 3cU + 4tT`, or
+`(13c+16t, 4278c+4t, 58c+4t, 8c+4t)`. Three classification pairs precede their
+full point-proof passes. The final original verifier checks both the new
+outstanding use and direct birth; only the latter adds another T. Each full
+proof's own P/T remains inside measured Q. The corrected preflight is
+`prior-after-measurement + base-envelope + fixed-addition + 3Q + M`.
+Q/M are absent without transfers. Conservatively overlapping fixed reservations
+remain explicit; no unused headroom or enlarged budget substitutes for a call.
+Preflight still occurs before clock/ID allocation and the first event write.
+
+Consumer checkpoint `b06cd1a8` established six intended failures / 56.030s:
+two carry refusals, two reuse refusals, overly permissive current observation and
+overly permissive v1 allocation evidence. `d3bdd906` strengthened exact four carry
+entrances and positive current/inverse reads around corruption. Its narrow read
+target again failed as intended / 9.312s. Read-policy source `389ac837` then passed
+12 focused tests / 87.955s plus compilation/import, exit 0; log SHA256
+`93cc78da1afca1e0480a7feea13e68a504afc7db4258ff8663c2937de3c785bc`.
+Both distinct source and direct birth receive full accepted-transfer proof;
+inverse provenance remains independent of fresh mutation permission; v1 refuses
+transferred allocation evidence. Missing-admission probes restore and re-prove
+both read surfaces. No transfer writer exists.
+
+The three-start/four-acceptance target corrections and independent capacity
+oracle precede mutation-consumer source. Normal transport/peak metering excludes
+the additional savepoint corruption probes. Current/ABA/reservation and public
+v1 defenses, full package/backend gates and final review remain outstanding.
