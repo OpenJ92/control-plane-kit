@@ -181,13 +181,59 @@ class ConfigurationCleanupV2ContractTests(unittest.TestCase):
         current = deepcopy(wire)
         current["candidates"][0]["blockers"] = ["current-selected-use"]
         self.assertEqual(codec.encode(codec.decode(current)), current)
-        active = deepcopy(wire)
-        summary = active["candidates"][0]["invocations"][0]
-        summary["kind"] = "active"
-        for field in ("direct_event_id", "direct_event_ordinal", "result_kind", "outcome_fingerprint", "attempt_status"):
-            summary.pop(field)
-        active["candidates"][0]["blockers"] = ["unresolved-invocation"]
+        active = v2_inspection(v2_wire(original))
+        for candidate in active["candidates"]:
+            summary = candidate["invocations"][0]
+            summary["kind"] = "active"
+            for field in ("direct_event_id", "direct_event_ordinal", "result_kind", "outcome_fingerprint", "attempt_status"):
+                summary.pop(field)
+            candidate["blockers"] = ["unresolved-invocation"]
         self.assertEqual(codec.encode(codec.decode(active)), active)
+
+    def test_transfers_cannot_contradict_the_same_represented_completion(self):
+        original, a, b = self.two()
+        identity = key(original["candidates"][0]["protecting_uses"][0])
+        proposal_codec, inspection_codec = self.codec(), self.codec(inspection=True)
+        all_outstanding = v2_wire(original)
+        all_outstanding["invocations"][0]["result_kind"] = "failed"
+        self.assertEqual(proposal_codec.encode(proposal_codec.decode(all_outstanding)), all_outstanding)
+        transferred = v2_wire(original, physical=(b.allocation_id,), transferred=((identity, a.artifact_id),))
+        self.assertEqual(proposal_codec.encode(proposal_codec.decode(transferred)), transferred)
+        changed = deepcopy(transferred)
+        changed["invocations"][0]["result_kind"] = "failed"
+        with self.subTest(proposal="failed-with-transfer"):
+            self.refused(proposal_codec, changed)
+
+        # The blocked form retains a root-only T entry for represented u, but
+        # withholds full accounting because a third sibling is outstanding.
+        c = replace(b, artifact_id="gamma", allocation_id="c-allocation", target_path="/etc/gamma")
+        three = proposal_wire(refs=(a, b, c))
+        root_only = v2_inspection(v2_wire(three, physical=(a.allocation_id, b.allocation_id),
+            transferred=((identity, a.artifact_id), (identity, c.artifact_id))))
+        root_only["accepted_transfers"] = [row for row in root_only["accepted_transfers"] if row["artifact_id"] == a.artifact_id]
+        root_only["invocation_accounting"] = []
+        root_only["candidates"][0]["invocations"][0]["uncovered_outstanding_count"] = 1
+        root_only["candidates"][0]["blockers"] = ["incomplete-invocation-selection"]
+        for label, inspection in (("complement", v2_inspection(transferred)), ("root-only", root_only)):
+            self.assertEqual(inspection_codec.encode(inspection_codec.decode(inspection)), inspection)
+            for kind, result in (("completed", "failed"), ("active", None),
+                                 ("terminal-unprofiled", "succeeded"), ("terminal-unprofiled", "failed")):
+                def observed(document):
+                    for candidate in document["candidates"]:
+                        for summary in candidate["invocations"]:
+                            summary["kind"] = kind
+                            if kind == "active":
+                                for field in ("direct_event_id", "direct_event_ordinal", "result_kind", "outcome_fingerprint", "attempt_status"):
+                                    summary.pop(field)
+                            else:
+                                summary.update(result_kind=result, attempt_status=result)
+                            if kind != "completed":
+                                candidate["blockers"] = sorted(set(candidate["blockers"]) | {"unresolved-invocation"})
+                    return document
+                positive = observed(v2_inspection(v2_wire(original)))
+                self.assertEqual(inspection_codec.encode(inspection_codec.decode(positive)), positive)
+                with self.subTest(inspection=label, kind=kind, result=result):
+                    self.refused(inspection_codec, observed(deepcopy(inspection)))
 
     def test_closed_envelope_records_and_existing_approval_bind_exact_v2_digest(self):
         wire = v2_wire()
