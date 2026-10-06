@@ -1,5 +1,6 @@
 """Independent cold/warm transport and pre-mutation peak admission evidence."""
 from dataclasses import replace
+import re
 import unittest
 from unittest import mock
 
@@ -194,6 +195,25 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
         rows = [widths for entry in queries for widths in entry["widths"]]
         physical = Footprint(len(rows), sum(sum(widths) for widths in rows),
             sum(len(widths) for widths in rows), len(queries))
+        raw_writes = {table: sum(entry["sql"].lstrip().startswith("INSERT INTO " + table + " ")
+            for entry in queries) for table in ("cpk_effect_attempt_intents",
+                "cpk_effect_configuration_refs", "cpk_configuration_claims")}
+        self.assertEqual(tuple(raw_writes.values()), (1, len(self.refs), len(self.refs)))
+        roles = {}
+        for entry in queries:
+            statement = entry["sql"].lstrip()
+            role = entry["role"]
+            if role == "point":
+                relation = re.search(r"\b(?:FROM|INTO|UPDATE)\s+([a-z_]+)", statement)
+                phase = ("length" if statement.startswith("SELECT octet_length(") else
+                    "value" if statement.startswith("SELECT CASE WHEN") else statement.split()[0])
+                role = phase + ":" + (relation.group(1) if relation else "scalar")
+            roles[role] = roles.get(role, 0) + 1
+        print("B1 start suffix", dict(settled=delta, physical=physical,
+            forecast=tail["forecast"], raw_write_statements=raw_writes, query_roles=roles,
+            maximum_peak_delta=tuple(max(entry["peak"][i] for entry in queries)
+                - getattr(tail["prefix"], field) for i, field in enumerate(
+                    ("records", "value_octets", "scalar_markers", "statements")))))
         self.assertEqual(delta.statements, physical.statements)
         for field in ("records", "value_octets", "scalar_markers", "statements"):
             self.assertGreaterEqual(getattr(delta, field), getattr(physical, field))
@@ -205,7 +225,6 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
             for field in ("records", "value_octets", "scalar_markers", "statements"):
                 self.assertLessEqual(getattr(peak, field) - getattr(tail["prefix"], field),
                     getattr(tail["forecast"], field))
-        print("B1 start suffix", dict(settled=delta, physical=physical, forecast=tail["forecast"]))
 
     def test_prior_plus_settled_suffix_fits_but_peak_refuses_before_start_mutation(self):
         cold = self.measure_cold_and_warm()
