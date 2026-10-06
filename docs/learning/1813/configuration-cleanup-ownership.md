@@ -1808,3 +1808,54 @@ source-derived instantiated S/H worksheet, including all future guard checks and
 gateway bounded transport, still requires review; successful observed headroom
 does not establish it. The failed initial premise prevents complete feasibility
 acceptance. Production and further executable work remain held.
+### #1950 corrected initial-managed diagnostic — focused PASS
+
+The [reviewed single-test release](https://github.com/OpenJ92/control-plane-kit/issues/1950#issuecomment-6027370471)
+ran once at `160ae7c4fe6074473edc8d564d1fae58f1970f77`, tree
+`143a348de1a4b03eede3e14d3f8322d568b5f6a4`. The owning Operations runner
+completed with exit 0: one test passed in 17.691s, followed by compile and clean
+import checks. No apparatus failure. The exact dedicated container
+`cpk-1950-feasibility-postgres` and network `cpk-1950-feasibility` were verified
+absent afterward. Log `/tmp/cpk-1950-initial-rerun.log`, SHA256
+`6898cef28421d4f4f92dc142639fcb38dc6bf9950bbc55b2c1f471b5b1f7f8f0`.
+The original four-case log retains its prior SHA256 unchanged; its three passing
+cases were not rerun, and its failed fixture remains preserved in the parent.
+
+The exact first refusal was the added plain node's missing health-read surface:
+the management compiler emits ReviewChange for its WaitForHealthy, hence the
+canonical plan is not ready. Reusing the canonical registered api product avoids
+that invalid premise without changing any production support law. The corrected
+test reached its actual CONFIGURATION_ACTIVITY_V1 start, returned NewlyStarted
+with two refs and completed capture/revalidation. Real advancement accepted the
+receiver origin. Changing only the unrelated application artifact then produced
+managed Update refusal with zero effect starts, zero adapter calls and unchanged
+execution history. Other activities' completion/health records remain explicit
+fixture premises; this is not provider or live deployment evidence.
+
+Observed `(records,value_octets,scalar_markers,statements)` for c=2:
+
+| Stage | Vector |
+| --- | --- |
+| Before preparation | (200,194081,1641,179) |
+| After original preparation | (240,222502,1954,222) |
+| Added capture | (40,12130,303,32) |
+| Added revalidation | (169,185736,1391,155) |
+| Prior before normal suffix | (449,420368,3648,409) |
+| Settled charged suffix | (218,202803,1721,207) |
+| Final command | (667,623171,5369,616) |
+
+Componentwise maximum temporary suffix delta was
+`(1204,1279001,7580,207)`; components need not occur at one query.
+Physical suffix returned 202 rows, 202803 value octets and 1721 cells in 212
+statements. The five-statement difference from charged 207 matches `1+2c` raw
+INSERTs. Capture includes pending introduction/origin-action and selected
+bindings/scopes; no accepted-receiver historical positive is implied.
+
+All four intended diagnostic premises now have focused evidence across the two
+immutable runs. This is not implementation acceptance or a completed static
+S/H feasibility proof. The source-derived worksheet must still include future
+guards, error alternatives, W precharge and the confirmed gateway publication
+SELECT charge. Use-64 prelude overcapture is not mandatory production capture.
+Production edits, broader execution and further retries remain held pending
+review/release. Security: no production authority or exposure changed; reports
+contain bounded role/width/count evidence, not secrets.
