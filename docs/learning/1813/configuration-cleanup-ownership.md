@@ -1205,3 +1205,326 @@ The three-start/four-acceptance target corrections and independent capacity
 oracle precede mutation-consumer source. Normal transport/peak metering excludes
 the additional savepoint corruption probes. Current/ABA/reservation and public
 v1 defenses, full package/backend gates and final review remain outstanding.
+
+## #1950 ordinary-start tail proposal — 2026-10-06
+
+**Planning only; independent design review required.** This proposal supersedes
+the preceding `base-envelope + fixed-addition + 3Q + M` forecast, not the three
+issued checks or the accepted B1 source slices. Governing issue:
+[#1950](https://github.com/OpenJ92/control-plane-kit/issues/1950), a blocker of
+#1945. Source baseline is `e978f11c`; A's accepted merge remains `9282714d`.
+No production correction, new executable target, or runner is released here.
+
+The preserved whole-tail failure is the causal red: 277 charged versus 282
+physical statements, with a 232-statement forecast. Its componentwise temporary
+maximum `(1385,1203435,8518,277)` exceeds the forecast in records and markers.
+The 1025-record reservation is the execution-scope length sentinel, not graph
+bindings. See the [complete finding](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6018580081).
+These are attribution facts, not constants to add to a new envelope.
+
+### Decision and exact ownership ceiling
+
+Issue a private, single-use **ordinary-start transport bound**, derived from
+actual owner proofs before mutation. It contains closed selector identities,
+per-column ceilings and exact collection keys; it contains no permission and
+cannot replace any subsequent semantic read. The final caller suffix has a
+source-derived ordered cost expression. No query observer, arbitrary SQL
+schedule, generic framework, schema, lock, isolation level or new module is
+introduced.
+
+Proposed application files, relative to
+`control-plane-kit-operations/src/control_plane_kit_operations/`:
+
+1. `effect_attempt_start_interpreter.py`: enter/close the ordinary scope through
+   the existing `ExitStack`; retain the original permission pass, final prefix
+   check, final permission pass and all readbacks. Hand the actual UoW/prefix to
+   preparation. Cleanup and health keep their existing owners.
+2. `_configuration_preparation.py`: distinct private ordinary bound value and
+   context, plus the prepared-start linkage. Exact owner identity, UoW, stores,
+   connection, active accounting object, execution context and transaction are
+   mandatory. A spent/closed/foreign/forged bound refuses. No public exports.
+3. `postgres/configuration_preparation_store.py`: ordinary bound issuer,
+   closed source-owned tail arithmetic, preparation/capture, raw precharge and
+   prepared-owner checks. Preserve active-use discovery, current binding proof,
+   all three cold transferred-root checks and 64-outstanding-use semantics.
+4. `postgres/configuration_cleanup_phase_read_bounds.py`: reuse its existing
+   finite SQL shapes and transport entrances through a separate ordinary branch.
+   The ordinary owner is never a `_CleanupPhaseReadBoundsOwner` and never sets
+   `_BOUND_CLEANUP_PHASE` or `_BOUND_CLEANUP_ORIGINALS`. Cleanup issuance and its
+   exact-type checks remain unchanged. Existing `_PhasePoint`/`_PhaseCollection`
+   are transport values only; ordinary ownership lives in preparation.
+5. `postgres/activity_history.py`: one additional, individually justified
+   companion. The gateway-approval branch calls `_projection_publication_actions`,
+   whose current raw `SELECT ... LIMIT 2` is unmetered and returns an unguarded
+   payload. Under the ordinary scope, retain its exact selector and 0/1/2-row
+   semantics using existing bounded transport; also connect the two existing
+   session/idempotency point lookups to ordinary ceilings. No change to gateway
+   authorization, publication, or mutation semantics.
+
+Documentation: this existing learning document; inventory metadata only if the
+existing module dependency inventory requires the changed edges. No other
+application file is implicitly included. If these entrances cannot cover the
+traversal, return the specific missing owner to review before expanding scope.
+
+### Source trace and closed bound contents
+
+Current ordinary suffix is `_observation` -> event ordinal -> event INSERT ->
+intent INSERT/check 1 -> persisted intent lookup -> attempt INSERT/check 2 ->
+ref/claim INSERT/check 3 -> prefix reentry -> receiver permission -> event,
+intent and attempt readbacks -> complete original/ref/birth verification ->
+commit. `_require_fresh_effect_receiver_permission` calls execution validation,
+approval validation, and a second material verification. The receiver-bearing
+branch calls `_receiver_sources` twice, then original acceptance histories.
+Historical request/run/session rows are not all protected by own-prefix locks.
+
+The ordinary bridge permits exactly these existing roles:
+
+- Points: `plan`, `graph`, `projection`, `raw-graph`, `raw-projection`,
+  `introduction`, `origin-action`, `acceptance-action`, `receipt-action`,
+  `receipt-event`, `request`, `run`, `session`, `header`.
+- Collections: `scopes`, `runs`, `events`, `advancement-actions`, `bindings`,
+  `invocation-refs`. Exact existing selectors, order, column meanings, native
+  maxima and joined-identity multiplicities remain authoritative.
+- Two explicitly added selectors for the gateway branch: `session-action`
+  `(session_id,idempotency_key)` using the existing nine action columns and
+  unique point semantics; `publication-actions` `(session_id,projection_id)`
+  using the same nine columns and existing publication-kind/payload selector.
+  The latter retains a two-row ambiguity sentinel and deterministic key order.
+
+No allocation-history, cleanup member, cleanup original, or arbitrary retained
+role is admitted. Configuration transfer rows, D1 rows, terminal outcomes,
+source joins and exact accepted-slot points retain their fixed native readers;
+they have closed cardinalities and column caps. Invocation refs are narrowed
+only after the complete original D1 selection has been proved.
+
+Capture the actual current/desired graph pairs, every selected receiver's
+introducing pair and original action, every original receiver acceptance's
+request/plan/run/scope/run-history/event-history/action/binding selectors, and
+every selected transferred birth's receipt context and full invocation refs.
+Use existing semantic readers to derive keys, never SQL supplied by a caller.
+The ordinary permission path passes no draft head; do not add draft traversal.
+Receipt contexts include historical session/request/run points even when the
+current graph has no receiver bindings. Include all keys used by the two cold
+graph/material passes. Equal selectors can share a captured bound; repeated
+reads still contribute their actual call multiplicity.
+
+Capturing point widths uses the existing guarded length probe. Capturing a
+collection uses its bounded count plus key/column-length query and compares
+the complete ordered keyset to the preceding semantic proof. Preserve native
+maxima (including 1024 scopes, 256 runs, 8192 events); the issued maximum is the
+actual proved cardinality. Capture is bounded by the current command ledger,
+so a large retained history may refuse before issuance. No global worst-case
+8192-row allocation, unbounded enumeration, or separate capture budget.
+
+The owner is bound only after its selector set is complete. While bound, every
+ordinary role entrance must match an issued selector; a captured traversal may
+not fall back to a native unbounded/unforecast read. Explicit fixed readers
+outside that role list keep their reviewed native caps. Parent-to-child checks
+remain mandatory, including acceptance action -> request/run/plan/history and
+receipt header -> original action/event/request/run/plan/session/graph/projection.
+Original semantics still validate values after transport.
+
+### Mutable history and transaction behavior
+
+For each selected point, use `min(native_cap,captured_column_width)`. For each
+collection use those columnwise maxima and the captured exact keyset with a
+`count+1` length sentinel. Do not bound by a row's total bytes or the prior
+pass's total cost: column maxima can occur on different rows. Retain the SQL
+validity predicate between length and value reads and recheck complete keys.
+
+Growth, deletion, replacement, reordered identity, NULL-to-value growth and
+redirects to uncaptured selectors refuse boundedly. A mutation within the
+ceiling remains subject to fresh semantic authorization; the bound does not
+claim snapshot consistency. Native same-width legal changes can pass if the
+existing owner laws permit them. A changed permission, source or binding must
+still refuse even when its byte size is unchanged.
+
+Capture and a cold bounded revalidation finish before final capacity admission,
+clock/IDs and the first event write. Any capture/revalidation/capacity refusal
+there leaves no writes. Concurrent history can change afterward: if the final
+permission or issued check then refuses, all event/intent/attempt/ref/claim
+writes roll back in the original UoW. Do not promise every concurrent change is
+detectable before the first write. No external adapter receives a start result
+before commit. No added history locks, retries, repair or automatic compensation.
+
+### Complete cost construction
+
+All vectors below are `(records,value_octets,scalar_markers,statements)`.
+For an owner-declared query with maximum `r` rows, total reserved bytes `b`,
+`k` columns and identity multiplicity `i`, write
+`R(r,b,k,i)=(r*i,b,r*k,1)`. Its successful settled bound uses the maximum
+successful row count and per-column byte ceilings, not physical row count as
+logical identities. A bounded point consists of its length and guarded-value
+queries. A bounded collection of `n` rows consists of a length reservation for
+`n+1` rows and value reservation for `n+1` rows, but settles at most `n` rows
+per query. Include the extra Boolean value column. A matching bridge lookup
+also costs the real transaction query `T=R(1,20,1,1)` exactly once.
+
+Represent each **closed source expression** by `(S,H)`: settled upper bound and
+componentwise peak relative to its entrance. Sequential composition is
+`(Sa,Ha);(Sb,Hb)=(Sa+Sb,max(Ha,Sa+Hb))`. A single query has `(S,R)`.
+This is private arithmetic in the preparation owner, not an executable SQL
+registry. It covers temporary reservations without charging or summing all of
+them as settled data. Preflight checks both `prior+S` and `prior+H` against the
+existing limits. For a failed query, retained reservation fits that query's
+peak; source-read error cleanup additionally reserves its one rollback-to-
+savepoint statement. No later success tail runs after refusal.
+
+Use these fixed primitives from their actual owners:
+
+- `A=R(1,1,1,1)`, `P=R(1,855,11,2)`, `Ttransfer=R(1,1,1,4)`,
+  `U=R(1,1,1,1)`, and raw writes `W=(0,0,0,1+2c)` for `c` selected refs.
+- Source join: `R(1,80032,17,3)` plus SAVEPOINT and RELEASE, with a separate
+  one-statement error-cleanup allowance. Deduplicate only per actual source
+  cache key within a cold pass.
+- Intent read `I`: ten-column point (preimage cap 1048576, other caps 2048),
+  plus its three-column event point (128/64/16384). It occurs twice.
+- Attempt read `J`: 21-column point (2048 per column), plus two six-column
+  event reads. Explicit event read `E` uses its native six-column declaration.
+- Lease: request-lock acknowledgement, request point, clock/expiry query
+  `R(1,65,2,1)`. Ordinal: run-lock acknowledgement plus `R(1,20,1,1)`.
+- Prefix: one lock acknowledgement plus native ten-column run point per
+  held run; the request-scoped run entrance currently has no phase bound, so
+  use its native metadata/field caps rather than assuming point narrowing.
+- Original verification: the actual 33-row/19-cell/two-identity query reserves
+  `R(33,33*32768,19,2)` and settles at most `c` rows; each selected birth adds
+  `R(1,32768,19,2)`. Include source joins for the new source and distinct birth
+  invocations, two fresh pairs per ref, and an extra anchor for each transferred
+  birth. Keep the full query; do not replace it with a fixture-sized LIMIT.
+
+In exact execution order the forecast is:
+
+```text
+lease ; ordinal ; event-INSERT(A)
+; issued-check-1 ; raw-intent-statement
+; I ; issued-check-2 ; attempt-INSERT(R(1,200,1,1))
+; issued-check-3 ; raw-ref/claim-statements(2c)
+; prefix ; permission ; E ; I ; J ; original-verification ; owner-close
+```
+
+Each issued check is its lifecycle transaction check, `cU+cP+tTtransfer`,
+followed by a **fresh** cold proof for the `t` transferred roots on the same
+ledger. Original verification adds `2cP+tTtransfer`; this preserves the existing
+`5cP+3cU+4tTtransfer` total, excluding each cold proof's own pairs/anchors.
+Owner bind/close transaction checks are included at their actual positions;
+avoid adding hidden guard SQL in a helper after calculating its bound.
+
+Construct the cold proof from `_accepted_transfer`, not from observed Q alone:
+for each selected root, include its P/anchor, 13-column transfer point,
+seven-column D1 point, complete invocation-ref collection and the disposition
+pair/possible anchor for **every** member, selected original-ref point and
+12-column exact accepted-slot point. D1 repeats per selected root even when
+the invocation repeats. Source/terminal caches share only their exact original
+invocation key within that pass; terminal is the 22-column outcome point plus
+two compact event points. Receipt context shares only exact `(workspace,
+revision)` within that pass and includes header/action/event/request/run/plan/
+session/graph/projection points with their captured widths and guard queries.
+No cache is shared across the three issued passes. The independent measured Q
+remains evidence for this expression, never its sole upper-bound proof.
+
+The permission expression follows the closed source loops: two material
+verifications (guard, workspace identity, plan, both graphs/projections, request
+identity and scopes), own request/session/workspace/approval reads, two current
+binding reads, and, when bindings exist, two `_receiver_sources` traversals plus
+the base/desired retained-origin checks. Count binding **occurrences**, not just
+distinct receivers: shared identities narrow widths but do not remove calls.
+Each original acceptance includes its action, request, material verification,
+complete run history, selected run's event history, advancement actions and
+binding set. Every collection uses the count/column/key contract above. This
+also accounts for the receiverless scope sentinel that exposed the failure.
+
+The gateway approval alternative contributes, in addition to the common
+approval reads: three session reads, two session/idempotency action reads,
+one plan read, two projection reads, and the publication-action bounded read.
+It remains a source-owned alternative, not an inferred unreachable branch.
+Its exact count is traced through `_require_rotation_review_approval`,
+`_require_retained_gateway_child` and `_rotation_publication_version`.
+**Open review blocker:** the call graph establishes the conditional branch,
+but the existing gateway execution fixture has not yet established a supported
+configuration-bearing start reaching it. Before target/source release, trace
+that composition using `gateway_rotation_overlap_fixture.py` and
+`test_gateway_key_rotation_overlap_execution.py`; retain the fifth companion
+only with that evidence or an explicit owning-contract decision. Generic
+reachability is not credited as a genuine configuration-start positive.
+
+Capture overhead is **prior**, never free and never charged again as future:
+initial semantic pass, selector-discovery reads, point length probes, collection
+count/key/length probes, context/transaction checks, bounded cold revalidation
+and initial transferred proof all retain actual charges on the same ledger.
+For a collection capture, include count `R(1,20,1,1)` and key/length query
+`R(n+1,(n+1)*(sum(key_caps)+12*k),key_count+k,i)`. A point capture costs
+`R(1,12*k,k,i)`. Their own existing reservation checks bound every fetch.
+Final capacity admission reads `accounting.used` only after all these operations.
+
+After capacity succeeds, precharge **only W**, once before issuance. The
+forecast already includes W; do not add it a second time to the capacity
+decision. Tracked queries/writes charge themselves. No fake returned rows,
+refund on later failure, reset of prior usage, or five-write fixture constant.
+
+### Target laws and review/branch boundary
+
+Reuse the preserved full-tail causal red and existing Q/warm/three-check/prior-
+peak tests. Update their independent source-derived oracle for the reviewed
+expression; retain whole-tail physical SQL, settled and peak assertions.
+
+- **Strengthened:** exact `1+2c` raw precharge, including later refusal; whole
+  receiverless suffix; prior+settled and prior+peak pressure before first write;
+  all three cold semantic checks; exact logical/physical identity accounting.
+- **New-law:** genuine accepted receiver-origin start through the public owner;
+  append/remove/replace keys and width growth between capture and recheck;
+  same-width permission invalidation; explicit complete rollback/no adapter
+  effect after a late refusal; same-UoW owner closure and foreign/spent/forged
+  bound refusal; ordinary bounds cannot satisfy cleanup issuance.
+- **New-law:** the conditional gateway association path's physical query and
+  payload accounting, exact one-publication positive and two-publication
+  refusal, if review retains that companion in #1950.
+- **Isomorphic:** existing replay, source provenance, all 64 outstanding uses
+  before the 65th refusal, cleanup exclusion and unchanged global budgets.
+
+Proposed test ceiling is `test_postgres_configuration_transfer_capacity.py`,
+`test_postgres_configuration_transfer_reuse.py`, `configuration_transfer_fixture.py`
+and `test_postgres_configuration_receiver_accounting.py`, reusing the existing
+receiver admission/recorded-acceptance fixture for historical premises. That
+last module currently proves accounting entrances only; it must not be relabeled
+as public-start evidence. The gateway test/fixture pair named above is conditional
+on resolving supported composition, with no new parallel fixture family.
+Exact test selection is fixed after design review. Add only
+distinct missing laws and establish causal red through the owning Operations
+runner. No duplicate baseline, matrix, standalone script or host Python.
+
+**Branch proposal for North's explicit decision:** after this documentation
+checkpoint, create `codex/1950-ordinary-start-tail` from the exact B1 checkpoint,
+and one PR targeting `codex/1945-typed-transfer-proofs`. Freeze B1 application
+edits while that child is open. This is an explicit stacked dependency because
+the accepted transferred-reader and current failing test are not merged; do
+not target the roadmap directly or cherry-pick a second implementation. Merge
+the reviewed child into B1, then resume B1 acceptance/carry work and ultimately
+its PR into `roadmap/1813-runtime-control`. Child focused/full Operations gates
+and the remaining parent Core/backend boundary must be recorded without treating
+unmerged B1 acceptance reds as #1950 passes. North must settle that gate placement
+before execution; a full suite failure cannot be waived by branch topology.
+
+### Risks, alternatives and handoff
+
+No new external/security surface or authority. Width/key bounds are redacted
+private transport evidence. Original approval, lifecycle and provenance remain
+authoritative. Transaction rollback preserves durable history; no synthetic
+success/failure history or cleanup of retained originals is introduced. Shared
+reader hooks are the main regression risk: require exact ordinary/cleanup
+separation and existing cleanup regression coverage. Concurrent growth may
+cause a safe refusal; retries remain the existing caller's responsibility.
+
+Rejected: raw precharge alone; fixture-fitted additions; widening transferred
+M to hide receiver work; prior settled-cost replay; native worst-case histories;
+new history locks/snapshot isolation; permission caches; larger global budgets.
+This design deliberately uses source-owned closed expressions and existing
+transport helpers. If the expression is too conservative to preserve the
+supported 64-use case, refine the demonstrated multiplicity/width bound within
+review, never weaken that acceptance law or increase limits.
+
+**Requested review disposition:** Kepler findings-first review of the complete
+proposal, especially the fifth gateway companion, selector completeness,
+permission-loop multiplicities, cold-proof cache scope and stacked gate boundary;
+then North's explicit target/source release. This is not a design PASS or a
+claim of executable feasibility. #1945 still owns acceptance/carry-tail work;
+#1946/#1947 and provider/live/image/DNS/token/reset actions remain held.
