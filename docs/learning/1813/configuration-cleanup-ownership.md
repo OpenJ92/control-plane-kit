@@ -1743,3 +1743,68 @@ No test run has occurred at these draft coordinates. These observations measure
 existing queries plus explicit capture/revalidation; they are not a prototype
 ordinary bound owner, implementation PASS or a substitute for source-derived
 feasibility calculations and later target-red/full gates.
+
+### #1950 single feasibility run — partial evidence, HOLD
+
+Candidate `939904052a0fd1f57f9b6c18c4bfbc29f19bf974`, tree
+`5f0ee5b3ebb360a53f0f6fc60047dc9576c86dc1`, ran the exact published two-pattern
+Operations command once. Checkpoint:
+[#1950 command](https://github.com/OpenJ92/control-plane-kit/issues/1950#issuecomment-6027188035).
+Four tests / 327.438s, three passed, one failed; terminal exit 1. No apparatus
+failure. Log `/tmp/cpk-1950-feasibility.log`, SHA256
+`c0004a8f860e7a376cea54fc2a66d053cf95a4647cfbb2394a7d25d2e0d4284e`.
+The exact dedicated PostgreSQL container and network were absent after the
+runner's cleanup. No retry, production correction, or full acceptance followed.
+
+Passed: receiverless ordinary start; the configured gateway overlap (actual
+gateway-key-rotation subject, actual publication selector, exact configured
+origin bindings/source/birth); and the unchanged 64-use boundary. All 64 uses
+were accepted, cold-read and replay laws remained green, and use 65 refused at
+the per-ref claim limit with no original-start writes. The extra capture and
+revalidation work at use 64 stayed on the actual command ledger.
+
+Failed premise: the initial managed graph with the additional configuration
+node reached `ReceiverCanonicalAcceptanceFixture.plan_and_approve`, where the
+existing `runtime_management_execution_is_unsupported` assertion was true.
+It failed before the actual configuration start. No initial-managed positive,
+pending-origin suffix, or subsequent Update-refusal evidence is claimed. This
+does not prove every possible initial configuration composition is unsupported;
+it proves that this proposed fixture composition did not establish the premise.
+The owning support law remains unchanged. Diagnose the exact composition before
+any separately reviewed follow-up; do not bypass the guard or repeat this run.
+
+Observed vectors below use `(records,value_octets,scalar_markers,statements)`.
+They are measured evidence, **not** the proposed static S/H bound:
+
+| Case | After original preparation | Added capture | Added revalidation | Prior before normal suffix | Settled charged suffix |
+| --- | --- | --- | --- | --- | --- |
+| Receiverless, c=2 | (118,35021,997,127) | (28,5766,225,32) | (53,18972,424,55) | (199,59759,1646,214) | (102,32214,754,107) |
+| Gateway, c=1 | (266,125826,2290,250) | (27,13045,221,31) | (65,48429,554,67) | (358,187300,3065,348) | (115,59531,872,113) |
+| Accepted use 64, c=1 | (3053,794153,29972,2293) | (338,13042,3387,342) | (53,25368,424,55) | (3444,832563,33783,2690) | (103,36229,742,101) |
+
+Componentwise maximum temporary suffix deltas are respectively
+`(1094,1109041,6652,107)`, `(1112,1136912,6809,113)` and
+`(652,1113891,3991,101)`. Their components need not occur at one query.
+Use 64's native dynamic scope reservation shortens to remaining record budget;
+it is not evidence for a fixed future 1025-row reservation fitting there.
+
+Physical suffix statements were 112/117/104 respectively, versus charged
+107/113/101. Receiverless and use 64 differ by the exact `1+2c` raw INSERTs.
+Gateway differs by three such writes **plus one unmetered publication SELECT**;
+that SELECT also accounts for 1123 returned value octets and nine cells missing
+from its suffix ledger. Its extra revalidation has the same one-statement,
+1123-octet/nine-cell gap. This independently confirms the fifth source companion
+is material, not hypothetical. Three actual publication traversals were seen in
+the full gateway start including initial permission, added revalidation and final
+permission. Physical rows are not logical joined-identity records.
+
+Capture is deliberately conservative diagnostic work, not a proposed issuer:
+the use-64 observer saw 64 graph/plan/projection/request/session selectors during
+preparation, while the normal suffix revisits only its own selected originals.
+Do not turn all observed historical prelude selectors into mandatory production
+capture or silently remove their measured charge when analyzing this run.
+Use role/selector lifetimes to derive the smallest source-owned bound. The
+source-derived instantiated S/H worksheet, including all future guard checks and
+gateway bounded transport, still requires review; successful observed headroom
+does not establish it. The failed initial premise prevents complete feasibility
+acceptance. Production and further executable work remain held.
