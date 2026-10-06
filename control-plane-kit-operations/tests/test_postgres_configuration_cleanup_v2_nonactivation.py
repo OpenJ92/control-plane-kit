@@ -14,6 +14,10 @@ from control_plane_kit_operations.approvals import ApprovalCommandService, Appro
 from control_plane_kit_operations.coordinator import CoordinatorStatus
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartConflict
+from control_plane_kit_operations.postgres import install_schema
+from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
+from control_plane_kit_operations.receiver_execution_scopes import derive_execution_receiver_scopes
+from control_plane_kit_operations.records import ExecutionRequestIdentity
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.configuration_cleanup_execution_fixture import ConfigurationCleanupExecutionFixture
 from tests.configuration_cleanup_v2_fixture import v2_wire
@@ -30,6 +34,21 @@ class PostgresConfigurationCleanupV2NonactivationTests(ConfigurationCleanupExecu
         record = replace(self.plan, derivation_profile=profile, cleanup_proposal=proposal)
         subject = ActivityPlanApprovalSubject(record.plan_id,
             proposal_fingerprint=values.configuration_cleanup_proposal_fingerprint(proposal))
+        requests = self.connection.execute("SELECT request_id,workspace_id,session_id,plan_id,"
+            "receiver_scope_count,receiver_scope_digest FROM cpk_execution_requests WHERE plan_id=%s",
+            (record.plan_id,)).fetchall()
+        self.assertLessEqual(len(requests), 1)
+        commitments = []
+        for row in requests:
+            identity = ExecutionRequestIdentity(*row[:4])
+            original, old = _ExecutionScopeStorage(self.connection).verify(identity)
+            self.assertEqual(original[0], self.plan)
+            self.assertEqual(old, derive_execution_receiver_scopes(identity, *original))
+            self.assertEqual(row[4:], (len(old.scopes), old.source_digest))
+            new = derive_execution_receiver_scopes(identity, record, *original[1:])
+            self.assertEqual(new.scopes, old.scopes)
+            self.assertNotEqual(new.source_digest, old.source_digest)
+            commitments.append((identity, original[1:], new))
         # Below-owner RECORDED representation fixture, not a public v2 plan,
         # approval or execution admission. Its genuine v1 chronology is complete
         # before this detached future-version suffix; no provider is involved.
@@ -39,6 +58,15 @@ class PostgresConfigurationCleanupV2NonactivationTests(ConfigurationCleanupExecu
                  record.plan_id))
             self.connection.execute("UPDATE cpk_approval_requests SET subject_payload=%s,review_digest=%s "
                 "WHERE request_id=%s", (Jsonb(subject.descriptor()), subject.review_digest, self.approval.request_id))
+            # The original immutable scope commitment includes the full plan
+            # envelope. Keep this explicitly recorded suffix internally exact;
+            # no new request, scope, approval or admission is manufactured.
+            for identity, _, derived in commitments:
+                self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s "
+                    "WHERE request_id=%s", (derived.source_digest, identity.request_id))
+        for identity, pins, derived in commitments:
+            self.assertEqual(_ExecutionScopeStorage(self.connection).verify(identity), ((record, *pins), derived))
+        install_schema(self.connection)
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.activity_history.get_plan(record.plan_id), record)
             approval = uow.stores.activity_history.get_approval_request(self.approval.request_id)

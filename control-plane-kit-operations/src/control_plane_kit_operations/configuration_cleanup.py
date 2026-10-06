@@ -470,13 +470,16 @@ def _v2_witness(value, node_id):
     return identity, _selection_members(value["selection_members"])
 
 
-def _v2_coverage(candidates, refs, uses, selections, transfers):
+def _v2_coverage(candidates, refs, uses, selections, transfers, *, successful):
     """Validate exact N/T coverage and positive roots, without asserting DB truth."""
     _require(sum(len(value) for value in uses.values()) <= 256)
     _require(len(selections) <= 256 and sum(len(value) for value in selections.values()) <= 8192)
     pairs = {(identity, artifact): member for identity, members in uses.items()
              for artifact, member in members.items()}
     _require(set(pairs).isdisjoint(transfers))
+    # A transfer's own admitted success cannot contradict an observation of
+    # that same original. Unrepresented roots still require separate DB proof.
+    _require(all(identity not in uses or identity in successful for identity, _ in transfers))
     known = {ref.allocation_id: _ref_member(ref) for ref in refs.values()}
     required = set()
     for identity, members in selections.items():
@@ -526,7 +529,8 @@ def _proposal_v2(document):
     witnesses = tuple(_v2_witness(value, next(iter(refs.values())).node_id) for value in values)
     identities = tuple(identity for identity, _ in witnesses)
     _require(identities == tuple(sorted(set(identities))) and set(identities) == set(uses))
-    _v2_coverage(document["candidates"], refs, uses, dict(witnesses), _transfers(document["accepted_transfers"]))
+    _v2_coverage(document["candidates"], refs, uses, dict(witnesses), _transfers(document["accepted_transfers"]),
+        successful={_identity_key(_identity(value["source_identity"])) for value in values if value["result_kind"] == "succeeded"})
     return _canonical(document)
 
 
@@ -572,7 +576,9 @@ def _inspection_v2(document):
         _require(value["uncovered_outstanding_count"] <= value["selection_count"] - len(uses[identity]))
         if identity in selections:
             _require(len(selections[identity]) == value["selection_count"])
-    _v2_coverage(document["candidates"], refs, uses, selections, _transfers(document["accepted_transfers"]))
+    _v2_coverage(document["candidates"], refs, uses, selections, _transfers(document["accepted_transfers"]),
+        successful={identity for identity, value in summaries.items()
+                    if value["kind"] == "completed" and value["result_kind"] == "succeeded"})
     return _canonical(document)
 
 

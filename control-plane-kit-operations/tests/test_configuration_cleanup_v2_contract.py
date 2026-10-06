@@ -281,6 +281,18 @@ class ConfigurationCleanupV2ContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             plans.encode_stored_activity_plan(ActivityPlan(()), profile=profile, cleanup_proposal=proposal)
 
+    def test_transferred_root_does_not_constrain_another_outstanding_invocation(self):
+        original = proposal_wire(claims=2)
+        row = original["candidates"][0]
+        root = key(row["protecting_uses"][0]), row["ref"]["artifact_id"]
+        wire = v2_wire(original, transferred=(root,))
+        wire["invocations"][0]["result_kind"] = "failed"
+        self.assertNotEqual(key(wire["invocations"][0]["source_identity"]), root[0])
+        proposal = self.codec().decode(wire)
+        self.assertEqual(self.codec().encode(proposal), wire)
+        inspection = self.codec(inspection=True).decode(v2_inspection(wire))
+        self.assertEqual(values.configuration_cleanup_inspection_from_proposal(proposal), inspection)
+
     def test_supported_64_use_values_fit_without_widening_any_v1_or_document_limit(self):
         codec = self.codec()
         for accepted in (False, True):
