@@ -1442,3 +1442,35 @@ asserting this callable contract. Missing forecast assertions are causal red;
 later wire/peak assertions blocked behind absence are not independently credited
 as red. Synthetic edge tests change only the pure triple and preserve well-formed
 S/H and stage relationships. They are not naturally exhausted command evidence.
+
+Second-tranche checkpoint `348567b01ee90c67823ea85004ecd12020049c64`, tree
+`d29df0fe6aecd57236f819c235a93ba67d20c46c`: owning focused run completed 17 tests
+in 130.497 seconds, 17 assertion failures, exit 1, with no setup/import/fixture
+errors. Seven tests reached real preparation and failed the explicit missing
+forecast assertion; their later successful-wire/peak/gate assertions are not
+independently established as red. The real post-admission plan mutation returned
+a 65,470-byte cell before semantic refusal, violating the captured transport
+ceiling. An unknown candidate prefix dispatched SQL. Earlier eight failures
+retained their causes. Log `/tmp/cpk-1952-publication-budget-red.log`, SHA-256
+`b35426621c418b8ffa0c4b6ce8a22463c6cfdc1492f946c083e37d73fa706922`.
+Dedicated test container/network cleanup was verified. Independent causal-red
+review PASS is issue comment `6042532001`.
+
+The final tranche strengthens successful suffix and cold-read reconciliation to
+exact physical value octets, scalar cells and statements. Physical row counts
+remain a lower bound for ledger records because joins weight multiple identities;
+that weight can no longer conceal an unaccounted payload or cell. Failed-fetch
+reservation retention has a separate oracle. Additional targets cover actual
+candidate multiplicity growth with the same request set, optional compensation
+appearance before large-cell transport, prospective own read denial before
+publication, and a coherent changed stored slot/header selecting an uncaptured
+existing source key within the original width ceilings.
+
+The legacy absent-identity-projection branch has an explicit remaining in-slice
+target obligation: a small real-owner capture/originals/read witness, including
+derived identity without persistence and a bound reread, before changing that
+production path. Do not manufacture a broad historical conversion fixture or
+forge prepared authority. Existing native legacy laws remain governing; optional
+compensation coverage does not substitute for this branch, and full end-to-end
+legacy publication coverage is not claimed. Kepler accepted this narrow target
+sequencing within the reviewed issue, with no new user/authority decision.

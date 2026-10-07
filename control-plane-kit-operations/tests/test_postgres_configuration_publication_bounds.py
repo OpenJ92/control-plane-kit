@@ -5,12 +5,15 @@ health evidence. Wire observation never replaces production query results.
 """
 from contextlib import contextmanager
 from dataclasses import replace
+from hashlib import sha256
 import json
 import unittest
 from unittest import mock
 
 import psycopg
+import rfc8785
 
+from control_plane_kit_core.planning import NodeTarget, RemoveNodeResource
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
@@ -28,13 +31,15 @@ from control_plane_kit_operations.configuration_preparation import Configuration
 from control_plane_kit_operations.postgres.receiver_execution_scopes import (
     _Transport, _ExecutionScopeStorage, _REQUEST, _columns,
 )
-from control_plane_kit_operations.receiver_execution_scopes import ExecutionReceiverScope
+from control_plane_kit_operations.receiver_execution_scopes import (
+    ExecutionReceiverScope, ReceiverScopeCapacity, ReceiverScopeUnavailable,
+)
 from control_plane_kit_operations.records import OperationsRecordError
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.receiver_canonical_acceptance_fixture import ReceiverCanonicalAcceptanceFixture
 from tests import test_postgres_configuration_acceptance as zero_fixture
 from tests import test_postgres_configuration_carry as carry_fixture
-from tests.test_postgres_configuration_evidence import _ObservedConnection
+from tests.test_postgres_configuration_evidence import _ObservedConnection, _ObservedRows
 
 
 def _difference(after, before):
@@ -45,6 +50,19 @@ def _difference(after, before):
 def _within(case, actual, expected):
     for name in ("records", "value_octets", "scalar_markers", "statements"):
         case.assertLessEqual(getattr(actual, name), getattr(expected, name), name)
+
+
+class _ExactObservedRows(_ObservedRows):
+    def _record(self, row):
+        before = self.observations["bytes"]
+        result = super()._record(row)
+        if row is not None:
+            # The existing observer measured pgresult/bytea octets, independent
+            # of the production ledger. Split its physical row/cell overhead
+            # from actual values so joined record weight cannot hide a leak.
+            self.observations["value_octets"] += self.observations["bytes"] - before - 128 - 16 * len(row)
+            self.observations["scalar_cells"] += len(row)
+        return result
 
 
 class _BudgetObservedConnection(_ObservedConnection):
@@ -60,12 +78,14 @@ class _BudgetObservedConnection(_ObservedConnection):
         if ledger is not None and ledger is self.trace.get("accounting"):
             # Production query reservation is already outstanding at execute.
             self.trace["peaks"].append(ledger.used)
-            return super().execute(*args, **kwargs)
+            observed = super().execute(*args, **kwargs)
+            return _ExactObservedRows(observed.cursor, self.observations, observed.query)
         return self.connection.execute(*args, **kwargs)
 
 
 def _trace():
-    return dict(wire=dict(rows=0, bytes=0, largest_cell=0, statements=0), peaks=[])
+    return dict(wire=dict(rows=0, bytes=0, largest_cell=0, statements=0,
+        value_octets=0, scalar_cells=0), peaks=[])
 
 
 @contextmanager
@@ -83,7 +103,7 @@ def _publication_budget_observation(case, database_url):
         preflight(store, prepared)
         case.assertEqual(_ACCOUNTING.get().used, prior, "binding work was hidden after admission")
         trace.update(snapshot=snapshot, future=future, publication=publication,
-            prior=prior, accounting=_ACCOUNTING.get())
+            prior=prior, accounting=_ACCOUNTING.get(), owner=store, prepared=prepared)
 
     def request_commit(uow):
         if _ACCOUNTING.get() is trace.get("accounting") and trace.get("accounting") is not None:
@@ -104,6 +124,9 @@ def _assert_publication_and_cold_fit(case, trace, database_url):
     for peak in trace["peaks"]:
         _within(case, _difference(peak, trace["prior"]), trace["publication"].peak)
     case.assertEqual(used.statements, trace["wire"]["statements"])
+    case.assertEqual(used.value_octets, trace["wire"]["value_octets"])
+    case.assertEqual(used.scalar_markers, trace["wire"]["scalar_cells"])
+    # Ledger records additionally weight joined identities; physical rows do not.
     case.assertGreaterEqual(used.records, trace["wire"]["rows"])
     case.assertGreaterEqual(used.accounted_bytes, trace["wire"]["bytes"])
     cold = _trace()
@@ -128,6 +151,8 @@ def _assert_publication_and_cold_fit(case, trace, database_url):
     for peak in cold["peaks"]:
         _within(case, peak, trace["future"].peak)
     case.assertEqual(cold["accounting"].used.statements, cold["wire"]["statements"])
+    case.assertEqual(cold["accounting"].used.value_octets, cold["wire"]["value_octets"])
+    case.assertEqual(cold["accounting"].used.scalar_markers, cold["wire"]["scalar_cells"])
     case.assertGreaterEqual(cold["accounting"].used.records, cold["wire"]["rows"])
     case.assertGreaterEqual(cold["accounting"].used.accounted_bytes, cold["wire"]["bytes"])
     print("publication-fit " + json.dumps(dict(prior_records=trace["prior"].records,
@@ -217,6 +242,98 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
         retired = self.budgeted_advance(claimed, "fit-teardown")
         self.assertEqual(self.receiver_origin(), replace(original,
             retired_action_id=retired.action.action_id, retired_session_id=retired.action.session_id))
+
+    def test_candidate_multiset_growth_refuses_even_with_same_request_set(self):
+        self.desired_receiver("multiset", graph=self.canonical_receiver_graph)
+        claimed, _, _ = self.retained_success("multiset")
+        original, query = ConfigurationAcceptanceStore._preflight, _EvidenceRead.query
+        checked, raw = [], []
+
+        def observed_query(read, sql, params, **kwargs):
+            rows = query(read, sql, params, **kwargs)
+            if "FROM cpk_execution_receiver_scopes WHERE workspace_id=" in sql:
+                raw.append(tuple(rows))
+            return rows
+
+        def preflight(store, prepared):
+            reader = _ExecutionScopeStorage(store._connection, prepared.evidence_read)
+            scopes = (ExecutionReceiverScope("docker", None),)
+            with mock.patch.object(_EvidenceRead, "query", observed_query):
+                self.assertEqual(reader.candidates("workspace-a", scopes), (prepared.request.identity.request_id,))
+            self.assertTrue(any(len(rows) > len({row[0] for row in rows}) for rows in raw),
+                "fixture lacks repeated raw candidate identities before deduplication")
+            row = store._connection.execute("INSERT INTO cpk_execution_receiver_scopes "
+                "(request_id,workspace_id,scope_ordinal,scope_kind,runtime_id,node_id) "
+                "SELECT %s,%s,max(scope_ordinal)+1,'node','docker','late-candidate' "
+                "FROM cpk_execution_receiver_scopes WHERE request_id=%s RETURNING scope_ordinal",
+                (prepared.request.identity.request_id, "workspace-a", prepared.request.identity.request_id)).fetchone()
+            self.assertIsNotNone(row)
+            try:
+                with self.assertRaises((_Unavailable, _Capacity, ReceiverScopeUnavailable, ReceiverScopeCapacity)):
+                    reader.candidates("workspace-a", scopes)
+            finally:
+                store._connection.execute("DELETE FROM cpk_execution_receiver_scopes WHERE request_id=%s "
+                    "AND scope_ordinal=%s", (prepared.request.identity.request_id, row[0]))
+            checked.append(True)
+            return original(store, prepared)
+
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
+            accepted = self.advance(claimed, "multiset")
+        self.assertEqual(checked, [True])
+        self.assertEqual(self.receiver_origin().first_accepted_action_id, accepted.action.action_id)
+
+    def test_absent_compensation_is_supported_but_appearance_is_bounded(self):
+        self.desired_receiver("optional", graph=self.canonical_receiver_graph)
+        claimed, _, _ = self.retained_success("optional")
+        command = self.publication_command(claimed, "optional")
+        action_id = self.connection.execute("SELECT action_id FROM cpk_operation_actions "
+            "WHERE session_id=%s ORDER BY ordinal DESC LIMIT 1", (claimed.request.identity.session_id,)).fetchone()[0]
+        event_id = self.connection.execute("SELECT event_id FROM cpk_activity_events "
+            "WHERE run_id=%s ORDER BY ordinal DESC LIMIT 1", (claimed.run.run_id,)).fetchone()[0]
+        original, checked = ConfigurationAcceptanceStore._preflight, []
+        observed = dict(rows=0, bytes=0, largest_cell=0, statements=0)
+
+        class CompensationObservation(_ObservedConnection):
+            def execute(self, sql, *args, **kwargs):
+                if "FROM cpk_failed_run_compensations" in str(sql):
+                    return super().execute(sql, *args, **kwargs)
+                return self.connection.execute(sql, *args, **kwargs)
+
+        def preflight(store, prepared):
+            reader = _ExecutionScopeStorage(store._connection, prepared.evidence_read)
+            args = (prepared.request, (prepared.plan, prepared.current_projection, prepared.desired_projection),
+                prepared.run, (), (), (), ())
+            self.assertEqual(reader.compensations(*args), ((), ()))
+            # Schema-valid hostile appearance, not lawful compensation evidence.
+            # Invalid semantic preimage deliberately distinguishes early bounded
+            # absence rejection from eventual decoder rejection after transport.
+            store._connection.execute("INSERT INTO cpk_failed_run_compensations "
+                "(program_id,workspace_id,request_id,run_id,plan_id,session_id,action_id,event_id,"
+                "actor_id,reason,source_failure,authority_reference_fingerprint,command_fingerprint,"
+                "evidence_fingerprint,program_fingerprint,program_preimage,created_at) "
+                "VALUES ('late-program',%s,%s,%s,%s,%s,%s,%s,'operator-a','post-effect-failure',"
+                "'{}'::jsonb,%s,%s,%s,%s,%s,now())",
+                (prepared.workspace.workspace_id, prepared.request.identity.request_id, prepared.run.run_id,
+                    prepared.plan.plan_id, prepared.plan.session_id, action_id, event_id,
+                    *("0" * 64 for _ in range(4)), b"x" * 65000))
+            try:
+                with self.assertRaises((OperationsRecordError, _Unavailable, _Capacity,
+                        ReceiverScopeUnavailable, ReceiverScopeCapacity)):
+                    reader.compensations(*args)
+            finally:
+                store._connection.execute("DELETE FROM cpk_failed_run_compensations WHERE program_id='late-program'")
+            self.assertLess(observed["largest_cell"], 65000,
+                "an originally absent compensation transported its new preimage")
+            checked.append(True)
+            return original(store, prepared)
+
+        ids = iter(("event-advance-optional", "action-advance-optional"))
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
+            accepted = CurrentGraphAdvancementCommandService(lambda: PostgresUnitOfWork(
+                lambda: CompensationObservation(psycopg.connect(self.database_url), observed)),
+                clock=self.now, id_factory=lambda: next(ids)).execute(command)
+        self.assertEqual(checked, [True])
+        self.assertEqual(self.receiver_origin().first_accepted_action_id, accepted.action.action_id)
 
 
 class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
@@ -334,6 +451,21 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
     def test_foreign_accounting_reader_refuses_before_sql(self):
         self.reject_unclosed_read(phase=None, foreign_ledger=True)
 
+    def test_prospective_own_receipt_is_not_readable_before_publication(self):
+        original, checked = ConfigurationAcceptanceStore._preflight, []
+
+        def preflight(store, prepared):
+            with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError(
+                    "prospective own receipt reached SQL before publication")), self.assertRaises(_Unavailable):
+                store._receipt(prepared.workspace.workspace_id, prepared.plan.desired_graph_revision,
+                    read=prepared.evidence_read)
+            checked.append(True)
+            return original(store, prepared)
+
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
+            self.assertFalse(self.base.advance().replayed)
+        self.assertEqual(checked, [True])
+
     def test_unselected_candidate_prefix_refuses_before_sql(self):
         original, checked = ConfigurationAcceptanceStore._preflight, []
 
@@ -419,6 +551,63 @@ class PostgresConfigurationPublicationCarryTests(unittest.TestCase):
         self.carry.assert_membership(accepted, self.carry.fixture.refs)
         _assert_publication_and_cold_fit(self, trace, self.carry.base.database_url)
 
+    def test_actual_readback_unknown_source_refuses_before_cold_fallback(self):
+        runtime = replace(self.carry.graph.runtimes["runtime-a"], children=("worker",))
+        graph = replace(self.carry.graph, nodes={"worker": self.carry.graph.nodes["worker"]},
+            runtimes={"runtime-a": runtime})
+        command = self.carry.prepare("remove-api", "graph-worker-only",
+            RemoveNodeResource(NodeTarget("api")), graph=graph)
+        before = self.carry.base.retained_snapshot()
+        preflight, receipt, query = (ConfigurationAcceptanceStore._preflight,
+            ConfigurationAcceptanceStore._receipt, _EvidenceRead.query)
+        prepared_values, injected, cold = [], [], []
+
+        def prepared(store, value):
+            result = preflight(store, value)
+            prepared_values.append(value)
+            return result
+
+        def readback(store, workspace, revision, *, read=None):
+            if (prepared_values and not injected and read is prepared_values[0].evidence_read
+                    and revision == prepared_values[0].plan.desired_graph_revision):
+                value = prepared_values[0]
+                foreign = next(row for row in self.carry.fixture.expected_slots
+                    if row[1] == "api" and row[2] == value.slots[0][2])
+                self.assertFalse(any(row[:4] == foreign[3:7] for row in read.refs.values()))
+                altered = (*value.slots[0][:3], *foreign[3:])
+                for index, cell in enumerate(altered):
+                    self.assertLessEqual(len(str(cell).encode()),
+                        max(len(str(row[index]).encode()) for row in value.slots),
+                        "fixture must test an unknown key within existing width ceilings")
+                slots = (altered, *value.slots[1:])
+                store._connection.execute("UPDATE cpk_configuration_accepted_slots SET "
+                    "source_run_id=%s,source_activity_id=%s,source_attempt=%s,source_artifact_id=%s,"
+                    "birth_run_id=%s,birth_activity_id=%s,birth_attempt=%s,birth_artifact_id=%s,full_ref_digest=%s "
+                    "WHERE workspace_id=%s AND pinned_revision=%s AND runtime_id=%s AND node_id=%s AND artifact_id=%s",
+                    (*altered[3:], workspace, revision, *altered[:3]))
+                digest = sha256(rfc8785.dumps([[list(row[:3]), list(row[3:7]), list(row[7:11]), row[11]]
+                    for row in slots])).hexdigest()
+                store._connection.execute("UPDATE cpk_configuration_acceptances SET slot_digest=%s "
+                    "WHERE workspace_id=%s AND pinned_revision=%s", (digest, workspace, revision))
+                injected.append(foreign[3:7])
+            return receipt(store, workspace, revision, read=read)
+
+        def observed_query(read, sql, params, **kwargs):
+            if injected and tuple(params) == injected[0] and "cpk_effect_configuration_refs" in sql:
+                cold.append(sql)
+            return query(read, sql, params, **kwargs)
+
+        ids = iter(("event-readback-refusal", "action-readback-refusal"))
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", prepared), \
+                mock.patch.object(ConfigurationAcceptanceStore, "_receipt", readback), \
+                mock.patch.object(_EvidenceRead, "query", observed_query), \
+                self.assertRaises(CurrentGraphAdvancementConflict):
+            CurrentGraphAdvancementCommandService(self.carry.base.unit_of_work,
+                clock=lambda: "2026-07-22T13:05:00Z", id_factory=lambda: next(ids)).execute(command)
+        self.assertEqual(len(injected), 1)
+        self.assertEqual(cold, [], "actual changed readback slot escaped into an uncaptured proof query")
+        self.assertEqual(self.carry.base.retained_snapshot(), before)
+
 
 class PostgresConfigurationPublicationBudgetTests(unittest.TestCase):
     setUp = PostgresConfigurationPublicationLifetimeTests.setUp
@@ -428,6 +617,41 @@ class PostgresConfigurationPublicationBudgetTests(unittest.TestCase):
         with _publication_budget_observation(self, self.base.database_url) as (trace, factory):
             self.assertFalse(self.base.advance(factory).replayed)
         _assert_publication_and_cold_fit(self, trace, self.base.database_url)
+
+    def test_failed_receipt_fetch_retains_reservation_and_one_close_within_peak(self):
+        before = self.base.retained_snapshot()
+        failed, after_failure = [], []
+        with _publication_budget_observation(self, self.base.database_url) as (trace, _):
+            class FetchFailure(_BudgetObservedConnection):
+                def execute(self, sql, *args, **kwargs):
+                    if failed:
+                        after_failure.append(str(sql))
+                    cursor = super().execute(sql, *args, **kwargs)
+                    if (not failed and trace.get("accounting") is not None
+                            and _ACCOUNTING.get() is trace["accounting"]
+                            and "FROM cpk_configuration_acceptances" in str(sql)
+                            and "CASE WHEN" in str(sql)):
+                        failed.append(_ACCOUNTING.get().used)
+                        # Fault after real execute, before fetch; the database
+                        # transaction remains usable for the owner's close.
+                        raise psycopg.DataError("injected publication fetch failure")
+                    return cursor
+
+            with self.assertRaises((psycopg.DataError, CurrentGraphAdvancementConflict)):
+                self.base.advance(lambda: PostgresUnitOfWork(lambda: FetchFailure(
+                    psycopg.connect(self.base.database_url), trace)))
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(after_failure, ["SELECT txid_current()"])
+        for peak in trace["peaks"]:
+            _within(self, _difference(peak, trace["prior"]), trace["publication"].peak)
+        retained = _difference(trace["accounting"].used, failed[0])
+        self.assertEqual((retained.records, retained.scalar_markers, retained.statements), (1, 1, 1))
+        self.assertGreater(retained.value_octets, 0)
+        _within(self, _difference(trace["accounting"].used, trace["prior"]), trace["publication"].peak)
+        with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("spent publication reached SQL")), \
+                self.assertRaises((OperationsRecordError, _Unavailable)):
+            trace["owner"]._require_issued(trace["prepared"])
+        self.assertEqual(self.base.retained_snapshot(), before)
 
     def synthetic_gates(self, exercise):
         original = ConfigurationAcceptanceStore._preflight
