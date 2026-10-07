@@ -140,13 +140,22 @@ class ConfigurationAcceptanceStore:
             read = _EvidenceRead(self._connection)
             transaction = _transaction(read)
             _require(transaction == guard._transaction_id)
+            completed = False
             try:
                 yield
+                completed = True
             finally:
                 # Retain failed fetch reservations; the single final query is
                 # still charged to the same ledger before commit is requested.
                 self._require_publication(read=read)
-                _require(_transaction(read) == transaction)
+                from psycopg.pq import TransactionStatus
+                if self._connection.info.transaction_status == TransactionStatus.INERROR:
+                    # A server-aborted transaction cannot execute a close query.
+                    # Preserve its original error for the caller's rollback;
+                    # never turn a swallowed database failure into success.
+                    _require(not completed)
+                else:
+                    _require(_transaction(read) == transaction)
         finally:
             self._issued = None
             self._publication_active = False

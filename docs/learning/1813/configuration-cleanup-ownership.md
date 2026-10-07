@@ -1521,3 +1521,20 @@ its dedicated container and network are absent. This is local owning-runner
 evidence, not a GitHub Actions run or package acceptance. The prior API
 checkpoint is issue comment `6042811039`; GitHub publication transport remains
 separate from these validation results.
+
+First implementation slice `4520e469bee8ab43769b3f77ab3d2d2c38712092`, tree
+`dcc3a8c3046a058b36190882f7f6f0f36753ab13`, scopes the existing acceptance owner
+through receiver finish and expires its credential before commit request. The
+two witness statements now charge the shared ledger. Four new targets passed,
+as did concurrency and witness-drift regressions. The eight-test owning run
+finished in 126.511 seconds with two subtest errors in the existing immediate
+trigger-failure regression: the unconditional close query masked the original
+`CheckViolation` with `InFailedSqlTransaction`. This is a production regression,
+not apparatus failure. Log `/tmp/cpk-1952-lifetime-green.log`, SHA-256
+`9e46fa9758461fb13e8a4837edd4fd3621c2b7771d639dcdfafd17f8cb93f37d`.
+Cleanup was verified. The correction preserves local expiry in all cases and
+the original error when PostgreSQL reports `INERROR`; only that unusable
+transaction omits the impossible close query. A swallowed server failure cannot
+return successful publication. Usable driver/fetch failures still perform the
+one charged close. This requires no retry/savepoint/schema change and reduces
+actual cleanup below the reviewed conservative H allowance.
