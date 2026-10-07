@@ -514,6 +514,105 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
         self.assertEqual(checked, [True])
         self.assertEqual(self.base.retained_snapshot(), before)
 
+    def test_swallowed_database_abort_cannot_publish_or_retain_credential(self):
+        before, prepared_values, injected = self.base.retained_snapshot(), [], []
+        finish, preflight = advancement_module._finish_receiver_advancement, ConfigurationAcceptanceStore._preflight
+
+        def admitted(store, prepared):
+            result = preflight(store, prepared)
+            prepared_values.append((store, prepared))
+            return result
+
+        def finishing(stores, *args):
+            result = finish(stores, *args)
+            # Real command has inserted its header and changed the pointer.
+            # This deliberately swallowed server error leaves INERROR, unlike
+            # the separate usable driver/fetch failure witness.
+            self.assertEqual(stores.connection.execute("SELECT action_id FROM cpk_configuration_acceptances "
+                "WHERE workspace_id='workspace-a'").fetchall(), [("action-advance",)])
+            self.assertEqual(stores.connection.execute("SELECT current_graph_id FROM cpk_workspaces "
+                "WHERE workspace_id='workspace-a'").fetchone(), ("graph-desired",))
+            try:
+                stores.connection.execute("SELECT 1 / 0")
+            except psycopg.errors.DivisionByZero:
+                injected.append(True)
+            return result
+
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admitted), \
+                mock.patch.object(advancement_module, "_finish_receiver_advancement", finishing), \
+                self.assertRaises(CurrentGraphAdvancementConflict):
+            self.base.advance()
+        self.assertEqual(injected, [True])
+        self.assertEqual(self.base.retained_snapshot(), before)
+        self.assertEqual(len(prepared_values), 1)
+        store, prepared = prepared_values[0]
+        with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("spent owner queried SQL")), \
+                self.assertRaises((OperationsRecordError, _Unavailable)):
+            store._require_issued(prepared)
+
+    def test_legacy_absent_projection_is_captured_without_persistence_and_rejects_appearance(self):
+        from control_plane_kit_operations.records import ExecutionRequestIdentity
+        from psycopg.types.json import Jsonb
+        # Local historical-plan read premise only: originals() does not prove
+        # an admitted or terminal request. No legacy publication is claimed.
+        with self.base.unit_of_work() as uow:
+            stores = uow.stores
+            plan = stores.activity_history.get_plan("plan-a")
+            for index, old in enumerate(("graph-current", "graph-desired"), 3):
+                graph = stores.graphs.get(old)
+                stores.graphs.save(replace(graph, graph_id="legacy-" + old, version=index))
+            historical = replace(plan, plan_id="legacy-plan", base_graph_id="legacy-graph-current",
+                desired_graph_id="legacy-graph-desired", base_realized_projection_id=None,
+                desired_realized_projection_id=None)
+            stores.activity_history.add_plan(historical)
+            uow.commit()
+        identity = ExecutionRequestIdentity("local-history-reader", "workspace-a", "session-a", "legacy-plan")
+        prepare, preflight = ConfigurationAcceptanceStore._prepare, ConfigurationAcceptanceStore._preflight
+        captured, checked = [], []
+
+        def absent(connection, projections):
+            for projection in projections:
+                self.assertEqual(connection.execute("SELECT count(*) FROM cpk_realized_graph_projections "
+                    "WHERE projection_id=%s", (projection.projection_id,)).fetchone(), (0,))
+
+        def preparing(store, *args, **kwargs):
+            original = _ExecutionScopeStorage(store._connection, _EvidenceRead(store._connection)).originals(identity)
+            self.assertEqual(original[0], historical)
+            absent(store._connection, original[1:])
+            captured.append(original)
+            return prepare(store, *args, **kwargs)
+
+        def admitted(store, prepared):
+            self.assertEqual(len(captured), 1)
+            # Fresh transport: a cached missing row cannot stand in for the
+            # bound optional-role reread or manufacture its presence result.
+            reread = _ExecutionScopeStorage(store._connection, _EvidenceRead(store._connection)).originals(identity)
+            self.assertEqual(reread, captured[0])
+            absent(store._connection, reread[1:])
+            projection = reread[1]
+            store._connection.execute("INSERT INTO cpk_realized_graph_projections "
+                "(projection_id,workspace_id,source_authored_graph_id,projection_kind,projection_key,"
+                "projection_digest,graph_descriptor,created_by,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (projection.projection_id, projection.workspace_id, projection.source_authored_graph_id,
+                 projection.projection_kind.value, projection.projection_key, projection.projection_digest,
+                 Jsonb(projection.graph_descriptor), projection.created_by, projection.created_at))
+            try:
+                with self.subTest("appeared optional original"), \
+                        self.assertRaises((_Unavailable, ReceiverScopeUnavailable)):
+                    _ExecutionScopeStorage(store._connection, _EvidenceRead(store._connection)).originals(identity)
+            finally:
+                store._connection.execute("DELETE FROM cpk_realized_graph_projections WHERE projection_id=%s",
+                    (projection.projection_id,))
+            absent(store._connection, reread[1:])
+            checked.append(True)
+            return preflight(store, prepared)
+
+        with mock.patch.object(ConfigurationAcceptanceStore, "_prepare", preparing), \
+                mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admitted):
+            self.assertFalse(self.base.advance().replayed)
+        self.assertEqual(checked, [True])
+        absent(self.base.connection, captured[0][1:])
+
     def reject_unclosed_read(self, *, phase, foreign_ledger=False):
         original = ConfigurationAcceptanceStore._preflight
         checked = []
@@ -633,6 +732,73 @@ class PostgresConfigurationPublicationCarryTests(unittest.TestCase):
                     store._ref(read, source_key)
             finally:
                 read.refs[cache_key] = removed
+            checked.append(True)
+            return original(store, prepared)
+
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
+            accepted = self.carry.add_runtime()
+        self.assertEqual(checked, [True])
+        self.carry.assert_membership(accepted, self.carry.fixture.refs)
+
+    def test_missing_prepared_source_caches_refuse_before_each_cold_fallback(self):
+        from control_plane_kit_operations.postgres.configuration_preparation_store import _decode
+        from control_plane_kit_operations.postgres.configuration_source import read_source
+        from control_plane_kit_operations.postgres.effect_outcome_store import EffectAttemptOutcomeStore
+        original, checked = ConfigurationAcceptanceStore._preflight, []
+
+        def preflight(store, prepared):
+            read, slot = prepared.evidence_read, prepared.slots[0]
+            source = _decode(store._ref(read, slot[3:7]), read).source
+            plan_key = ("configuration-source-plan", source.source.workspace_id, source.source.plan_id)
+            header = read.sources[plan_key][0]
+            context_key = ("configuration-receipt-context", source.source.workspace_id, header["pinned_revision"])
+            slot_key = ("configuration-original-slot", source.source.workspace_id, header["pinned_revision"], *slot[:3])
+
+            def source_read():
+                self.assertEqual(read_source(store._connection, source.identity, source.ref, read=read).state, "unavailable")
+
+            cases = (
+                ("source", ("cpk_effect_attempt_intents", source.identity), source_read),
+                ("outcome", ("cpk_effect_attempt_outcomes", source.identity),
+                    lambda: EffectAttemptOutcomeStore(store._connection)._configuration_terminal(source, read)),
+                ("source-plan", plan_key, lambda: store._original_use(read, slot, source)),
+                ("receipt-context", context_key, lambda: store._receipt_context(
+                    source.source.workspace_id, header["pinned_revision"], read)),
+                ("original-slot", slot_key, lambda: store._original_use(read, slot, source)),
+            )
+            for family, key, call in cases:
+                with self.subTest(family=family):
+                    self.assertIn(key, read.sources, "fixture must reach the real prepared cache family")
+                    value = read.sources.pop(key)
+                    try:
+                        with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError(
+                                "missing " + family + " proof dispatched cold SQL")):
+                            if family == "source":
+                                call()
+                            else:
+                                with self.assertRaises(_Unavailable):
+                                    call()
+                    finally:
+                        read.sources[key] = value
+            checked.append(True)
+            return original(store, prepared)
+
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
+            accepted = self.carry.add_runtime()
+        self.assertEqual(checked, [True])
+        self.carry.assert_membership(accepted, self.carry.fixture.refs)
+
+    def test_foreign_reader_with_copied_proof_caches_refuses_before_cache_hit(self):
+        original, checked = ConfigurationAcceptanceStore._preflight, []
+
+        def preflight(store, prepared):
+            foreign = _EvidenceRead(store._connection)
+            foreign.refs.update(prepared.evidence_read.refs)
+            foreign.sources.update(prepared.evidence_read.sources)
+            with self.subTest("foreign reader"), \
+                    mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("foreign proof reader queried SQL")), \
+                    self.assertRaises(_Unavailable):
+                store._ref(foreign, prepared.slots[0][3:7])
             checked.append(True)
             return original(store, prepared)
 

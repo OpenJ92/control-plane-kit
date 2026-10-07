@@ -1538,3 +1538,33 @@ transaction omits the impossible close query. A swallowed server failure cannot
 return successful publication. Usable driver/fetch failures still perform the
 one charged close. This requires no retry/savepoint/schema change and reduces
 actual cleanup below the reviewed conservative H allowance.
+
+Corrected slice `ab3854c6a7e95f98ac9fe40d48eb0175f74ad3ee`, tree
+`2de7b2a938b44502638f0e7e5dd6b2f57dd8e6e4`: nine selected tests completed in
+139.503 seconds, eight passed and the late-history target failed only at its
+still-absent source forecast. Its actual witness, full rollback and exactly-one
+usable close assertions now pass. Both immediate and deferred database-trigger
+rollback regressions pass. Log `/tmp/cpk-1952-lifetime-corrected.log`, SHA-256
+`e677cf35ae9a0126051f90dc35d0f5fbb95d5fc45f0c9627a2c0ad6ccd39137f`, exit 1,
+no errors; dedicated resources are absent. This establishes the scoped lifetime
+and witness-accounting green cases, not whole-issue green or S/H fit.
+
+Next target law cards, before changing proof-cache/optional-projection seams:
+
+- Strengthened prepared-reader law: each actually reached source, outcome,
+  source-plan, receipt-context and original-slot cache key must still be present
+  on the exact prepared reader. Evict one key at a time, require refusal before
+  any cold query, restore it and retain real carry success. Copied caches on a
+  different reader do not supply the prepared reader's contract.
+- Strengthened failed-transaction law: an actual database error swallowed by a
+  test hook after real finish must not become successful publication. Verify
+  the tentative header/pointer, trigger `DivisionByZero`, and require rollback
+  and spent credentials. This extends the immediate-trigger regression that
+  already supplied causal evidence for the correction; it is not new red proof.
+- Strengthened legacy optional law: a real historical nonempty plan and stored
+  session/authored graphs may derive absent identity projections without writes.
+  Observe through actual `originals` while the real command scope captures,
+  freeze normally, then reread with a fresh reader and verify continued absence.
+  Exact valid row appearance must refuse; remove only that test insertion and
+  retain the advancing command's success. This local reader premise does not
+  establish an admitted/terminal historical request or legacy publication.
