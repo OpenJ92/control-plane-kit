@@ -219,3 +219,57 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
                     self.assertEqual(accounting.used.scalar_markers, 19 * count)
                     if count:
                         self.assertGreater(accounting.used.value_octets, 0)
+
+    def test_source_failures_retain_full_query_reservation_cleanup_and_one_close(self):
+        import psycopg
+        from control_plane_kit_operations.postgres import PostgresUnitOfWork
+        from control_plane_kit_operations.postgres.configuration_source import _SOURCE
+        from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection, _components
+        self.owner_type()
+        for error_type, final_statements in ((psycopg.DataError, 3), (_Unavailable, 2)):
+            with self.subTest(error=error_type.__name__):
+                self.reset_start_truth()
+                command, before = self.configuration_command(), self.complete_start_snapshot()
+                service = self.start_service("source-failure-start")
+                captured = {}
+                observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
+                    accounting=None, role_label=lambda sql, params: "ordinary-source-failure")
+
+                class FailingConnection(_PhaseConnection):
+                    def execute(connection, sql, params=()):
+                        if support._BOUND_ORDINARY_START.get() is not None:
+                            if sql == "SAVEPOINT cpk_configuration_source_read":
+                                captured["savepoint"] = support._ACCOUNTING.get().used
+                            if sql == _SOURCE:
+                                # _EvidenceRead has reserved before dispatch to
+                                # this connection. Fail that dispatch, not the
+                                # accounting function or permission decision.
+                                captured["failed_query"] = support._ACCOUNTING.get().used
+                                raise error_type("injected source transport failure")
+                        return super().execute(sql, params)
+
+                class MeasuredUnitOfWork(PostgresUnitOfWork):
+                    def __exit__(uow, *args):
+                        try:
+                            return super().__exit__(*args)
+                        finally:
+                            captured["end"] = observed["accounting"].used
+
+                def factory():
+                    observed["accounting"] = support._ACCOUNTING.get()
+                    return MeasuredUnitOfWork(lambda: FailingConnection(
+                        psycopg.connect(self.database_url), observed))
+
+                with self.trace_binding() as trace, mock.patch.object(service, "_unit_of_work_factory", factory), \
+                        self.assertRaises(EffectAttemptStartConflict):
+                    service.execute(command)
+                self.assertEqual((trace["active"], trace["close"]), (1, 1))
+                reservation = tuple(a - b for a, b in zip(_components(captured["failed_query"]),
+                    _components(captured["savepoint"]), strict=True))
+                self.assertEqual(reservation, (3, 80032, 17, 1))
+                cleanup = tuple(a - b for a, b in zip(_components(captured["end"]),
+                    _components(captured["failed_query"]), strict=True))
+                self.assertEqual((cleanup[0], cleanup[2], cleanup[3]), (1, 1, final_statements))
+                self.assertGreater(cleanup[1], 0)
+                self.assertLessEqual(cleanup[1], 20)
+                self.assertEqual(self.complete_start_snapshot(), before)
