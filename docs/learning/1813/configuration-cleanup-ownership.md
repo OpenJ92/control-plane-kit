@@ -1474,3 +1474,34 @@ forge prepared authority. Existing native legacy laws remain governing; optional
 compensation coverage does not substitute for this branch, and full end-to-end
 legacy publication coverage is not claimed. Kepler accepted this narrow target
 sequencing within the reviewed issue, with no new user/authority decision.
+
+22-target checkpoint `6bfc657d4f2257e04954dffcf07d27bd7e684d5d`, tree
+`ed8fe840005b74b5f25eaa0e2ce48ba434402ad0`: owning focused run completed 22 tests
+in 161.256 seconds, 22 assertion failures, exit 1, no fixture/import/apparatus
+errors. Log `/tmp/cpk-1952-publication-final-red.log`, SHA-256
+`441138de3b461ccc34c731716d583f8e137fc9947b5f09c9bc371fa70285ccba`.
+Dedicated container/network absence was verified after cleanup. Optional
+compensation transported its 65,000-byte appeared preimage; raw candidate growth
+with an unchanged request set did not refuse; the coherent changed actual stored
+slot/header caused one cold query for its uncaptured existing source; prospective
+own receipt lookup reached SQL before publication. Forecast-dependent assertions
+remain blocked by forecast absence and are not individually credited as red.
+
+Independent review required an additional failure location after a real receiver
+witness write, beyond the earlier receipt-readback fetch fault. The amendment
+drives the actual second finish history, independently inspects the tentative
+witness/header/current pointer on the same transaction outside production
+telemetry, then faults a real event read after execute and before fetch. It
+checks complete rollback before close/forecast/H assertions. The baseline late
+path remains executable without fabricating a forecast; missing close/forecast
+still fails unconditionally. This is a driver/fetch fault with a usable database
+transaction, not a PostgreSQL-aborted transaction claim. The candidate mutation
+also uses a one-byte node ID within existing native guarded widths.
+
+Publication status at this checkpoint: GitHub's git receive returned HTTP/server
+500 twice for the reviewed `348567b0` push. Read-only remote verification showed
+the branch remains at published `0df73d54320695ab4798edf80602cab023563813`.
+Later local commits and exact logs are preserved; source/test review remains
+valid, and validation is not rerun for a publication transport failure. API
+issue reporting and safe local target work continue. No repeated push loop or
+new authority is introduced.

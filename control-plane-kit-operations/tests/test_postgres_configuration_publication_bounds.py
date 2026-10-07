@@ -18,6 +18,7 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
 from control_plane_kit_operations._configuration_preparation import _OrdinarySuffixBudget
+from control_plane_kit_operations import advancement as advancement_module
 from control_plane_kit_operations.advancement import (
     AdvanceCurrentGraph, CurrentGraphAdvancementCommandService, CurrentGraphAdvancementConflict,
 )
@@ -262,9 +263,11 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
                 self.assertEqual(reader.candidates("workspace-a", scopes), (prepared.request.identity.request_id,))
             self.assertTrue(any(len(rows) > len({row[0] for row in rows}) for rows in raw),
                 "fixture lacks repeated raw candidate identities before deduplication")
+            self.assertLessEqual(len("z".encode()),
+                min(len(name.encode()) for name in self.canonical_receiver_graph.nodes))
             row = store._connection.execute("INSERT INTO cpk_execution_receiver_scopes "
                 "(request_id,workspace_id,scope_ordinal,scope_kind,runtime_id,node_id) "
-                "SELECT %s,%s,max(scope_ordinal)+1,'node','docker','late-candidate' "
+                "SELECT %s,%s,max(scope_ordinal)+1,'node','docker','z' "
                 "FROM cpk_execution_receiver_scopes WHERE request_id=%s RETURNING scope_ordinal",
                 (prepared.request.identity.request_id, "workspace-a", prepared.request.identity.request_id)).fetchone()
             self.assertIsNotNone(row)
@@ -281,6 +284,100 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
             accepted = self.advance(claimed, "multiset")
         self.assertEqual(checked, [True])
         self.assertEqual(self.receiver_origin().first_accepted_action_id, accepted.action.action_id)
+
+    def test_second_history_failure_rolls_back_actual_witness_within_peak(self):
+        self.desired_receiver("late-history", graph=self.canonical_receiver_graph)
+        claimed, _, _ = self.retained_success("late-history")
+        command = self.publication_command(claimed, "late-history")
+        before, origin = self.acceptance_truth(), self.receiver_origin()
+        def receipts():
+            return tuple(self.connection.execute("SELECT * FROM " + table
+                + " ORDER BY workspace_id,pinned_revision").fetchall()
+                for table in ("cpk_configuration_acceptances", "cpk_configuration_accepted_slots"))
+        receipts_before = receipts()
+        trace = _trace()
+        trace.update(finishing=False, histories=0, late=False)
+        failed, inspected, after_failure = [], [], []
+        preflight = ConfigurationAcceptanceStore._preflight
+        finish, history = advancement_module._finish_receiver_advancement, _ExecutionScopeStorage.evidence
+
+        def admitted(store, prepared):
+            # Keep the baseline late-failure path executable even before the
+            # forecast exists. Missing forecast is still an unconditional
+            # assertion below, never fabricated forecast/permission evidence.
+            forecast = getattr(store, "_publication_budgets", None)
+            publication = forecast(prepared)[2] if callable(forecast) else None
+            result = preflight(store, prepared)
+            trace.update(publication=publication, accounting=_ACCOUNTING.get(),
+                prior=_ACCOUNTING.get().used, owner=store, prepared=prepared)
+            return result
+
+        def finishing(*args, **kwargs):
+            trace["finishing"] = True
+            try:
+                return finish(*args, **kwargs)
+            finally:
+                trace["finishing"] = False
+
+        def history_read(reader, *args, **kwargs):
+            if trace["finishing"]:
+                trace["histories"] += 1
+                if trace["histories"] == 2:
+                    # Independent, unmetered test premise inspection on the
+                    # SAME transaction, deliberately outside production/wire
+                    # telemetry. It neither grants permission nor changes truth.
+                    raw = reader.connection.connection
+                    self.assertEqual(raw.execute("SELECT first_accepted_action_id,first_accepted_session_id "
+                        "FROM cpk_graph_receiver_introductions WHERE workspace_id='workspace-a' AND receiver_id=%s",
+                        ("a" * 32,)).fetchone(), ("action-advance-late-history", claimed.request.identity.session_id))
+                    self.assertEqual(raw.execute("SELECT action_id,event_id FROM cpk_configuration_acceptances "
+                        "WHERE workspace_id='workspace-a' AND pinned_revision=%s",
+                        (command.expected_desired_graph_revision,)).fetchone(),
+                        ("action-advance-late-history", "event-advance-late-history"))
+                    self.assertEqual(raw.execute("SELECT current_graph_id,current_realized_projection_id "
+                        "FROM cpk_workspaces WHERE workspace_id='workspace-a'").fetchone(),
+                        (command.desired_graph_id, command.desired_realized_projection_id))
+                    inspected.append(True)
+                    trace["late"] = True
+            return history(reader, *args, **kwargs)
+
+        class LateFetchFailure(_BudgetObservedConnection):
+            def execute(self, sql, *args, **kwargs):
+                if failed:
+                    after_failure.append(str(sql))
+                cursor = super().execute(sql, *args, **kwargs)
+                if (trace["late"] and not failed and "FROM cpk_activity_events" in str(sql)
+                        and "CASE WHEN" in str(sql)):
+                    failed.append(_ACCOUNTING.get().used)
+                    # Driver/fetch fault after real execute; PostgreSQL has
+                    # not aborted the transaction, so the actual close can run.
+                    raise psycopg.DataError("injected second-history fetch failure")
+                return cursor
+
+        ids = iter(("event-advance-late-history", "action-advance-late-history"))
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admitted), \
+                mock.patch.object(advancement_module, "_finish_receiver_advancement", finishing), \
+                mock.patch.object(_ExecutionScopeStorage, "evidence", history_read), \
+                self.assertRaises((psycopg.DataError, CurrentGraphAdvancementConflict)):
+            CurrentGraphAdvancementCommandService(lambda: PostgresUnitOfWork(lambda:
+                LateFetchFailure(psycopg.connect(self.database_url), trace)),
+                clock=self.now, id_factory=lambda: next(ids)).execute(command)
+        self.assertEqual(inspected, [True])
+        self.assertEqual(trace["histories"], 2)
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(self.receiver_origin(), origin)
+        self.assertEqual(self.acceptance_truth(), before)
+        self.assertEqual(receipts(), receipts_before)
+        self.assertEqual(after_failure, ["SELECT txid_current()"])
+        self.assertIsNotNone(trace["publication"], "late publication lacks its source-derived failure peak")
+        for peak in trace["peaks"]:
+            _within(self, _difference(peak, trace["prior"]), trace["publication"].peak)
+        retained = _difference(trace["accounting"].used, failed[0])
+        self.assertEqual((retained.records, retained.scalar_markers, retained.statements), (1, 1, 1))
+        self.assertGreater(retained.value_octets, 0)
+        _within(self, _difference(trace["accounting"].used, trace["prior"]), trace["publication"].peak)
+        with self.assertRaises((OperationsRecordError, _Unavailable)):
+            trace["owner"]._require_issued(trace["prepared"])
 
     def test_absent_compensation_is_supported_but_appearance_is_bounded(self):
         self.desired_receiver("optional", graph=self.canonical_receiver_graph)
@@ -594,7 +691,7 @@ class PostgresConfigurationPublicationCarryTests(unittest.TestCase):
 
         def observed_query(read, sql, params, **kwargs):
             if injected and tuple(params) == injected[0] and "cpk_effect_configuration_refs" in sql:
-                cold.append(sql)
+                cold.append(tuple(params))
             return query(read, sql, params, **kwargs)
 
         ids = iter(("event-readback-refusal", "action-readback-refusal"))
