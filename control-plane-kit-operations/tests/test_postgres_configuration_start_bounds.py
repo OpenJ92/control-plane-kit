@@ -85,6 +85,42 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
         self.assertEqual((trace["capture"], trace["bind"], trace["active"], trace["close"]), (1, 1, 1, 1))
         self.assertIsNone(support._BOUND_ORDINARY_START.get())
 
+    def test_wrapped_pending_commit_invalidates_owner_and_rolls_back(self):
+        from types import SimpleNamespace
+        from tests.test_execution_coordinator import TrackingUnitOfWork
+        from tests.gateway_rotation_overlap_fixture import CrashAfterCommitUnitOfWork, CrashControl
+        actual_prepare = preparation.ConfigurationPreparationStore._prepare
+        tracker = SimpleNamespace(entered=0, active=0, committed=0)
+        wrappers = (
+            lambda inner: TrackingUnitOfWork(tracker, inner),
+            lambda inner: CrashAfterCommitUnitOfWork(inner, CrashControl(999)),
+        )
+        for wrap in wrappers:
+            with self.subTest(wrapper=wrap(self.unit_of_work()).__class__.__name__):
+                before = self.complete_start_snapshot()
+                service = self.start_service("pending-commit-start")
+                checked = []
+
+                def prepared(store, *args, **kwargs):
+                    result = actual_prepare(store, *args, **kwargs)
+                    owner = store._ordinary_owner
+                    self.assertFalse(owner._uow._commit_requested)
+                    owner._uow.commit()
+                    self.assertTrue(owner._uow._commit_requested)
+                    with self.assertRaises(_Unavailable):
+                        owner._require(owner._issued, store._connection)
+                    checked.append(result)
+                    raise _Unavailable
+
+                with mock.patch.object(service, "_unit_of_work_factory", lambda: wrap(self.unit_of_work())), \
+                        mock.patch.object(preparation.ConfigurationPreparationStore, "_prepare", prepared), \
+                        self.assertRaises(EffectAttemptStartConflict):
+                    service.execute(self.configuration_command())
+                self.assertEqual(len(checked), 1)
+                self.assertIsNone(support._BOUND_ORDINARY_START.get())
+                self.assertEqual(self.complete_start_snapshot(), before)
+        self.assertEqual((tracker.entered, tracker.active, tracker.committed), (1, 0, 1))
+
     def test_late_write_failure_closes_once_retains_raw_charge_and_rolls_back(self):
         from control_plane_kit_operations import configuration_preparation as values
         command, before = self.configuration_command(), self.complete_start_snapshot()

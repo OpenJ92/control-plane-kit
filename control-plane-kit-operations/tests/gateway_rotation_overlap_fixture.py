@@ -278,6 +278,10 @@ class CrashAfterCommitUnitOfWork:
     def stores(self):
         return self.inner.stores
 
+    @property
+    def _commit_requested(self):
+        return self.inner._commit_requested
+
     def commit(self) -> None:
         self.inner.commit()
         self.commit_requested = True
