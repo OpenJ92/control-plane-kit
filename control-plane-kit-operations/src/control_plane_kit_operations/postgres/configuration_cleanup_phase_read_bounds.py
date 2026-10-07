@@ -108,8 +108,12 @@ def _phase_require(connection, parent_role, parent_identity, child_role, child_i
     """
     issued = _phase_context(connection)
     if type(issued) is _OrdinaryStartReadBounds:
-        _require(_contains(issued, parent_role, parent_identity)
-            and _contains(issued, child_role, child_identity))
+        _require(_contains(issued, parent_role, parent_identity))
+        # A complete introducing binding set can list an unselected sibling.
+        # Membership does not read that sibling's origin. Actual introduction
+        # reads still enter strict _bound before any SQL and cannot fall back.
+        if (parent_role, child_role) != ("bindings", "introduction"):
+            _require(_contains(issued, child_role, child_identity))
         return
     if issued is not None and _contains(issued, parent_role, parent_identity):
         _require(_contains(issued, child_role, child_identity))

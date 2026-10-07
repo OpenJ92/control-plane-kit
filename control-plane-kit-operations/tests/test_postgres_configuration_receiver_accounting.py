@@ -61,7 +61,7 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
         from dataclasses import replace
         from unittest import mock
         from control_plane_kit_core.topology import validate_graph
-        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _BOUND_ORDINARY_START
         from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead, _Unavailable
         from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
         graph = self.canonical_receiver_graph
@@ -95,9 +95,11 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
                 if role == "bindings" and entry.identity == ("workspace-a",
                     origin.introducing_graph_id, origin.introducing_realized_projection_id))
             self.assertEqual(set(introducing_bindings.keys), {("api", "http"), ("sibling", "http")})
+            before = _ACCOUNTING.get().used
             with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError(
                     "unselected origin reached SQL")), self.assertRaises(_Unavailable):
                 store._ordinary_owner._stores.graphs.receiver_introduction("workspace-a", "b" * 32)
+            self.assertEqual(_ACCOUNTING.get().used, before)
             captured.append(result)
             return result
 
