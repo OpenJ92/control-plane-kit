@@ -1,8 +1,12 @@
 """Prepared original advancement values; no independent mutation authority."""
 from dataclasses import dataclass, replace
+from contextvars import ContextVar
 
 from control_plane_kit_operations.records import OperationsRecordError
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+
+
+_PUBLICATION_SCOPE = ContextVar("cpk_configuration_publication_scope", default=None)
 
 
 def _history_records(event, action):

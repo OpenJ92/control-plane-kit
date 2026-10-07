@@ -1505,3 +1505,19 @@ Later local commits and exact logs are preserved; source/test review remains
 valid, and validation is not rerun for a publication transport failure. API
 issue reporting and safe local target work continue. No repeated push loop or
 new authority is introduced.
+
+Late-boundary terminal evidence at `0fa0ad46874a494b9c297ec9a5799a3dd47ff9ee`,
+tree `fe925e1e566d1da094759b4ea7bf3b0b0457971c`: the owning runner completed
+three selected tests in 35.644 seconds, with three assertion failures and exit 1,
+without fixture/import/apparatus errors. Log
+`/tmp/cpk-1952-publication-late-red.log`, SHA-256
+`5f8374c9235548d13588307ed02905ea5d16c38b121a891fb2a0b785c4007e7b`.
+The changed actual source still issued its cold query, the same-request raw
+candidate multiset growth still escaped refusal, and the second-history fault
+passed tentative witness/header/current-pointer and full rollback premises
+before failing the missing final transaction-close query. Forecast/H assertions
+remain uncredited until the source forecast exists. The runner is terminal and
+its dedicated container and network are absent. This is local owning-runner
+evidence, not a GitHub Actions run or package acceptance. The prior API
+checkpoint is issue comment `6042811039`; GitHub publication transport remains
+separate from these validation results.

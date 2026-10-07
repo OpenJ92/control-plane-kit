@@ -362,82 +362,83 @@ class CurrentGraphAdvancementCommandService:
             )
             events = stores.execution.events_for_run(command.run_id)
             _require_complete_success(plan.plan, run, events)
-            receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard)
-            prepared = stores.configuration_acceptance._prepare(stores, workspace, request, run, plan, guard,
-                current_projection, desired_projection)
+            with stores.configuration_acceptance._publication_scope(unit_of_work, guard):
+                receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard)
+                prepared = stores.configuration_acceptance._prepare(stores, workspace, request, run, plan, guard,
+                    current_projection, desired_projection)
 
-            occurred_at = self._clock()
-            evidence = BoundedEvidence.from_mapping(
-                {
-                    "workspace_id": command.workspace_id,
-                    "plan_id": command.plan_id,
-                    "run_id": command.run_id,
-                    "from_authored_graph_id": command.expected_current_graph_id,
-                    "from_realized_projection_id": current_projection.projection_id,
-                    "to_authored_graph_id": command.desired_graph_id,
-                    "to_realized_projection_id": desired_projection.projection_id,
-                    "to_realized_projection_digest": (
-                        desired_projection.projection_digest
+                occurred_at = self._clock()
+                evidence = BoundedEvidence.from_mapping(
+                    {
+                        "workspace_id": command.workspace_id,
+                        "plan_id": command.plan_id,
+                        "run_id": command.run_id,
+                        "from_authored_graph_id": command.expected_current_graph_id,
+                        "from_realized_projection_id": current_projection.projection_id,
+                        "to_authored_graph_id": command.desired_graph_id,
+                        "to_realized_projection_id": desired_projection.projection_id,
+                        "to_realized_projection_digest": (
+                            desired_projection.projection_digest
+                        ),
+                        "desired_graph_revision": command.expected_desired_graph_revision,
+                    }
+                )
+                event = ActivityEventRecord(
+                        self._id_factory(),
+                        command.run_id,
+                        stores.execution.next_event_ordinal(command.run_id),
+                        ActivityEventKind.CURRENT_GRAPH_ADVANCED,
+                        occurred_at,
+                        evidence=evidence,
+                    )
+                action = OperationActionRecord(
+                        self._id_factory(),
+                        request.identity.session_id,
+                        history.next_action_ordinal(
+                            request.identity.session_id
+                        ),
+                        LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
+                        command.authority.worker_id,
+                        payload={
+                            **evidence.descriptor(),
+                            "execution_request_id": request.identity.request_id,
+                            "claim_generation": command.fence.generation,
+                            "event_id": event.event_id,
+                        },
+                        created_at=occurred_at,
+                        idempotency_key=command.idempotency_key.value,
+                        intent_fingerprint=fingerprint,
+                    )
+                prepared = prepared.with_records(event, action)
+                stores.configuration_acceptance._preflight(prepared)
+                advanced = stores.workspaces._compare_and_set_current_graph(
+                    command.workspace_id,
+                    prepared_receipt=prepared,
+                    expected_graph_id=command.expected_current_graph_id,
+                    replacement_graph_id=command.desired_graph_id,
+                    expected_realized_projection_id=(
+                        command.expected_current_realized_projection_id
                     ),
-                    "desired_graph_revision": command.expected_desired_graph_revision,
-                }
-            )
-            event = ActivityEventRecord(
-                    self._id_factory(),
-                    command.run_id,
-                    stores.execution.next_event_ordinal(command.run_id),
-                    ActivityEventKind.CURRENT_GRAPH_ADVANCED,
-                    occurred_at,
-                    evidence=evidence,
-                )
-            action = OperationActionRecord(
-                    self._id_factory(),
-                    request.identity.session_id,
-                    history.next_action_ordinal(
-                        request.identity.session_id
+                    replacement_realized_projection_id=(
+                        command.desired_realized_projection_id
                     ),
-                    LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
-                    command.authority.worker_id,
-                    payload={
-                        **evidence.descriptor(),
-                        "execution_request_id": request.identity.request_id,
-                        "claim_generation": command.fence.generation,
-                        "event_id": event.event_id,
-                    },
-                    created_at=occurred_at,
-                    idempotency_key=command.idempotency_key.value,
-                    intent_fingerprint=fingerprint,
+                    expected_desired_graph_id=command.desired_graph_id,
+                    expected_desired_realized_projection_id=(
+                        command.desired_realized_projection_id
+                    ),
+                    expected_desired_graph_revision=(
+                        command.expected_desired_graph_revision
+                    ),
                 )
-            prepared = prepared.with_records(event, action)
-            stores.configuration_acceptance._preflight(prepared)
-            advanced = stores.workspaces._compare_and_set_current_graph(
-                command.workspace_id,
-                prepared_receipt=prepared,
-                expected_graph_id=command.expected_current_graph_id,
-                replacement_graph_id=command.desired_graph_id,
-                expected_realized_projection_id=(
-                    command.expected_current_realized_projection_id
-                ),
-                replacement_realized_projection_id=(
-                    command.desired_realized_projection_id
-                ),
-                expected_desired_graph_id=command.desired_graph_id,
-                expected_desired_realized_projection_id=(
-                    command.desired_realized_projection_id
-                ),
-                expected_desired_graph_revision=(
-                    command.expected_desired_graph_revision
-                ),
-            )
-            if advanced is None:
-                raise CurrentGraphAdvancementConflict(
-                    "workspace current graph changed concurrently"
-                )
+                if advanced is None:
+                    raise CurrentGraphAdvancementConflict(
+                        "workspace current graph changed concurrently"
+                    )
 
-            event = stores.execution._add_advancement_event(event, prepared)
-            action = history._add_advancement_action(action, prepared)
-            stores.configuration_acceptance._insert(prepared)
-            _finish_receiver_advancement(stores, request, run, guard, receiver_truth, action, advanced)
+                event = stores.execution._add_advancement_event(event, prepared)
+                action = history._add_advancement_action(action, prepared)
+                stores.configuration_acceptance._insert(prepared)
+                _finish_receiver_advancement(stores, request, run, guard, receiver_truth, action, advanced)
             unit_of_work.commit()
             return _result(event, action)
 

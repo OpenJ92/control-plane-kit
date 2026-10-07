@@ -2,6 +2,7 @@
 from hashlib import sha256
 from dataclasses import replace
 from functools import wraps
+from contextlib import contextmanager
 import json
 
 import rfc8785
@@ -9,7 +10,9 @@ import rfc8785
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import ActivityId, StartNode, ReconcileNode
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
-from control_plane_kit_operations._configuration_acceptance import _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records
+from control_plane_kit_operations._configuration_acceptance import (
+    _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records, _PUBLICATION_SCOPE,
+)
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting, _ACCOUNTING, _execution_context
 from control_plane_kit_operations.configuration_preparation import (
     ConfigurationAcceptedBinding, ConfigurationCurrentEvidence, _ref as _validate_ref,
@@ -94,9 +97,70 @@ class ConfigurationAcceptanceStore:
     def __init__(self, connection):
         self._connection = connection
         self._issued = None
+        self._publication_uow = None
+        self._publication_active = False
+
+    def _require_publication(self, *, read=None):
+        """Check the existing owner's local lifetime before any SQL or cache."""
+        from .configuration_cleanup_read_ceilings import _require
+        try:
+            stores = self._publication_uow.stores if self._publication_uow is not None else None
+        except RuntimeError:
+            raise _Unavailable from None
+        _require(self._publication_active and _PUBLICATION_SCOPE.get() is self
+            and stores is self._publication_stores and stores.connection is self._connection
+            and stores.configuration_acceptance is self and not self._publication_uow._commit_requested
+            and _ACCOUNTING.get() is self._publication_accounting
+            and self._publication_accounting is not None and self._publication_accounting.active
+            and self._publication_context == _execution_context() == self._publication_accounting.execution_context
+            and stores.graphs.owns_receiver_lifecycle(self._publication_guard, self._publication_guard.workspace_id))
+        _require(read is None or read.connection is self._connection
+            and read.accounting is self._publication_accounting)
+
+    @contextmanager
+    def _publication_scope(self, unit_of_work, guard):
+        """Keep capture and publication inside one caller-owned transaction."""
+        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _BOUND_CLEANUP_PHASE
+        from control_plane_kit_operations._configuration_cleanup_read_ceilings import _BOUND_CLEANUP_ORIGINALS
+        from .configuration_cleanup_read_ceilings import _require, _transaction
+        _require(not self._publication_active and _PUBLICATION_SCOPE.get() is None
+            and _BOUND_ORDINARY_START.get() is None and _BOUND_CLEANUP_PHASE.get() is None
+            and _BOUND_CLEANUP_ORIGINALS.get() is None)
+        self._publication_uow = unit_of_work
+        self._publication_stores = unit_of_work.stores
+        self._publication_accounting = _ACCOUNTING.get()
+        self._publication_context = _execution_context()
+        self._publication_guard = guard
+        self._publication_active = True
+        self._issued = None
+        token = _PUBLICATION_SCOPE.set(self)
+        try:
+            self._require_publication()
+            read = _EvidenceRead(self._connection)
+            transaction = _transaction(read)
+            _require(transaction == guard._transaction_id)
+            try:
+                yield
+            finally:
+                # Retain failed fetch reservations; the single final query is
+                # still charged to the same ledger before commit is requested.
+                self._require_publication(read=read)
+                _require(_transaction(read) == transaction)
+        finally:
+            self._issued = None
+            self._publication_active = False
+            self._publication_uow = None
+            self._publication_stores = None
+            self._publication_accounting = None
+            self._publication_context = None
+            self._publication_guard = None
+            _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
+        self._require_publication()
         if (self._issued is not prepared or prepared.stores.configuration_acceptance is not self
+                or prepared.stores is not self._publication_stores or prepared.guard is not self._publication_guard
                 or prepared.stores.connection is not self._connection):
             raise OperationsRecordError("advancement requires owner-issued preparation")
 
@@ -427,6 +491,9 @@ class ConfigurationAcceptanceStore:
     @_closed_evidence
     def _prepare(self, stores, workspace, request, run, plan, guard, current_projection, desired_projection):
         from control_plane_kit_operations.advancement import _require_complete_success
+        self._require_publication()
+        if stores is not self._publication_stores or guard is not self._publication_guard:
+            raise _Unavailable
         stores.graphs._require_receiver_lifecycle(guard, workspace.workspace_id)
         if (stores.connection is not self._connection or request.identity.workspace_id != workspace.workspace_id
                 or request.identity.plan_id != plan.plan_id or run.admission.request_id != request.identity.request_id

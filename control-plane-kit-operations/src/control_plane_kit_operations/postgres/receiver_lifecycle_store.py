@@ -402,12 +402,18 @@ class _ReceiverStorage:
     def witness(self, workspace, action_id, session_id):
         _text(action_id)
         _text(session_id)
-        row = self.connection.execute(
-            "SELECT EXISTS (SELECT 1 FROM cpk_operation_actions a "
+        sql = ("SELECT EXISTS (SELECT 1 FROM cpk_operation_actions a "
             "JOIN cpk_operation_sessions s ON s.session_id=a.session_id "
-            "WHERE a.action_id=%s AND a.session_id=%s AND s.workspace_id=%s)",
-            (action_id, session_id, workspace),
-        ).fetchone()
+            "WHERE a.action_id=%s AND a.session_id=%s AND s.workspace_id=%s)")
+        params = (action_id, session_id, workspace)
+        from .configuration_evidence import _active_read
+        read = _active_read(self.connection)
+        if read is None:
+            row = self.connection.execute(sql, params).fetchone()
+        else:
+            rows = read.query(sql, params, records=1, octets=1, cells=1, identities=2)
+            _require(len(rows) == 1)
+            row = rows[0]
         _require(row == (True,))
 
     def reserve(self, owner, graph, projection, *, action_id, session_id, draft_id, lifecycle_guard,
@@ -475,12 +481,17 @@ class _ReceiverStorage:
             _conflict()
         if not retirement and origin.retired_action_id is not None:
             _conflict()
-        row = self.connection.execute(
-            f"UPDATE {_INTRO} SET {prefix}_action_id=%s,{prefix}_session_id=%s "
+        sql = (f"UPDATE {_INTRO} SET {prefix}_action_id=%s,{prefix}_session_id=%s "
             f"WHERE workspace_id=%s AND receiver_id=%s AND {prefix}_action_id IS NULL "
-            f"AND {prefix}_session_id IS NULL RETURNING receiver_id",
-            (action_id, session_id, workspace, receiver),
-        ).fetchone()
+            f"AND {prefix}_session_id IS NULL RETURNING receiver_id")
+        params = (action_id, session_id, workspace, receiver)
+        from .configuration_evidence import _active_read
+        read = _active_read(self.connection)
+        if read is None:
+            row = self.connection.execute(sql, params).fetchone()
+        else:
+            rows = read.query(sql, params, records=1, octets=32, cells=1)
+            row = rows[0] if rows else None
         if row != (receiver,):
             _conflict()
         return self.introduction(workspace, receiver)
