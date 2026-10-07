@@ -268,6 +268,8 @@ class EffectAttemptOutcomeStore:
         from .configuration_evidence import _Unavailable
         identity = source.identity
         cache_key = ("cpk_effect_attempt_outcomes", identity)
+        from control_plane_kit_operations._configuration_acceptance import _require_publication_proof
+        _require_publication_proof(read, "sources", cache_key)
         if cache_key not in read.sources:
             numeric = {"attempt", "fence_generation", "prior_attempt", "original_event_ordinal", "direct_event_ordinal", "observation_count"}
             columns = tuple((name, "bytes" if name == "preimage" else "int" if name in numeric else "text",

@@ -142,6 +142,8 @@ def read_source(connection, identity, exact_ref, *, read=None):
     read = _EvidenceRead(connection, standalone=True) if read is None else read
     key = ("cpk_effect_attempt_intents", identity)
     try:
+        from control_plane_kit_operations._configuration_acceptance import _require_publication_proof
+        _require_publication_proof(read, "sources", key)
         if key not in read.sources:
             if sum(item[0] == "cpk_effect_attempt_intents" for item in read.sources) >= 512:
                 raise _Capacity
@@ -159,6 +161,8 @@ def read_source(connection, identity, exact_ref, *, read=None):
             if len(rows) != 1 or rows[0][0] is not True:
                 raise _Unavailable
             row = rows[0]
+            from control_plane_kit_operations._configuration_acceptance import _observe_publication_proof
+            _observe_publication_proof(read, "source", identity, row)
             source_doc, operation_doc, selection_doc, payload = (json.loads(row[i]) for i in (6, 7, 8, 11))
             if set(source_doc) != {"workspace_id", "request_id", "run_id", "plan_id", "base_graph_id", "desired_graph_id"}:
                 raise _Unavailable

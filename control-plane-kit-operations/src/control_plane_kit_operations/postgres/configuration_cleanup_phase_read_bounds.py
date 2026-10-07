@@ -15,9 +15,18 @@ from control_plane_kit_operations._configuration_preparation import (
 )
 from .configuration_cleanup_read_ceilings import _require, _transaction
 from .configuration_evidence import _active_read, _EvidenceRead, _Unavailable, _Capacity
+from control_plane_kit_operations._configuration_acceptance import _PUBLICATION_SCOPE, _PublicationReadBounds
 
 
 def _entries(value, role):
+    if type(value) is _PublicationReadBounds:
+        owner = _PUBLICATION_SCOPE.get()
+        selected = value.points + value.collections + tuple((name, entry) for name, entry, _ in value.optional)
+        if owner._publication_published:
+            additions = value.published
+            replaced = {(name, entry.identity) for name, entry in additions}
+            selected = tuple((name, entry) for name, entry in selected if (name, entry.identity) not in replaced) + additions
+        return tuple(entry for name, entry in selected if name == role)
     if type(value) is _OrdinaryStartReadBounds:
         # The separate ordinary owner supplies only its closed selector set.
         # These shared leaf widths are data, not cleanup issuance credentials.
@@ -52,6 +61,14 @@ def _entries(value, role):
 
 
 def _phase_context(connection, *, read=None):
+    publication = _PUBLICATION_SCOPE.get()
+    if publication is not None:
+        from .configuration_acceptance_store import ConfigurationAcceptanceStore
+        _require(type(publication) is ConfigurationAcceptanceStore and publication._connection is connection
+            and _BOUND_ORDINARY_START.get() is None and _BOUND_CLEANUP_PHASE.get() is None
+            and _BOUND_CLEANUP_ORIGINALS.get() is None)
+        publication._require_publication(read=read)
+        return None if publication._issued is None else publication._issued.read_bounds
     ordinary = _BOUND_ORDINARY_START.get()
     if ordinary is not None:
         from .configuration_preparation_store import _OrdinaryStartReadBoundsOwner
@@ -76,7 +93,7 @@ def _bound(connection, role, identity):
         return None
     matched = next((entry for entry in _entries(issued, role) if entry.identity == identity), None)
     if matched is None:
-        _require(type(issued) is not _OrdinaryStartReadBounds)
+        _require(type(issued) not in (_OrdinaryStartReadBounds, _PublicationReadBounds))
         return None
     read = _active_read(connection)
     _require(read is not None and _transaction(read) == issued.transaction_id)
@@ -84,7 +101,7 @@ def _bound(connection, role, identity):
 
 
 def _contains(issued, role, identity):
-    if type(issued) is _OrdinaryStartReadBounds:
+    if type(issued) in (_OrdinaryStartReadBounds, _PublicationReadBounds):
         return any(entry.identity == identity for entry in _entries(issued, role))
     if role == "retained":
         return issued.retained_identity == identity
@@ -107,6 +124,10 @@ def _phase_require(connection, parent_role, parent_identity, child_role, child_i
     and cold owner proof.
     """
     issued = _phase_context(connection)
+    if type(issued) is _PublicationReadBounds:
+        if _contains(issued, parent_role, parent_identity) and (parent_role, child_role) != ("bindings", "introduction"):
+            _require(_contains(issued, child_role, child_identity))
+        return
     if type(issued) is _OrdinaryStartReadBounds:
         _require(_contains(issued, parent_role, parent_identity))
         # A complete introducing binding set can list an unselected sibling.
@@ -122,6 +143,9 @@ def _phase_require(connection, parent_role, parent_identity, child_role, child_i
 def _phase_columns(connection, role, identity, columns):
     bound = _bound(connection, role, identity)
     if bound is None:
+        publication = _PUBLICATION_SCOPE.get()
+        if publication is not None:
+            publication._select_publication_point(role, identity)
         return columns
     _require(type(bound) is _PhasePoint and len(columns) == len(bound.widths))
     return tuple((name, kind, min(cap, width))
@@ -187,6 +211,10 @@ def _shape(role):
         case "session":
             names = ("session_id", "workspace_id", "actor_id", "title", "status", "created_at", "closed_at", "metadata", "idempotency_key", "intent_fingerprint")
             return "cpk_operation_sessions", columns(names, ("metadata",)), "session_id=%s", "", 1, (), 1
+        case "session-workspace":
+            return "cpk_operation_sessions", columns(("workspace_id",)), "session_id=%s", "", 1, (), 1
+        case "scope-header":
+            return "cpk_execution_requests", columns(("workspace_id", "session_id", "plan_id", "receiver_scope_count", "receiver_scope_digest")), "request_id=%s", "", 1, (), 1
         case "header":
             return "cpk_configuration_acceptances", _columns(_HEADER), "workspace_id=%s AND pinned_revision=%s", "", 1, (), 1
         case "scopes":
@@ -195,8 +223,40 @@ def _shape(role):
             return "cpk_activity_runs", columns(_RUN, ("metadata",)), "request_id=%s", "attempt", 256, (0,), 1
         case "events":
             return "cpk_activity_events", columns(_EVENT, ("payload",)), "run_id=%s", "ordinal", 8192, (0,), 1
-        case "advancement-actions":
-            return "cpk_operation_actions", columns(_ACTION, ("payload",)), "session_id=%s AND payload->>'run_id'=%s AND action_type='advance-current-graph'", "action_id", 1, (0,), 1
+        case "advancement-actions" | "cancellation-actions":
+            kind = "advance-current-graph" if role == "advancement-actions" else "cancel-run"
+            return "cpk_operation_actions", columns(_ACTION, ("payload",)), "session_id=%s AND payload->>'run_id'=%s AND action_type='" + kind + "'", "action_id", 1, (0,), 1
+        case "attempts" | "intents" | "outcomes":
+            from .effect_attempt_store import _COLUMN_NAMES as attempt_names
+            from .effect_attempt_intent_store import _COLUMN_NAMES as intent_names
+            from .effect_outcome_store import _COLUMN_NAMES as outcome_names
+            table, names = {"attempts": ("cpk_effect_attempts", attempt_names),
+                "intents": ("cpk_effect_attempt_intents", intent_names),
+                "outcomes": ("cpk_effect_attempt_outcomes", outcome_names)}[role]
+            declared = tuple((name, "bytes" if name == "preimage" else "text",
+                (8192 if role == "outcomes" else 1048576) if name == "preimage" else 2048) for name in names)
+            return table, declared, "run_id=%s", "activity_id,attempt", 2048, (0, 1, 2), 1
+        case "outcome-memberships":
+            return "cpk_effect_attempt_outcome_observations", columns(("position", "observation_count", "observation_id")), "run_id=%s AND activity_id=%s AND attempt=%s", "position", 8192, (0,), 1
+        case "observation":
+            from .effect_outcome_store import _OBSERVATION_COLUMNS
+            return "cpk_observations", columns(_OBSERVATION_COLUMNS, ("evidence",), document_cap=8192), "observation_id=%s AND workspace_id=%s", "", 1, (), 1
+        case "compensation-header":
+            names = ("program_id", "workspace_id", "request_id", "run_id", "plan_id", "session_id",
+                "action_id", "event_id", "actor_id", "reason", "source_failure", "authority_reference_fingerprint",
+                "command_fingerprint", "evidence_fingerprint", "program_fingerprint", "program_preimage", "created_at")
+            declared = tuple((name, "bytes" if name == "program_preimage" else kind,
+                1048576 if name == "program_preimage" else cap) for name, kind, cap in columns(names, ("source_failure",)))
+            return "cpk_failed_run_compensations", declared, "run_id=%s", "", 1, (), 1
+        case "compensation-steps":
+            names = ("position", "source_run_id", "source_activity_id", "source_attempt", "source_request_fingerprint",
+                "source_outcome_fingerprint", "source_completion_event_id", "source_completion_ordinal", "operation", "material_source")
+            return "cpk_failed_run_compensation_steps", columns(names, ("operation",), document_cap=1048576), "program_id=%s", "position", 2048, (0,), 1
+        case "compensation-action":
+            return "cpk_operation_actions", columns(_ACTION, ("payload",)), "action_id=%s", "", 1, (), 1
+        case "compensation-bindings":
+            names = ("program_id", "position", "source_run_id", "source_activity_id", "source_attempt", "inverse_run_id", "inverse_activity_id", "inverse_attempt")
+            return "cpk_failed_run_compensation_attempt_bindings", columns(names), "program_id=%s", "position", 2048, (1,), 1
         case "bindings":
             return "cpk_graph_receiver_bindings", columns(_BIND_COLUMNS), "workspace_id=%s AND graph_id=%s AND realized_projection_id=%s", "node_id,provider_socket_name", None, (4, 5), 1
         case "slots":

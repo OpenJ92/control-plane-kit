@@ -69,12 +69,12 @@ class PostgresConfigurationConcurrencyTests(unittest.TestCase):
         entered, release = threading.Event(), threading.Event()
         original = ConfigurationAcceptanceStore._prepare
 
-        def prepare(store, stores, workspace, request, run, *args):
+        def prepare(store, stores, workspace, request, run, *args, **kwargs):
             if run.run_id == run_id:
                 entered.set()
                 if not release.wait(timeout=15):
                     raise AssertionError("advancement prepare pause timed out")
-            return original(store, stores, workspace, request, run, *args)
+            return original(store, stores, workspace, request, run, *args, **kwargs)
 
         try:
             with mock.patch.object(ConfigurationAcceptanceStore, "_prepare", prepare):
