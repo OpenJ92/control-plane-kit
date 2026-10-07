@@ -62,6 +62,7 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
         from unittest import mock
         from control_plane_kit_core.topology import validate_graph
         from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead, _Unavailable
         from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
         graph = self.canonical_receiver_graph
         sibling = self.receiver_graph(node_id="sibling", receiver="b" * 32)[0].node("sibling")
@@ -77,7 +78,11 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
         with self.unit_of_work() as uow:
             bindings = uow.stores.graphs.receiver_bindings("workspace-a",
                 origin.introducing_graph_id, origin.introducing_realized_projection_id)
+            workspace = uow.stores.workspaces.get("workspace-a")
+            desired = uow.stores.graphs.receiver_bindings("workspace-a",
+                workspace.desired_graph_id, workspace.desired_realized_projection_id)
         self.assertEqual({binding.receiver_id for binding in bindings}, {"a" * 32, "b" * 32})
+        self.assertEqual({binding.receiver_id for binding in desired}, {"a" * 32})
         actual_prepare, captured = ConfigurationPreparationStore._prepare, []
 
         def prepared(store, *args, **kwargs):
@@ -90,6 +95,9 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
                 if role == "bindings" and entry.identity == ("workspace-a",
                     origin.introducing_graph_id, origin.introducing_realized_projection_id))
             self.assertEqual(set(introducing_bindings.keys), {("api", "http"), ("sibling", "http")})
+            with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError(
+                    "unselected origin reached SQL")), self.assertRaises(_Unavailable):
+                store._ordinary_owner._stores.graphs.receiver_introduction("workspace-a", "b" * 32)
             captured.append(result)
             return result
 
