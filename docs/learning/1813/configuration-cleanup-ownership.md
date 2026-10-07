@@ -3958,3 +3958,331 @@ issued owner still undergoes all publication, store, guard and connection
 checks. Do not broaden those tests to accept the private evidence exception or
 weaken the before-commit revocation. Focused and full correction gates remain
 required; no B1 integration or whole-issue acceptance follows from diagnosis.
+# B1 acceptance/carry after accepted #1952 — changed-seam review
+
+Mechanical checkpoint `29f40dffb1d9b61e3d850621d1739049e1b8bad4`, tree
+`d570c0d7d7ac70b5d6a1e46ef75515037432fc3d`; parents preserved B1
+`3f403dc63917a41321df54f319218606655eb27c` and actual accepted prerequisite
+`abdb7c8583a274588eb9ffc3c2d63812535bdedd`. The ordinary-start source
+`49011d2e81939c23793df44315abaaa52f1274ab` and its earlier 9+29 evidence remain
+historical slice evidence. Kepler mechanical integration PASS: #1945 comment
+6049019892. No post-integration executable evidence yet. This packet proposes
+the remaining acceptance changes, not a claim that the merged program works.
+
+## Trace and governing laws
+
+Current entrypoint `CurrentGraphAdvancementCommandService.execute` opens the
+accepted publication scope, prepares receiver evidence, calls `_prepare`, binds
+generated event/action records, admits the pure forecast, then traverses CAS,
+event, action and receipt insertion. `_insert` reads the actual receipt and
+whole manifest and calls `_prove_use` for every slot before receiver finish.
+Both full receiver histories, independent original-receipt reader and one usable
+scope close remain exactly as #1952 accepted them.
+
+The merged acceptance store still calls `_paired_disposition(...protective=True)`
+for only the source in `_require_current_slots`. Its four issued entrances must
+instead preserve fresh allocation exclusion U and prove each per-slot distinct
+source/direct-birth disposition. `_prove_use` already classifies those distinct
+keys, invokes `_accepted_transfer` for accepted-current, and independently proves
+the selected use's successful original execution. No source/birth global
+coalescing is valid merely because several slots share an invocation.
+
+`_accepted_transfer` currently performs a fresh pair plus accepted relational
+anchor BEFORE checking its immutable transfer memo. On a cold miss it reads the
+13-column transfer row, calls completion `_get`, proves the exact root ref/source
+and success, obtains its own nine-point receipt context, then queries the exact
+12-column accepted slot. It never recursively proves siblings' transfers:
+completion `_get` validates the whole original invocation (1..32 refs), source
+selection and successful terminal correlation, and performs structural pair/
+anchor checks for siblings. There is no completion or transfer-slot memo today.
+
+Governing tests/laws:
+
+- `test_postgres_configuration_transfer_carry`: mixed carry/round trip preserves
+  original claims/transfers; missing newest ABA receipt refuses despite valid
+  old transfer; departed provenance is not current membership; four actual
+  issued checks retain live pair, exclusion and existing transfer memo.
+- `test_postgres_configuration_transfer_reuse`: a newer outstanding source must
+  not hide a missing transferred direct birth; current observation needs exact
+  transferred-source proof. Ordinary start's three fresh proofs remain separate.
+- `test_postgres_configuration_transfer_capacity`: cold/warm SQL reconciliation,
+  complete original invocation including siblings, selected-root/history closure,
+  and failed reservation/savepoint cleanup are retained precedents, not permission
+  to reuse the ordinary-start lifetime or its arithmetic here.
+- #1952 publication bounds: exact reader/key closure, prospective own receipt
+  rejection, generated-record bind, native future versus publication S/H,
+  actual wire equality, failed reservation, late witness rollback and precommit
+  revocation remain governing strengthened laws.
+
+All fixtures with recorded transferred dispositions remain defensive-reader
+premises. No lawful transfer producer or >64-growth claim is introduced.
+
+## Proposed smallest owner changes
+
+Keep the existing private acceptance owner, `_PublicationReadBounds`, and pure
+`_publication_budgets` interface. No new public service/schema/language.
+
+1. `_require_current_slots`: one fresh U per slot, then classify each ordered
+   distinct source/birth key. Outstanding succeeds; accepted-current requires
+   the same acceptance-owned positive T proof; cleanup-closed refuses. Ref/source
+   correspondence remains enforced by `_material_ref`/`_prove_use`; each guarded
+   T is exact key/ref commitment/revision, never borrowed from a sibling.
+   In `_prepare`, move this call AFTER the existing material-only
+   `read.used.accounted_bytes - snapshot_start <=3MiB` check, with `proof_start`
+   immediately before the call. This keeps all U/P/T work charged on the same
+   ledger and before ID generation/CAS, while separating it from the measured
+   desired-slot material gate. The full native snapshot in `_receipt_manifest`
+   and pure preflight snapshot remain unchanged. The previous material gate
+   included the small old U/P tail; removing that tail from this measurement
+   does not remove any permission or command/future capacity check.
+   Receipt readback requires a separate command-bound check in `_prove_use`:
+   when this store has an issued `read_bounds` value, require the active
+   publication lifetime, exact issued prepared reader, actual published state,
+   the row in `prepared.slots`, and the outer plan/run belonging to this prepared
+   publication (before `_original_use` replaces them with historical context).
+   In that bound path a classified `cleanup-closed` source or distinct birth
+   refuses. Unbound historical/current-native `_prove_use` and completion's
+   sibling structural checks keep their existing cleanup-closed semantics;
+   this is not a global ban on historically completed allocations. No new U
+   read is added. The real bound-readback negative will exercise this exact
+   branch after actual receipt insertion and assert complete rollback.
+2. Extend the existing frozen proof-key families with
+   `configuration-accepted-transfer`. Construct/check the exact memo selector
+   before its discounted return. For a bound owner require the exact prepared
+   reader, preexisting frozen memo and its prevalidated dependency keys; no cold
+   miss or foreign-reader fallback after binding. Pair/anchor checks stay fresh.
+3. Capture each transfer memo's dependency closure from the verified cold proof:
+   exact ref cache identity; original selection source cache; outcome cache and
+   correlated event cache keys; receipt-context and source-plan cache keys.
+   Shared dependencies remain explicit even if they existed before this root's
+   proof (set-difference-of-new-cache-keys is insufficient). Capture only keys
+   the actual proof uses. No completion/slot memo is introduced solely for this
+   change: those immutable proofs are contained in the validated transfer value;
+   their SQL width metadata is separate from permission or memo authority.
+4. Before bind, retain transfer(13) and completion(7) scalar SQL widths and the
+   full original invocation's raw 19-column row widths/ordered artifact keys.
+   Observe raw invocation rows before decoding in completion `_get`, through
+   the existing publication observation boundary. The invocation collection is
+   a complete original, not allocation-lifetime discovery; max32, no recursion.
+   Capture exact transfer-slot(12) scalar widths. Extend native proof shapes for
+   sibling refs/sources/outcomes/events actually visited by completion. All
+   capture/probe work is charged to prior before final admission.
+5. Preserve #1952's fixed nine-point historical context selectors, known existing
+   role aliases and generated own additions. Transfer proof can visit historical
+   contexts during prebind capture, making their actual identifiers/widths part
+   of the closed owner. Bound publication does not initiate cold completion or
+   transfer reads. Unknown roots/dependency selectors refuse before such SQL.
+
+Dependency review question: the closure should be per transfer root and derived
+from the verified selection/context/outcome, not a blanket dependency on every
+unrelated cache entry. This packet proposes that exact shape for review before
+adding a field or helper.
+
+### Concrete private closure and capture representation
+
+Extend `_PublicationReadBounds` with default-empty `transfer_dependencies`:
+an immutable tuple of `(memo_key, ref_keys, source_keys)` entries. A key is:
+
+```
+memo_key = ("configuration-accepted-transfer", run, activity, attempt, artifact,
+            workspace, allocation, canonical_ref_digest, accepted_revision)
+ref_keys = ((EffectAttemptIdentity(run, activity, attempt), artifact),)
+source_keys = (
+    ("cpk_effect_attempt_intents", identity),
+    ("cpk_effect_attempt_outcomes", identity),
+    ("cpk_activity_events", original_event_id),
+    ("cpk_activity_events", direct_event_id),
+    ("configuration-receipt-context", workspace, accepted_revision),
+    ("configuration-source-plan", workspace, verified_plan_id),
+)
+```
+
+Deduplicate identical event keys while retaining deterministic order. Completion
+siblings all belong to this exact invocation; `_decode` reuses the one selection
+source cache and does NOT populate sibling `read.refs`. Consequently only the
+actual root ref belongs to this T's `ref_keys`. Raw sibling width metadata must
+never populate `read.refs`, seed the forecaster's ref memo, or become a new T root.
+The plan alias is populated by `_receipt_context`; outcome/event keys come from
+the verified original completion and success proof. All keys are assembled from
+those returned semantic objects, not from differences between cache snapshots.
+
+Capture sequence: validate cold T completely, including its exact slot, then
+record its tuple against the actual read and insert its memo. Before bind,
+`_bind_records` includes the transfer and correlated event keys in frozen
+`proof_keys` as appropriate and freezes only dependency entries for T memos
+actually present on its exact prepared read. Verify every dependency exists on
+that read; this includes dependencies already shared by an earlier cold T.
+During bound lookup, require exact prepared-reader identity and frozen memo
+selector, then every recorded dependency's membership/presence before returning
+the memo. Keep the fresh P/A call in `_accepted_transfer`; neither its placement
+nor closure verification grants permission. Unknown or missing dependencies
+refuse without cold ref/source/outcome/completion/context/slot fallback.
+Capture during an earlier current-receipt reader cannot enroll a transfer memo
+that is absent from the final prepared reader. Scope teardown clears all mutable
+capture state along with the existing owner state.
+
+Closed metadata entries augment existing `proof_shapes`:
+
+| Family/key | Actual selector and representation |
+| --- | --- |
+| `transfer`, memo key | `cpk_configuration_claim_transfers` exact `(run,activity,attempt,artifact)`, 13 `_TRANSFER_COLUMNS` widths after scalar decoding (text/int only); record only after exact tuple/fingerprints/revision validate |
+| `completion`, identity | `cpk_configuration_invocation_completions` exact `(run,activity,attempt)`, 7 `_COLUMNS` scalar widths, observed inside `_get` before semantic decoding; no completion memo |
+| `invocation-ref`, `(identity,artifact)` | raw guarded `_SELECT` 19 columns from `_get`'s existing `ORDER BY artifact_id LIMIT 33`, before `_decode`; capture ordered exact artifact set and widths separately from ref cache |
+| `transfer-slot`, memo key | `cpk_configuration_accepted_slots` exact `(workspace,revision,runtime,node,artifact)`, 12 `_SLOT` scalar widths after exact source/ref validation; no slot memo |
+
+Use a closed `invocation_members` tuple `(identity, artifact_keys)` on the bound
+value for native future counts, alongside raw invocation-ref shapes. It is
+forecast metadata only, not a phase-role registry or authorization. Invoke its
+observation through the publication-only helper already exposed from
+`_configuration_acceptance`, adding only the closed family cases needed here.
+Ordinary start/cleanup readers retain their existing bound collection route;
+publication prebind uses the current native query, with no replacement runner.
+If repeated metadata for the same key differs in members or exceeds native
+column caps, refuse; combine compatible widths conservatively as existing capture
+does. Do not decode/re-serialize JSON to derive widths. Exact context point
+selectors continue through #1952's existing `_phase_columns` capture mechanism.
+
+## Positioned S/H worksheet
+
+Use existing `Budget(S,H).then`: sequential settled costs add; peak is the
+componentwise maximum of the left peak and left settled plus right peak.
+Each failed query retains its complete reservation. Use #1952's primitives,
+wire bytes/cells and joined-identity weighting; no measured proof deltas as a
+forecast, fixed padding, raised limits or global deduplication of fresh checks.
+
+Primitive definitions (records below are physical; multiplier j counts logical
+joined identities):
+
+- U = `Q(1,1,1,j=1)`; successful settled response is zero rows, one statement.
+- P = `Q(1,855,11,j=2)` for current reciprocal disposition; replaces the obsolete
+  823-byte/nine-cell protective-only declaration inherited in #1952 arithmetic.
+- A = `Q(1,1,1,j=4)` for accepted transfer/completion/header/slot relational anchor.
+- C = `Q(1,1,1,j=3)` for cleanup closure. Refusal alternatives must budget this
+  even where successful publication accepts only outstanding/accepted-current.
+- D = P then the selected structural anchor (none/A/C). Fresh mutation can alter
+  that branch, so H covers all three alternatives without assuming a cached P.
+- Native N(widths) = existing length reservation/settlement then guarded value
+  reservation/settlement, including the validity cell. Context R is the existing
+  nine point sequence; native future has no bound transaction probe on each point.
+- Original invocation I = existing native `_SELECT ... LIMIT 33`, reservation
+  `Q(33,33*32768,19,j=2)`, settled actual <=32 raw rows/widths. This differs from
+  a bound ordinary-start collection's length/value pair; do not conflate them.
+
+Let c be slots; u the sum of ordered distinct source/birth keys PER SLOT; t the
+transferred occurrences among those u (not distinct memo keys). In the recorded
+four-slot fixture, unchanged carry has (c,u,t)=(4,4,2); a new outstanding API use
+above the transferred birth has (4,6,2).
+
+At EACH of the four issued entrances:
+
+`existing lifecycle/workspace/request/run guard ; sum_slots(U ; sum_keys(D ; [D if transferred]))`
+
+The second D is `_accepted_transfer`'s own fresh pair/anchor before its memo
+return. At receipt `_prove_use` readback, each occurrence performs the same
+`sum_keys(D ; [D if transferred])`, but no U. Thus successful structural positions
+are `5(u+t)P + 10tA + 4cU`, with every declined/mutated alternative's full query
+reservation incorporated in H. This replaces the old four `c*(U+oldP)` guards;
+it is not an extra duplicate allowance. All original context/write/manifest,
+receiver finish and close positions are retained.
+
+A changed outstanding key cannot open a new cold T during bound publication:
+its unfrozen transfer selector refuses. With the existing D-before-memo ordering,
+an outstanding key changed to accepted-current first executes the outer P+A,
+then `_accepted_transfer` executes a second P+A, then the frozen-memo check
+refuses. At each originally outstanding occurrence, therefore, retain successful
+settled D but take H as the componentwise maximum of successful H and the
+failed `D_accepted ; D_accepted` prefix's H. This branch ends before any cold
+transfer/completion/slot SQL, even when the original t is zero. Cleanup closure
+is the alternative P+C prefix and is likewise included; it is dominated by the
+accepted anchor's joined-identity reservation, but its actual source location
+must remain explicit. Sequential composition adds only earlier successful
+settled prefixes before each such branch peak, rather than assuming every
+changed branch completes. Finally add the same one usable scope-close G to
+every publication peak, as #1952 already does; INERROR needs less work. A
+previously accepted
+root still executes fresh P/A on its memo hit; missing memo/dependency cannot
+silently trigger SQL fallback.
+
+Future native full receipt/current-read expression is separately derived in
+actual `_prove_use` order, using a fresh reader and empty semantic memo sets:
+
+1. Existing workspace/latest locator reads and own context/whole manifest form
+   the same material snapshot stage. Snapshot <=3MiB remains independent of T.
+2. For each slot: source ref/source decode, birth ref/source decode (actual exact
+   cache keys only); then per-slot distinct source/birth D and T if transferred.
+3. Each T entry repeats D even when the transfer memo is warm. First cold T key:
+   N(transfer13), completion proof, exact ref/source+success, historical R, exact
+   N(slot12). Completion proof is N(completion7), I, decode each sibling/source,
+   each sibling D, original-selection cache lookup, terminal outcome/event proof.
+   No new completion memo: multiple T roots from one invocation repeat completion
+   row, I and sibling D, while actual source/outcome/event caches may be warm.
+4. Keep ref/source/outcome/event/context/source-plan memo sets distinct. Cold T
+   can populate historical context and source-plan before `_original_use`; only
+   then may its later original-use plan/context reads be discounted. A transfer
+   slot query does not populate the existing original-slot memo, so the later
+   original-slot query remains unless that exact reader already populated it.
+5. Successful `_configuration_terminal` caches the same outcome/events used by
+   `_configuration_success`; source decoding caches its original event. Discount
+   only these exact effects, preserving raw width reservation and source-savepoint
+   rollback/release peaks. Finish with the unchanged separate native S/H gate.
+
+Forecaster implementation may use local pure helper functions for these source
+positions, operating on captured facts and memo sets; it must issue no SQL or
+mutate the actual evidence reader. Fresh refusal alternatives use a branch maximum
+where their success prefix differs; summed observed maxima are not substitutes.
+
+## Target interface and ordered red-to-green slices
+
+After worksheet review, first run the preserved four carry targets to establish
+current causal refusal, recording which assertions cannot yet be reached. Do not
+claim missing-memo or late-guard assertions red if preparation refuses earlier.
+Add focused target laws against real command owners (owning Docker script only):
+
+1. Mixed unchanged carry and newer-source/transferred-birth carry succeed without
+   modifying old dispositions, then fresh full native read and replay succeed.
+2. At each actual CAS/event/action/receipt guard and receipt readback: reciprocal
+   mismatch and cleanup-closed refuse. Current-exclusion U is tested only at the
+   four actual issued guards; receipt readback tests D/T freshness and has no U.
+   Durable snapshots before command remain unchanged after failure. Preserve
+   newest ABA receipt refusal. Do not add a new U read or claim readback exclusion
+   coverage that the source does not provide.
+3. Evict T and each exact dependency key, or use a copied warm reader: refuse
+   before cold transfer/completion/slot/source SQL; restore and real carry succeeds.
+4. At final preflight capture predicted snapshot/future/publication S/H and prior;
+   real publication and fresh native reader fit every component. Successful wire
+   bytes/cells/statements equal the ledger; records use joined identities.
+   Cover repeated roots and distinct source/birth with invocation siblings.
+5. Force a real late fetch/driver failure with full reservation retained, after
+   tentative write where possible; H covers cleanup+close and all records roll back.
+   Preserve #1952 late receiver-history witness/rollback and pending-commit tests.
+6. Exercise exact and one-over future/publication peak admission, with settled
+   still fitting, before CAS/writes. Final generated IDs/clock may already exist.
+7. Separate material from provenance: compare real valid transferred cases with
+   identical desired manifest/ref material but increased historical completion/
+   source/context transport. Assert the observed desired material-stage delta
+   and final material snapshot do not grow with that proof transport, while
+   actual shared prior and future T costs do. The observation must run after the
+   real material check and before the first cold guarded T, not insert synthetic
+   cost into the ledger. Add a valid large historical-proof case crossing 3MiB
+   of provenance while material stays below 3MiB and full limits fit; establish
+   that fixture's exact source/graph legality before claiming this threshold law.
+   Existing snapshot exact/one-over refusal remains independent. If construction
+   cannot meet the unchanged total limits, record that constraint and refine
+   the threshold target rather than fabricate transport or weaken the gate.
+
+The older capacity draft is only a law sketch. Replace its fixed budget inputs
+and blanket `>=` physical assertions with the source expression and exact wire
+reconciliation. First targets can expose missing guard semantics; later closure/
+forecast targets must receive distinct causal-red evidence once reachable. No
+xfail, skip, private-exception widening or fabricated successful history.
+
+## Risks and release limits
+
+Main risks: double-counting or omitting repeated P/A, losing invocation siblings,
+incorrect cache population order, accidentally discounting mutable disposition,
+and shrinking JSON widths after decode. Preserve source metadata before decode,
+failed reservation retention and exact nested cache ownership. Tests and review
+must distinguish early refusal from a fulfilled late law. Security remains the
+existing authenticated command/lifecycle/transaction boundary; no new exposure,
+secret transport, schema mutation or provider effect. Atomic rollback covers
+all existing command writes. No B2/C, producer, frontend or Servers225 completion.
