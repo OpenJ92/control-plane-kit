@@ -12,6 +12,7 @@ from control_plane_kit_core.planning import ActivityId, StartNode, ReconcileNode
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import (
     _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records, _PUBLICATION_SCOPE,
+    _PublicationReadBounds, _require_publication_proof,
 )
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting, _ACCOUNTING, _execution_context
 from control_plane_kit_operations.configuration_preparation import (
@@ -132,6 +133,8 @@ class ConfigurationAcceptanceStore:
         self._publication_accounting = _ACCOUNTING.get()
         self._publication_context = _execution_context()
         self._publication_guard = guard
+        self._publication_published = False
+        self._publication_own_context_started = False
         self._publication_active = True
         self._issued = None
         token = _PUBLICATION_SCOPE.set(self)
@@ -164,6 +167,8 @@ class ConfigurationAcceptanceStore:
             self._publication_accounting = None
             self._publication_context = None
             self._publication_guard = None
+            self._publication_published = False
+            self._publication_own_context_started = False
             _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
@@ -173,13 +178,52 @@ class ConfigurationAcceptanceStore:
                 or prepared.stores.connection is not self._connection):
             raise OperationsRecordError("advancement requires owner-issued preparation")
 
+    def _require_proof_cache(self, read, family, key):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        prepared = self._issued
+        # Preparation still performs the full ordinary source proof. Once the
+        # generated records bind, only its exact reader may reuse that proof.
+        if prepared is None or prepared.read_bounds is None:
+            return
+        self._require_issued(prepared)
+        _require(read is prepared.evidence_read)
+        if family == "refs":
+            _require(key in prepared.read_bounds.proof_keys[0] and key in read.refs)
+            return
+        _require(family == "sources" and key[0] in (
+            "cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
+            "configuration-receipt-context", "configuration-original-slot"))
+        own_context = ("configuration-receipt-context", prepared.workspace.workspace_id,
+            prepared.plan.desired_graph_revision)
+        own_plan = ("configuration-source-plan", prepared.workspace.workspace_id, prepared.plan.plan_id)
+        if key == own_context:
+            _require(self._publication_published)
+            if not self._publication_own_context_started:
+                # The first own context must transport actual stored records;
+                # a fabricated warm entry cannot replace publication readback.
+                _require(key not in read.sources and own_plan not in read.sources)
+                self._publication_own_context_started = True
+                return
+            _require(key in read.sources)
+            return
+        if key == own_plan:
+            _require(self._publication_published and self._publication_own_context_started
+                and own_context in read.sources and key in read.sources)
+            return
+        _require(key in prepared.read_bounds.proof_keys[1] and key in read.sources)
+
     def _bind_records(self, prepared, event, action):
         self._require_issued(prepared)
         if prepared.event is not None or prepared.action is not None:
             raise OperationsRecordError("advancement original records are already bound")
         prepared.stores.graphs._require_receiver_lifecycle(prepared.guard, prepared.workspace.workspace_id)
         prepared._validate_records(event, action)
-        bound = replace(prepared, event=event, action=action)
+        read = prepared.evidence_read
+        bounds = _PublicationReadBounds((tuple(read.refs), tuple(key for key in read.sources
+            if key[0] in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
+                "configuration-receipt-context", "configuration-original-slot"))))
+        bound = replace(prepared, event=event, action=action, read_bounds=bounds)
         self._issued = bound
         return bound
 
@@ -215,6 +259,7 @@ class ConfigurationAcceptanceStore:
     def _ref(self, read, key):
         identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
         cache_key = (identity, key[3])
+        _require_publication_proof(read, "refs", cache_key)
         if cache_key not in read.refs:
             rows = read.query(_REF_SELECT + " WHERE (r.run_id,r.activity_id,r.attempt,r.artifact_id)=(%s,%s,%s,%s)",
                 key, records=1, octets=32768, cells=19, identities=2)
@@ -269,6 +314,7 @@ class ConfigurationAcceptanceStore:
     def _original_use(self, read, row, source):
         workspace_id = source.source.workspace_id
         plan_key = ("configuration-source-plan", workspace_id, source.source.plan_id)
+        _require_publication_proof(read, "sources", plan_key)
         if plan_key not in read.sources:
             plan = PostgresActivityHistoryStore(self._connection).get_plan(source.source.plan_id)
             self._receipt_context(workspace_id, plan.desired_graph_revision, read)
@@ -281,6 +327,7 @@ class ConfigurationAcceptanceStore:
                 or run.run_id != source.identity.run_id.value):
             raise _Unavailable
         slot_key = ("configuration-original-slot", workspace_id, header["pinned_revision"], *row[:3])
+        _require_publication_proof(read, "sources", slot_key)
         if slot_key not in read.sources:
             rows = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
                 "workspace_id=%s AND pinned_revision=%s AND runtime_id=%s AND node_id=%s AND artifact_id=%s",
@@ -316,6 +363,7 @@ class ConfigurationAcceptanceStore:
     def _receipt_context(self, workspace_id, revision, read):
         """Original pair/header/execution point proof, without prior manifests."""
         key = ("configuration-receipt-context", workspace_id, revision)
+        _require_publication_proof(read, "sources", key)
         from .configuration_cleanup_phase_read_bounds import _phase_columns, _phase_context
         _phase_context(self._connection, read=read)
         columns = _phase_columns(self._connection, "header", (workspace_id, revision), _columns(_HEADER))
@@ -590,6 +638,7 @@ class ConfigurationAcceptanceStore:
             _EvidenceRead(self._connection).query("INSERT INTO cpk_configuration_accepted_slots (workspace_id,pinned_revision,"
                 + ",".join(_SLOT) + ") VALUES (" + ",".join("%s" for _ in range(14)) + ") RETURNING 1",
                 (workspace_id, prepared.plan.desired_graph_revision, *slot), records=1, octets=1, cells=1)
+        self._publication_published = True
         # Verify actual stored bytes as well as the pre-CAS consumer preflight.
         header, action, event = self._receipt(workspace_id, prepared.plan.desired_graph_revision, read=prepared.evidence_read)
         if tuple(header[name] for name in _HEADER) != values or action != prepared.action or event != prepared.event:

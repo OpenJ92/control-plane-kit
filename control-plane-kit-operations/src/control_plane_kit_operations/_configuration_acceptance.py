@@ -9,6 +9,18 @@ from control_plane_kit_operations._temporal import validate_canonical_utc_timest
 _PUBLICATION_SCOPE = ContextVar("cpk_configuration_publication_scope", default=None)
 
 
+@dataclass(frozen=True, repr=False)
+class _PublicationReadBounds:
+    """Immutable transport data carried by the existing prepared owner value."""
+    proof_keys: tuple
+
+
+def _require_publication_proof(read, family, key):
+    owner = _PUBLICATION_SCOPE.get()
+    if owner is not None:
+        owner._require_proof_cache(read, family, key)
+
+
 def _history_records(event, action):
     evidence = event.evidence.descriptor()
     if (event.activity_id is not None or event.failure is not None or event.recovery is not None
@@ -38,6 +50,7 @@ class _PreparedAdvancementReceipt:
     slots: tuple = ()
     evidence_read: object = None
     proof_footprint: object = None
+    read_bounds: object = None
 
     def with_records(self, event, action):
         return self.stores.configuration_acceptance._bind_records(self, event, action)

@@ -142,6 +142,8 @@ def read_source(connection, identity, exact_ref, *, read=None):
     read = _EvidenceRead(connection, standalone=True) if read is None else read
     key = ("cpk_effect_attempt_intents", identity)
     try:
+        from control_plane_kit_operations._configuration_acceptance import _require_publication_proof
+        _require_publication_proof(read, "sources", key)
         if key not in read.sources:
             if sum(item[0] == "cpk_effect_attempt_intents" for item in read.sources) >= 512:
                 raise _Capacity

@@ -550,6 +550,22 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
                 self.assertRaises((OperationsRecordError, _Unavailable)):
             store._require_issued(prepared)
 
+    def test_current_schema_and_plan_owner_refuse_null_original_projection_pins(self):
+        with self.base.unit_of_work() as uow:
+            plan = uow.stores.activity_history.get_plan("plan-a")
+            for field in ("base_realized_projection_id", "desired_realized_projection_id"):
+                with self.subTest(owner_field=field), self.assertRaises(OperationsRecordError):
+                    uow.stores.activity_history.add_plan(replace(plan,
+                        plan_id="unreachable-null-" + field, **{field: None}))
+        for field in ("base_realized_projection_id", "desired_realized_projection_id"):
+            with self.subTest(sql_field=field), self.assertRaises(psycopg.errors.NotNullViolation):
+                # Fixed test-owned column alternatives; no schema relaxation.
+                self.base.connection.execute("UPDATE cpk_activity_plans SET " + field
+                    + "=NULL WHERE plan_id='plan-a'")
+        with self.base.unit_of_work() as uow:
+            self.assertEqual(uow.stores.activity_history.get_plan("plan-a"), plan)
+        self.assertFalse(self.base.advance().replayed)
+
     def reject_unclosed_read(self, *, phase, foreign_ledger=False):
         original = ConfigurationAcceptanceStore._preflight
         checked = []

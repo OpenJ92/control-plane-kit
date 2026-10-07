@@ -1579,3 +1579,30 @@ historical-relation premise is warranted or this path is outside current-schema
 publication reachability. No current schema, reset policy, production fallback
 or permission changed. The legacy obligation remains open; the three independent
 cache-reader/swallowed-abort targets proceed without it.
+
+Independent review superseded the earlier legacy publication target obligation:
+the accepted current schema and plan owner make the null-pin branch unreachable
+from supported stored publication truth. Preserve its existing fallback source
+and pure derivation law; do not relax or shadow the schema, invent accepted
+history, or remove compatibility. A compact owner/SQL null-pin refusal target
+records this as expected-green preservation evidence. Genuine optional absent
+compensation remains in the publication-bound scope.
+
+Additional causal evidence at `fd77604d1eb1568bcbb1c7b15d4300496f6dc056`, tree
+`f65ff7a066b887477a2364e19e6ea04a0899cbbf`: three tests in 27.248 seconds,
+six subtest assertion failures, exit 1, no errors. Each of five real prepared
+source-cache families issued forbidden cold SQL after its selected key was
+removed; a different reader with copied caches was accepted. Local corruption
+was restored and the real carry commands completed. The swallowed database
+abort preservation target passed. Log `/tmp/cpk-1952-cache-red.log`, SHA-256
+`c40dc2dcd1397db4316106d1ff6fc612825a4f6ddc1976f37ec80e702f65b589`;
+dedicated cleanup verified.
+
+The next source slice freezes exact immutable proof keys on the prepared value,
+checks the exact prepared reader and key presence before each discounted cache
+lookup, and admits the exact own receipt context only after all actual header
+and slot inserts. The first own context cannot be a prepopulated cache entry;
+it must transport the stored header/pair/execution context. Its source-plan
+cache addition is accepted only after that context exists. Current protective,
+request/run/workspace and receiver authority checks remain fresh. This does not
+yet implement the captured receiver transport or complete source S/H forecast.
