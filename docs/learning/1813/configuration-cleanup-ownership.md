@@ -1420,3 +1420,25 @@ and make the unknown phase selector agree with the SQL parameters. The first
 red is retained as narrower evidence. The strengthened tests receive their own
 checkpoint/run. No source implementation or complete S/H/byte-fit acceptance is
 claimed by this first tranche.
+
+Corrected first-tranche checkpoint `0df73d54320695ab4798edf80602cab023563813`,
+tree `3f83d8e7205483de1e33e5cd61c3d7a05cb5a30e`: the same owning eight-target
+command finished eight tests in 67.155 seconds, eight causal failures, exit 1,
+with no apparatus/fixture/import/collection error. The commit-entry test reached
+the original active ledger and false pending-commit premises before missing
+rejection; the unknown phase and SQL selectors agreed. Log
+`/tmp/cpk-1952-publication-corrected-red.log`, SHA-256
+`7160681fda71357d9377bfeb3174e5dd82e24b7a32b8eb207429a2388c96def1`.
+Dedicated corrected-red container/network cleanup was verified. Independent
+first-tranche causal-red PASS: issue comment `6042269318`; remaining target
+tranche still precedes source implementation release.
+
+The reviewed private budget return is the plain triple
+`(snapshot_footprint, future_native_budget, publication_budget)`. Snapshot is the
+receipt-manifest settled upper bound; future is full public-current native S/H;
+publication is suffix S/H excluding already charged prior. The next test-only
+tranche reaches actual preparation through the existing `_preflight` hook before
+asserting this callable contract. Missing forecast assertions are causal red;
+later wire/peak assertions blocked behind absence are not independently credited
+as red. Synthetic edge tests change only the pure triple and preserve well-formed
+S/H and stage relationships. They are not naturally exhausted command evidence.
