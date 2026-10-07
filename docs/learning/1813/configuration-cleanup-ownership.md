@@ -651,3 +651,68 @@ idempotent. B1 #1945 must prove each own disposition from retained originals;
 B2 #1946 must compose explicit profile selection and complete fresh proof before
 activation; C #1947 owns qualified atomic transfer and real growth/race/rollback
 evidence. None is released by this focused A result.
+
+## #1950 full-gate fixture corrections
+
+Full Operations at `a8cd820883a20ceb454568ad325d64c3376c34e4` failed:
+[run 37554575044](https://github.com/OpenJ92/control-plane-kit/actions/runs/37554575044),
+job `112577733955`, 2,514 tests in 4,282.077 seconds, one failure and 28 errors.
+The dependency was not accepted. Complete raw log SHA256:
+`355f5ee400373171694c94101404860cc6ae51b76dec9da46f25d3051237e674`.
+Formatted `gh run view` output truncated before the summary; the complete job
+log is authoritative. Core and the separately locked backend passed, but neither
+substitutes for current-branch Operations acceptance.
+
+The 28 errors share the managed application fixture's ingress-specific
+`TrackingUnitOfWork`, distinct from the coordinator wrapper already corrected.
+A focused diagnostic established the missing `_commit_requested` attribute at
+ordinary-owner capture. The fixture now forwards the real inner transaction state
+through a read-only property. The pending-commit test includes this third wrapper,
+retaining actual owner refusal and rollback. No production fallback, shadow state
+or guard relaxation was added. The representative managed scenario and all three
+wrapper negatives passed in the second diagnostic run (three tests, 92.726 seconds,
+with the separate reservation diagnostic still failing); that mixed run is not
+package acceptance.
+
+The reservation failure had a different cause. Real preparation returned, then
+the recorded interference helper tried to derive another request's scope inside
+the bound ordinary owner. Its unjoined transport correctly refused at
+`receiver_execution_scopes.py:63`. The empty injection marker followed the entire
+helper and therefore did not prove preparation was unreached. Two intermediate
+diagnostics did not identify the inner cause; the final injection-boundary trace
+did. That final diagnostic log SHA256 is
+`fb8201ed7aae03ecfacfa6c55246bcd35d4be301fa89ac39dda9f2973d6616bb`.
+
+Correction `df776bffa9272381570d7191f450de6ebd55eff7` changes four test files
+only. Existing recorded-request derivation now runs during fixture preparation,
+before the tested command binds its scope. Exact scalar fields, scope count/digest
+and derived scopes are retained; this read-only preparation writes no foreign
+active request. All recorded request, run, event, intent, attempt, reservation,
+member, closure and locator writes remain late in the caller transaction. The
+original negative test separately witnesses real preparation, complete installed
+members, the unchanged bound owner, actual fresh `_require_unreserved` refusal,
+and exact snapshot rollback. Captured selectors and accounting contexts stay intact.
+
+Kepler independently passed the four-file source correction at tree
+`9bd4b8511980224be2ecc24cc3724286013c1c82`; `git diff --check` passed and
+temporary diagnostics were removed. Focused and full-gate results must be recorded
+separately before dependency acceptance.
+
+The clean owning focused gate at `df776bff` passed **23 tests in 326.175 seconds**,
+then compilation and clean import, terminating exit zero. Selection covered the
+complete `PostgresConfigurationCleanupOwnershipTests` class, all three wrapped
+pending-commit cases, the original managed deployment/wait/read scenario, signed
+key-revocation refusal, and the actual V2 receiver-health coordinator positive.
+The strengthened original same-UoW reservation test passed, including the fresh
+guard witness and exact rollback. Log SHA256:
+`876baac40c367eb9294c3617a5d6f567bdc86308dc9995ca5eea794db07cb40f`.
+The owning gate removed its exact `cpk-1950-correction-postgres` container and
+`cpk-1950-correction` network. Fresh hosted full Operations acceptance remains
+required; there was no duplicate local full run.
+
+Security/data/history: production source, schema, limits and public behavior are
+unchanged. Recorded cleanup interference remains explicitly simulated fixture
+history, never lawful cleanup or provider evidence. The corrected tests preserve
+the pending-commit boundary, fresh exclusion and transaction rollback. #1945 stays
+held until North accepts and merges the actual dependency; its separate return
+plan releases neither dependent implementation nor B2/C activation.
