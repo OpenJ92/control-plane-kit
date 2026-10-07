@@ -2298,3 +2298,31 @@ binding proof, require A-only origin capture, and require an actual B origin
 read to refuse before SQL. The bridge repair must distinguish membership from
 actual traversal; it may not add native fallback or recursively capture unused
 historical origins. The two-test sibling-red/corrected-growth run is pending.
+
+That run at `2063297e` completed two tests in 14.731 seconds: graph-growth
+passed; sibling support failed at real configuration preparation as expected.
+Log `/tmp/cpk-1950-sibling-red.log`, SHA-256
+`e125f32e32e91e1d222e49f070fcc4d821442c6e160fb962bd0ecb149048e487`.
+The narrow bridge correction is `1025abdf41de24f7e046402a8cab83e4d25c18d1`:
+only ordinary bindings-to-introduction declaration defers the child check to
+the actual strict reader. Captured parent, all other edges and complete binding
+equality remain required. The direct sibling-read target now also requires an
+unchanged ledger.
+
+At `1025abdf`, the next focused run completed 19 tests in 143.784 seconds:
+17 passed, two setup errors, exit 1. All 14 start-tail/owner tests, the sibling
+regression, receiverless feasibility, and initial managed/update-refusal case
+passed. The sibling regression includes genuine start and advancement, complete
+AB proof with A-only capture, and B-read refusal before SQL. The review finding
+is closed by that evidence. Gateway and the 64/65-use case failed in their real
+coordinator start setup before their diagnostic sections; no supported gateway
+or 64/65 credit is claimed from this run. Log
+`/tmp/cpk-1950-focused-green-2.log`, SHA-256
+`233fe92a9cd781d2d9792f4fc36fac837c4ed673f0fa3473d17bdb46fb97ea2e`.
+
+Review identified a test-wrapper compatibility suspect: `TrackingUnitOfWork`
+does not expose its inner Postgres pending-commit state required by the ordinary
+owner (and already required by cleanup owners). The proposed correction forwards
+the authoritative inner state rather than weakening or defaulting the guard.
+Observer-only diagnosis and the final captured-plan alias target are pending;
+full package/composition acceptance remains outstanding.
