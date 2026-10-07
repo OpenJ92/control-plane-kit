@@ -1606,3 +1606,15 @@ it must transport the stored header/pair/execution context. Its source-plan
 cache addition is accepted only after that context exists. Current protective,
 request/run/workspace and receiver authority checks remain fresh. This does not
 yet implement the captured receiver transport or complete source S/H forecast.
+
+Scoped cache/publication source `f0f40b2292c50a65baf60759bcc760697a1aaf13`, tree
+`6ed1c5d9d7d4e964e8124bd9466e93694905b231`: eleven focused tests passed in
+112.965 seconds, followed by owning compile/import success, exit 0. The exact
+log `/tmp/cpk-1952-cache-green.log` has SHA-256
+`f1f00cad10851769e7392f791f1eed1ec8c91d347d4c84232c64ebd52ca1d9c2`.
+Dedicated container/network cleanup is verified. The selection covers all five
+cache evictions, missing ref, copied reader, changed actual stored source,
+prospective own receipt, real carry across two occurrences, Initial/Teardown,
+swallowed server abort, and current-schema/pure legacy preservation. The
+legacy obligation correction is issue comment `6043453444`; scoped lifetime
+and witness review is `6043370468`. No whole-issue or S/H acceptance is claimed.
