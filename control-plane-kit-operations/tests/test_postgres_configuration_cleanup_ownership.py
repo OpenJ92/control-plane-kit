@@ -380,18 +380,39 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
             intent, self.base.engine.authority(), command.fence)
         before = self.cleanup_snapshot()
         actual = ConfigurationPreparationStore._prepare
-        injected = []
+        from control_plane_kit_operations.postgres import configuration_preparation_store as preparation
+        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        actual_unreserved = preparation._require_unreserved
+        reached, injected, refused = [], [], []
 
         def then_record(store, stores, *args, **kwargs):
             prepared = actual(store, stores, *args, **kwargs)
+            reached.append(prepared)
+            self.assertIs(_BOUND_ORDINARY_START.get(), store._ordinary_owner._issued)
             self.insert_recorded_cleanup(stores)
+            self.assertEqual(stores.connection.execute("SELECT allocation_id FROM cpk_configuration_cleanup_members "
+                "WHERE (cleanup_run_id,cleanup_activity_id,cleanup_attempt)=(%s,%s,%s) ORDER BY allocation_id",
+                key(self.retained_intent.identity)).fetchall(),
+                [(ref.allocation_id,) for ref in sorted(self.refs, key=lambda ref: ref.allocation_id)])
+            self.assertIs(_BOUND_ORDINARY_START.get(), store._ordinary_owner._issued)
             injected.append(True)
             return prepared
 
-        with mock.patch.object(ConfigurationPreparationStore, "_prepare", then_record):
+        def observe_exclusion(read, ref):
+            try:
+                return actual_unreserved(read, ref)
+            except _Unavailable:
+                refused.append(ref)
+                raise
+
+        with mock.patch.object(ConfigurationPreparationStore, "_prepare", then_record), \
+                mock.patch.object(preparation, "_require_unreserved", observe_exclusion):
             with self.assertRaises(EffectAttemptStartConflict):
                 EffectAttemptStartService(self.unit_of_work, id_factory=lambda: "stale-start-event").execute(start)
+        self.assertEqual(len(reached), 1, "must issue real preparation before recording exclusion")
         self.assertEqual(injected, [True], "must reach real issued preparation before recording exclusion")
+        self.assertEqual(len(refused), 1, "the fresh reservation guard must cause refusal")
+        self.assertIn(refused[0], self.refs)
         self.assertEqual(self.cleanup_snapshot(), before)
 
 

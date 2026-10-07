@@ -37,13 +37,14 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 )
 from control_plane_kit_operations.postgres.effect_attempt_store import _COLUMN_NAMES, _record_values
 from control_plane_kit_operations.postgres import effect_outcome_store
+from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
 from control_plane_kit_operations.records import (
     ActivityEventRecord, ActivityRunRecord, AdmittedRun, ApprovalDecisionKind,
     BoundedEvidence, RetryIdentity,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.configuration_cleanup_postgres_fixture import ConfigurationCleanupPostgresFixture, NOW
-from tests.receiver_scope_history_fixture import insert_recorded_request
+from tests.receiver_scope_history_fixture import _recorded_request
 
 
 TABLES = (
@@ -116,6 +117,18 @@ class ConfigurationCleanupHistoryFixture(ConfigurationCleanupPostgresFixture):
         self.assertIsNotNone(self.retained_completion, "ordinary source must have actual D1 admission")
         self.assertTrue(all(value is not None for value in self.retained_completions))
         self.assertEqual(self.base.runtime_registration.authority_ref, self.runtime_authority_ref)
+        # Derive immutable recorded request material before a tested command
+        # binds its own read scope. Injection below remains entirely late and
+        # grants no admission authority to this simulated cleanup history.
+        row, derived = _recorded_request(_ExecutionScopeStorage(self.connection),
+            request_id=intent.source.request_id, workspace_id="workspace-a",
+            session_id=plan.session_id, plan_id=plan.plan_id,
+            approval_request_id=requested.request_id, approval_decision_id=decision.decision_id,
+            idempotency_key=intent.source.request_id, intent_fingerprint="recorded-history-only",
+            requested_at=NOW, status="claimed", claim_worker_id="recorded-worker",
+            claim_generation=1, claimed_at=NOW, lease_expires_at="2026-10-03T13:00:00Z")
+        self.retained_request_fields = tuple(row.items())
+        self.retained_request_scopes = derived.scopes
         return identity
 
     def insert_recorded_cleanup(self, stores):
@@ -123,13 +136,14 @@ class ConfigurationCleanupHistoryFixture(ConfigurationCleanupPostgresFixture):
         connection = stores.connection
         plan, original = self.retained_plan, self.retained_intent
         identity, attempt = original.identity, self.retained_attempt
-        insert_recorded_request(connection, request_id=original.intent.source.request_id,
-            workspace_id="workspace-a", session_id=plan.session_id, plan_id=plan.plan_id,
-            approval_request_id=self.retained_approval.request_id,
-            approval_decision_id=self.retained_decision.decision_id, idempotency_key=original.intent.source.request_id,
-            intent_fingerprint="recorded-history-only", requested_at=NOW, status="claimed",
-            claim_worker_id="recorded-worker", claim_generation=1, claimed_at=NOW,
-            lease_expires_at="2026-10-03T13:00:00Z")
+        insert(connection, "cpk_execution_requests",
+            tuple(name for name, _ in self.retained_request_fields),
+            tuple(value for _, value in self.retained_request_fields))
+        for ordinal, scope in enumerate(self.retained_request_scopes):
+            insert(connection, "cpk_execution_receiver_scopes",
+                ("request_id", "workspace_id", "scope_ordinal", "scope_kind", "runtime_id", "node_id"),
+                (original.intent.source.request_id, "workspace-a", ordinal, scope.scope_kind,
+                    scope.runtime_id, scope.node_id))
         stores.execution._add_run(ActivityRunRecord(identity.run_id.value, plan.plan_id,
             AdmittedRun(original.intent.source.request_id), RetryIdentity(1), ActivityRunStatus.RUNNING,
             NOW, started_at=NOW))

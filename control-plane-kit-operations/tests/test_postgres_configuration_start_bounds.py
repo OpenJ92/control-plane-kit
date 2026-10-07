@@ -88,11 +88,13 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
     def test_wrapped_pending_commit_invalidates_owner_and_rolls_back(self):
         from types import SimpleNamespace
         from tests.test_execution_coordinator import TrackingUnitOfWork
+        from tests.test_ingress_realization import TrackingUnitOfWork as IngressTrackingUnitOfWork
         from tests.gateway_rotation_overlap_fixture import CrashAfterCommitUnitOfWork, CrashControl
         actual_prepare = preparation.ConfigurationPreparationStore._prepare
         tracker = SimpleNamespace(entered=0, active=0, committed=0)
         wrappers = (
             lambda inner: TrackingUnitOfWork(tracker, inner),
+            lambda inner: IngressTrackingUnitOfWork(tracker, inner),
             lambda inner: CrashAfterCommitUnitOfWork(inner, CrashControl(999)),
         )
         for wrap in wrappers:
@@ -119,7 +121,7 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
                 self.assertEqual(len(checked), 1)
                 self.assertIsNone(support._BOUND_ORDINARY_START.get())
                 self.assertEqual(self.complete_start_snapshot(), before)
-        self.assertEqual((tracker.entered, tracker.active, tracker.committed), (1, 0, 1))
+        self.assertEqual((tracker.entered, tracker.active, tracker.committed), (2, 0, 2))
 
     def test_late_write_failure_closes_once_retains_raw_charge_and_rolls_back(self):
         from control_plane_kit_operations import configuration_preparation as values
