@@ -56,8 +56,20 @@ Each column is (SQL expression, maximum bytes). Expressions explicitly cast
 scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
         """
         configuration_read = self.configuration_read
+        from control_plane_kit_operations._configuration_acceptance import _PUBLICATION_SCOPE
         from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_columns, _phase_rows
         issued = _phase_context(self.connection, read=configuration_read)
+        publication = _PUBLICATION_SCOPE.get()
+        if publication is None and phase is not None and phase[0] in (
+                "session-workspace", "scope-header", "cancellation-actions", "attempts", "intents", "outcomes",
+                "outcome-memberships", "observation", "compensation-header", "compensation-steps",
+                "compensation-action", "compensation-bindings"):
+            # These new fixed roles belong only to publication. Existing
+            # cleanup/start scopes retain their established native branches.
+            phase = None
+        if publication is not None and issued is not None and phase is None:
+            from .configuration_evidence import _Unavailable
+            raise _Unavailable
         if issued is not None and configuration_read is None:
             from .configuration_evidence import _Unavailable
             raise _Unavailable
@@ -73,6 +85,9 @@ scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
         key = (table, columns, where, params, order, maximum, point, page, unique)
         _require(0 < len(columns) <= 32)
         if cache and key in self.cache:
+            if publication is not None and phase is not None:
+                publication._observe_publication_transport(configuration_read, *phase,
+                    self.cache[key], point=point, cached=True)
             return self.cache[key]
         if configuration_read is not None:
             # Original-material verification keeps its decoder and authority
@@ -83,6 +98,8 @@ scalars/JSON/times to text, preserving bytea. Decoding happens after transport.
                 maximum=1 if point else maximum, order=order, point=point or page)
             if unique and len(rows) > (1 if point else maximum):
                 raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+            if publication is not None and phase is not None:
+                publication._observe_publication_transport(configuration_read, *phase, rows, point=point)
             if cache:
                 self.cache[key] = rows
             return rows
@@ -207,7 +224,8 @@ class _ExecutionScopeStorage:
         for value in (identity.request_id, identity.workspace_id, identity.session_id, identity.plan_id):
             _text(value)
         sessions = self.transport.read("cpk_operation_sessions", _columns(("workspace_id",)),
-            "session_id=%s", (identity.session_id,), point=True, cache=True)
+            "session_id=%s", (identity.session_id,), point=True, cache=True,
+            phase=("session-workspace", (identity.session_id,)))
         _require(sessions == ((identity.workspace_id,),))
         from .configuration_cleanup_phase_read_bounds import _phase_require
         for parent in ("request", "scopes"):
@@ -274,7 +292,7 @@ class _ExecutionScopeStorage:
         derived = derive_execution_receiver_scopes(identity, *original)
         headers = self.transport.read("cpk_execution_requests",
             _columns(("workspace_id", "session_id", "plan_id", "receiver_scope_count", "receiver_scope_digest")),
-            "request_id=%s", (identity.request_id,), point=True)
+            "request_id=%s", (identity.request_id,), point=True, phase=("scope-header", (identity.request_id,)))
         _require(headers == ((identity.workspace_id, identity.session_id, identity.plan_id,
                               str(len(derived.scopes)), derived.source_digest),))
         rows = self.transport.read("cpk_execution_receiver_scopes", _columns(_SCOPE),
@@ -298,6 +316,12 @@ class _ExecutionScopeStorage:
             prefixes.add((scope.runtime_id, "all-nodes" if scope.node_id is None else "node", scope.node_id))
         found, raw = set(), 0
         for runtime_id, kind, node_id in sorted(prefixes):
+            from control_plane_kit_operations._configuration_acceptance import _PUBLICATION_SCOPE
+            publication = _PUBLICATION_SCOPE.get()
+            contract = None
+            prefix_identity = (workspace_id, runtime_id, kind, node_id)
+            if publication is not None:
+                contract = publication._publication_candidate(self.transport.configuration_read, prefix_identity)
             where = "workspace_id=%s AND runtime_id=%s AND scope_kind="
             params = [workspace_id, runtime_id]
             if kind == "runtime":
@@ -308,19 +332,24 @@ class _ExecutionScopeStorage:
                     where += " AND node_id=%s"
                     params.append(node_id)
             limit = min(MAX_CANDIDATE_ROWS - raw + 1, self.transport.remaining // 4096)
+            row_octets = 4096
+            if contract is not None:
+                row_octets = sum(contract[1]) + 1
+                limit = min(MAX_CANDIDATE_ROWS - raw + 1, len(contract[2]) + 1,
+                    self.transport.remaining // row_octets)
             if kind != "all-nodes":
                 limit = min(limit, MAX_REQUESTS + 1)
             if self.transport.configuration_read is not None:
                 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
                 used = self.transport.configuration_read.used
-                row_bytes = ConfigurationEvidenceFootprint(1, 4096, 3, 0).accounted_bytes
+                row_bytes = ConfigurationEvidenceFootprint(1, row_octets, 3, 0).accounted_bytes
                 statement_bytes = ConfigurationEvidenceFootprint(0, 0, 0, 1).accounted_bytes
                 # The same ledger reserves markers/records as well as values.
                 # A full shortened prefix still refuses below, before dedup.
                 limit = min(limit, max(0, 4096 - used.records),
                     max(0, (16 * 1024 * 1024 - used.accounted_bytes - statement_bytes) // row_bytes))
             _capacity(limit > 0)
-            reserved = limit * 4096
+            reserved = limit * row_octets
             self.transport.reserve(reserved)
             valid = " AND ".join(f"octet_length({name})<=2048" for name in ("request_id", "workspace_id", "runtime_id"))
             node_bytes = "0"
@@ -328,6 +357,8 @@ class _ExecutionScopeStorage:
                 valid += " AND (node_id IS NULL OR octet_length(node_id)<=2048)"
                 node_bytes = "octet_length(COALESCE(node_id,''))"
             valid += f" AND octet_length(request_id)+octet_length(workspace_id)+octet_length(runtime_id)+{node_bytes}<=1024"
+            if contract is not None:
+                valid += f" AND octet_length(request_id)<={contract[1][0]} AND octet_length(workspace_id)<={contract[1][1]}"
             # Candidate discovery needs only these identities. Keep projection
             # and guards within the lookup index keys; runtime scopes imply a
             # zero-length NULL node. Full retained scope truth, including that
@@ -338,7 +369,7 @@ class _ExecutionScopeStorage:
                 rows = self.connection.execute(query, (*params, limit)).fetchall()
             else:
                 rows = self.transport.configuration_read.query(query, (*params, limit),
-                    records=limit, octets=limit * 4096, cells=3)
+                    records=limit, octets=limit * row_octets, cells=3)
             self.transport.charge(reserved, rows)
             # Any full prefix refuses before interpretation; a shorter page
             # contains every matching row, irrespective of retrieval order.
@@ -346,6 +377,8 @@ class _ExecutionScopeStorage:
             _capacity(len(rows) < limit)
             raw += len(rows)
             _capacity(raw <= MAX_CANDIDATE_ROWS)
+            if publication is not None:
+                publication._publication_candidate(self.transport.configuration_read, prefix_identity, rows)
             for row in rows:
                 _require(row[-1] is True and row[1] == workspace_id)
                 found.add(row[0])
@@ -400,7 +433,7 @@ class _ExecutionScopeStorage:
             ceilings={"payload": 65536}),
             "session_id=%s AND payload->>'run_id'=%s AND action_type='" + kind + "'",
             (session_id, run_id), order="action_id", maximum=1, unique=True,
-            phase=("advancement-actions", (session_id, run_id)) if kind == "advance-current-graph" else None)
+            phase=("advancement-actions" if kind == "advance-current-graph" else "cancellation-actions", (session_id, run_id)))
         return tuple(_action_record(_decode(row, _ACTION, json_columns=("payload",),
             int_columns=("ordinal",), time_columns=("created_at",))) for row in rows)
 
@@ -419,7 +452,8 @@ class _ExecutionScopeStorage:
         project_activity_journal(original[0].plan, activity_journal_events(events))
         attempt_names = attempts_owner._COLUMN_NAMES
         rows = self.transport.read("cpk_effect_attempts", _columns(attempt_names),
-            "run_id=%s", (run.run_id,), order="activity_id,attempt", maximum=MAX_EFFECT_ROWS - self.effect_count)
+            "run_id=%s", (run.run_id,), order="activity_id,attempt", maximum=MAX_EFFECT_ROWS - self.effect_count,
+            phase=("attempts", (run.run_id,)))
         self.effect_count += len(rows)
         attempts = []
         for raw in rows:
@@ -432,7 +466,8 @@ class _ExecutionScopeStorage:
         intent_names = intents_owner._COLUMN_NAMES
         rows = self.transport.read("cpk_effect_attempt_intents",
             _columns(intent_names, byte_columns=("preimage",), ceilings={"preimage": MAX_DOCUMENT_BYTES}),
-            "run_id=%s", (run.run_id,), order="activity_id,attempt", maximum=MAX_EFFECT_ROWS - self.effect_count)
+            "run_id=%s", (run.run_id,), order="activity_id,attempt", maximum=MAX_EFFECT_ROWS - self.effect_count,
+            phase=("intents", (run.run_id,)))
         self.effect_count += len(rows)
         intents = []
         for raw in rows:
@@ -469,7 +504,8 @@ class _ExecutionScopeStorage:
         outcome_names = outcomes_owner._COLUMN_NAMES
         rows = self.transport.read("cpk_effect_attempt_outcomes",
             _columns(outcome_names, byte_columns=("preimage",), ceilings={"preimage": 8192}),
-            "run_id=%s", (run.run_id,), order="activity_id,attempt", maximum=len(attempts), unique=True)
+            "run_id=%s", (run.run_id,), order="activity_id,attempt", maximum=len(attempts), unique=True,
+            phase=("outcomes", (run.run_id,)))
         outcomes = []
         for raw in rows:
             row = _decode(raw, outcome_names, int_columns=("attempt", "fence_generation", "prior_attempt",
@@ -501,7 +537,8 @@ class _ExecutionScopeStorage:
         _require(type(count) is int and 0 <= count <= 8192)
         names = ("position", "observation_count", "observation_id")
         rows = self.transport.read("cpk_effect_attempt_outcome_observations", _columns(names),
-            "run_id=%s AND activity_id=%s AND attempt=%s", tuple(outcome_row[:3]), order="position", maximum=count, unique=True)
+            "run_id=%s AND activity_id=%s AND attempt=%s", tuple(outcome_row[:3]), order="position", maximum=count, unique=True,
+            phase=("outcome-memberships", tuple(outcome_row[:3])))
         _require(len(rows) == count)
         result = []
         for row in rows:
@@ -509,7 +546,8 @@ class _ExecutionScopeStorage:
             observation_names = owner._OBSERVATION_COLUMNS
             observations = self.transport.read("cpk_observations",
                 _columns(observation_names, json_columns=("evidence",), ceilings={"evidence": 8192}),
-                "observation_id=%s AND workspace_id=%s", (membership[2], outcome_row[3]), point=True, cache=True)
+                "observation_id=%s AND workspace_id=%s", (membership[2], outcome_row[3]), point=True, cache=True,
+                phase=("observation", (membership[2], outcome_row[3])))
             _require(len(observations) == 1)
             observation = _decode(observations[0], observation_names,
                 json_columns=("evidence",), time_columns=("observed_at",))
@@ -528,7 +566,7 @@ class _ExecutionScopeStorage:
         rows = self.transport.read("cpk_failed_run_compensations",
             _columns(names, json_columns=("source_failure",), byte_columns=("program_preimage",),
                 ceilings={"source_failure": 65536, "program_preimage": MAX_DOCUMENT_BYTES}),
-            "run_id=%s", (run.run_id,), point=True)
+            "run_id=%s", (run.run_id,), point=True, phase=("compensation-header", (run.run_id,)))
         if not rows:
             _require(not any(attempt.original_start_event.kind is ActivityEventKind.STEP_COMPENSATION_STARTED for attempt in attempts))
             _require(not any(event.kind is ActivityEventKind.RUN_COMPENSATION_STARTED for event in events))
@@ -539,7 +577,8 @@ class _ExecutionScopeStorage:
         steps = ("position", "source_run_id", "source_activity_id", "source_attempt", "source_request_fingerprint",
                  "source_outcome_fingerprint", "source_completion_event_id", "source_completion_ordinal", "operation", "material_source")
         raw_steps = self.transport.read("cpk_failed_run_compensation_steps", _columns(steps, json_columns=("operation",)),
-            "program_id=%s", (row[0],), order="position", maximum=MAX_EFFECT_ROWS - self.effect_count)
+            "program_id=%s", (row[0],), order="position", maximum=MAX_EFFECT_ROWS - self.effect_count,
+            phase=("compensation-steps", (row[0],)))
         self.effect_count += len(raw_steps)
         decoded_steps = tuple(_decode(step, steps, json_columns=("operation",),
             int_columns=("position", "source_attempt", "source_completion_ordinal")) for step in raw_steps)
@@ -550,7 +589,8 @@ class _ExecutionScopeStorage:
                  and event.occurred_at == record.created_at
                  and event.evidence.descriptor() == {"program_id": program.program_id, "program_fingerprint": program.fingerprint()})
         action_rows = self.transport.read("cpk_operation_actions", _columns(_ACTION, json_columns=("payload",),
-            ceilings={"payload": 65536}), "action_id=%s", (record.action_id,), point=True)
+            ceilings={"payload": 65536}), "action_id=%s", (record.action_id,), point=True,
+            phase=("compensation-action", (record.action_id,)))
         _require(len(action_rows) == 1)
         action = _action_record(_decode(action_rows[0], _ACTION, json_columns=("payload",),
             int_columns=("ordinal",), time_columns=("created_at",)))
@@ -562,7 +602,8 @@ class _ExecutionScopeStorage:
         binding_names = ("program_id", "position", "source_run_id", "source_activity_id", "source_attempt",
                          "inverse_run_id", "inverse_activity_id", "inverse_attempt")
         rows = self.transport.read("cpk_failed_run_compensation_attempt_bindings", _columns(binding_names),
-            "program_id=%s", (program.program_id,), order="position", maximum=MAX_EFFECT_ROWS - self.effect_count)
+            "program_id=%s", (program.program_id,), order="position", maximum=MAX_EFFECT_ROWS - self.effect_count,
+            phase=("compensation-bindings", (program.program_id,)))
         self.effect_count += len(rows)
         bindings = tuple(decode_binding(_decode(binding, binding_names,
             int_columns=("position", "source_attempt", "inverse_attempt"))) for binding in rows)

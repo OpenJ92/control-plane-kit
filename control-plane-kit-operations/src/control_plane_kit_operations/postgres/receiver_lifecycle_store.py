@@ -393,6 +393,11 @@ class _ReceiverStorage:
         actual = tuple(sorted((_decode(row, ReceiverBinding) for row in rows),
                               key=lambda item: (item.node_id, item.provider_socket_name)))
         _require(actual == expected)
+        from control_plane_kit_operations._configuration_acceptance import _PUBLICATION_SCOPE
+        publication = _PUBLICATION_SCOPE.get()
+        if publication is not None:
+            publication._observe_publication_collection(read, "bindings", (workspace, graph_id, projection_id),
+                tuple((item.node_id, item.provider_socket_name) for item in actual))
         from .configuration_cleanup_phase_read_bounds import _phase_require
         for binding in actual:
             _phase_require(self.connection, "bindings", (workspace, graph_id, projection_id),

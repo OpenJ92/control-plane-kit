@@ -365,7 +365,7 @@ class CurrentGraphAdvancementCommandService:
             with stores.configuration_acceptance._publication_scope(unit_of_work, guard):
                 receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard)
                 prepared = stores.configuration_acceptance._prepare(stores, workspace, request, run, plan, guard,
-                    current_projection, desired_projection)
+                    current_projection, desired_projection, receiver_truth=receiver_truth)
 
                 occurred_at = self._clock()
                 evidence = BoundedEvidence.from_mapping(

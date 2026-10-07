@@ -135,6 +135,10 @@ class ConfigurationAcceptanceStore:
         self._publication_guard = guard
         self._publication_published = False
         self._publication_own_context_started = False
+        self._publication_points = set()
+        self._publication_observations = {}
+        self._publication_shared_collections = {}
+        self._publication_candidates = {}
         self._publication_active = True
         self._issued = None
         token = _PUBLICATION_SCOPE.set(self)
@@ -143,6 +147,7 @@ class ConfigurationAcceptanceStore:
             read = _EvidenceRead(self._connection)
             transaction = _transaction(read)
             _require(transaction == guard._transaction_id)
+            self._publication_transaction = transaction
             completed = False
             try:
                 yield
@@ -169,6 +174,10 @@ class ConfigurationAcceptanceStore:
             self._publication_guard = None
             self._publication_published = False
             self._publication_own_context_started = False
+            self._publication_points = set()
+            self._publication_observations = {}
+            self._publication_shared_collections = {}
+            self._publication_candidates = {}
             _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
@@ -213,16 +222,194 @@ class ConfigurationAcceptanceStore:
             return
         _require(key in prepared.read_bounds.proof_keys[1] and key in read.sources)
 
+    def _select_publication_point(self, role, identity):
+        from .configuration_cleanup_phase_read_bounds import _shape
+        self._require_publication()
+        _shape(role)  # Closed package roles only; no SQL or caller registry.
+        self._publication_points.add((role, identity))
+
+    def _observe_publication_transport(self, read, role, identity, rows, *, point, cached=False):
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _PhasePoint, _PhaseCollection
+        from .configuration_cleanup_phase_read_bounds import _shape
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        _, columns, _, _, _, keys, _ = _shape(role)
+        _require(all(len(row) == len(columns) for row in rows))
+        widths = tuple(max((0 if row[index] is None else len(row[index]) if type(row[index]) is bytes
+            else len(row[index].encode("utf-8")) for row in rows), default=0) for index in range(len(columns)))
+        _require(all(width <= cap for width, (_, _, cap) in zip(widths, columns, strict=True)))
+        key = (role, identity)
+        if self._issued is not None and self._issued.read_bounds is not None:
+            optional = next((present for name, entry, present in self._issued.read_bounds.optional
+                if name == role and entry.identity == identity), None)
+            if optional is not None:
+                _require(len(rows) == int(optional))
+            return
+        if point:
+            _require(len(rows) <= 1)
+            present = bool(rows)
+            _require(present or role == "compensation-header")
+            value = _PhasePoint(identity, widths)
+        else:
+            present = True
+            member_keys = tuple(tuple(row[index] for index in keys) for row in rows)
+            _require(len(set(member_keys)) == len(member_keys)
+                and all(all(value is not None for value in member) for member in member_keys))
+            value = _PhaseCollection(identity, widths, member_keys)
+        previous = self._publication_observations.get(key)
+        _require(not cached or previous is not None)
+        if previous is not None:
+            old, was_present = previous
+            _require(type(old) is type(value) and was_present == present
+                and (point or old.keys == value.keys))
+            value = replace(value, widths=tuple(max(a, b) for a, b in zip(old.widths, widths, strict=True)))
+        self._publication_observations[key] = (value, present)
+
+    def _observe_publication_collection(self, read, role, identity, keys):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        if self._issued is not None and self._issued.read_bounds is not None:
+            return
+        _require(role in ("bindings", "slots") and len(set(keys)) == len(keys))
+        old = self._publication_shared_collections.get((role, identity))
+        _require(old is None or old == keys)
+        self._publication_shared_collections[(role, identity)] = keys
+
+    def _publication_candidate(self, read, identity, rows=None):
+        from .configuration_cleanup_read_ceilings import _require, _transaction
+        self._require_publication(read=read)
+        bounds = None if self._issued is None else self._issued.read_bounds
+        if bounds is not None:
+            entry = next((entry for entry in bounds.candidates if entry[0] == identity), None)
+            _require(entry is not None)
+            if rows is None:
+                _require(_transaction(read) == bounds.transaction_id)
+                return entry
+            _require(tuple(sorted(tuple(row) for row in rows)) == entry[2])
+            return
+        if rows is not None:
+            _require(all(len(row) == 3 and row[2] is True for row in rows))
+            widths = tuple(max((len(row[index].encode("utf-8")) for row in rows), default=0) for index in (0, 1))
+            value = (identity, widths, tuple(sorted(tuple(row) for row in rows)))
+            previous = self._publication_candidates.get(identity)
+            _require(previous is None or previous[2] == value[2])
+            self._publication_candidates[identity] = value
+        return None
+
+    def _generated_publication_widths(self, read, columns, rows):
+        from .configuration_cleanup_read_ceilings import _require
+        if not rows:
+            return (0,) * len(columns)
+        casts = tuple("bytea" if kind == "bytes" else "jsonb" if kind == "json" else
+            "timestamptz" if kind == "time" else "bigint" if kind == "int" else "text"
+            for _, kind, _ in columns)
+        values = tuple(tuple(json.dumps(value) if kind == "json" else value
+            for value, (_, kind, _) in zip(row, columns, strict=True)) for row in rows)
+        expressions = tuple("v.c" + str(index) for index in range(len(columns)))
+        lengths = ",".join("max(octet_length(" + value + ("" if cast == "bytea" else "::text") + "))"
+            for value, cast in zip(expressions, casts, strict=True))
+        proposed = ",".join("(" + ",".join("%s::" + cast for cast in casts) + ")" for _ in rows)
+        result = read.query("SELECT " + lengths + " FROM (VALUES " + proposed + ") AS v("
+            + ",".join("c" + str(index) for index in range(len(columns))) + ")",
+            tuple(value for row in values for value in row), records=1, octets=12 * len(columns), cells=len(columns))
+        _require(len(result) == 1)
+        widths = tuple(0 if value is None else value for value in result[0])
+        _require(all(type(width) is int and 0 <= width <= cap for width, (_, _, cap) in zip(widths, columns, strict=True)))
+        return widths
+
+    def _freeze_publication(self, prepared, event, action, proof_keys):
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _PhasePoint, _PhaseCollection
+        from .configuration_cleanup_phase_read_bounds import _capture_point, _capture_collection, _shape
+        from .configuration_cleanup_read_ceilings import _require
+        read = prepared.evidence_read
+        points, collections, optional = {}, {}, {}
+        for key, (value, present) in self._publication_observations.items():
+            if key[0] == "compensation-header":
+                optional[key] = (value, present)
+            elif type(value) is _PhasePoint:
+                points[key] = value
+            else:
+                collections[key] = value
+        for role, identity in sorted(self._publication_points):
+            key = (role, identity)
+            if key not in points and key not in optional:
+                points[key] = _capture_point(read, role, identity)
+        for (role, identity), keys in sorted(self._publication_shared_collections.items()):
+            value = _capture_collection(read, role, identity, keys)
+            previous = collections.get((role, identity))
+            _require(previous is None or previous.keys == value.keys)
+            if previous is not None:
+                value = replace(value, widths=tuple(max(a, b) for a, b in zip(previous.widths, value.widths, strict=True)))
+            collections[(role, identity)] = value
+
+        workspace = prepared.workspace.workspace_id
+        revision = prepared.plan.desired_graph_revision
+        locator = (workspace, prepared.request.identity.request_id, prepared.plan.plan_id, revision)
+        event_values = (event.event_id, event.run_id, event.ordinal, event.kind.value, event.occurred_at,
+            {"activity_id": event.activity_id, "evidence": event.evidence.descriptor(), "failure": None, "recovery": None})
+        action_values = (action.action_id, action.session_id, action.ordinal, action.action_type.value,
+            action.actor_id, action.payload, action.created_at, action.idempotency_key, action.intent_fingerprint)
+        header = (workspace, revision, prepared.plan.desired_graph_id,
+            prepared.desired_projection.projection_id, prepared.desired_projection.projection_digest,
+            action.action_id, event.event_id, prepared.run.run_id, prepared.request.identity.request_id,
+            prepared.plan.plan_id, len(prepared.slots), _membership_digest(prepared.slots))
+        published = []
+        for role, identity, values in (
+                ("header", (workspace, revision), header),
+                ("receipt-action", (action.action_id,), (*action_values, *locator, event.run_id)),
+                ("receipt-event", (event.event_id,), (*event_values, *locator)),
+                ("acceptance-action", (action.action_id, action.session_id), action_values)):
+            published.append((role, _PhasePoint(identity, self._generated_publication_widths(read, _shape(role)[1], (values,)))))
+        slot_widths = self._generated_publication_widths(read, _columns(_SLOT), prepared.slots)
+        published.append(("slots", _PhaseCollection((workspace, revision), slot_widths,
+            tuple(tuple(str(cell) for cell in row[:3]) for row in prepared.slots))))
+        for role, identity, values, added in (
+                ("events", (event.run_id,), event_values, (event.event_id,)),
+                ("advancement-actions", (action.session_id, event.run_id), action_values, (action.action_id,))):
+            key = (role, identity)
+            if key in collections:
+                original = collections[key]
+                widths = self._generated_publication_widths(read, _shape(role)[1], (values,))
+                _require(added not in original.keys)
+                published.append((role, replace(original, widths=tuple(max(a, b) for a, b in zip(original.widths, widths, strict=True)),
+                    keys=(*original.keys, added))))
+        if prepared.receiver_truth is not None:
+            before, after, origins = prepared.receiver_truth[:3]
+            after_ids = {item.receiver_id for item in after}
+            for receiver, origin in origins.items():
+                key = ("introduction", (workspace, receiver))
+                value = points[key]
+                widths = list(value.widths)
+                if receiver in after_ids and origin.first_accepted_action_id is None:
+                    widths[10:12] = (max(widths[10], len(action.action_id.encode())), max(widths[11], len(action.session_id.encode())))
+                if receiver not in after_ids and any(item.receiver_id == receiver for item in before):
+                    widths[12:14] = (max(widths[12], len(action.action_id.encode())), max(widths[13], len(action.session_id.encode())))
+                points[key] = replace(value, widths=tuple(widths))
+        return _PublicationReadBounds(proof_keys, self._publication_transaction,
+            tuple((role, value) for (role, _), value in points.items()),
+            tuple((role, value) for (role, _), value in collections.items()),
+            tuple((role, value, present) for (role, _), (value, present) in optional.items()),
+            tuple(self._publication_candidates.values()), tuple(published))
+
     def _bind_records(self, prepared, event, action):
         self._require_issued(prepared)
         if prepared.event is not None or prepared.action is not None:
             raise OperationsRecordError("advancement original records are already bound")
         prepared.stores.graphs._require_receiver_lifecycle(prepared.guard, prepared.workspace.workspace_id)
         prepared._validate_records(event, action)
+        execution, history = PostgresExecutionStore(self._connection), PostgresActivityHistoryStore(self._connection)
+        if (execution.get_run(prepared.run.run_id) != prepared.run
+                or execution.get_request(prepared.request.identity.request_id) != prepared.request
+                or history.get_plan(prepared.plan.plan_id) != prepared.plan):
+            raise _Unavailable
+        history.get_session(prepared.plan.session_id)
+        self._projection(prepared.plan.desired_graph_id, prepared.desired_projection.projection_id,
+            prepared.workspace.workspace_id)
         read = prepared.evidence_read
-        bounds = _PublicationReadBounds((tuple(read.refs), tuple(key for key in read.sources
+        proof_keys = (tuple(read.refs), tuple(key for key in read.sources
             if key[0] in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
-                "configuration-receipt-context", "configuration-original-slot"))))
+                "configuration-receipt-context", "configuration-original-slot")))
+        bounds = self._freeze_publication(prepared, event, action, proof_keys)
         bound = replace(prepared, event=event, action=action, read_bounds=bounds)
         self._issued = bound
         return bound
@@ -357,6 +544,10 @@ class ConfigurationAcceptanceStore:
             allocations.append(_decode_ref(original)[1].allocation_id)
         if len(set(allocations)) != len(allocations):
             raise _Unavailable
+        publication = _PUBLICATION_SCOPE.get()
+        if publication is not None:
+            publication._observe_publication_collection(read, "slots", (header["workspace_id"], header["pinned_revision"]),
+                tuple(row[:3] for row in rows))
         return rows
 
     @_closed_evidence
@@ -546,7 +737,7 @@ class ConfigurationAcceptanceStore:
         return self._observed_bindings(receipt, rows, read)
 
     @_closed_evidence
-    def _prepare(self, stores, workspace, request, run, plan, guard, current_projection, desired_projection):
+    def _prepare(self, stores, workspace, request, run, plan, guard, current_projection, desired_projection, *, receiver_truth=None):
         from control_plane_kit_operations.advancement import _require_complete_success
         self._require_publication()
         if stores is not self._publication_stores or guard is not self._publication_guard:
@@ -608,7 +799,8 @@ class ConfigurationAcceptanceStore:
         proof = ConfigurationEvidenceFootprint(*(getattr(read.used, field) - getattr(proof_start, field)
             for field in ("records", "value_octets", "scalar_markers", "statements")))
         prepared = _PreparedAdvancementReceipt(stores, guard, workspace, request, run, plan,
-            current_projection, desired_projection, slots=tuple(slots), evidence_read=read, proof_footprint=proof)
+            current_projection, desired_projection, slots=tuple(slots), evidence_read=read, proof_footprint=proof,
+            receiver_truth=receiver_truth)
         self._issued = prepared
         return prepared
 

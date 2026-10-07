@@ -13,6 +13,12 @@ _PUBLICATION_SCOPE = ContextVar("cpk_configuration_publication_scope", default=N
 class _PublicationReadBounds:
     """Immutable transport data carried by the existing prepared owner value."""
     proof_keys: tuple
+    transaction_id: int = 0
+    points: tuple = ()
+    collections: tuple = ()
+    optional: tuple = ()
+    candidates: tuple = ()
+    published: tuple = ()
 
 
 def _require_publication_proof(read, family, key):
@@ -51,6 +57,7 @@ class _PreparedAdvancementReceipt:
     evidence_read: object = None
     proof_footprint: object = None
     read_bounds: object = None
+    receiver_truth: object = None
 
     def with_records(self, event, action):
         return self.stores.configuration_acceptance._bind_records(self, event, action)
