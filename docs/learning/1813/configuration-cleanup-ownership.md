@@ -1002,6 +1002,7 @@ optional     tuple[(fixed role, identity, widths, present)]
 candidates   tuple[(normalized prefix identity, widths, raw row multiset)]
 published    exact replacements/additions for generated own records
 proof_keys   exact prepared-reader immutable cache keys
+proof_shapes fixed proof role/identity SQL widths for future-native forecasting
 ```
 
 All tuples are bounded by the existing selected receiver/history/material
@@ -1013,6 +1014,10 @@ the uniqueness requirement of `_PhaseCollection`. Prefix identity includes
 workspace, runtime, prefix kind and normalized node; it is not merely request ID.
 No SQL, predicate, expression, arbitrary callback or caller-selected role enters
 these values. Transport identities are not cached authorization decisions.
+`proof_shapes` are metadata for the native forecast, not additional readable
+`_PhasePoint` selectors. In particular the fixed ref/source joined projections
+must not acquire a shared-reader point interface merely because their successful
+cell widths are retained.
 
 **Capture sites.** `_Transport.read` receives a fixed role for every receiver
 read, including the currently unannotated session, scope-header, cancellation,
@@ -1082,6 +1087,19 @@ context entries permitted are the exact own receipt/source-plan pair populated
 by actual readback. Receiver fresh readers do not receive these cache discounts.
 The four prepared guards alone cannot enforce this rule because an altered
 stored slot could choose a new source after the last guard.
+
+The concrete private call sequence keeps `_preflight` as admission with no new
+return-value convention. `_prepare(..., receiver_truth=...)` retains the final
+already-produced receiver evidence/counts alongside the ordinary receipt truth.
+`_bind_records` validates generated records, performs the charged fixed probes
+and SQL-width measurements, freezes the capture and returns the sole replacement
+prepared value with `event`, `action` and immutable `read_bounds`. Only then does
+`_preflight(prepared)` evaluate the pure `_publication_budgets(prepared)` result
+against all actual prior. No SQL is hidden inside the budget composition.
+The old prepared value is invalid after replacement. Before binding, prospective
+rows are metadata only; after binding, role reads are strict. Local identity/
+execution-context checks execute no SQL; actual `_bound` transaction queries,
+the existing lifecycle guards and scope close remain positioned in S/H.
 
 The concrete carry governing law is
 `test_postgres_configuration_carry.py::PostgresConfigurationCarryTests.test_unrelated_runtime_changes_carry_original_membership_across_occurrences`
