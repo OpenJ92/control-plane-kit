@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
@@ -165,15 +165,287 @@ def _require_unreserved(read, ref):
         raise _Unavailable
 
 
+class _OrdinaryStartReadBoundsOwner:
+    """One caller transaction's ordinary suffix; never a cleanup issuer."""
+    def __init__(self, unit_of_work, guard, prefix):
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
+        self._uow = unit_of_work
+        self._stores = unit_of_work.stores
+        self._connection = self._stores.connection
+        self._accounting = _ACCOUNTING.get()
+        self._context = _execution_context()
+        self._guard, self._prefix = guard, prefix
+        self._issued = None
+        self._active = self._spent = False
+
+    def _context_is_current(self):
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
+        from .configuration_cleanup_read_ceilings import _require
+        try:
+            stores = self._uow.stores
+        except RuntimeError:
+            raise _Unavailable from None
+        _require(not self._spent and stores is self._stores and not self._uow._commit_requested
+            and stores.connection is self._connection and _ACCOUNTING.get() is self._accounting
+            and self._accounting is not None and self._accounting.active
+            and self._context == _execution_context() == self._accounting.execution_context
+            and stores.graphs.owns_receiver_lifecycle(self._guard, self._guard.workspace_id))
+
+    def _require(self, issued, connection):
+        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        from .configuration_cleanup_read_ceilings import _require
+        self._context_is_current()
+        _require(self._active and issued is self._issued and issued.owner is self
+            and connection is self._connection and _BOUND_ORDINARY_START.get() is issued)
+
+    def capture(self, material, request):
+        from control_plane_kit_operations._configuration_preparation import (
+            _BOUND_ORDINARY_START, _OrdinaryStartReadBounds,
+        )
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _BOUND_CLEANUP_PHASE
+        from control_plane_kit_operations._configuration_cleanup_read_ceilings import _BOUND_CLEANUP_ORIGINALS
+        from control_plane_kit_operations.receiver_execution_scopes import derive_execution_receiver_scopes
+        from control_plane_kit_operations.receiver_lifecycle import derive_receiver_bindings
+        from .configuration_cleanup_read_ceilings import _require, _transaction
+        from .configuration_cleanup_phase_read_bounds import _capture_point, _capture_collection
+        self._context_is_current()
+        _require(self._issued is None and not self._active and _BOUND_ORDINARY_START.get() is None
+            and _BOUND_CLEANUP_PHASE.get() is None and _BOUND_CLEANUP_ORIGINALS.get() is None)
+        stores, workspace = self._stores, request.identity.workspace_id
+        _require(self._prefix._owner is stores.execution and self._prefix.request == request
+            and self._prefix.requested_run.run_id == self._identity.run_id.value)
+        original = (material.plan_record, material.base_graph, material.desired_graph)
+        derived = derive_execution_receiver_scopes(request.identity, *original)
+        pairs = {(p.source_authored_graph_id, p.projection_id): p for p in original[1:]}
+
+        def binding_set(pair, projection):
+            return derive_receiver_bindings(workspace, *pair, projection.graph_descriptor)
+
+        bindings = {pair: binding_set(pair, projection) for pair, projection in pairs.items()}
+        base_pair = (material.base_graph.source_authored_graph_id, material.base_graph.projection_id)
+        # Accepted receiver histories are outside supported ordinary initial
+        # execution. They cannot silently become a new transport traversal.
+        _require(not bindings[base_pair])
+        origins = {}
+        for receiver in sorted({b.receiver_id for items in bindings.values() for b in items}):
+            origin = stores.graphs.receiver_introduction(workspace, receiver)
+            _require(origin is not None and origin.first_accepted_action_id is None and origin.retired_action_id is None)
+            origins[(workspace, receiver)] = origin
+            pair = (origin.introducing_graph_id, origin.introducing_realized_projection_id)
+            if pair not in pairs:
+                graph = stores.graphs.get(pair[0])
+                projection = stores.realized_graphs.get(pair[1])
+                _require(graph.workspace_id == projection.workspace_id == workspace
+                    and projection.source_authored_graph_id == pair[0])
+                pairs[pair] = projection
+                bindings[pair] = binding_set(pair, projection)
+        approval = stores.activity_history.get_approval_request(request.approval_request_id)
+        sessions = {request.identity.session_id, approval.session_id}
+        selectors = {("plan", (request.identity.plan_id,)), ("request", (request.identity.request_id,))}
+        selectors.update(("session", (session,)) for session in sessions)
+        for graph, projection in pairs:
+            selectors.update((("graph", (graph,)), ("projection", (projection,)),
+                ("raw-graph", (workspace, graph)), ("raw-projection", (workspace, projection, graph))))
+        for identity, origin in origins.items():
+            selectors.update((("introduction", identity),
+                ("origin-action", (origin.introducing_action_id, origin.introducing_session_id, workspace))))
+        read = _EvidenceRead(self._connection)
+        transaction = _transaction(read)
+        _require(transaction == self._guard._transaction_id)
+        points = tuple((role, _capture_point(read, role, identity)) for role, identity in sorted(selectors))
+        scopes = ("scopes", _capture_collection(read, "scopes", (request.identity.request_id,),
+            tuple((str(i),) for i in range(len(derived.scopes)))))
+        collections = [scopes]
+        for pair, items in sorted(bindings.items()):
+            expected = tuple(sorted((b.node_id, b.provider_socket_name) for b in items))
+            collections.append(("bindings", _capture_collection(read, "bindings", (workspace, *pair), expected)))
+        self._issued = _OrdinaryStartReadBounds(self, transaction, points, tuple(collections))
+        return self._issued
+
+    @contextmanager
+    def bind(self, issued):
+        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _BOUND_CLEANUP_PHASE
+        from control_plane_kit_operations._configuration_cleanup_read_ceilings import _BOUND_CLEANUP_ORIGINALS
+        from .configuration_cleanup_read_ceilings import _require, _transaction
+        self._context_is_current()
+        _require(issued is self._issued and not self._active and _BOUND_ORDINARY_START.get() is None
+            and _BOUND_CLEANUP_PHASE.get() is None and _BOUND_CLEANUP_ORIGINALS.get() is None)
+        # A failed bind has no active owner and no finally-query to spend.
+        _require(_transaction(_EvidenceRead(self._connection)) == issued.transaction_id)
+        token = _BOUND_ORDINARY_START.set(issued)
+        self._active = True
+        try:
+            yield
+        finally:
+            try:
+                self._require(issued, self._connection)
+                _require(_transaction(_EvidenceRead(self._connection)) == issued.transaction_id)
+            finally:
+                self._active, self._spent = False, True
+                _BOUND_ORDINARY_START.reset(token)
+
+
+def _ordinary_tail_budget(owner, intent, births):
+    """Closed source expression for the whole caller suffix, including refusal.
+
+    Widths restrict transport only. Native fixed readers retain their caps;
+    every permission traversal includes the gateway alternative even if the
+    discovered approval currently takes the other branch.
+    """
+    from control_plane_kit_operations._configuration_preparation import _OrdinarySuffixBudget
+    from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint as F
+
+    zero, transaction = F(0, 0, 0, 0), F(1, 20, 1, 1)
+
+    def sequence(*parts):
+        result = _OrdinarySuffixBudget(zero, zero)
+        for part in parts:
+            result = result.then(part)
+        return result
+
+    def query(rows, octets, cells, identities=1, *, settled=None, close=True, cleanup=0):
+        reservation = F(rows * identities, octets, rows * cells, 1)
+        peak = reservation.plus(transaction if close else zero).plus(F(0, 0, 0, cleanup))
+        return _OrdinarySuffixBudget(reservation if settled is None else settled, peak)
+
+    def native(columns, width, identities=1):
+        return sequence(query(1, 12 * columns, columns, identities),
+            query(1, width + 1, columns + 1, identities))
+
+    def widths(role):
+        entries = [entry.widths for selected, entry in owner._issued.points + owner._issued.collections
+            if selected == role]
+        if not entries or len({len(entry) for entry in entries}) != 1:
+            raise _Unavailable
+        # A changed traversal can select another captured key. Do not budget
+        # just the previously observed key while admitting the complete set.
+        return tuple(max(values) for values in zip(*entries, strict=True))
+
+    def point(role):
+        declared = widths(role)
+        return sequence(query(1, 20, 1), native(len(declared), sum(declared),
+            2 if role == "origin-action" else 1))
+
+    def count(role):
+        return max(len(entry.keys) for selected, entry in owner._issued.collections if selected == role)
+
+    def collection(role):
+        declared, n = widths(role), count(role)
+        k, w = len(declared), sum(declared)
+        result = sequence(query(1, 20, 1),
+            query(n + 1, 12 * k * (n + 1), k, settled=F(n, 12 * k * n, k * n, 1)))
+        if n:
+            result = result.then(query(n + 1, (w + 1) * (n + 1), k + 1,
+                settled=F(n, (w + 1) * n, (k + 1) * n, 1)))
+        return result
+
+    def bindings():
+        return sequence(point("raw-graph"), point("raw-projection"), collection("bindings"))
+
+    def retained():
+        return sequence(point("graph"), point("projection"), bindings())
+
+    def origin():
+        return sequence(point("introduction"), bindings(), point("origin-action"),
+            point("projection"), point("graph"), query(1, 1, 1))  # conditional draft witness
+
+    def material():
+        return sequence(query(1, 20, 1), native(1, 2048), point("plan"),
+            point("graph"), point("projection"), point("graph"), point("projection"),
+            native(5, 5 * 2048), collection("scopes"))
+
+    def permission():
+        result = sequence(point("request"), point("session"), query(1, 1, 1),
+            native(9, 65536 + 8 * 2048), material(), bindings(), bindings())
+        if (d := count("bindings")):
+            # Initially empty current: two reference checks expand to six
+            # retained pairs and three origin visits per desired occurrence.
+            # The selected-set maximum also bounds a changed captured pair.
+            for side in range(2):
+                result = result.then(sequence(retained(), retained()))
+                for _ in range(d):
+                    result = result.then(origin())
+                result = result.then(retained())
+                if side:
+                    for _ in range(d):
+                        result = result.then(origin())
+        result = result.then(sequence(native(15, 15 * 16384), native(9, 9 * 16384)))
+        # Native approval truth can change its branch and incur action reads
+        # before refusal. This alternative is deliberately unconditional.
+        action = native(9, 65536 + 8 * 2048)
+        result = result.then(sequence(point("session"), action, point("plan"),
+            point("projection"), point("projection"), point("session"), action, point("session"),
+            query(2, 216, 9), query(2, 2 * (65536 + 8 * 2048 + 1), 10)))
+        return result.then(material())
+
+    c = len(intent.configuration_instances.instances)
+    raw = F(0, 0, 0, 1 + 2 * c)
+    pair = query(1, 823, 9, 2)
+    possible_closure = query(1, 1, 1, 3)
+
+    def issued_check():
+        result = query(1, 20, 1)
+        for _ in range(c):
+            result = result.then(sequence(query(1, 1, 1, settled=F(0, 0, 0, 1)), pair))
+        return result
+
+    def original_intent():
+        return sequence(native(10, 1048576 + 9 * 2048), native(3, 128 + 64 + 16384))
+
+    event = native(6, 2 * 2048 + 32 + 128 + 64 + 16384)
+
+    def source():
+        # Failed join keeps its full reservation; DataError adds rollback and
+        # release before the owner closes. Other failure needs only release.
+        return sequence(query(0, 0, 0), query(1, 80032, 17, 3, cleanup=2), query(0, 0, 0))
+
+    result = sequence(_OrdinarySuffixBudget(raw, raw), query(1, 1, 1), point("request"),
+        query(1, 65, 2), query(1, 1, 1), query(1, 20, 1), query(1, 1, 1),
+        issued_check(), original_intent(), issued_check(), query(1, 200, 1), issued_check())
+    for _ in owner._prefix.held_run_ids:
+        result = result.then(sequence(query(1, 1, 1), native(10, 65536 + 9 * 2048)))
+    result = result.then(sequence(permission(), event, original_intent(), native(21, 21 * 2048), event, event,
+        query(33, 33 * 32768, 19, 2, settled=F(2 * c, c * 32768, 19 * c, 1)), source()))
+    seen = {(intent.source.run_id.value, intent.activity_id.value, owner._identity.attempt)}
+    for birth, _ in births:
+        result = result.then(sequence(pair, possible_closure, query(1, 32768, 19, 2)))
+        key = (birth.run_id.value, birth.activity_id, birth.attempt)
+        if key not in seen:
+            result = result.then(source())
+            seen.add(key)
+        result = result.then(sequence(pair, possible_closure))
+    return result.then(query(1, 20, 1, close=False)), raw
+
+
 class ConfigurationPreparationStore:
     def __init__(self, connection):
         self._connection = connection
         self._issued = None
+        self._ordinary_owner = None
 
     def _require_issued(self, prepared):
         if (self._issued is not prepared or prepared.stores.configuration_preparation is not self
                 or prepared.stores.connection is not self._connection):
             raise OperationsRecordError("configuration start requires owner preparation")
+        if self._ordinary_owner is None:
+            raise OperationsRecordError("configuration start requires active ordinary scope")
+        self._ordinary_owner._require(self._ordinary_owner._issued, self._connection)
+
+    @contextmanager
+    def _start_scope(self, unit_of_work, command, request, run, plan, guard, event_kind, prefix):
+        if self._ordinary_owner is not None or unit_of_work.stores.configuration_preparation is not self:
+            raise _Unavailable
+        owner = _OrdinaryStartReadBoundsOwner(unit_of_work, guard, prefix)
+        owner._identity = command.transition.identity
+        self._ordinary_owner = owner
+        try:
+            with ExitStack() as contexts:
+                owner._contexts = contexts
+                yield self._prepare(unit_of_work.stores, command, request, run, plan, guard, event_kind)
+        finally:
+            self._issued = None
+            self._ordinary_owner = None
 
     @contextmanager
     def _advancement_evidence(self, workspace_id, run_id):
@@ -516,10 +788,13 @@ class ConfigurationPreparationStore:
         from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
         from control_plane_kit_operations._configuration_preparation import _PreparedConfigurationStart
         from control_plane_kit_operations.configuration_preparation import (
-            ConfigurationEvidenceFootprint, ConfigurationCapacityDecision, configuration_preparation_capacity,
+            ConfigurationCapacityDecision, configuration_preparation_capacity,
         )
         from control_plane_kit_operations.effect_attempt_intent_evidence import _encode_runtime_effect_intent
         if event_kind is not ActivityEventKind.STEP_STARTED:
+            raise _Unavailable
+        owner = self._ordinary_owner
+        if owner is None or owner._stores is not stores:
             raise _Unavailable
         read = _EvidenceRead(self._connection)
         activity = plan.plan.activity(command.intent.activity_id)
@@ -569,32 +844,27 @@ class ConfigurationPreparationStore:
                     transfers.append((key, ref, disposition.acceptance_revision))
         proof = self._prove_transferred_roots(stores.configuration_acceptance, transfers) if transfers else None
         total_claims = sum(len(value.claims) for value in allocations)
-        # Fixed future envelope includes complete source context, both original
-        # and direct 16KiB events, the full 8192-byte outcome, and its source links.
         count = len(refs)
-        records, markers, statements = 24 * count + 264, 384 * count, 24 * count
-        envelope = 192 * 1024 * count + 3 * 1024 * 1024 + 512 * 1024
-        future = ConfigurationEvidenceFootprint(records,
-            envelope - 128 * records - 16 * markers - 256 * statements, markers, statements)
-        transferred = len(transfers)
-        # Three issued classification pairs plus the final original/birth pair
-        # checks: 5cP+3cU+4tT. Each full cold proof has its own P/T inside Q.
-        future = future.plus(ConfigurationEvidenceFootprint(13 * count + 16 * transferred,
-            4278 * count + 4 * transferred, 58 * count + 4 * transferred, 8 * count + 4 * transferred))
-        if proof is not None:
-            future = future.plus(proof).plus(proof).plus(proof).plus(
-                ConfigurationEvidenceFootprint(66, 2103393, 627, 1))
+        births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in selected)
+            if bindings else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
+        issued = owner.capture(material, request)
+        owner._contexts.enter_context(owner.bind(issued))
+        from control_plane_kit_operations.effect_attempt_start_interpreter import _require_fresh_effect_receiver_permission
+        _require_fresh_effect_receiver_permission(stores, request, guard, expected, compensation=False)
+        budget, raw = _ordinary_tail_budget(owner, expected, births)
         for index, ref in enumerate(refs):
             claim_keys = ()
             if selected[index] is not None:
                 claim_keys = tuple((claim.identity, claim.ref.artifact_id) for claim in selected[index].claims)
-            decision = configuration_preparation_capacity(current=read.used, reserved_future=future,
-                existing_claim_keys=claim_keys, proposed_claim_key=(command.transition.identity, ref.artifact_id),
-                existing_total_claims=total_claims + count - 1)
-            if decision is not ConfigurationCapacityDecision.WITHIN_LIMITS:
-                raise _Capacity
-        births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in selected)
-            if bindings else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
+            for future in (budget.settled, budget.peak):
+                decision = configuration_preparation_capacity(current=read.used, reserved_future=future,
+                    existing_claim_keys=claim_keys, proposed_claim_key=(command.transition.identity, ref.artifact_id),
+                    existing_total_claims=total_claims + count - 1)
+                if decision is not ConfigurationCapacityDecision.WITHIN_LIMITS:
+                    raise _Capacity
+        # Only the raw SQL is prepaid. Tracked queries settle their real rows,
+        # bytes and cells, and no later refusal refunds this statement charge.
+        read.used = read.used.plus(raw)
         prepared = _PreparedConfigurationStart(stores, guard, command.transition.identity, expected, births)
         self._issued = prepared
         return prepared

@@ -2626,3 +2626,234 @@ immutable validation coordinates. B2 still owns v2 fresh/retained cleanup
 consumption and version binding; C (#1947) still owns the lawful transfer writer,
 same-UoW activation, >64 historical accepted-use growth, races and producer
 rollback. Recorded B1 transfers discharge none of those future obligations.
+
+## #1950 full-gate fixture corrections
+
+Full Operations at `a8cd820883a20ceb454568ad325d64c3376c34e4` failed:
+[run 37554575044](https://github.com/OpenJ92/control-plane-kit/actions/runs/37554575044),
+job `112577733955`, 2,514 tests in 4,282.077 seconds, one failure and 28 errors.
+The dependency was not accepted. Complete raw log SHA256:
+`355f5ee400373171694c94101404860cc6ae51b76dec9da46f25d3051237e674`.
+Formatted `gh run view` output truncated before the summary; the complete job
+log is authoritative. Core and the separately locked backend passed, but neither
+substitutes for current-branch Operations acceptance.
+
+The 28 errors share the managed application fixture's ingress-specific
+`TrackingUnitOfWork`, distinct from the coordinator wrapper already corrected.
+A focused diagnostic established the missing `_commit_requested` attribute at
+ordinary-owner capture. The fixture now forwards the real inner transaction state
+through a read-only property. The pending-commit test includes this third wrapper,
+retaining actual owner refusal and rollback. No production fallback, shadow state
+or guard relaxation was added. The representative managed scenario and all three
+wrapper negatives passed in the second diagnostic run (three tests, 92.726 seconds,
+with the separate reservation diagnostic still failing); that mixed run is not
+package acceptance.
+
+The reservation failure had a different cause. Real preparation returned, then
+the recorded interference helper tried to derive another request's scope inside
+the bound ordinary owner. Its unjoined transport correctly refused at
+`receiver_execution_scopes.py:63`. The empty injection marker followed the entire
+helper and therefore did not prove preparation was unreached. Two intermediate
+diagnostics did not identify the inner cause; the final injection-boundary trace
+did. That final diagnostic log SHA256 is
+`fb8201ed7aae03ecfacfa6c55246bcd35d4be301fa89ac39dda9f2973d6616bb`.
+
+Correction `df776bffa9272381570d7191f450de6ebd55eff7` changes four test files
+only. Existing recorded-request derivation now runs during fixture preparation,
+before the tested command binds its scope. Exact scalar fields, scope count/digest
+and derived scopes are retained; this read-only preparation writes no foreign
+active request. All recorded request, run, event, intent, attempt, reservation,
+member, closure and locator writes remain late in the caller transaction. The
+original negative test separately witnesses real preparation, complete installed
+members, the unchanged bound owner, actual fresh `_require_unreserved` refusal,
+and exact snapshot rollback. Captured selectors and accounting contexts stay intact.
+
+Kepler independently passed the four-file source correction at tree
+`9bd4b8511980224be2ecc24cc3724286013c1c82`; `git diff --check` passed and
+temporary diagnostics were removed. Focused and full-gate results must be recorded
+separately before dependency acceptance.
+
+The clean owning focused gate at `df776bff` passed **23 tests in 326.175 seconds**,
+then compilation and clean import, terminating exit zero. Selection covered the
+complete `PostgresConfigurationCleanupOwnershipTests` class, all three wrapped
+pending-commit cases, the original managed deployment/wait/read scenario, signed
+key-revocation refusal, and the actual V2 receiver-health coordinator positive.
+The strengthened original same-UoW reservation test passed, including the fresh
+guard witness and exact rollback. Log SHA256:
+`876baac40c367eb9294c3617a5d6f567bdc86308dc9995ca5eea794db07cb40f`.
+The owning gate removed its exact `cpk-1950-correction-postgres` container and
+`cpk-1950-correction` network. Fresh hosted full Operations acceptance remains
+required; there was no duplicate local full run.
+
+Security/data/history: production source, schema, limits and public behavior are
+unchanged. Recorded cleanup interference remains explicitly simulated fixture
+history, never lawful cleanup or provider evidence. The corrected tests preserve
+the pending-commit boundary, fresh exclusion and transaction rollback. #1945 stays
+held until North accepts and merges the actual dependency; its separate return
+plan releases neither dependent implementation nor B2/C activation.
+
+## #1945 actual dependency integration and start dry run
+
+North accepted and merged #1950 at
+`637a8e91c76d00d42736f8ee04bae423a67cecca`, tree
+`85c1e0b5845256a33639c37a455fdb0d8e3bca19`, with parents `9282714d` and
+`8bcd7a64`. These coordinates were fetched and verified before integration.
+This supersedes the earlier pending-dependency statements, while retaining them
+as historical evidence. Full Operations passed 2,514 tests in 7,259.911 seconds;
+Core passed 945 tests plus 21 support tests. Kepler independently verified the
+exact reviewed CI tree and final acceptance. Locked-backend success remains
+compatibility evidence, not adoption of this branch's runtime source.
+
+The mechanical merge preserves B1 checkpoint `4970e9a9` and all earlier proof
+evidence. Only the preparation budget block and learning-document append
+conflicted. Resolution retains #1950's single ordinary owner, settled/peak
+composition and raw-write precharge, discards B1's obsolete F expression, and
+retains B1's typed pair, zero-outstanding lookup and proof consumers. Kepler
+passed that preservation review. It is not integrated-green evidence: typed P
+still exceeds the incoming primitive, historical selectors and cold proof blocks
+are absent, and acceptance/carry remains unfinished. No executable validation
+has been run on that intermediate reconciliation.
+
+### Start law cards and intended private interface
+
+The governing laws were inspected before designing changed targets:
+
+| Governing target | Classification and preserved observable law | Discarded structural assumption |
+| --- | --- | --- |
+| `test_three_real_start_rechecks_use_fresh_cold_proofs_on_the_same_ledger` | Strengthened: three actual issued checks use distinct cold readers on one command ledger; whole-tail SQL/bytes/cells and joined identities reconcile | F plus measured Q is a complete forecast; one admission call per ref |
+| `test_prior_plus_settled_suffix_fits_but_peak_refuses_before_start_mutation` | Strengthened: injected prior plus S fits while H refuses before clock/IDs/writes/adapter, preserving all prior truth | A single old M describes every query or exceptional cleanup peak |
+| `test_zero_outstanding_birth_reuses_and_three_issued_checks_remain_live` | Isomorphic: exact own admission and direct birth support reuse; forged/foreign/live-pair/reservation changes refuse; old transfers survive and new claims remain outstanding | A prepassed proof grants future permission |
+| Accepted #1950 complete-tail, source-failure and captured-alias tests | Isomorphic, strengthened at the transfer seam: exact raw charging, retained failed reservations, one close/rollback, strict selectors, wider captured aliases and fresh semantic refusal | Captured historical keys cannot affect ordinary role maxima |
+| Cold/warm transfer and current/v1 refusal tests | Isomorphic: warm immutable proof still rereads P/T; source and birth remain distinct; v1 never silently grants transfer reuse | Old file organization constrains new accounting ownership |
+
+Prior B1 positive, negative and known-tail-failure evidence remains at its
+original coordinates in the ledger above. The accepted #1950 full gate is the
+new dependency baseline; no immutable-reference rerun is needed. New target laws
+are finite historical closure, unknown-root/selector refusal, exact original
+invocation siblings, historical growth/alias pressure, and cold-proof failure
+under the admitted suffix. No public type, schema or service boundary changes.
+
+Proposed private interface, subject to Kepler's changed-seam review:
+
+- Keep `_OrdinaryStartReadBoundsOwner` and `_ordinary_tail_budget` as the sole
+  start owners. Extend capture with the exact selected transferred roots and the
+  command-local read from a successful preliminary cold proof. Validate that
+  read's connection/accounting identity. Its verified contexts select bounds;
+  its cached proof values do not become future authority.
+- Have `_prove_transferred_roots` expose its fresh reader along with its measured
+  delta, so capture can consume the already-verified source/receipt identities.
+  Each call still binds its own `_COMPOSED_READ` and resets it in `finally`.
+  After capture/bind, run another cold proof under the final transport contract
+  before admission. All discovery, capture and measurement charges remain prior.
+- Retain a private exact root set (full key/ref commitment/revision) on that
+  owner. Before a bound cold pass begins, require every proposed transferred
+  root to belong to that captured set. A newly transferred root or changed
+  revision refuses before starting unforecast native proof work. Fewer roots
+  after a fresh outstanding classification need no extra authority or budget.
+- Keep the three existing issued entrances and final original verification.
+  Replace P at its actual occurrences and insert a source-derived cold block at
+  each issued proof position. Do not add the whole old fixed allowance again.
+
+### Finite selector closure
+
+For each successfully proved selected transferred root, retain only its own
+original invocation and its own original acceptance context. Original source
+projections supply the complete invocation artifact keyset, including unselected
+siblings; capture that `invocation-refs` collection with the existing 32-ref cap,
+19-column declaration and two joined identities. This is not lifetime allocation
+history or recursive transfer discovery. Sibling structural classifications can
+read their exact T/closure anchors without proving another receipt recursively.
+
+The root's exact receipt context supplies `header`, `receipt-action`,
+`receipt-event`, `request`, `run`, `plan`, `session`, `graph` and `projection`
+point identities. Capture the plan's base/desired graph identities and every
+non-null base/desired projection identity required by its child declarations.
+Header-to-child and plan-to-child checks remain strict. `_receipt_context` enters
+the header bound even on a memo hit. Completion `_get` enters the original
+invocation collection; neither entrance may fall back to a native historical
+collection when the ordinary owner is active.
+
+The traced receipt projection uses graph/projection points, not lifecycle raw
+graph/binding reads. Do not enlarge raw/binding/origin closure merely because a
+historical plan names another graph. Ordinary permission paths retain their
+existing exact raw/binding sets and sibling declaration exception; a redirected
+path that needs an uncaptured actual selector still refuses. Historical point
+widths nevertheless widen role maxima for ordinary graph/plan/projection/request/
+session visits, and the complete suffix must include that interaction.
+
+### Positioned settled/peak worksheet
+
+Reuse #1950's private sequential composition. Let `Q(r,b,k,j)` denote one query
+reservation (r rows, b value octets, k cells per row, j joined identities), with
+the existing owner-close allowance in its peak. `N(k,w)` is a native point's
+length query followed by its guarded value query: `Q(1,12k,k,1)` then
+`Q(1,w+1,k+1,1)`. `G=Q(1,20,1,1)` is the bound's transaction query. A captured
+point is G then N using the maximum captured per-column widths of its role.
+These are upper bounds, not measured successful deltas.
+
+For a captured collection with n keys, k columns, summed widths w and j joined
+identities, reserve n+1 rows for each length/value query, settle at most n rows,
+and retain both guarded transport statements when n is positive. Thus the
+invocation collection uses j=2, unlike ordinary scopes/bindings. Include its G.
+Keep exact per-key runtime checks even though the forecast uses role maxima.
+
+The cold block for one root is the following ordered upper expression; repeated
+roots may share caches in execution, but the forecast assumes cold components
+per root and thereby covers all cache misses inside the closed captured set:
+
+1. P=`Q(1,855,11,2)`, then the accepted anchor T=`Q(1,1,1,4)`.
+2. Transfer-row point `N(13,1257)`; completion point `N(7,730)`.
+3. Captured original `invocation-refs`; original source savepoint, compact
+   `Q(1,80032,17,3)`, and release. Reserve rollback-to plus release after a
+   source DataError, retaining the failed compact reservation and owner close.
+4. One P plus a structural anchor for every original invocation ref. The T
+   reservation bounds the mutually exclusive three-identity cleanup anchor too;
+   it never grants cleanup permission. Do not sum incompatible branch effects.
+5. Terminal outcome `N(22,51200)` and up to two native event points
+   `N(6,18776)`. The original event normally hits the source cache, but changed
+   outcome locators can incur both reads before correlation refuses.
+6. Exact selected ref `Q(1,32768,19,2)`. Its source and successful-outcome checks
+   reuse this pass's already-proved identity; no cross-pass memo is available.
+7. Captured points in order: header, receipt-action, receipt-event, run, request,
+   plan, session, graph, projection. Include their G guards; semantic child
+   declarations themselves execute no SQL.
+8. Exact accepted slot `N(12,24576)`; its original-ref lookup reuses the selected
+   ref only after the stored source key has matched the requested key.
+
+Compose one such block per captured transferred root after the issued check's
+full U/P classification loop, at each of its three actual positions. Update all
+ordinary P occurrences to 855/11. Every reachable structural alternative outside
+the cold block also reserves its four-identity anchor ceiling, including final
+original/source and birth verification. No-transfer settlement may be smaller;
+failed or changed disposition work still belongs in the envelope. Retain the
+existing raw `1+2c` precharge exactly once and the one final owner close. Q observed
+before binding is never multiplied into a forecast. S and H admissions remain
+separate, and all prior work is included.
+
+### Target refinements before remaining start implementation
+
+Adapt the existing transfer-capacity target to two admissions per selected ref
+and independent physical reconciliation, retiring `fixed_tail` equality. Preserve
+three fresh issued readers and exact joined-identity accounting. New focused
+cases must prove unknown historical selectors and newly introduced root/revision
+refusal without unexpected proof SQL; complete original sibling capture; field
+and key growth refusal; wider historical role maxima reached by a changed
+ordinary traversal; and source failure with retained reservation, cleanup,
+one close and full rollback. Synthetic prior pressure and corrupt-savepoint
+diagnostics remain separate from successful physical equality. Assertions may
+not be weakened to accommodate the mechanically merged intermediate source.
+
+Review this worksheet/interface first, then write the focused target changes and
+record causal red, then implement the start seam. Acceptance/carry is the next
+distinct worksheet: its cold-consumer reservation peak remains separate from
+the four publication guards/readback S/H and receiver-finish tail. The retired
+8MiB/130+c constants and draft acceptance arithmetic are not newly approved by
+this start worksheet. A separate public concept or owner would require an
+explicit split; none is proposed here.
+
+Security/data/history: the new capture data restricts transport, not authority;
+P/T/U and cold own-admission proofs remain live on the same caller transaction.
+Unknown selectors never broaden to native history, and no state is repaired,
+pruned or transferred by this work. Rollback preserves old transfers and original
+claims; examples keep recorded fixtures explicitly simulated. B2/C and provider
+activation remain outside this review.

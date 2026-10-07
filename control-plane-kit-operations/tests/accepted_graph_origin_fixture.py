@@ -50,8 +50,13 @@ def initialize_receiver_fixture_origin(case, *, runtime_graph=None):
 
 
 def accept_selected_fixture_origin(case, plan, *, workspace_id="workspace-a",
-                                   prefix="fixture-origin", timestamp="2026-07-22T11:00:00Z"):
-    """Approve, admit, execute, and accept the caller's explicit zero-slot plan."""
+                                   prefix="fixture-origin", timestamp="2026-07-22T11:00:00Z",
+                                   expected_configurations=()):
+    """Approve, execute and accept explicit authored origin material.
+
+    Opt-in entries are (activity_id, runtime_id, node_id, authored_artifacts).
+    Empty input retains the exact historical zero-slot fixture contract.
+    """
     clock = lambda: timestamp
     identity = lambda suffix: f"{prefix}-{suffix}"
     requirement = ApprovalPolicy().requirement_for(plan)
@@ -104,6 +109,44 @@ def accept_selected_fixture_origin(case, plan, *, workspace_id="workspace-a",
             workspace.desired_graph_revision, engine.authority(), fence, IdempotencyKey(identity("advance"))))
     with case.unit_of_work() as uow:
         current = uow.stores.configuration_acceptance.read_current_configuration(workspace_id)
-    case.assertEqual((current.state, current.graph_id, current.projection_id, current.manifest_slot_count,
-        current.bindings), ("complete", workspace.desired_graph_id, workspace.desired_realized_projection_id, 0, ()))
+    if not expected_configurations:
+        case.assertEqual((current.state, current.graph_id, current.projection_id, current.manifest_slot_count,
+            current.bindings), ("complete", workspace.desired_graph_id, workspace.desired_realized_projection_id, 0, ()))
+    else:
+        from control_plane_kit_core.configuration_instances import ConfigurationInstanceRef, ConfigurationInstanceSelection
+        from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptStatus, RunId
+        from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+        from control_plane_kit_operations.configuration_preparation import _birth_selection
+        expected = {}
+        with case.unit_of_work() as uow:
+            for activity_id, runtime_id, node_id, artifacts in expected_configurations:
+                source_identity = EffectAttemptIdentity(RunId(run_id), activity_id, 1)
+                proposals = ConfigurationInstanceSelection(tuple(ConfigurationInstanceRef("proposal",
+                    workspace_id, runtime_id, node_id, artifact.artifact_id, artifact.target_path,
+                    artifact.media_type, artifact.file_mode, artifact.content_digest) for artifact in artifacts))
+                refs = _birth_selection(source_identity, proposals).instances
+                original = uow.stores.effect_attempt_intents.get(source_identity)
+                attempt = uow.stores.effect_attempts.get(source_identity)
+                case.assertIs(original.intent.kind, RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
+                case.assertIs(attempt.state.status, EffectAttemptStatus.SUCCEEDED)
+                case.assertEqual(original.intent.configuration_instances.instances, refs)
+                case.assertEqual(original.intent.source.request_id, identity("request"))
+                case.assertEqual(original.intent.source.plan_id, identity("plan"))
+                for ref in refs:
+                    slot = (runtime_id, node_id, ref.artifact_id)
+                    case.assertNotIn(slot, expected)
+                    expected[slot] = (ref, source_identity)
+        case.assertEqual((current.state, current.graph_id, current.projection_id, current.manifest_slot_count),
+            ("complete", workspace.desired_graph_id, workspace.desired_realized_projection_id, len(expected)))
+        actual = {(binding.ref.runtime_id, binding.ref.node_id, binding.ref.artifact_id): binding
+            for binding in current.bindings}
+        case.assertEqual(len(actual), len(current.bindings))
+        case.assertEqual(set(actual), set(expected))
+        for slot, (ref, source_identity) in expected.items():
+            binding = actual[slot]
+            case.assertEqual((binding.ref, binding.source.ref, binding.birth.ref), (ref, ref, ref))
+            case.assertEqual((binding.source.identity, binding.source.birth_identity,
+                binding.birth.identity, binding.birth.birth_identity), (source_identity,) * 4)
+            case.assertEqual((binding.source.birth_artifact_id, binding.birth.birth_artifact_id),
+                (ref.artifact_id,) * 2)
     return accepted

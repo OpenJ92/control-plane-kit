@@ -1,5 +1,5 @@
 """Measure a lawful compact producer boundary; never manufacture accepted history."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, replace
 import json
 import unittest
@@ -304,7 +304,9 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
             start_ids, calls = len(harness.start_ids.calls), len(harness.adapter.runtime_calls)
             start_commands = len(harness.start.commands)
             rejections = []
-            with observe_capacity(rejections):
+            from tests.configuration_cleanup_phase_read_bounds_fixture import ordinary_start_feasibility
+            observation = ordinary_start_feasibility(self.base, "accepted-use-" + str(number)) if number >= 64 else nullcontext()
+            with observe_capacity(rejections), observation:
                 try:
                     result = harness.coordinator.execute(replace(self.base.engine.command(
                         generation=command.fence.generation, idempotency_key="execute-" + label), run_id=command.run_id))

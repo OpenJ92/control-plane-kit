@@ -23,6 +23,29 @@ class _ConfigurationAccounting:
 
 
 _ACCOUNTING = ContextVar("cpk_configuration_accounting", default=None)
+_BOUND_ORDINARY_START = ContextVar("cpk_ordinary_start_read_bounds", default=None)
+
+
+@dataclass(frozen=True, repr=False)
+class _OrdinaryStartReadBounds:
+    """Transaction-local transport data, never receiver or cleanup authority."""
+    owner: object
+    transaction_id: int
+    points: tuple
+    collections: tuple
+
+
+@dataclass(frozen=True)
+class _OrdinarySuffixBudget:
+    settled: object
+    peak: object
+
+    def then(self, other):
+        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        shifted = self.settled.plus(other.peak)
+        peak = ConfigurationEvidenceFootprint(*(max(getattr(self.peak, name), getattr(shifted, name))
+            for name in ("records", "value_octets", "scalar_markers", "statements")))
+        return _OrdinarySuffixBudget(self.settled.plus(other.settled), peak)
 
 
 def _execution_context():

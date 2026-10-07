@@ -111,6 +111,10 @@ class TrackingUnitOfWork:
     def stores(self):
         return self._inner.stores
 
+    @property
+    def _commit_requested(self):
+        return self._inner._commit_requested
+
     def __enter__(self) -> "TrackingUnitOfWork":
         self._factory.entered += 1
         self._factory.active += 1

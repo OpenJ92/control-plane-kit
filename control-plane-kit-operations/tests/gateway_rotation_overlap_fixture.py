@@ -278,6 +278,10 @@ class CrashAfterCommitUnitOfWork:
     def stores(self):
         return self.inner.stores
 
+    @property
+    def _commit_requested(self):
+        return self.inner._commit_requested
+
     def commit(self) -> None:
         self.inner.commit()
         self.commit_requested = True
@@ -298,6 +302,16 @@ class GatewayRotationOverlapFixture:
             clock=lambda: "2026-08-02T00:59:58Z", id_factory=lambda: "rotation-origin-graph").create(
                 CreateWorkspace("workspace-a", "Workspace A", "operator-a", IdempotencyKey("rotation-origin-create")))
         authored = self.authored_graph()
+        configuration_product = getattr(self, "feasibility_configuration_product", None)
+        document, reference, metadata = GATEWAY_PRODUCT_DOCUMENT, GATEWAY_PRODUCT_REFERENCE, GATEWAY_PRODUCT_METADATA
+        if configuration_product is not None:
+            document = ProductDescriptorCodec().encode_document(configuration_product)
+            reference = ProductReference.from_document(document)
+            metadata = {"product_identity": reference.identity.key,
+                "product_descriptor_digest": reference.descriptor_sha256.value}
+            authored = replace(authored, nodes={node_id: replace(node, metadata=dict(metadata),
+                configuration_artifacts=configuration_product.runtime_contract.configuration_artifacts)
+                for node_id, node in authored.nodes.items()})
         realized_a = materialize_delegation_verifiers(
             authored,
             (
@@ -335,15 +349,15 @@ class GatewayRotationOverlapFixture:
             stores = unit_of_work.stores
             registered_product = stores.registered_products.register(
                 workspace_id="workspace-a",
-                descriptor_document=GATEWAY_PRODUCT_DOCUMENT,
+                descriptor_document=document,
                 source=InlineDescriptorSource(),
                 imported_by="operator-a",
                 imported_at="2026-08-02T00:59:59Z",
             )
             assert registered_product.status is RegisteredProductStatus.ACTIVE
-            assert registered_product.reference == GATEWAY_PRODUCT_REFERENCE
+            assert registered_product.reference == reference
             assert all(
-                authored.nodes[node_id].metadata == GATEWAY_PRODUCT_METADATA
+                authored.nodes[node_id].metadata == metadata
                 for node_id in ("gateway-a", "gateway-other")
             )
             stores.graphs.save(authored_record)
@@ -373,7 +387,10 @@ class GatewayRotationOverlapFixture:
                 dependencies=(ActivityDependency(runtime.activity_id),))
             for node_id in ("gateway-a", "gateway-other"))))
         self.rotation_origin = accept_selected_fixture_origin(self, plan,
-            prefix="rotation-origin", timestamp="2026-08-02T01:00:02Z")
+            prefix="rotation-origin", timestamp="2026-08-02T01:00:02Z",
+            expected_configurations=tuple((f"rotation-origin-{node_id}", node.runtime_id,
+                node_id, node.configuration_artifacts) for node_id, node in sorted(authored.nodes.items())
+                if node.configuration_artifacts))
         self.origin_authored_graph_count = self.connection.execute(
             "SELECT count(*) FROM cpk_graph_versions").fetchone()[0]
 

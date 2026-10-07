@@ -10,12 +10,19 @@ from control_plane_kit_operations._configuration_cleanup_phase_read_bounds impor
     _BOUND_CLEANUP_PHASE, _CleanupPhaseReadBounds, _PhasePoint, _PhaseCollection,
 )
 from control_plane_kit_operations._configuration_cleanup_read_ceilings import _BOUND_CLEANUP_ORIGINALS
-from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
+from control_plane_kit_operations._configuration_preparation import (
+    _ACCOUNTING, _execution_context, _BOUND_ORDINARY_START, _OrdinaryStartReadBounds,
+)
 from .configuration_cleanup_read_ceilings import _require, _transaction
 from .configuration_evidence import _active_read, _EvidenceRead, _Unavailable, _Capacity
 
 
 def _entries(value, role):
+    if type(value) is _OrdinaryStartReadBounds:
+        # The separate ordinary owner supplies only its closed selector set.
+        # These shared leaf widths are data, not cleanup issuance credentials.
+        return tuple(entry for selected_role, entry in value.points + value.collections
+            if selected_role == role)
     # Explicit closed alternatives, deliberately not an extensible registry.
     match role:
         case "plan": return value.plans
@@ -45,6 +52,15 @@ def _entries(value, role):
 
 
 def _phase_context(connection, *, read=None):
+    ordinary = _BOUND_ORDINARY_START.get()
+    if ordinary is not None:
+        from .configuration_preparation_store import _OrdinaryStartReadBoundsOwner
+        _require(type(ordinary) is _OrdinaryStartReadBounds
+            and type(ordinary.owner) is _OrdinaryStartReadBoundsOwner
+            and _BOUND_CLEANUP_PHASE.get() is None and _BOUND_CLEANUP_ORIGINALS.get() is None)
+        ordinary.owner._require(ordinary, connection)
+        _require(read is None or read.connection is connection and read.accounting is ordinary.owner._accounting)
+        return ordinary
     issued = _BOUND_CLEANUP_PHASE.get()
     if issued is not None:
         _require(type(issued) is _CleanupPhaseReadBounds
@@ -60,6 +76,7 @@ def _bound(connection, role, identity):
         return None
     matched = next((entry for entry in _entries(issued, role) if entry.identity == identity), None)
     if matched is None:
+        _require(type(issued) is not _OrdinaryStartReadBounds)
         return None
     read = _active_read(connection)
     _require(read is not None and _transaction(read) == issued.transaction_id)
@@ -67,6 +84,8 @@ def _bound(connection, role, identity):
 
 
 def _contains(issued, role, identity):
+    if type(issued) is _OrdinaryStartReadBounds:
+        return any(entry.identity == identity for entry in _entries(issued, role))
     if role == "retained":
         return issued.retained_identity == identity
     # Independently derived original IDs, never copied #1939 widths. The
@@ -88,6 +107,14 @@ def _phase_require(connection, parent_role, parent_identity, child_role, child_i
     and cold owner proof.
     """
     issued = _phase_context(connection)
+    if type(issued) is _OrdinaryStartReadBounds:
+        _require(_contains(issued, parent_role, parent_identity))
+        # A complete introducing binding set can list an unselected sibling.
+        # Membership does not read that sibling's origin. Actual introduction
+        # reads still enter strict _bound before any SQL and cannot fall back.
+        if (parent_role, child_role) != ("bindings", "introduction"):
+            _require(_contains(issued, child_role, child_identity))
+        return
     if issued is not None and _contains(issued, parent_role, parent_identity):
         _require(_contains(issued, child_role, child_identity))
 
