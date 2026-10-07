@@ -2234,3 +2234,46 @@ Before the new forecaster is implemented, run only that changed-subject test
 through the established Operations runner and dedicated resources, recording
 `/tmp/cpk-1950-approval-branch-red.log`. No further baseline owner rerun is
 needed; owner availability red was already recorded separately.
+
+### Captured alias envelope and first implementation checkpoint
+
+Kepler accepted one further conservative forecast correction: use role-wise
+captured column maxima and the maximum captured binding cardinality for every
+B, and budget 3 * max-binding-count origin reads in V. Actual transport still
+uses each captured selector's exact keyset and cardinality. No new selector or
+authorization is admitted. This covers redirection among already captured
+aliases. All captured origins in this initial case remain pending; accepted
+field growth or uncaptured accepted keys refuse. A nonempty pending origin
+does not authorize acceptance-history reads.
+
+Only the initial worksheet changes. Each V gains (8,1600,76,4); the revised
+initial values supersede the preceding row:
+
+| Quantity | Initial upper bound |
+| --- | --- |
+| V settled | (277,1133354,1745,257) |
+| Prior | (545,1644886,3925,504) |
+| Future S | (352,3710759,2135,320) |
+| Future H | (387,4577703,2629,320) |
+| prior+S | (897,5355645,6060,824) |
+| prior+H | (932,6222589,6554,824) |
+| Accounted bytes at prior+H | 6657693 |
+
+The changed-approval target at `106e10682157bef1d323af17f29a52985432f6a1`
+completed with one intended failure in 6.263 seconds: 72 charged refused-tail
+statements exceeded the admitted 64. Its actual native action lookup and
+rollback assertions passed first. Exit 1, no apparatus or collection failure;
+dedicated resources were removed. Log `/tmp/cpk-1950-approval-branch-red.log`,
+SHA-256 `7e79d2759ee4f709478b5a0ad8b1b2d95e75d4e04bb02fb467ca1f18642d0607`.
+This proves the baseline defect, not the final unconditional expression.
+
+First implementation candidate is `2a9282cb35839b3c5a0187424d0daef94f592043`,
+tree `70d772bf399aa226f59a89c824a27bec81885d3e`, on
+`codex/1950-ordinary-start-tail`. It changes only the five released production
+files: private preparation values, start interpreter scope, Postgres preparation
+owner/expression, the existing bounded-read bridge, and publication-only history
+accounting. Budgets, schema, locks, cleanup authority and native session-action
+bounds remain unchanged. It is unvalidated pending focused green and independent
+review; no full-package or live acceptance is claimed. Security: the ordinary
+owner controls transport admission and lifetime; fresh semantic authorization
+remains authoritative and cleanup authority stays separate.
