@@ -92,14 +92,26 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
         self.assertTrue(self.base.doCleanups(), "nested publication fixture cleanup failed")
 
     def test_prepared_credential_is_spent_before_database_commit(self):
-        prepared_values, committed = [], []
+        prepared_values, requested, committed = [], [], []
         original = ConfigurationAcceptanceStore._preflight
+        original_commit = PostgresUnitOfWork.commit
         case = self
 
         def preflight(store, prepared):
             result = original(store, prepared)
-            prepared_values.append((store, prepared))
+            prepared_values.append((store, prepared, _ACCOUNTING.get()))
             return result
+
+        def request_commit(uow):
+            self.assertEqual(len(prepared_values), 1)
+            store, prepared, accounting = prepared_values[0]
+            self.assertFalse(uow._commit_requested)
+            self.assertIs(_ACCOUNTING.get(), accounting)
+            self.assertTrue(accounting.active)
+            with self.assertRaises((OperationsRecordError, _Unavailable)):
+                store._require_issued(prepared)
+            requested.append(True)
+            return original_commit(uow)
 
         class ObservedCommit:
             def __init__(self, connection):
@@ -110,18 +122,20 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
 
             def commit(self):
                 case.assertEqual(len(prepared_values), 1)
-                store, prepared = prepared_values[0]
+                store, prepared, _ = prepared_values[0]
                 with case.assertRaises((OperationsRecordError, _Unavailable)):
                     store._require_issued(prepared)
                 committed.append(True)
                 self.connection.commit()
 
-        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight), \
+                mock.patch.object(PostgresUnitOfWork, "commit", request_commit):
             accepted = self.base.advance(lambda: PostgresUnitOfWork(
                 lambda: ObservedCommit(psycopg.connect(self.base.database_url))))
         self.assertFalse(accepted.replayed)
+        self.assertEqual(requested, [True])
         self.assertEqual(committed, [True])
-        store, prepared = prepared_values[0]
+        store, prepared, _ = prepared_values[0]
         with self.assertRaises((OperationsRecordError, _Unavailable)):
             store._require_issued(prepared)
 
@@ -160,10 +174,11 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
             transport = _Transport(store._connection, read)
             actual_phase = (("request", (prepared.request.identity.request_id,))
                 if foreign_ledger else phase)
+            params = (prepared.request.identity.request_id,) if actual_phase is None else actual_phase[1]
             with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError(
                     "unclosed publication read reached SQL")), self.assertRaises(_Unavailable):
                 transport.read("cpk_execution_requests", _columns(_REQUEST),
-                    "request_id=%s", (prepared.request.identity.request_id,),
+                    "request_id=%s", params,
                     point=True, phase=actual_phase)
             checked.append(True)
             return original(store, prepared)

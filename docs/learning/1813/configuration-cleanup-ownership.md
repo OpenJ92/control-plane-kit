@@ -1392,3 +1392,31 @@ those owning targets to provide the missing empirical fit evidence; no separate
 prototype or alternative harness is justified. If the existing positive fails,
 stop for forecast correction or an explicit domain decision, preserving its
 positive assertion.
+
+### #1952 first focused causal-red checkpoint
+
+Test-only commit `2b44e6f6e84ffab8f9c1404e9a0e4be84abc620e`, tree
+`f8867e7c4da0dd9e9b91ed6900f471adcfff4151`, ran through the owning command
+`./control-plane-kit-operations/test.sh -k ConfigurationPublication` with clean
+architecture-testing `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef` and dedicated
+`cpk-1952-publication-red` network/container names. Terminal result: eight tests
+in 73.948 seconds, eight failures, exit 1; no fixture, import, collection or
+apparatus error. Compile/import phases are not reached after the expected red.
+Log `/tmp/cpk-1952-publication-red.log`, SHA-256
+`ddb4622c3123573e95daa14502e3f392421daf388a5651504efe8e18d7bfa77b`.
+Dedicated container/network absence was verified after harness cleanup.
+
+Initial reached its real publication and reported 649 ledger statements versus
+651 physical statements; Teardown reported 736 versus 738. The witness existence
+and update queries are the two uncovered statements in each. Other failures
+were the missing prepared-credential invalidation, unannotated/unselected/
+foreign-ledger transport reaching SQL, and a missing immutable carry ref reaching
+cold SQL. Existing positives retain their commit/membership assertions.
+
+Independent review identified two oracle refinements before broader credit:
+observe credential expiry at UoW.commit **entry**, with commit not yet requested
+and the original ledger still active, as well as physical commit/after exit;
+and make the unknown phase selector agree with the SQL parameters. The first
+red is retained as narrower evidence. The strengthened tests receive their own
+checkpoint/run. No source implementation or complete S/H/byte-fit acceptance is
+claimed by this first tranche.
