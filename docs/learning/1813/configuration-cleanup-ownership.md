@@ -2277,3 +2277,24 @@ bounds remain unchanged. It is unvalidated pending focused green and independent
 review; no full-package or live acceptance is claimed. Security: the ordinary
 owner controls transport admission and lifetime; fresh semantic authorization
 remains authoritative and cleanup authority stays separate.
+
+The first focused gate at `2a9282cb` completed 14 tests in 103.115 seconds:
+13 passed and one test-fixture SQL error. The graph-growth injection omitted
+an explicit parameter type for `jsonb_build_object`; PostgreSQL rejected it
+before the intended growth law was exercised. Target correction is `%s::text`.
+No apparatus or collection failure occurred; exit 1 meant compile/import phases
+were not reached. Log `/tmp/cpk-1950-target-green.log`, SHA-256
+`70360387f8ec8d2f60d7604226f2a8e7f5a441f126c9448786ed7a08f0e225e3`.
+Whole-tail physical accounting and peak, both prior-pressure refusals, owner
+lifetime/forgery/isolation, source failures, publication and changed-approval
+targets passed. Graph growth remains unproved until its corrected target runs.
+
+Independent source review found that eager bindings-to-introduction membership
+checks overconstrained a supported pending origin: graph AB introduces A+B,
+then desired A retains A's origin at AB without ever traversing B's origin.
+Target-only `2063297eb84bb1cf09a08a92602938b56f6ca187` uses genuine authoring
+commands and the canonical initial receiver fixture to preserve complete AB
+binding proof, require A-only origin capture, and require an actual B origin
+read to refuse before SQL. The bridge repair must distinguish membership from
+actual traversal; it may not add native fallback or recursively capture unused
+historical origins. The two-test sibling-red/corrected-growth run is pending.
