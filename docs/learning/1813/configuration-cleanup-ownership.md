@@ -1660,3 +1660,24 @@ test already did so. Bounded numeric forecast and observed reservation maxima
 are added to existing fit diagnostics for the next required whole-package run.
 No assertion or application source changes with this correction. Proportional
 shared-reader regressions, full package/backend gates and final review remain.
+
+The first full Operations gate on `d2f88b21bf5acfe54077767fd31342fd236c5475`
+(same-tree CI merge `7b7fbb7b677a4166990c39e9a000dcb1dac4c482`) ran 2541 tests
+in 7225.537 seconds and failed with six errors. Raw log SHA-256 is
+`c05223b6d816a18702340cdaaf8ac551e2cb56dde34a168ff0ce20f3b63a495f`;
+PR #1953 comment `6047000630` records the exact failing methods. Core and the
+locked-backend gate passed at their recorded coordinates; neither supersedes
+this Operations failure.
+
+Review separated stale instrumentation from a production refusal regression.
+The gateway tracking UoW must delegate its actual commit-request state, and
+the concurrency pause wrapper must forward the new receiver evidence keyword.
+The old lifetime observer must inspect its live bound value inside publication
+scope, retain that reference, then assert revocation before physical commit and
+after transaction expiry. Its predecessor/copy/rebind and durable-snapshot
+negative laws remain intact. A forged or spent prepared value must first fail
+exact issued identity with the existing `OperationsRecordError`; the genuine
+issued owner still undergoes all publication, store, guard and connection
+checks. Do not broaden those tests to accept the private evidence exception or
+weaken the before-commit revocation. Focused and full correction gates remain
+required; no B1 integration or whole-issue acceptance follows from diagnosis.

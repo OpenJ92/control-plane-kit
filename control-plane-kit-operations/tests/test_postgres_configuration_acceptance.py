@@ -3,6 +3,7 @@ from dataclasses import replace
 from hashlib import sha256
 import os
 import unittest
+from unittest import mock
 
 import psycopg
 import rfc8785
@@ -25,7 +26,7 @@ from control_plane_kit_operations.records import (
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
 from control_plane_kit_operations.coordinator import CoordinatorStatus
-from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleStorageError
+from control_plane_kit_operations import advancement as advancement_module
 from tests import test_execution_coordinator as coordinator_fixture
 from tests.test_postgres_configuration_evidence import _ObservedConnection
 
@@ -220,6 +221,7 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
 
     def test_issued_binding_invalidates_predecessor_copies_and_expired_transaction(self):
         captured, identities = {}, iter(("event-advance", "action-advance"))
+        finish = advancement_module._finish_receiver_advancement
         raw = psycopg.connect(self.database_url)
         self.addCleanup(raw.close)
 
@@ -227,7 +229,9 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
             stores, predecessor = captured["stores"], captured["unbound"]
             bound = stores.configuration_acceptance._issued
             self.assertIsNotNone(predecessor)
+            self.assertIsNotNone(bound)
             self.assertIsNot(bound, predecessor)
+            captured["bound"] = bound
             bound.require(stores.connection, "workspace-a", after_cas=True)
             captured["live_txid"] = raw.execute("SELECT txid_current()").fetchone()[0]
             before = self.retained_snapshot(raw)
@@ -249,15 +253,28 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
             self.assertEqual(self.retained_snapshot(raw), before)
             self.assertIs(stores.configuration_acceptance._issued, bound)
 
+        def finishing(stores, *args):
+            result = finish(stores, *args)
+            # Inspect the actual completed publication while its credential
+            # still belongs to the live owner, before scope exit revokes it.
+            probe_live_binding()
+            captured["probed"] = True
+            return result
+
+        case = self
+
         class RetainedConnection:
             def __getattr__(self, name):
                 return getattr(raw, name)
 
             def commit(self):
-                # Probe the live completed publication before real physical
-                # commit, outside the command's accounting observation scope.
-                probe_live_binding()
-                captured["probed"] = True
+                # Scope exit must revoke authority before physical commit,
+                # even though the database transaction is still live.
+                stores, bound = captured["stores"], captured["bound"]
+                case.assertIsNone(stores.configuration_acceptance._issued)
+                with case.assertRaises(OperationsRecordError):
+                    bound.require(stores.connection, "workspace-a", after_cas=True)
+                captured["revoked_before_commit"] = True
                 raw.commit()
                 captured["physical_commit"] = True
 
@@ -276,14 +293,17 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
             captured.setdefault("unbound", captured["stores"].configuration_acceptance._issued)
             return next(identities)
 
-        accepted = CurrentGraphAdvancementCommandService(
-            lambda: CapturedUnitOfWork(RetainedConnection), clock=lambda: "2026-07-22T13:05:00Z",
-            id_factory=identity).execute(self.command())
+        with mock.patch.object(advancement_module, "_finish_receiver_advancement", finishing):
+            accepted = CurrentGraphAdvancementCommandService(
+                lambda: CapturedUnitOfWork(RetainedConnection), clock=lambda: "2026-07-22T13:05:00Z",
+                id_factory=identity).execute(self.command())
         self.assertTrue(captured["uow_closed"])
         self.assertTrue(captured["probed"])
+        self.assertTrue(captured["revoked_before_commit"])
         self.assertTrue(captured["physical_commit"])
         stores = captured["stores"]
-        bound = stores.configuration_acceptance._issued
+        self.assertIsNone(stores.configuration_acceptance._issued)
+        bound = captured["bound"]
         self.assertEqual((bound.event, bound.action), (accepted.event, accepted.action))
         self.assertEqual(self.connection.execute("SELECT current_graph_id,current_realized_projection_id "
             "FROM cpk_workspaces WHERE workspace_id='workspace-a'").fetchone(),
@@ -295,12 +315,12 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
         before = self.retained_snapshot(raw)
         for writer in ("event", "action"):
             with self.subTest(expired_writer=writer):
-                with self.assertRaises(ReceiverLifecycleStorageError) as caught:
+                with self.assertRaises(OperationsRecordError) as caught:
                     if writer == "event":
                         stores.execution._add_advancement_event(accepted.event, bound)
                     else:
                         stores.activity_history._add_advancement_action(accepted.action, bound)
-                self.assertIs(type(caught.exception), ReceiverLifecycleStorageError)
+                self.assertIs(type(caught.exception), OperationsRecordError)
                 self.assertLessEqual(len(str(caught.exception)), 512)
                 self.assertEqual(self.retained_snapshot(raw), before)
         raw.rollback()

@@ -186,8 +186,10 @@ class ConfigurationAcceptanceStore:
             _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
+        if self._issued is not prepared:
+            raise OperationsRecordError("advancement requires owner-issued preparation")
         self._require_publication()
-        if (self._issued is not prepared or prepared.stores.configuration_acceptance is not self
+        if (prepared.stores.configuration_acceptance is not self
                 or prepared.stores is not self._publication_stores or prepared.guard is not self._publication_guard
                 or prepared.stores.connection is not self._connection):
             raise OperationsRecordError("advancement requires owner-issued preparation")
