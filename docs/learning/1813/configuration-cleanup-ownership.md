@@ -2347,3 +2347,31 @@ reviewed the repair and alias target positively. The three-case wrapper,
 gateway, and 64/65-use run is in progress. Draft [PR #1951](https://github.com/OpenJ92/control-plane-kit/pull/1951)
 targets the roadmap branch and records the decision, security, data, and
 mathematical notes with full acceptance explicitly pending.
+
+The supported/wrapper gate at `a8cd8208` (tree
+`e40b08f61e5dab4c724ca6d1b4dc042bacfd6392`) finished successfully: three tests
+in 379.839 seconds, compile and clean import passed, runner exit 0, dedicated
+network/container verified absent. Gateway configuration passed; the compact
+boundary accepted 64 uses with cold-history/exact-replay assertions and refused
+use 65 at guarded start with `per-ref-claim-limit`; both decorators preserved
+owner invalidation and rollback after commit request. Log
+`/tmp/cpk-1950-supported-green-3.log`, SHA-256
+`d6c49c5c52b70010b9965afeb8c510af2aa751317400e0b2adc65f4e8e4d1b56`.
+Kepler independently verified the log and final source/test review. Durable
+[terminal evidence](https://github.com/OpenJ92/control-plane-kit/issues/1950#issuecomment-6028618797)
+records exact coordinates.
+
+Reuse the full hosted checks automatically launched by PR #1951 instead of
+duplicating local gates. Current package tests run `37554575044` has Core
+passed and current-branch Operations pending. Current Backend run `37554575052`
+passed all nine stages; report SHA-256
+`0896289c0d39dc10d36622e4e53a13d480171eb5eb16dd98d284cbb10d7fc85b`.
+Its runner merge `21ec9fcebd473947e2d6fc6413a9a6700f495bb1` has the exact
+reviewed tree above, with parents accepted A and the PR head. Its backend
+packages instead use locked CPK `f45384e72a79f59c93a715fd08f409f86a91218a`,
+Interpreters `2335a21adc5c0b0ae2f592bd15757c6ca1a55e4b`, Secrets
+`96e86dc3248d578780d64d5d7fc5d6359631d1d6`, and Servers
+`43e9f359ca828c83fe4994ed1b62e1be54277ddd`. The source-built server smoke and
+residue audit passed without provider mutation; this is not current-branch
+backend adoption or published-digest evidence. Full current-branch Operations
+remains the sole outstanding acceptance gate.
