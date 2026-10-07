@@ -149,6 +149,115 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
         self.assertEqual(harness.adapter.runtime_calls, [])
         self.assertEqual(self.proof_snapshot(), before)
 
+    def test_original_invocation_key_growth_refuses_at_the_captured_collection(self):
+        from control_plane_kit_operations.postgres import configuration_cleanup_phase_read_bounds as bounds
+        from control_plane_kit_operations.postgres.configuration_preparation_store import _NAMES
+        harness, command = self.reuse_command()
+        before, grew, refused = self.proof_snapshot(), [], []
+        actual_prepare, actual_rows = ConfigurationPreparationStore._prepare, bounds._phase_rows
+
+        def prepared(store, *args, **kwargs):
+            result = actual_prepare(store, *args, **kwargs)
+            # Recorded malformed sibling, only inside this rollback-only UoW.
+            # Existing deferred reciprocal FKs remain installed. The bounded
+            # collection must reject growth before any malformed ref is decoded.
+            expressions = tuple("'recorded-extra'" if name == "artifact_id" else
+                "false" if name == "is_birth" else name for name in _NAMES)
+            self.assertEqual(store._connection.execute("INSERT INTO cpk_effect_configuration_refs ("
+                + ",".join(_NAMES) + ") SELECT " + ",".join(expressions)
+                + " FROM cpk_effect_configuration_refs WHERE "
+                "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", self.key(self.refs[0])).rowcount, 1)
+            self.assertEqual(store._connection.execute("INSERT INTO cpk_configuration_claims "
+                "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,runtime_id,node_id) "
+                "SELECT run_id,activity_id,attempt,'recorded-extra',workspace_id,allocation_id,runtime_id,node_id "
+                "FROM cpk_configuration_claims WHERE "
+                "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", self.key(self.refs[0])).rowcount, 1)
+            grew.append(True)
+            return result
+
+        def rows(read, role, identity, **kwargs):
+            try:
+                return actual_rows(read, role, identity, **kwargs)
+            except _Capacity:
+                if grew and role == "invocation-refs":
+                    refused.append(identity)
+                raise
+
+        with mock.patch.object(ConfigurationPreparationStore, "_prepare", prepared), \
+                mock.patch.object(bounds, "_phase_rows", rows), self.assertRaises(ExecutionCoordinatorConflict):
+            harness.coordinator.execute(command)
+        self.assertEqual(grew, [True])
+        self.assertEqual(refused, [self.key(self.refs[0])[:3]])
+        self.assertEqual(harness.adapter.runtime_calls, [])
+        self.assertEqual(self.proof_snapshot(), before)
+
+    def test_ordinary_alias_reads_wider_captured_historical_graph_within_admitted_peak(self):
+        from control_plane_kit_operations.postgres.receiver_execution_scopes import _Transport
+        historical_graph, historical_projection = self.connection.execute(
+            "SELECT base_graph_id,base_realized_projection_id FROM cpk_activity_plans WHERE plan_id=%s",
+            (self.original.intent.source.plan_id,)).fetchone()
+        self.connection.execute("UPDATE cpk_graph_versions SET metadata="
+            "jsonb_build_object('historical_width',repeat('x',32768)) WHERE graph_id=%s", (historical_graph,))
+        harness, command = self.reuse_command()
+        before, state, forecasts, traversed = self.proof_snapshot(), {}, [], []
+        actual_prepare, actual_capacity = ConfigurationPreparationStore._prepare, values.configuration_preparation_capacity
+        actual_read = _Transport.read
+        observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
+            accounting=None, role_label=query_role)
+
+        class MeasuredUnitOfWork(PostgresUnitOfWork):
+            def __exit__(uow, *args):
+                try:
+                    return super().__exit__(*args)
+                finally:
+                    state["end"] = observed["accounting"].used
+
+        def factory():
+            observed["accounting"] = _ACCOUNTING.get()
+            return MeasuredUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.base.database_url), observed))
+
+        def capacity(**kwargs):
+            state.setdefault("prior", kwargs["current"])
+            state.setdefault("query_start", len(observed["queries"]))
+            forecasts.append(kwargs["reserved_future"])
+            return actual_capacity(**kwargs)
+
+        def prepared(store, *args, **kwargs):
+            result = actual_prepare(store, *args, **kwargs)
+            points = {(role, entry.identity): entry for role, entry in _BOUND_ORDINARY_START.get().points}
+            old = points[("graph", (historical_graph,))]
+            current = points[("graph", (result.intent.source.base_graph_id,))]
+            self.assertGreater(sum(old.widths), sum(current.widths))
+            plan = points[("plan", (result.intent.source.plan_id,))]
+            self.assertLessEqual(len(historical_graph.encode()), plan.widths[2])
+            self.assertLessEqual(len(historical_projection.encode()), plan.widths[4])
+            self.assertEqual(store._connection.execute("UPDATE cpk_activity_plans SET "
+                "base_graph_id=%s,base_realized_projection_id=%s WHERE plan_id=%s",
+                (historical_graph, historical_projection, result.intent.source.plan_id)).rowcount, 1)
+            state["changed"] = True
+            return result
+
+        def read(transport, *args, **kwargs):
+            result = actual_read(transport, *args, **kwargs)
+            if state.get("changed") and kwargs.get("phase") == ("graph", (historical_graph,)):
+                traversed.append(result)
+            return result
+
+        with mock.patch.object(harness.start.inner, "_unit_of_work_factory", factory), \
+                mock.patch.object(values, "configuration_preparation_capacity", capacity), \
+                mock.patch.object(ConfigurationPreparationStore, "_prepare", prepared), \
+                mock.patch.object(_Transport, "read", read), self.assertRaises(ExecutionCoordinatorConflict):
+            harness.coordinator.execute(command)
+        self.assertTrue(traversed, "changed ordinary traversal must transport the wider historical graph")
+        peak_bound = forecasts[1]
+        for peak in [state["end"], *(Footprint(*entry["peak"])
+                for entry in observed["queries"][state["query_start"]:])]:
+            for field in ("records", "value_octets", "scalar_markers", "statements"):
+                self.assertLessEqual(getattr(peak, field) - getattr(state["prior"], field),
+                    getattr(peak_bound, field))
+        self.assertEqual(harness.adapter.runtime_calls, [])
+        self.assertEqual(self.proof_snapshot(), before)
+
     def test_issued_cold_source_failure_retains_reservation_cleanup_and_owner_close(self):
         from control_plane_kit_operations.postgres.configuration_source import _SOURCE
         harness, command = self.reuse_command()
