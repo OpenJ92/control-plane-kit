@@ -177,6 +177,7 @@ class _OrdinaryStartReadBoundsOwner:
         self._guard, self._prefix = guard, prefix
         self._issued = None
         self._active = self._spent = False
+        self._transferred_roots = frozenset()
 
     def _context_is_current(self):
         from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
@@ -198,7 +199,7 @@ class _OrdinaryStartReadBoundsOwner:
         _require(self._active and issued is self._issued and issued.owner is self
             and connection is self._connection and _BOUND_ORDINARY_START.get() is issued)
 
-    def capture(self, material, request):
+    def capture(self, material, request, *, transfers=(), proof_read=None):
         from control_plane_kit_operations._configuration_preparation import (
             _BOUND_ORDINARY_START, _OrdinaryStartReadBounds,
         )
@@ -249,6 +250,36 @@ class _OrdinaryStartReadBoundsOwner:
         for identity, origin in origins.items():
             selectors.update((("introduction", identity),
                 ("origin-action", (origin.introducing_action_id, origin.introducing_session_id, workspace))))
+        invocations, roots = {}, []
+        if transfers:
+            _require(type(proof_read) is _EvidenceRead and proof_read.connection is self._connection
+                and proof_read.accounting is self._accounting)
+        for key, ref, revision in transfers:
+            digest = sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
+            roots.append((key, digest, revision))
+            memo = ("configuration-accepted-transfer", *key, ref.workspace_id, ref.allocation_id, digest, revision)
+            _require(memo in proof_read.sources)
+            identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+            selection = proof_read.sources.get(("cpk_effect_attempt_intents", identity))
+            context = proof_read.sources.get(("configuration-receipt-context", ref.workspace_id, revision))
+            _require(selection is not None and context is not None and ref.workspace_id == workspace)
+            # Complete own invocation, including unselected siblings; never
+            # lifetime allocation history or recursive transfer discovery.
+            invocations[key[:3]] = tuple((value.ref.artifact_id,) for value in selection)
+            header, _, _, historical_plan, _, _, _ = context
+            selectors.add(("header", (workspace, revision)))
+            for role, field in (("receipt-action", "action_id"), ("receipt-event", "event_id"),
+                    ("request", "request_id"), ("run", "run_id"), ("plan", "plan_id"),
+                    ("graph", "graph_id"), ("projection", "projection_id")):
+                selectors.add((role, (header[field],)))
+            selectors.add(("session", (historical_plan.session_id,)))
+            for graph in (historical_plan.base_graph_id, historical_plan.desired_graph_id):
+                selectors.add(("graph", (graph,)))
+            for projection in (historical_plan.base_realized_projection_id,
+                    historical_plan.desired_realized_projection_id):
+                if projection is not None:
+                    selectors.add(("projection", (projection,)))
+        _require(len(roots) == len(set(roots)))
         read = _EvidenceRead(self._connection)
         transaction = _transaction(read)
         _require(transaction == self._guard._transaction_id)
@@ -259,8 +290,20 @@ class _OrdinaryStartReadBoundsOwner:
         for pair, items in sorted(bindings.items()):
             expected = tuple(sorted((b.node_id, b.provider_socket_name) for b in items))
             collections.append(("bindings", _capture_collection(read, "bindings", (workspace, *pair), expected)))
+        for identity, expected in sorted(invocations.items()):
+            collections.append(("invocation-refs", _capture_collection(read, "invocation-refs", identity, expected)))
+        self._transferred_roots = frozenset(roots)
         self._issued = _OrdinaryStartReadBounds(self, transaction, points, tuple(collections))
         return self._issued
+
+    def require_transferred_roots(self, transfers):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require(self._issued, self._connection)
+        roots = tuple((key, sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(), revision)
+            for key, ref, revision in transfers)
+        # Captured identities restrict work, not permission. Every allowed
+        # occurrence still performs its fresh structural and cold proof reads.
+        _require(len(roots) == len(set(roots)) and set(roots) <= self._transferred_roots)
 
     @contextmanager
     def bind(self, issued):
@@ -333,11 +376,13 @@ def _ordinary_tail_budget(owner, intent, births):
     def collection(role):
         declared, n = widths(role), count(role)
         k, w = len(declared), sum(declared)
+        identities = 2 if role == "invocation-refs" else 1
         result = sequence(query(1, 20, 1),
-            query(n + 1, 12 * k * (n + 1), k, settled=F(n, 12 * k * n, k * n, 1)))
+            query(n + 1, 12 * k * (n + 1), k, identities,
+                settled=F(n * identities, 12 * k * n, k * n, 1)))
         if n:
-            result = result.then(query(n + 1, (w + 1) * (n + 1), k + 1,
-                settled=F(n, (w + 1) * n, (k + 1) * n, 1)))
+            result = result.then(query(n + 1, (w + 1) * (n + 1), k + 1, identities,
+                settled=F(n * identities, (w + 1) * n, (k + 1) * n, 1)))
         return result
 
     def bindings():
@@ -381,13 +426,17 @@ def _ordinary_tail_budget(owner, intent, births):
 
     c = len(intent.configuration_instances.instances)
     raw = F(0, 0, 0, 1 + 2 * c)
-    pair = query(1, 823, 9, 2)
-    possible_closure = query(1, 1, 1, 3)
+    pair = query(1, 855, 11, 2)
+    # The four-identity accepted anchor also bounds the mutually exclusive
+    # cleanup anchor's three identities, without granting cleanup permission.
+    possible_closure = query(1, 1, 1, 4)
 
     def issued_check():
         result = query(1, 20, 1)
         for _ in range(c):
-            result = result.then(sequence(query(1, 1, 1, settled=F(0, 0, 0, 1)), pair))
+            result = result.then(sequence(query(1, 1, 1, settled=F(0, 0, 0, 1)), pair, possible_closure))
+        for _ in owner._transferred_roots:
+            result = result.then(cold_transfer())
         return result
 
     def original_intent():
@@ -399,6 +448,20 @@ def _ordinary_tail_budget(owner, intent, births):
         # Failed join keeps its full reservation; DataError adds rollback and
         # release before the owner closes. Other failure needs only release.
         return sequence(query(0, 0, 0), query(1, 80032, 17, 3, cleanup=2), query(0, 0, 0))
+
+    def cold_transfer():
+        # One cold upper per captured root conservatively covers same-pass
+        # sharing without importing measured Q or cross-pass authority caches.
+        result = sequence(pair, possible_closure, native(13, 1257), native(7, 730),
+            collection("invocation-refs"), source())
+        for _ in range(count("invocation-refs")):
+            result = result.then(sequence(pair, possible_closure))
+        result = result.then(sequence(native(22, 51200), native(6, 18776), native(6, 18776),
+            query(1, 32768, 19, 2)))
+        for role in ("header", "receipt-action", "receipt-event", "run", "request", "plan",
+                "session", "graph", "projection"):
+            result = result.then(point(role))
+        return result.then(native(12, 24576))
 
     result = sequence(_OrdinarySuffixBudget(raw, raw), query(1, 1, 1), point("request"),
         query(1, 65, 2), query(1, 1, 1), query(1, 20, 1), query(1, 1, 1),
@@ -842,13 +905,18 @@ class ConfigurationPreparationStore:
                     raise _Unavailable
                 if disposition.kind == "accepted-current":
                     transfers.append((key, ref, disposition.acceptance_revision))
-        proof = self._prove_transferred_roots(stores.configuration_acceptance, transfers) if transfers else None
+        proof_read, _ = (self._prove_transferred_roots(stores.configuration_acceptance, transfers)
+            if transfers else (None, None))
         total_claims = sum(len(value.claims) for value in allocations)
         count = len(refs)
         births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in selected)
             if bindings else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
-        issued = owner.capture(material, request)
+        issued = owner.capture(material, request, transfers=transfers, proof_read=proof_read)
         owner._contexts.enter_context(owner.bind(issued))
+        if transfers:
+            # Verify the complete cold traversal under the final transport
+            # contract. Discovery/capture/measurement remain prior charges.
+            self._prove_transferred_roots(stores.configuration_acceptance, transfers)
         from control_plane_kit_operations.effect_attempt_start_interpreter import _require_fresh_effect_receiver_permission
         _require_fresh_effect_receiver_permission(stores, request, guard, expected, compensation=False)
         budget, raw = _ordinary_tail_budget(owner, expected, births)
@@ -872,6 +940,11 @@ class ConfigurationPreparationStore:
     def _prove_transferred_roots(self, acceptance, transfers):
         """Cold exact-root pass on the caller ledger, including nested owners."""
         from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        if _BOUND_ORDINARY_START.get() is not None:
+            if self._ordinary_owner is None:
+                raise _Unavailable
+            self._ordinary_owner.require_transferred_roots(transfers)
         read = _EvidenceRead(self._connection)
         before = read.used
         token = _COMPOSED_READ.set(read)
@@ -880,7 +953,7 @@ class ConfigurationPreparationStore:
                 acceptance._accepted_transfer(read, key, ref, revision)
         finally:
             _COMPOSED_READ.reset(token)
-        return ConfigurationEvidenceFootprint(*(getattr(read.used, field) - getattr(before, field)
+        return read, ConfigurationEvidenceFootprint(*(getattr(read.used, field) - getattr(before, field)
             for field in ("records", "value_octets", "scalar_markers", "statements")))
 
     def _require_current(self, prepared):
