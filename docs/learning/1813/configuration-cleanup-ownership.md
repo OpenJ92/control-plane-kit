@@ -2915,3 +2915,74 @@ Kepler's durable handoff is issue #1945 comment `6032500153`. North retained the
 findings within the separate acceptance worksheet review and kept the accepted
 start sequence unblocked. No additional provider, runtime or dependent-child
 activation follows from these findings.
+
+### Start closure implementation and focused acceptance
+
+The remaining closure targets at `0a8bdf3d` ran two tests in 23.098 seconds,
+both failing at missing required witnesses: original invocation key growth did
+not reach its captured collection refusal, and an ordinary alias did not reach
+the wider historical graph. The extra recorded ref/claim was inserted with all
+schema constraints retained inside the rollback-only UoW; no fixture exception
+was counted as behavioral red. Log `/tmp/cpk-1945-start-closure-red.log`, SHA-256
+`3774306460cd0b64df63bf52879376c4eb926b49662b23985f03f2467069d657`.
+Target `dd96904f` made historical point membership explicit and added duplicate
+root refusal before proof SQL. Kepler accepted this finite-multiplicity law.
+
+Source `49011d2e81939c23793df44315abaaa52f1274ab`, tree
+`e2d4eb0ab3ef43169f610bd68f11291a08089863`, extends the existing ordinary owner
+and budget only. The preliminary successful read selects exact original
+invocation/receipt/plan-child bounds; a second cold pass verifies those bounds
+before admission. Every bound proof checks root commitment/revision membership
+and uniqueness before native work. Discovery/capture/measurement remain prior
+charges. Historical points participate in rolewise maximum forecasts, while raw
+receiver/binding closure remains unchanged. Each of the three issued entrances
+has its positioned source-derived cold block, typed P, four-identity structural
+alternative and two-identity original invocation collection. The raw write
+precharge and final close still occur once.
+
+The corrected nine-target gate passed in 114.997 seconds, followed by compile
+and clean import checks; script exit was zero. Log
+`/tmp/cpk-1945-start-green.log`, SHA-256
+`4b5d6c6db9ce3efe8a389309b5dd18f755c5bf68784771484847f32f1e9c182f`.
+The exact named container/network `cpk-1945-start-green` were absent afterward.
+All previously unreachable field/key growth, sibling, historical alias and
+failed-source witnesses now passed. Failed compact reservation, rollback/release
+and owner close were retained within H, and S-fit/H-refusal preceded mutation.
+
+Successful suffix evidence, in `(records, value octets, scalar markers,
+statements)` order:
+
+- Settled: `(486, 128808, 2945, 346)`.
+- Physical: 336 wire rows, the same 128808 octets, 2945 cells and 346 statements;
+  weighted joined identities reconciled exactly to 486 records.
+- Source-derived S: `(631, 5029230, 4087, 483)`.
+- Source-derived H: `(659, 5816014, 4556, 483)`.
+- Observed maximum reservation delta: `(521, 1204067, 3415, 346)`.
+- Raw writes: exactly one intent, two refs and two claims.
+
+Kepler independently passed source shape and focused slice evidence in
+[issue comment 6032699413](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6032699413).
+This is not full B1, package, merge or provider evidence. One preserved
+ordinary-start/transfer-reader regression gate is running separately; no full
+suite has been duplicated while acceptance/carry remains incomplete.
+
+### Acceptance prerequisite topology
+
+North approved the reviewed issue refinement, published as
+[#1952: Bound receiver publication and ordinary acceptance reads](https://github.com/OpenJ92/control-plane-kit/issues/1952).
+Native parent is #1945, and #1945 is natively blocked by #1952. Project 5 item
+`PVTI_lAHOALjrJM4BiloJzg_EXkI` is verified Todo / Refining. The issue incorporates
+Kepler's exact role/lifetime/law scope record in comment `6032682271`, including
+session-workspace and scope-header points, raw candidate multiplicity and actual
+SQL widths, expected own publication/witness growth, and three fresh receiver
+reader blocks. Returned semantic evidence alone is not transport closure.
+
+The planned branch `codex/1952-receiver-publication-bounds` starts from accepted
+roadmap merge `637a8e91c76d00d42736f8ee04bae423a67cecca` or a later independently
+accepted roadmap head, targeting `roadmap/1813-runtime-control`. It must not
+start from unaccepted B1. No branch or implementation was created by this issue
+publication. Exact private interface, supported-domain law cards and source S/H
+review still precede its targets/source. The prerequisite returns the ordinary
+acceptance boundary; B1 then adds typed transfer/carry and future cold-consumer
+costs at their actual positions. Any narrowing of successful supported behavior
+or new security/semantic choice needs explicit disposition before implementation.
