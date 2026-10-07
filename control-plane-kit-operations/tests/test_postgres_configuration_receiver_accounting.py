@@ -57,6 +57,49 @@ class PostgresConfigurationReceiverAccountingTests(ReceiverAdmissionFixture, uni
 
 
 class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcceptanceFixture, unittest.TestCase):
+    def test_pending_origin_with_unselected_sibling_preserves_complete_binding_proof(self):
+        from dataclasses import replace
+        from unittest import mock
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
+        graph = self.canonical_receiver_graph
+        sibling = self.receiver_graph(node_id="sibling", receiver="b" * 32)[0].node("sibling")
+        introducing = replace(graph, nodes={**graph.nodes, "sibling": sibling}, runtimes={
+            **graph.runtimes, "docker": replace(graph.runtimes["docker"],
+                children=(*graph.runtimes["docker"].children, "sibling"))})
+        validate_graph(introducing).require_valid()
+        self.desired_receiver("introducing-two", graph=introducing)
+        origin = self.receiver_origin()
+        self.assertIsNone(origin.first_accepted_action_id)
+        self.desired_receiver("retaining-one", graph=graph)
+        self.assertEqual(self.receiver_origin(), origin)
+        with self.unit_of_work() as uow:
+            bindings = uow.stores.graphs.receiver_bindings("workspace-a",
+                origin.introducing_graph_id, origin.introducing_realized_projection_id)
+        self.assertEqual({binding.receiver_id for binding in bindings}, {"a" * 32, "b" * 32})
+        actual_prepare, captured = ConfigurationPreparationStore._prepare, []
+
+        def prepared(store, *args, **kwargs):
+            result = actual_prepare(store, *args, **kwargs)
+            issued = _BOUND_ORDINARY_START.get()
+            self.assertIsNotNone(issued)
+            origins = {entry.identity for role, entry in issued.points if role == "introduction"}
+            self.assertEqual(origins, {("workspace-a", "a" * 32)})
+            introducing_bindings = next(entry for role, entry in issued.collections
+                if role == "bindings" and entry.identity == ("workspace-a",
+                    origin.introducing_graph_id, origin.introducing_realized_projection_id))
+            self.assertEqual(set(introducing_bindings.keys), {("api", "http"), ("sibling", "http")})
+            captured.append(result)
+            return result
+
+        with mock.patch.object(ConfigurationPreparationStore, "_prepare", prepared):
+            claimed, _, plan = self.retained_success("retaining-one")
+        self.assertTrue(plan.plan.ready_for_execution)
+        self.assertEqual(len(captured), 1)
+        self.advance(claimed, "retaining-one")
+        self.assertIsNotNone(self.receiver_origin().first_accepted_action_id)
+
     def test_1950_initial_receiver_feasibility_and_update_refusal(self):
         from dataclasses import replace
         from unittest import mock

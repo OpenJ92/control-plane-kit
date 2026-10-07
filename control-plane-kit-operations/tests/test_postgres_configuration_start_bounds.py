@@ -187,7 +187,7 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
 
     def test_captured_graph_column_growth_refuses_and_rolls_back_late_start(self):
         self._late_material_change(lambda connection: connection.execute(
-            "UPDATE cpk_graph_versions SET metadata=jsonb_build_object('growth',%s) WHERE graph_id='graph-desired'",
+            "UPDATE cpk_graph_versions SET metadata=jsonb_build_object('growth',%s::text) WHERE graph_id='graph-desired'",
             ("x" * 4096,)), lambda connection: connection.execute(
                 "SELECT metadata FROM cpk_graph_versions WHERE graph_id='graph-desired'").fetchall())
 
