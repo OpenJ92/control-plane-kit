@@ -2175,3 +2175,62 @@ owning boundary without replacing the expression with diagnostic query replay.
 No runner, application import, production edit, schema change, new lock,
 external effect, or changed limit was used for this worksheet. Security: bounds
 restrict transport only; original fresh authorization remains authoritative.
+
+### Gateway alternative envelope supersedes conditional-zero arithmetic
+
+North and Kepler accepted a bounded correction within the released five-file
+scope. A coherent changed approval subject and decision scope can pass the
+native reader/common checks, then execute the captured own-session and native
+session-action lookup before the original action mismatch refuses it. No normal
+public mutation API was found; this is retained-truth/corruption protection,
+not an authorization bypass or a claimed normal workflow. A refused branch
+still costs transport, so zero gateway budget based on discovery is unsound.
+
+Keep actual authorization branching, strict selector matching, captured session
+sets and native action/publication caps unchanged. Budget the complete gateway
+alternative in **every** V, both bounded revalidation and final suffix. An
+uncaptured session still refuses without fallback. Use maxima of available
+captured session/own-plan/projection columns for this conservative alternative;
+do not capture new authority or freeze a permission decision. No lock/schema or
+budget increase is introduced. The preceding conditional worksheet remains
+historical; the values below are operative.
+
+Extra G in each V is (26,334659,204,24) for receiverless,
+(26,333894,204,24) for use64, and (26,345469,204,24) for initial.
+Gateway already includes it and is unchanged. Add G once to the proposed prior
+and once before the suffix manifest/query-error prefixes. Primitive guards,
+close cadence, W, discovery/capture costs and source-error continuations remain
+unchanged. Kepler independently reproduced every revised value and returned
+design/arithmetic PASS; final source/green review remains required.
+
+| Case | V settled upper | Revised prior upper | Future S upper | Future H upper |
+| --- | --- | --- | --- | --- |
+| Receiverless | (99,866873,648,99) | (236,1151243,1787,247) | (174,3444215,1038,162) | (209,4311159,1532,162) |
+| Gateway | (99,885525,648,99) | (387,1424710,3114,371) | (154,3393331,953,149) | (203,4327459,1505,149) |
+| Use64 | (99,861081,648,99) | (3171,1904583,30762,2413) | (157,3448795,970,152) | (203,4302891,1505,152) |
+| Initial | (269,1131754,1669,253) | (537,1643286,3849,500) | (344,3709159,2059,316) | (379,4576103,2553,316) |
+
+| Case | prior+S | prior+H | Accounted bytes at prior+H |
+| --- | --- | --- | ---: |
+| Receiverless | (410,4595458,2825,409) | (445,5462402,3319,409) | 5677170 |
+| Gateway | (541,4818041,4067,520) | (590,5752169,4619,520) | 6034713 |
+| Use64 | (3328,5353378,31732,2565) | (3374,6207474,32267,2565) | 7812258 |
+| Initial | (881,5352445,5908,816) | (916,6219389,6402,816) | 6647965 |
+
+All four fit unchanged limits; use64 retains 722 records of peak headroom.
+This remains an instantiated source upper bound, not a universal-fit guarantee.
+
+Target-only `106e10682157bef1d323af17f29a52985432f6a1` adds
+`test_changed_approval_kind_refuses_after_native_action_lookup_within_forecast`.
+It injects coherent typed subject/decision outputs at the real reader boundary
+after preparation, observes the real existing action point, requires refusal
+and rollback, and checks the charged refused tail against admitted forecasts.
+It does not persist a fabricated rotation or bypass schema. It also strengthens
+growth/same-width tests to assert the intended mutation affected one row and
+the exact graph metadata/scopes/approval rows roll back, in addition to start
+history. The existing baseline still has no ordinary owner.
+
+Before the new forecaster is implemented, run only that changed-subject test
+through the established Operations runner and dedicated resources, recording
+`/tmp/cpk-1950-approval-branch-red.log`. No further baseline owner rerun is
+needed; owner availability red was already recorded separately.
