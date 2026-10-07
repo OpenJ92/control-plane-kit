@@ -152,7 +152,7 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
     def test_issued_cold_source_failure_retains_reservation_cleanup_and_owner_close(self):
         from control_plane_kit_operations.postgres.configuration_source import _SOURCE
         harness, command = self.reuse_command()
-        before, state = self.proof_snapshot(), {}
+        before, state, forecasts = self.proof_snapshot(), {}, []
         actual_capacity = values.configuration_preparation_capacity
         observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
             accounting=None, role_label=query_role)
@@ -181,6 +181,9 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
         def capacity(**kwargs):
             result = actual_capacity(**kwargs)
             self.assertIs(result, values.ConfigurationCapacityDecision.WITHIN_LIMITS)
+            state.setdefault("prior", kwargs["current"])
+            state.setdefault("query_start", len(observed["queries"]))
+            forecasts.append(kwargs["reserved_future"])
             state["admitted"] = True
             return result
 
@@ -195,6 +198,15 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
         self.assertEqual((cleanup.records, cleanup.scalar_markers, cleanup.statements), (1, 1, 3))
         self.assertGreater(cleanup.value_octets, 0)
         self.assertLessEqual(cleanup.value_octets, 20)
+        peak_bound = forecasts[1]
+        peaks = [state["failed"], state["end"], *(Footprint(*entry["peak"])
+            for entry in observed["queries"][state["query_start"]:])]
+        for peak in peaks:
+            self.assertLessEqual(peak.records, 4096)
+            self.assertLessEqual(peak.accounted_bytes, 16 * 1024 * 1024)
+            for field in ("records", "value_octets", "scalar_markers", "statements"):
+                self.assertLessEqual(getattr(peak, field) - getattr(state["prior"], field),
+                    getattr(peak_bound, field))
         self.assertEqual(harness.adapter.runtime_calls, [])
         self.assertEqual(self.proof_snapshot(), before)
 
