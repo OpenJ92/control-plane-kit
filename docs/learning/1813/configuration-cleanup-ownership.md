@@ -1618,3 +1618,17 @@ prospective own receipt, real carry across two occurrences, Initial/Teardown,
 swallowed server abort, and current-schema/pure legacy preservation. The
 legacy obligation correction is issue comment `6043453444`; scoped lifetime
 and witness review is `6043370468`. No whole-issue or S/H acceptance is claimed.
+
+Finite receiver transport source `dd4c4c35b95bc94f0cab6b534571c1ea6b4f2c18`,
+tree `e7c9aacd83adb6d41f318e0f5598d9220820934e`: fifteen focused tests passed
+in 109.487 seconds, owning compile/import passed, exit 0. Log
+`/tmp/cpk-1952-transport-green.log`, SHA-256
+`a2c2340d3d48ff81d445747a16e1749074caa9b1b0d45c3cbcb85cec08fe09d7`;
+dedicated cleanup verified. Finite role identity/width/key closure, raw candidate
+multiplicity, absent-compensation appearance refusal, and supported Initial,
+Teardown and carry commands now execute. Receiver query/row-budget laws and
+older ordinary/cleanup bounds remain required regression coverage. The current
+preflight still uses the old admission arithmetic and repeats owner reads;
+these passing targets do not establish pure source S/H or whole-issue acceptance.
+The next slice retains already-produced receiver evidence and SQL width
+metadata, replaces that arithmetic, and proves the forecast/gate/fit targets.
