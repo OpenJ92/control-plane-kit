@@ -156,11 +156,27 @@ def _assert_publication_and_cold_fit(case, trace, database_url):
     case.assertEqual(cold["accounting"].used.scalar_markers, cold["wire"]["scalar_cells"])
     case.assertGreaterEqual(cold["accounting"].used.records, cold["wire"]["rows"])
     case.assertGreaterEqual(cold["accounting"].used.accounted_bytes, cold["wire"]["bytes"])
+    dimensions = ("records", "value_octets", "scalar_markers", "statements", "accounted_bytes")
+
+    def footprint(value):
+        return {name: getattr(value, name) for name in dimensions}
+
+    def maxima(values):
+        values = tuple(values)
+        return {name: max((getattr(value, name) for value in values), default=0) for name in dimensions}
+
     print("publication-fit " + json.dumps(dict(prior_records=trace["prior"].records,
         prior_bytes=trace["prior"].accounted_bytes, suffix_records=used.records,
         suffix_bytes=used.accounted_bytes, suffix_statements=used.statements,
         cold_records=cold["accounting"].used.records, cold_bytes=cold["accounting"].used.accounted_bytes,
-        snapshot_bytes=snapshots[0].accounted_bytes)))
+        snapshot_bytes=snapshots[0].accounted_bytes,
+        forecast_snapshot=footprint(trace["snapshot"]),
+        forecast_future_settled=footprint(trace["future"].settled),
+        forecast_future_peak=footprint(trace["future"].peak),
+        forecast_publication_settled=footprint(trace["publication"].settled),
+        forecast_publication_peak=footprint(trace["publication"].peak),
+        observed_publication_peak=maxima(_difference(value, trace["prior"]) for value in trace["peaks"]),
+        observed_future_peak=maxima(cold["peaks"]))))
 
 
 class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceFixture, unittest.TestCase):

@@ -1632,3 +1632,31 @@ preflight still uses the old admission arithmetic and repeats owner reads;
 these passing targets do not establish pure source S/H or whole-issue acceptance.
 The next slice retains already-produced receiver evidence and SQL width
 metadata, replaces that arithmetic, and proves the forecast/gate/fit targets.
+
+Pure forecast source `32a4ce5846669c3b10bc5a92effc45181f347b48`, tree
+`0aeefebc777c8cdfb62ca5967a3b660580bee7c3`, replaces fixed admission padding
+with the reviewed positioned snapshot/native-future/publication composition.
+Raw source/ref widths and SQL outcome/event widths are captured before admission;
+already-validated receiver relationships provide counts without enrolling new
+selectors. Forecasting issues no SQL and leaves the charged prior unchanged.
+
+The first owning fit gate passed seven tests in 52.072 seconds plus compile/import,
+exit 0: all four mandatory real positives and the three isolated admission laws.
+Log `/tmp/cpk-1952-forecast-first.log`, SHA-256
+`07378685d6c145baefce7eda128bbd5a9fb9c078852f79ec9333554e2ad6ba5c`.
+The complete publication target file then passed 27 tests in 293.222 seconds plus
+compile/import, exit 0. Log `/tmp/cpk-1952-publication-green.log`, SHA-256
+`79c90bf95f2a10c3b8b5948d87a5a5fd1cbe3fbf99e7a0c47df6bd5f394f0d97`.
+Both runs verified dedicated cleanup and the exact clean architecture-testing
+prerequisite. Actual supported publication/native-read fit, exact successful
+wire reconciliation, failed receipt reservation and late second-history witness
+rollback now execute within the derived settled/peak bounds. These observations
+are evidence, never inputs to the forecast.
+
+Independent review found the isolated snapshot gate unit changed its synthetic
+snapshot without growing the containing future budget. The follow-up preserves
+the stage relationship at the exact and one-over boundaries; the real-owner gate
+test already did so. Bounded numeric forecast and observed reservation maxima
+are added to existing fit diagnostics for the next required whole-package run.
+No assertion or application source changes with this correction. Proportional
+shared-reader regressions, full package/backend gates and final review remain.

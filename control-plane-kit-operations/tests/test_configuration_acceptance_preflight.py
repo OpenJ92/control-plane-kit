@@ -49,9 +49,13 @@ class ConfigurationAcceptancePreflightTests(unittest.TestCase):
         return decisions
 
     def test_snapshot_exact_three_mib_then_one_byte_over(self):
-        exact = replace(self.snapshot, value_octets=self.snapshot.value_octets + 3145728 - self.snapshot.accounted_bytes)
-        self.assertEqual(len(self.exercise(snapshot=exact)), 4)
-        self.assertEqual(self.exercise(snapshot=replace(exact, value_octets=exact.value_octets + 1), refuses=True), [])
+        growth = Footprint(0, 3145728 - self.snapshot.accounted_bytes, 0, 0)
+        exact = self.snapshot.plus(growth)
+        future = Budget(self.future.settled.plus(growth), self.future.peak.plus(growth))
+        self.assertEqual(len(self.exercise(snapshot=exact, future=future)), 4)
+        one = Footprint(0, 1, 0, 0)
+        over_future = Budget(future.settled.plus(one), future.peak.plus(one))
+        self.assertEqual(self.exercise(snapshot=exact.plus(one), future=over_future, refuses=True), [])
 
     def test_cold_consumer_record_and_byte_edges_use_actual_envelope(self):
         for field, limit, refusal in (("records", 4096, "record-limit"), ("value_octets", 16777216, "byte-limit")):
