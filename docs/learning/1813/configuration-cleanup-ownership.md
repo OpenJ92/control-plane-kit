@@ -1096,6 +1096,11 @@ and SQL-width measurements, freezes the capture and returns the sole replacement
 prepared value with `event`, `action` and immutable `read_bounds`. Only then does
 `_preflight(prepared)` evaluate the pure `_publication_budgets(prepared)` result
 against all actual prior. No SQL is hidden inside the budget composition.
+Moving capture into `_bind_records` preserves the existing preflight owner-truth
+reads there before freezing: actual `get_run == prepared.run`,
+`get_request == prepared.request`, `get_plan == prepared.plan`, session lookup,
+and the existing workspace/graph/projection validation. These are charged real
+owner reads; length-only probes or forecast metadata cannot replace them.
 The old prepared value is invalid after replacement. Before binding, prospective
 rows are metadata only; after binding, role reads are strict. Local identity/
 execution-context checks execute no SQL; actual `_bound` transaction queries,
