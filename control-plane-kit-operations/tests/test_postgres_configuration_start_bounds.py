@@ -162,9 +162,10 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
             captured["owner"]._require(captured["issued"], captured["connection"])
         self.assertIsNone(support._BOUND_ORDINARY_START.get())
 
-    def _late_material_change(self, change):
+    def _late_material_change(self, change, snapshot):
         self.owner_type()
         command, before = self.configuration_command(), self.complete_start_snapshot()
+        original_rows = snapshot(self.connection)
         actual = preparation.ConfigurationPreparationStore._prepare
         entered = []
 
@@ -172,7 +173,8 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
             prepared = actual(store, *args, **kwargs)
             self.assertIsNotNone(support._BOUND_ORDINARY_START.get())
             entered.append(prepared)
-            change(store._connection)
+            self.assertEqual(change(store._connection).rowcount, 1)
+            self.assertNotEqual(snapshot(store._connection), original_rows)
             return prepared
 
         with mock.patch.object(preparation.ConfigurationPreparationStore, "_prepare", mutate), \
@@ -181,23 +183,97 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
         self.assertEqual(len(entered), 1)
         self.assertIsNone(support._BOUND_ORDINARY_START.get())
         self.assertEqual(self.complete_start_snapshot(), before)
+        self.assertEqual(snapshot(self.connection), original_rows)
 
     def test_captured_graph_column_growth_refuses_and_rolls_back_late_start(self):
         self._late_material_change(lambda connection: connection.execute(
             "UPDATE cpk_graph_versions SET metadata=jsonb_build_object('growth',%s) WHERE graph_id='graph-desired'",
-            ("x" * 4096,)))
+            ("x" * 4096,)), lambda connection: connection.execute(
+                "SELECT metadata FROM cpk_graph_versions WHERE graph_id='graph-desired'").fetchall())
 
     def test_captured_scope_key_growth_refuses_and_rolls_back_late_start(self):
         self._late_material_change(lambda connection: connection.execute(
             "INSERT INTO cpk_execution_receiver_scopes "
             "(request_id,workspace_id,scope_ordinal,scope_kind,runtime_id,node_id) "
             "SELECT request_id,workspace_id,scope_ordinal+1,scope_kind,runtime_id,'unexpected-node' "
-            "FROM cpk_execution_receiver_scopes WHERE request_id='request-a' AND scope_ordinal=0"))
+            "FROM cpk_execution_receiver_scopes WHERE request_id='request-a' AND scope_ordinal=0"),
+            lambda connection: connection.execute("SELECT * FROM cpk_execution_receiver_scopes "
+                "WHERE request_id='request-a' ORDER BY scope_ordinal").fetchall())
 
     def test_same_width_approval_rejection_still_requires_fresh_authorization(self):
         self._late_material_change(lambda connection: connection.execute(
             "UPDATE cpk_approval_decisions SET decision='rejected' WHERE request_id="
-            "(SELECT approval_request_id FROM cpk_execution_requests WHERE request_id='request-a')"))
+            "(SELECT approval_request_id FROM cpk_execution_requests WHERE request_id='request-a')"),
+            lambda connection: connection.execute("SELECT * FROM cpk_approval_decisions WHERE request_id="
+                "(SELECT approval_request_id FROM cpk_execution_requests WHERE request_id='request-a') "
+                "ORDER BY decision_id").fetchall())
+
+    def test_changed_approval_kind_refuses_after_native_action_lookup_within_forecast(self):
+        from control_plane_kit_core.approval_subjects import GatewayKeyRotationApprovalSubject
+        from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+        from control_plane_kit_core.planning import RiskLevel
+        from control_plane_kit_core.policies import PolicyScope
+        from control_plane_kit_operations import configuration_preparation as values
+        from control_plane_kit_operations.postgres.activity_history import PostgresActivityHistoryStore
+        command, before = self.configuration_command(), self.complete_start_snapshot()
+        actual_prepare = preparation.ConfigurationPreparationStore._prepare
+        actual_approval = PostgresActivityHistoryStore.get_approval_request
+        actual_decision = PostgresActivityHistoryStore.approval_decision_for_request
+        actual_action = PostgresActivityHistoryStore.action_for_idempotency
+        actual_capacity = values.configuration_preparation_capacity
+        with self.unit_of_work() as uow:
+            action = uow.stores.activity_history.action_for_idempotency("session-a", "execute-a")
+        self.assertIsNotNone(action)
+        subject = GatewayKeyRotationApprovalSubject("fixture-rotation", "workspace-a", "gateway",
+            DelegationKeyPurpose.GATEWAY_PROBE, "test-issuer", "old-key", 60, 5, "a" * 64)
+        state, forecasts, looked_up = {}, [], []
+
+        def capacity(**kwargs):
+            state.setdefault("prior", kwargs["current"])
+            forecasts.append(kwargs["reserved_future"])
+            return actual_capacity(**kwargs)
+
+        def prepared(store, *args, **kwargs):
+            result = actual_prepare(store, *args, **kwargs)
+            state.update(changed=True, accounting=support._ACCOUNTING.get())
+            return result
+
+        def approval(history, request_id):
+            result = actual_approval(history, request_id)
+            if state.get("changed"):
+                # Typed fault injection at the real reader boundary, not a
+                # persisted rotation or an authorization-positive fixture.
+                return replace(result, subject=subject, required_scope=PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,
+                    max_risk=RiskLevel.HIGH, destructive=True, idempotency_key=action.idempotency_key,
+                    intent_fingerprint=action.intent_fingerprint)
+            return result
+
+        def decision(history, request_id):
+            result = actual_decision(history, request_id)
+            return (replace(result, scope=PolicyScope.DELEGATION_KEY_ROTATE_APPROVE)
+                if state.get("changed") else result)
+
+        def lookup(history, session_id, key):
+            prior = support._ACCOUNTING.get().used
+            result = actual_action(history, session_id, key)
+            if state.get("changed"):
+                looked_up.append((result, support._ACCOUNTING.get().used.statements - prior.statements))
+            return result
+
+        with mock.patch.object(values, "configuration_preparation_capacity", capacity), \
+                mock.patch.object(preparation.ConfigurationPreparationStore, "_prepare", prepared), \
+                mock.patch.object(PostgresActivityHistoryStore, "get_approval_request", approval), \
+                mock.patch.object(PostgresActivityHistoryStore, "approval_decision_for_request", decision), \
+                mock.patch.object(PostgresActivityHistoryStore, "action_for_idempotency", lookup), \
+                self.assertRaises(EffectAttemptStartConflict):
+            self.start_service("changed-subject-start").execute(command)
+        self.assertEqual(looked_up, [(action, 2)], "changed subject must reach the real bounded action reader")
+        self.assertEqual(self.complete_start_snapshot(), before)
+        self.assertTrue(forecasts)
+        for field in ("records", "value_octets", "scalar_markers", "statements"):
+            actual = getattr(state["accounting"].used, field) - getattr(state["prior"], field)
+            self.assertLessEqual(actual, max(getattr(value, field) for value in forecasts),
+                "refused gateway branch exceeded its pre-admitted whole-tail bound")
 
     def test_publication_reader_preserves_zero_one_two_candidates_on_the_same_ledger(self):
         from psycopg.types.json import Jsonb
