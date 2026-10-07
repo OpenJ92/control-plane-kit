@@ -1568,3 +1568,14 @@ Next target law cards, before changing proof-cache/optional-projection seams:
   Exact valid row appearance must refuse; remove only that test insertion and
   retain the advancing command's success. This local reader premise does not
   establish an admitted/terminal historical request or legacy publication.
+
+Pre-execution fixture review found the last proposed legacy premise cannot be
+inserted into the accepted current schema: both original plan projection IDs
+are `NOT NULL`, and `add_plan` independently requires complete lineage. The
+unrun draft in `009e833f` was removed from the executable target file and
+preserved at `/tmp/cpk-1952-legacy-target-draft.txt`; it supplies no causal-red
+evidence. Independent review is resolving whether a separately isolated
+historical-relation premise is warranted or this path is outside current-schema
+publication reachability. No current schema, reset policy, production fallback
+or permission changed. The legacy obligation remains open; the three independent
+cache-reader/swallowed-abort targets proceed without it.

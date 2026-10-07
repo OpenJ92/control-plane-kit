@@ -550,69 +550,6 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
                 self.assertRaises((OperationsRecordError, _Unavailable)):
             store._require_issued(prepared)
 
-    def test_legacy_absent_projection_is_captured_without_persistence_and_rejects_appearance(self):
-        from control_plane_kit_operations.records import ExecutionRequestIdentity
-        from psycopg.types.json import Jsonb
-        # Local historical-plan read premise only: originals() does not prove
-        # an admitted or terminal request. No legacy publication is claimed.
-        with self.base.unit_of_work() as uow:
-            stores = uow.stores
-            plan = stores.activity_history.get_plan("plan-a")
-            for index, old in enumerate(("graph-current", "graph-desired"), 3):
-                graph = stores.graphs.get(old)
-                stores.graphs.save(replace(graph, graph_id="legacy-" + old, version=index))
-            historical = replace(plan, plan_id="legacy-plan", base_graph_id="legacy-graph-current",
-                desired_graph_id="legacy-graph-desired", base_realized_projection_id=None,
-                desired_realized_projection_id=None)
-            stores.activity_history.add_plan(historical)
-            uow.commit()
-        identity = ExecutionRequestIdentity("local-history-reader", "workspace-a", "session-a", "legacy-plan")
-        prepare, preflight = ConfigurationAcceptanceStore._prepare, ConfigurationAcceptanceStore._preflight
-        captured, checked = [], []
-
-        def absent(connection, projections):
-            for projection in projections:
-                self.assertEqual(connection.execute("SELECT count(*) FROM cpk_realized_graph_projections "
-                    "WHERE projection_id=%s", (projection.projection_id,)).fetchone(), (0,))
-
-        def preparing(store, *args, **kwargs):
-            original = _ExecutionScopeStorage(store._connection, _EvidenceRead(store._connection)).originals(identity)
-            self.assertEqual(original[0], historical)
-            absent(store._connection, original[1:])
-            captured.append(original)
-            return prepare(store, *args, **kwargs)
-
-        def admitted(store, prepared):
-            self.assertEqual(len(captured), 1)
-            # Fresh transport: a cached missing row cannot stand in for the
-            # bound optional-role reread or manufacture its presence result.
-            reread = _ExecutionScopeStorage(store._connection, _EvidenceRead(store._connection)).originals(identity)
-            self.assertEqual(reread, captured[0])
-            absent(store._connection, reread[1:])
-            projection = reread[1]
-            store._connection.execute("INSERT INTO cpk_realized_graph_projections "
-                "(projection_id,workspace_id,source_authored_graph_id,projection_kind,projection_key,"
-                "projection_digest,graph_descriptor,created_by,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (projection.projection_id, projection.workspace_id, projection.source_authored_graph_id,
-                 projection.projection_kind.value, projection.projection_key, projection.projection_digest,
-                 Jsonb(projection.graph_descriptor), projection.created_by, projection.created_at))
-            try:
-                with self.subTest("appeared optional original"), \
-                        self.assertRaises((_Unavailable, ReceiverScopeUnavailable)):
-                    _ExecutionScopeStorage(store._connection, _EvidenceRead(store._connection)).originals(identity)
-            finally:
-                store._connection.execute("DELETE FROM cpk_realized_graph_projections WHERE projection_id=%s",
-                    (projection.projection_id,))
-            absent(store._connection, reread[1:])
-            checked.append(True)
-            return preflight(store, prepared)
-
-        with mock.patch.object(ConfigurationAcceptanceStore, "_prepare", preparing), \
-                mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admitted):
-            self.assertFalse(self.base.advance().replayed)
-        self.assertEqual(checked, [True])
-        absent(self.base.connection, captured[0][1:])
-
     def reject_unclosed_read(self, *, phase, foreign_ledger=False):
         original = ConfigurationAcceptanceStore._preflight
         checked = []
