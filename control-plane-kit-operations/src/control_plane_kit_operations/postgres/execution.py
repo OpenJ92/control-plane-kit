@@ -258,6 +258,10 @@ class PostgresExecutionStore:
                         phase=("bindings", (origin.workspace_id, desired.source_authored_graph_id, desired.projection_id)))
                     actual = tuple(ReceiverBinding(*_decode(row, _BIND_COLUMNS)) for row in rows)
                     _require(actual == expected)
+                    from control_plane_kit_operations._configuration_acceptance import _PUBLICATION_SCOPE
+                    publication = _PUBLICATION_SCOPE.get()
+                    if publication is not None:
+                        publication._observe_receiver_receipt(reader.transport.configuration_read, action, request, run, desired)
                     receipts[key] = (action, event, plan, run, desired, actual)
                 facts = receipts[key]
                 _require(any(_receiver_scope(binding) == _receiver_scope(origin) for binding in facts[-1]))

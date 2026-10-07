@@ -1,8 +1,38 @@
 """Prepared original advancement values; no independent mutation authority."""
 from dataclasses import dataclass, replace
+from contextvars import ContextVar
 
 from control_plane_kit_operations.records import OperationsRecordError
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+
+
+_PUBLICATION_SCOPE = ContextVar("cpk_configuration_publication_scope", default=None)
+
+
+@dataclass(frozen=True, repr=False)
+class _PublicationReadBounds:
+    """Immutable transport data carried by the existing prepared owner value."""
+    proof_keys: tuple
+    transaction_id: int = 0
+    points: tuple = ()
+    collections: tuple = ()
+    optional: tuple = ()
+    candidates: tuple = ()
+    published: tuple = ()
+    proof_shapes: tuple = ()
+    receiver_receipts: tuple = ()
+
+
+def _require_publication_proof(read, family, key):
+    owner = _PUBLICATION_SCOPE.get()
+    if owner is not None:
+        owner._require_proof_cache(read, family, key)
+
+
+def _observe_publication_proof(read, family, key, row):
+    owner = _PUBLICATION_SCOPE.get()
+    if owner is not None:
+        owner._observe_proof_shape(read, family, key, row)
 
 
 def _history_records(event, action):
@@ -34,6 +64,8 @@ class _PreparedAdvancementReceipt:
     slots: tuple = ()
     evidence_read: object = None
     proof_footprint: object = None
+    read_bounds: object = None
+    receiver_truth: object = None
 
     def with_records(self, event, action):
         return self.stores.configuration_acceptance._bind_records(self, event, action)
