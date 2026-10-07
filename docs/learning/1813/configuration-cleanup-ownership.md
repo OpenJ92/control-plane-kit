@@ -2326,3 +2326,24 @@ owner (and already required by cleanup owners). The proposed correction forwards
 the authoritative inner state rather than weakening or defaulting the guard.
 Observer-only diagnosis and the final captured-plan alias target are pending;
 full package/composition acceptance remains outstanding.
+
+Observer-only diagnosis at `965a8259` confirmed the exact missing-property
+failure at `_prepare -> capture -> _context_is_current` line 157. The same run
+passed the required captured-plan alias target: a real same-UoW plan UPDATE
+redirects base to the larger, already-captured desired pair, while each changed
+field fits its original cap. Actual bounded graph/projection reads occur before
+semantic refusal; exact plan/start truth rolls back and ledger/query peaks stay
+inside the admitted envelope. The injected UPDATE is test setup, not production
+physical-accounting evidence. Two tests in 11.923 seconds, one diagnostic error
+and one pass; log `/tmp/cpk-1950-coordinator-alias.log`, SHA-256
+`62d057770455b3391b78fe0dde43616aacbadc3841e2608f2436c517c941db02`.
+
+Test-only repair `a8cd820883a20ceb454568ad325d64c3376c34e4` forwards exact
+inner `_commit_requested` through both Tracking and CrashAfterCommit decorators.
+It preserves their tracking/crash behavior, adds real-owner pending-commit
+invalidation and rollback checks for both wrappers, and removes the temporary
+diagnostic test. Production remains at the reviewed `1025abdf` shape. Kepler
+reviewed the repair and alias target positively. The three-case wrapper,
+gateway, and 64/65-use run is in progress. Draft [PR #1951](https://github.com/OpenJ92/control-plane-kit/pull/1951)
+targets the roadmap branch and records the decision, security, data, and
+mathematical notes with full acceptance explicitly pending.
