@@ -2857,3 +2857,61 @@ Unknown selectors never broaden to native history, and no state is repaired,
 pruned or transferred by this work. Rollback preserves old transfers and original
 claims; examples keep recorded fixtures explicitly simulated. B2/C and provider
 activation remain outside this review.
+
+### Start target checkpoint and next acceptance trace
+
+Kepler passed the start worksheet and private interface at integration
+`6c575e8e419d7df46272e6d1639a9ce6e5a742cf`, tree
+`5c4176772afb78d13fc4d913a496563091e27301`; this authorized targets followed by
+causal-red validation and the corresponding start implementation. It did not
+approve acceptance/carry arithmetic or establish integrated green.
+
+Target-only `ce108476` ran seven focused transfer-capacity tests in 76.590 seconds:
+two passed, four failed and one errored. The unknown-root target observed three
+unwanted proof queries. The incomplete bound historical path prevented the
+sibling proof, receipt-field-growth and cold-source-failure witnesses from
+being reached; their later assertions are not independently demonstrated by
+that run. The genuine three-issued-check reuse also refused. The cold/warm
+standalone proof and prior-plus-S-fit/H-refusal checks passed. Log:
+`/tmp/cpk-1945-start-red.log`, SHA-256
+`de34da4769b6e495d0899243e860d6a073c83386f07fc42e61bcd0da28d52efb`.
+
+Review found the sibling observer used the wrong SQL parameter slice after the
+reference commitment. Target-only `352681e4` observes the exact key at `[5:9]`
+and verifies the reciprocal side `[9:13]`. Target-only `8532ce0f` also requires
+the failed compact reservation and every observed cleanup/close peak to fit the
+actual admitted H and global command limits. The corrected target checkpoint
+ran seven tests in 76.165 seconds with the same two passes, four failures and
+one error; no collection or fixture errors occurred. The missing closure still
+prevented the later sibling/field/failure assertions, while changed roots still
+issued three unwanted SQL queries. Corrected log
+`/tmp/cpk-1945-start-red-corrected.log`, SHA-256
+`224e252a48776d5beb743f32c818a6f1cd0df8c30ec5e3ef7d41edd068d1041d`.
+The original log remains preserved. Complete key-growth and wider historical
+alias targets remain explicit start hardening obligations.
+
+During the gate, next-slice source review identified these acceptance worksheet
+obligations; they are findings, not approved implementation:
+
+- `advancement._finish_receiver_advancement` is empty only when the prepared
+  before/after receiver material is empty. Otherwise it traverses full receiver
+  scope history twice after tentative publication, with request/run/workspace,
+  material, binding and origin checks between them. Each history traversal owns
+  candidates, requests, verified plans, runs, events, effects, compensations and
+  advancement/cancellation actions. An own-run constant cannot represent it.
+- `receiver_lifecycle_store.witness` returns a Boolean from an action/session
+  join via raw SQL, and `record_witness` returns a receiver ID from its raw update.
+  Both require explicit shared-ledger accounting for returned values, joined
+  identities and statements. Raw statement precharge alone is insufficient.
+- The existing receipt preparation must distinguish future cold-consumer peak
+  admission from the positioned publication/readback/receiver-finish S/H. Native
+  history maxima and finite existing owner closure must be reconciled before
+  choosing an interface; no new owner or broad framework is assumed.
+- B1's exact generated-payload preflight runs after ID generation and before CAS.
+  Future C's pre-ID transfer eligibility/budget is a distinct contract; later
+  tests must not silently weaken that timing requirement.
+
+Kepler's durable handoff is issue #1945 comment `6032500153`. North retained these
+findings within the separate acceptance worksheet review and kept the accepted
+start sequence unblocked. No additional provider, runtime or dependent-child
+activation follows from these findings.

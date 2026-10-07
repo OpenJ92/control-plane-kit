@@ -77,6 +77,9 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
                             ((key, ref, revision),))
                 with self.assertRaises(_Unavailable):
                     _phase_columns(store._connection, "header", (ref.workspace_id, self.revision + 1), ())
+                with self.assertRaises(_Unavailable):
+                    store._prove_transferred_roots(result.stores.configuration_acceptance,
+                        ((self.key(ref), ref, self.revision),) * 2)
             self.assertEqual(queries, [], "closed roots/selectors must refuse before native proof SQL")
             checked.append(True)
             raise _Unavailable
@@ -225,6 +228,7 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
         def prepared(store, *args, **kwargs):
             result = actual_prepare(store, *args, **kwargs)
             points = {(role, entry.identity): entry for role, entry in _BOUND_ORDINARY_START.get().points}
+            self.assertIn(("graph", (historical_graph,)), points)
             old = points[("graph", (historical_graph,))]
             current = points[("graph", (result.intent.source.base_graph_id,))]
             self.assertGreater(sum(old.widths), sum(current.widths))
