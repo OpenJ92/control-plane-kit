@@ -2375,3 +2375,254 @@ Interpreters `2335a21adc5c0b0ae2f592bd15757c6ca1a55e4b`, Secrets
 residue audit passed without provider mutation; this is not current-branch
 backend adoption or published-digest evidence. Full current-branch Operations
 remains the sole outstanding acceptance gate.
+
+## #1945 return plan after #1950 — provisional, planning only
+
+This section is the current remaining-work plan, assuming reviewed #1950
+candidate `a8cd820883a20ceb454568ad325d64c3376c34e4` passes and is actually
+merged. It is **not yet an accepted dependency**. North owns its remaining CI,
+final review disposition and merge. B1 production is preserved at `e978f11c`;
+subsequent commits through `8507ab31` are learning-document updates. Planning
+does not authorize a rebase, dependent source edit, test run, transfer writer,
+B2/C activation or provider work before that dependency gate.
+
+### 1. Consume one accepted dependency; reconcile owners once
+
+After North supplies the actual #1950 roadmap merge and accepted tree, preserve
+the existing B1 source/test evidence, then integrate that merge into the existing
+`codex/1945-typed-transfer-proofs` branch. Verify the merge ancestry and review
+the resulting delta against that actual base; do not treat candidate head or
+synthetic CI merge as the accepted coordinate. Retain one B1 PR into
+`roadmap/1813-runtime-control`, with no duplicate ordinary-start implementation.
+
+The primary conflict is `postgres/configuration_preparation_store.py`. Keep
+#1950's ordinary scope/capture/bind/close lifetime, complete suffix expression,
+separate settled/peak admission, raw `1+2c` precharge and original three issued
+checks. Restore B1's typed disposition decoder, independent zero-outstanding
+birth lookup and accepted-transfer checks around that owner. The bridge remains
+`postgres/configuration_cleanup_phase_read_bounds.py`: preserve strict actual
+selector matching, ordinary/cleanup separation and the reviewed sibling
+membership exception. Merge diagnostic fixture observations rather than adding
+a second observer; retain the authoritative UoW decorator forwarding fixes.
+
+B1's existing `configuration_preparation.py` values,
+`postgres/configuration_acceptance_store.py` proof/read policy, and
+`postgres/current_schema.sql`/`current_schema_contract.py` exact reciprocal
+schema remain the retained work. No new schema or migration is currently needed.
+The module inventory remains exhaustive; no new production module is planned.
+
+### 2. Integrate transferred proofs into the source-owned start suffix
+
+The old `F+2Q+M`, corrected `base-envelope+fixed-addition+3Q+M`, and
+`test_postgres_configuration_transfer_capacity.py::fixed_tail` oracle are
+**superseded as complete start forecasts**. Keep their immutable failure logs
+and the behavioral law, not their numeric expectation or capacity-call count.
+#1950 owns all ordinary caller work and exceptional peaks. Do not stack its
+entire budget on the old F or charge raw writes again.
+
+Typed pair P remains `(2,855,11,1)` rather than #1950's original
+`(2,823,9,1)`; accepted anchor T is `(4,1,1,1)`; reservation U is
+`(1,1,1,1)`. These are query reservations, with identity multipliers preserved,
+not settled observations. Replace the relevant pair primitives at every real
+occurrence in the suffix; add accepted anchors on the branches that can execute
+them, including refusal paths. Retain the cleanup-closure alternative where
+structural classification can reach it before refusing. The old fixed-addition
+sum may be used to audit multiplicities, never added wholesale on top of the
+new expression's already-accounted P/U calls.
+
+There is a concrete selector compatibility seam, not just arithmetic:
+`_accepted_transfer -> ConfigurationCompletionStore._get` reads the complete
+original `invocation-refs`; `_receipt_context` requires historical `header`,
+`receipt-action`, `receipt-event`, `request`, `run`, `plan`, `session`, graph and
+projection identities. The historical plan also declares both base/desired
+pairs. #1950 captures ordinary permission identities only, so a naive merge
+would reject these old-source reads. Before binding, derive the finite closure
+from the exact selected transferred roots and their verified own completion and
+receipt. Capture complete original invocation keysets (including unselected
+original siblings), per-key widths and the existing child associations. No
+whole historical acceptance manifest, receiver-history traversal, recursive
+transfer discovery, cleanup grant or unknown-selector native fallback is
+authorized by this extension. Existing fixed native point readers retain their
+native caps; a captured identity is not a new semantic permission.
+
+This closure must cover the actual entrances: `_receipt_context` calls
+`_phase_columns("header")` even on a memo hit, and completion `_get` calls
+`_phase_rows("invocation-refs", original_source_identity)`. Adding historical
+keys also widens `_ordinary_tail_budget.widths(role)` for ordinary permission
+visits: rolewise maxima must cover every captured alias. Budget and test that
+interaction explicitly, preserving alias acceptance within the captured
+contract and refusal outside it. Neither adding historical Q alone, narrowing
+maxima to the currently observed key, nor inheriting #1950's supported-case
+totals proves the extended suffix fits.
+
+Use one preliminary cold proof/discovery pass on the command ledger, then the
+final captured transport contract for the pre-issuance proof measurement and
+three subsequent cold passes: intent insertion, attempt insertion and ref/claim
+insertion. Each pass has empty transfer/source/ref caches, one exact transferred
+root set and the same ledger/connection; reuse within a pass is allowed, reuse
+across passes is not. Preserve fresh P/T/U checks even on immutable memo hits.
+Any discovery/measurement work already performed stays in `prior`.
+
+The new forecast composes a closed transfer-proof `(settled upper, peak upper)`
+block at each of those three actual positions in `_ordinary_tail_budget`.
+Enumerate the proof's native/captured readers, guard queries, possible cache
+misses, source savepoint/release/error cleanup and ordinary-owner close. Reuse
+the existing private sequential composition; no generic metering framework.
+Measured cold Q remains evidence and a cross-check, not automatically an upper
+bound after transport guards or mutable branch possibilities change. The former
+single-query M `(66,2103393,627,1)` is a historical audit bound, not a substitute
+for the new positioned peak. In particular, failed reads retain full
+reservations and exceptional close/cleanup work. Wider reachable selectors or
+costs must be explained by this finite source trace before source implementation.
+
+Revise the existing transfer-capacity oracle to observe both S and H admission,
+keep injected prior usage, and require S-fit/H-refusal before start clock, IDs,
+writes or adapter calls. Preserve whole-UoW physical statement/byte/cell and
+joined-identity accounting, actual query peaks, three distinct cold reads,
+zero-outstanding reuse, and unchanged old transfers/new outstanding claims.
+Add only the missing integration negatives: unknown historical selector and
+captured historical field/key growth, plus cold proof failure after admission
+with retained query charge, source cleanup, one owner close and full rollback.
+Separate synthetic prior pressure and recorded corruptions from normal transport.
+
+### 3. Finish acceptance/carry's four guarded checks and actual readback
+
+The remaining semantic refusal is
+`ConfigurationAcceptanceStore._require_current_slots(... protective=True)`.
+At preparation, classify each slot's distinct source and direct birth. Coldly
+prove each accepted-current disposition through the existing acceptance owner;
+outstanding evidence stays outstanding and cleanup-closed evidence never grants
+reuse. Keep current membership/newest receipt and reservation/retirement checks
+independent of immutable provenance. A newer outstanding source must not hide
+its transferred direct birth, and historical provenance after departure does
+not imply current membership.
+
+During the initial cold proof, bind the exact `prepared.evidence_read` as the
+nested `_COMPOSED_READ`; caches are command-local and convey no authority across
+commands. All four guards are `prepared.require` entrances, including lifecycle
+and workspace/request/run checks as well as slot proof. Readback repeats live
+source and distinct-birth P/T even when the immutable proof memo is present.
+
+The four `_require_prepared_advancement` entrances are current-pointer CAS,
+event insertion, action insertion and receipt insertion. At each, reread live
+P/T and exclusions on the same ledger. Require the exact prevalidated immutable
+transfer memo (identity, full ref commitment, revision and completion
+fingerprints) in `prepared.evidence_read`; an absent/mismatched memo refuses,
+never starts an unreserved cold proof after writes. Receipt readback must read
+the actual stored header, originals and complete slots and apply the same
+source/birth proof policy without new transfer rows or changed old dispositions.
+
+Reuse `/tmp/cpk-1945-transfer-acceptance-capacity-draft.py` as the starting target
+law skeleton, not an approved target interface, budget or green evidence.
+For c slots, let u count per-slot distinct
+source/birth keys, and t their transferred occurrences. Its proposed fixed
+addition for four checks plus readback is `5(u+t)P + 10tT + 4cU`; it deliberately
+includes repeated classification before the memo-backed proof. In the existing
+four-slot composition, carry has `(c,u,t)=(4,4,2)` and a new API source over its
+transferred birth has `(4,6,2)`. Preserve per-slot multiplicity rather than global
+deduplication. Reconcile this against the final helper call graph, replacing the
+old protective `2P+2U` allowance rather than double counting it.
+
+Before implementing that tail, close the acceptance source worksheet through
+receiver finish and UoW exit: four owner checks, CAS, event/action/header/slot
+writes, cold-consumer preparation, actual receipt readback, cache behavior and
+exceptional reservations. The legacy 8MiB publication base and draft fixed
+addition and `130+c` statement allowance are **retired as accepted proof**;
+enumerate the actual SQL rather than rubber-stamping those constants. Retain the
+3MiB material snapshot separately; full transferred proof belongs in
+`proof_footprint` and cold-consumer admission. If the closed trace exposes a
+missing tail, correct it in the existing acceptance owner with explicit laws;
+do not silently borrow the start budget, raise limits or add another service.
+
+Cold-consumer admission needs its own reservation-peak bound under the future
+cold-consumer transport contract. The current `snapshot + proof_footprint`
+calculation uses settled measured proof and does not establish that bound.
+Keep this consumer contract separate from publication's four checks/readback
+S/H. CAS, event and action inserts already use `_EvidenceRead.query(...
+RETURNING 1)` under active accounting; audit remaining raw calls individually
+instead of copying the ordinary-start raw-write precharge. Trace
+`_finish_receiver_advancement` after receipt insertion through scope close on
+every supported path; cite an explicit unsupported gate for exclusions.
+Preserve receiverless carry and canonical Initial/Teardown boundaries without
+expanding retained-managed Update support.
+
+Replace the draft's blanket physical `>=` comparisons with exact normal-success
+statement, byte and cell reconciliation, while counting logical records by
+joined identities. Keep failed-reservation and savepoint-corruption diagnostics
+separate from that equality contract. The source worksheet and target design
+remain mandatory after the dependency merge; planning acceptance releases
+neither implementation arithmetic nor targets.
+
+Respect the real phase boundary: advancement allocates its generated event and
+action IDs before `_preflight`, because final admission measures those exact
+payloads. Initial proof rejection can precede those IDs; final publication
+capacity rejection must precede CAS and all durable writes. Do not assert that
+the final payload check precedes all ID/clock use. Faults at each later entrance
+and receipt readback must roll back current pointer, event/action, receipt/slots
+and receiver-finish state while preserving original claims/transfers. Retry and
+exact replay create no transfers or repair history.
+
+### 4. Evidence ledger and narrowly ordered targets
+
+All paths below are under `control-plane-kit-operations/`. Earlier logs keep
+their original coordinate/classification; no baseline rerun is requested.
+
+| Existing target/files | Law and provenance | Current evidence and remaining work |
+| --- | --- | --- |
+| `test_configuration_claim_disposition.py`, `test_current_schema_installation.py` | New closed disposition/reciprocal schema laws | `4432afb3`: 12 focused green plus compile/import. Preserve exact baseline; revalidate integration at B1 gate. |
+| `test_postgres_configuration_transfers.py` | New own-source/receipt proof; strengthened missing/failed/unprofiled/neighbor refusal | `993eb238`: 11 green. Recorded transfers follow real D1/acceptance; no lawful writer credit. |
+| transfer reuse current-read/v1 cases; `_prove_use`, `_known_birth`, `_allocation_evidence` | Strengthened full source and distinct-birth proof, v1 fail-closed policy | `389ac837`: 12 focused green. Public v1 and departed-provenance cases also green at `58a7a830`. Preserve source/current separation. |
+| `test_postgres_configuration_transfer_reuse.py::test_zero_outstanding_birth_reuses_and_three_issued_checks_remain_live` | New zero-outstanding reuse; strengthened live pair, ownership and exclusions | Behavioral green at `2eec0bd7`; rerun only after reconciliation to prove all three checks still integrate with #1950 lifetime/closure. |
+| `test_postgres_configuration_transfer_capacity.py` | Strengthened cold/warm, prior usage, exact full tail and transient peaks | `2eec0bd7`: cold/warm and prior-pressure passed; full tail failed. `e978f11c` preserves 277 charged vs 282 physical and understated peak. Adapt obsolete numeric oracle, preserve stronger physical laws; integrated S/H result pending. |
+| `test_postgres_configuration_transfer_carry.py` | New mixed transfer/protective carry; four fresh checks, missing memo, reservation, latest/ABA and departure | Consumer red at `b06cd1a8`; latest/ABA stopped at earlier carry refusal at `58a7a830`. Missing-receipt downstream assertions have no green credit yet. Four-entrance probes exist; finish source after target red. |
+| acceptance-capacity draft above; `test_configuration_acceptance_preflight.py` | Strengthened complete carried/new-source publication cost, cold snapshot vs consumer vs prior+tail | Draft PostgreSQL observations have never run. Existing arithmetic targets are synthetic assembly evidence only. Finalize worksheet, add real prior/peak refusal and per-entrance/readback rollback targets before source. |
+| existing membership/current/latest/reuse/carry and cleanup-v1 tests | Isomorphic claim retention, exact replay, newest-receipt/current protection, no producer and v1 compatibility | Retain assertions; no skip, xfail, manufactured acceptance or reinterpretation of recorded transfers as >64 growth. |
+| #1950 owner/tail, initial, gateway and 64/65 targets | Isomorphic accepted dependency laws; strengthened transferred integration | Candidate source/focused PASS, full CI/merge pending. Consume actual accepted coordinate first; no-transfer behavior and 64/65 limits must survive B1. |
+
+The planned source ceiling is the existing preparation/acceptance stores and
+private preparation/acceptance values as required for exact owner-held evidence,
+plus narrowly the existing phase-bound bridge/capture leaves. Existing start,
+advancement, history and completion readers are traced for integration; edit
+their semantics only for a demonstrated necessary owner-local change reviewed
+beforehand. Primary tests are the three transfer consumer files, the transfer
+fixture, existing preflight/membership/latest/schema tests and #1950 companions.
+A dedicated acceptance-capacity test file may receive the existing draft;
+that is test organization, not a new production owner or issue.
+
+After dependency acceptance: reconcile source; finish the source-level dry run
+and target interfaces above; translate the stale capacity oracle and write the
+missing targets; record causal red; implement start integration to focused green;
+then finalize/run acceptance targets red and implement that owner to green.
+Use the owning Operations `test.sh` filters and exact clean architecture-testing
+sibling. Run no duplicate immutable baseline. At B1's single PR boundary, run
+full Operations including cleanup, Core and current-backend once, reusing an
+equivalent exact-head hosted set when present. Current-backend lock-family
+compatibility remains separate from source adoption and provider evidence.
+Kepler reviews the final diff, budgets and evidence before North owns merge.
+
+### Security, data, reliability and #1946 handoff
+
+No new external surface or credentials. P/T identity is structural evidence,
+not execution authority; current membership, fresh permission and reservations
+remain separate. Captured bounds and proof memos never grant cleanup authority.
+Preserve same-UoW commit/rollback, exact schema drift refusal, query-only retained
+verification, unchanged lock ordering and no automatic retry/backfill/pruning.
+No transfer write path is reachable in B1; genuine unprofiled acceptance keeps
+its original claims. Failure leaves bounded structured history according to the
+existing command outcome and rolls back partial publication. Existing examples
+and recorded-transfer fixtures must retain explicit simulated/defensive labels.
+
+The provisional risk is integration of finite historical transfer selectors
+and complete cold-proof peaks under the new ordinary owner; acceptance's full
+tail still needs its own executable source trace. Neither is hidden by observed
+Q or the old 8MiB constant. A new independent owner or wider historical traversal
+would require a concrete refinement before implementation, not an automatic
+new issue/framework. No such separate owner is currently demonstrated.
+
+Only after B1 merge, hand #1946 the exact typed disposition/schema contract,
+verified root/source/birth proof boundaries, ordinary start and four-entrance
+carry consumer behavior, readback/rollback laws, updated S/H worksheet and
+immutable validation coordinates. B2 still owns v2 fresh/retained cleanup
+consumption and version binding; C (#1947) still owns the lawful transfer writer,
+same-UoW activation, >64 historical accepted-use growth, races and producer
+rollback. Recorded B1 transfers discharge none of those future obligations.
