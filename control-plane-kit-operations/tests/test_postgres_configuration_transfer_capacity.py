@@ -98,7 +98,8 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
             pairs = []
             def query(read, statement, params=(), **options):
                 if query_role(statement) == "pair":
-                    pairs.append(tuple(params[:4]))
+                    self.assertEqual(tuple(params[5:9]), tuple(params[9:13]))
+                    pairs.append(tuple(params[5:9]))
                 return actual_query(read, statement, params, **options)
             ref = self.refs[0]
             with mock.patch.object(_EvidenceRead, "query", query):
