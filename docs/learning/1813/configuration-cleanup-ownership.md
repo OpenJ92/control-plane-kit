@@ -4286,3 +4286,31 @@ must distinguish early refusal from a fulfilled late law. Security remains the
 existing authenticated command/lifecycle/transaction boundary; no new exposure,
 secret transport, schema mutation or provider effect. Atomic rollback covers
 all existing command writes. No B2/C, producer, frontend or Servers225 completion.
+
+### B1 first acceptance target checkpoint
+
+Reviewed design packet SHA-256
+`8aa6a879345d5010536166d6a44a0fe1c42504334c1bb6f7b185420187dc239d`
+received exact design/target-interface PASS (#1945 comment `6049154290`).
+Preserved carry validation on documentation checkpoint `e8b97e41` ran four
+owning Docker tests in 46.519 seconds: three failures, zero errors. Departed
+provenance passed; later carry containing transferred material was refused.
+Log SHA-256 `27e7edbfcd790945ec7f97244ef8ed11c12454658f3521773f1929b841800c04`.
+No late-memo or ABA assertion red credit is claimed; see `6049210177` and
+independent scoped red review `6049228073`.
+
+The first three new targets are strengthened/new-law acceptance publication
+coverage: two real carry/source-birth shapes must fit source-derived publication
+and fresh native settled/peak budgets with exact weighted wire reconciliation;
+exact fixture-derived transfer/dependency keys must reject eviction or a foreign
+warm reader without cold proof fallback. Returned revision, refs, original source
+and direct-birth identities are asserted independently. Pure forecasting must
+leave SQL, charged prior and reader caches unchanged. Replay preserves durable
+state. These build on existing carry, transfer-capacity and #1952 publication
+laws; they do not substitute for later guard/readback faults, failed-prefix peaks,
+material/provenance separation or boundary tests.
+
+Target draft SHA-256
+`6a36e1bba9d1bed53142dd689578dc42b67ff26c3d5d970af0d2243eea14aa63`
+received independent target-interface PASS `6049253790` before installation.
+Application source is unchanged; focused target-red is the next evidence gate.
