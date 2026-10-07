@@ -275,6 +275,84 @@ class PostgresConfigurationStartBoundsTests(ConfigurationPreparationFixture, uni
             self.assertLessEqual(actual, max(getattr(value, field) for value in forecasts),
                 "refused gateway branch exceeded its pre-admitted whole-tail bound")
 
+    def test_captured_plan_alias_reads_larger_pair_then_refuses_within_forecast(self):
+        import psycopg
+        from control_plane_kit_operations import configuration_preparation as values
+        from control_plane_kit_operations.postgres import PostgresUnitOfWork
+        from control_plane_kit_operations.postgres.receiver_execution_scopes import _Transport
+        from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection, _components
+        command, before = self.configuration_command(), self.complete_start_snapshot()
+        original_plan = self.connection.execute("SELECT * FROM cpk_activity_plans WHERE plan_id='plan-a'").fetchall()
+        base, desired, base_projection, desired_projection = self.connection.execute(
+            "SELECT base_graph_id,desired_graph_id,base_realized_projection_id,desired_realized_projection_id "
+            "FROM cpk_activity_plans WHERE plan_id='plan-a'").fetchone()
+        actual_prepare = preparation.ConfigurationPreparationStore._prepare
+        actual_capacity, actual_read = values.configuration_preparation_capacity, _Transport.read
+        observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
+            accounting=None, role_label=lambda sql, params: "captured-plan-alias")
+        state, forecasts, traversed = {}, [], []
+        service = self.start_service("redirected-plan-start")
+
+        class MeasuredUnitOfWork(PostgresUnitOfWork):
+            def __exit__(uow, *args):
+                try:
+                    return super().__exit__(*args)
+                finally:
+                    state["end"] = observed["accounting"].used
+
+        def factory():
+            observed["accounting"] = support._ACCOUNTING.get()
+            return MeasuredUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.database_url), observed))
+
+        def capacity(**kwargs):
+            if not forecasts:
+                state.update(prior=kwargs["current"], query_start=len(observed["queries"]))
+            forecasts.append(kwargs["reserved_future"])
+            return actual_capacity(**kwargs)
+
+        def prepared(store, *args, **kwargs):
+            result = actual_prepare(store, *args, **kwargs)
+            points = dict(((role, entry.identity), entry) for role, entry in
+                support._BOUND_ORDINARY_START.get().points)
+            plan = points[("plan", ("plan-a",))]
+            self.assertLessEqual(len(desired.encode()), plan.widths[2])
+            self.assertLessEqual(len(desired_projection.encode()), plan.widths[4])
+            self.assertGreater(points[("graph", (desired,))].widths[3], points[("graph", (base,))].widths[3])
+            self.assertGreater(points[("projection", (desired_projection,))].widths[6],
+                points[("projection", (base_projection,))].widths[6])
+            self.assertEqual(store._connection.execute("UPDATE cpk_activity_plans "
+                "SET base_graph_id=desired_graph_id,base_realized_projection_id=desired_realized_projection_id "
+                "WHERE plan_id='plan-a'").rowcount, 1)
+            state["changed"] = True
+            return result
+
+        def read(transport, *args, **kwargs):
+            prior = support._ACCOUNTING.get().used if state.get("changed") else None
+            result = actual_read(transport, *args, **kwargs)
+            phase = kwargs.get("phase")
+            if prior is not None and phase is not None and phase[0] in ("graph", "projection"):
+                traversed.append((phase, support._ACCOUNTING.get().used.statements - prior.statements))
+            return result
+
+        with mock.patch.object(service, "_unit_of_work_factory", factory), \
+                mock.patch.object(values, "configuration_preparation_capacity", capacity), \
+                mock.patch.object(preparation.ConfigurationPreparationStore, "_prepare", prepared), \
+                mock.patch.object(_Transport, "read", read), self.assertRaises(EffectAttemptStartConflict):
+            service.execute(command)
+        self.assertEqual(traversed[:2], [(("graph", (desired,)), 3),
+            (("projection", (desired_projection,)), 3)])
+        self.assertEqual(self.complete_start_snapshot(), before)
+        self.assertEqual(self.connection.execute("SELECT * FROM cpk_activity_plans WHERE plan_id='plan-a'").fetchall(),
+            original_plan)
+        self.assertIsNone(support._BOUND_ORDINARY_START.get())
+        forecast = tuple(max(_components(value)[i] for value in forecasts) for i in range(4))
+        prior = _components(state["prior"])
+        for index, value in enumerate(_components(state["end"])):
+            self.assertLessEqual(value - prior[index], forecast[index])
+        for query in observed["queries"][state["query_start"]:]:
+            for index, value in enumerate(query["peak"]):
+                self.assertLessEqual(value - prior[index], forecast[index])
+
     def test_publication_reader_preserves_zero_one_two_candidates_on_the_same_ledger(self):
         from psycopg.types.json import Jsonb
         for count in range(3):
