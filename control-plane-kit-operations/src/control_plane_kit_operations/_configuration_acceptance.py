@@ -19,12 +19,20 @@ class _PublicationReadBounds:
     optional: tuple = ()
     candidates: tuple = ()
     published: tuple = ()
+    proof_shapes: tuple = ()
+    receiver_receipts: tuple = ()
 
 
 def _require_publication_proof(read, family, key):
     owner = _PUBLICATION_SCOPE.get()
     if owner is not None:
         owner._require_proof_cache(read, family, key)
+
+
+def _observe_publication_proof(read, family, key, row):
+    owner = _PUBLICATION_SCOPE.get()
+    if owner is not None:
+        owner._observe_proof_shape(read, family, key, row)
 
 
 def _history_records(event, action):

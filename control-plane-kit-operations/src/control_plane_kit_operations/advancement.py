@@ -466,7 +466,7 @@ def _prepare_receiver_advancement(stores, workspace, request, run, guard):
         if evidence.state != "complete":
             raise ValueError("incomplete receiver execution evidence")
         _validate_advancing_receiver_material(request, run, original, derived, evidence)
-        return before, after, origins, scopes, original, derived
+        return before, after, origins, scopes, original, derived, evidence
     except (ValueError, TypeError, KeyError, AttributeError):
         pass
     raise CurrentGraphAdvancementConflict("receiver advancement evidence is unavailable")
@@ -481,7 +481,7 @@ def _finish_receiver_advancement(stores, request, run, guard, prepared, action, 
         _retained_receiver_material, _receiver_sources,
     )
     from control_plane_kit_operations.receiver_execution_scopes import classify_receiver_scope_evidence
-    before, after, origins, scopes, original, derived = prepared
+    before, after, origins, scopes, original, derived, _ = prepared
     plan, base, desired = original
     try:
         # Read the REAL tentative receipt through unchanged bounded accounting.

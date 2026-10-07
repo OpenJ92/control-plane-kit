@@ -13,6 +13,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import (
     _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records, _PUBLICATION_SCOPE,
     _PublicationReadBounds, _require_publication_proof,
+    _observe_publication_proof,
 )
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting, _ACCOUNTING, _execution_context
 from control_plane_kit_operations.configuration_preparation import (
@@ -139,6 +140,8 @@ class ConfigurationAcceptanceStore:
         self._publication_observations = {}
         self._publication_shared_collections = {}
         self._publication_candidates = {}
+        self._publication_proof_shapes = {}
+        self._publication_receiver_receipts = {}
         self._publication_active = True
         self._issued = None
         token = _PUBLICATION_SCOPE.set(self)
@@ -178,6 +181,8 @@ class ConfigurationAcceptanceStore:
             self._publication_observations = {}
             self._publication_shared_collections = {}
             self._publication_candidates = {}
+            self._publication_proof_shapes = {}
+            self._publication_receiver_receipts = {}
             _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
@@ -227,6 +232,70 @@ class ConfigurationAcceptanceStore:
         self._require_publication()
         _shape(role)  # Closed package roles only; no SQL or caller registry.
         self._publication_points.add((role, identity))
+
+    def _observe_proof_shape(self, read, family, key, row):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        _require(self._issued is None or self._issued.read_bounds is None)
+        _require(family in ("ref", "source") and len(row) == (19 if family == "ref" else 17))
+        _require(all(value is None or type(value) in (str, bytes, bool, int) for value in row))
+        widths = tuple(0 if value is None else len(value) if type(value) is bytes else 1 if type(value) is bool
+            else len(str(value).encode("utf-8")) for value in row)
+        previous = self._publication_proof_shapes.get((family, key))
+        if previous is not None:
+            widths = tuple(max(a, b) for a, b in zip(previous, widths, strict=True))
+        self._publication_proof_shapes[(family, key)] = widths
+
+    def _observe_receiver_receipt(self, read, action, request, run, desired):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        if self._issued is not None and self._issued.read_bounds is not None:
+            return
+        key = (action.action_id, action.session_id)
+        value = (request.identity.request_id, run.run_id, desired.source_authored_graph_id, desired.projection_id)
+        old = self._publication_receiver_receipts.get(key)
+        _require(old is None or old == value)
+        # Already validated receipt relationships for pure forecast counts;
+        # these identifiers do not enroll any readable transport selector.
+        self._publication_receiver_receipts[key] = value
+
+    def _capture_native_proof_shapes(self, read, proof_keys):
+        from .effect_outcome_store import _COLUMN_NAMES
+        from .configuration_cleanup_read_ceilings import _require
+        shapes = dict(self._publication_proof_shapes)
+        for key in proof_keys[1]:
+            if key[0] != "cpk_effect_attempt_outcomes":
+                continue
+            identity = key[1]
+            row = read.sources[key][0]
+            numeric = {"attempt", "fence_generation", "prior_attempt", "original_event_ordinal", "direct_event_ordinal", "observation_count"}
+            columns = tuple((name, "bytes" if name == "preimage" else "int" if name in numeric else "text",
+                8192 if name == "preimage" else 2048) for name in _COLUMN_NAMES)
+            expressions = tuple(name if kind == "bytes" else name + "::text" for name, kind, _ in columns)
+            measured = read.query("SELECT " + ",".join("octet_length(" + value + ")" for value in expressions)
+                + " FROM cpk_effect_attempt_outcomes WHERE run_id=%s AND activity_id=%s AND attempt=%s",
+                (identity.run_id.value, identity.activity_id, identity.attempt), records=1, octets=264, cells=22)
+            _require(len(measured) == 1)
+            widths = tuple(0 if value is None else value for value in measured[0])
+            _require(all(type(width) is int and 0 <= width <= cap for width, (_, _, cap) in zip(widths, columns, strict=True)))
+            shapes[("outcome", identity)] = widths
+            for event_id in (row[15], row[18]):
+                if ("event", event_id) in shapes:
+                    continue
+                measured = read.query("SELECT " + ",".join("octet_length(" + name + "::text)" for name in _EVENT)
+                    + " FROM cpk_activity_events WHERE event_id=%s", (event_id,), records=1, octets=72, cells=6)
+                _require(len(measured) == 1)
+                widths = tuple(0 if value is None else value for value in measured[0])
+                _require(all(type(width) is int and 0 <= width <= cap for width, cap in zip(widths, (2048, 200, 16, 64, 64, 16384), strict=True)))
+                shapes[("event", event_id)] = widths
+        for key in proof_keys[1]:
+            if key[0] == "configuration-original-slot":
+                # These cells are only canonical SQL integers and text, never
+                # decoded JSON or time whose Python rendering could shrink.
+                row = read.sources[key]
+                _require(all(type(value) in (str, int) for value in row))
+                shapes[("original-slot", key)] = tuple(len(str(value).encode("utf-8")) for value in row)
+        return tuple((family, key, widths) for (family, key), widths in shapes.items())
 
     def _observe_publication_transport(self, read, role, identity, rows, *, point, cached=False):
         from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _PhasePoint, _PhaseCollection
@@ -278,6 +347,7 @@ class ConfigurationAcceptanceStore:
     def _publication_candidate(self, read, identity, rows=None):
         from .configuration_cleanup_read_ceilings import _require, _transaction
         self._require_publication(read=read)
+        _require(read is not None)
         bounds = None if self._issued is None else self._issued.read_bounds
         if bounds is not None:
             entry = next((entry for entry in bounds.candidates if entry[0] == identity), None)
@@ -385,11 +455,15 @@ class ConfigurationAcceptanceStore:
                 if receiver not in after_ids and any(item.receiver_id == receiver for item in before):
                     widths[12:14] = (max(widths[12], len(action.action_id.encode())), max(widths[13], len(action.session_id.encode())))
                 points[key] = replace(value, widths=tuple(widths))
+        receiver_receipts = dict(self._publication_receiver_receipts)
+        receiver_receipts[(action.action_id, action.session_id)] = (prepared.request.identity.request_id,
+            prepared.run.run_id, prepared.plan.desired_graph_id, prepared.desired_projection.projection_id)
         return _PublicationReadBounds(proof_keys, self._publication_transaction,
             tuple((role, value) for (role, _), value in points.items()),
             tuple((role, value) for (role, _), value in collections.items()),
             tuple((role, value, present) for (role, _), (value, present) in optional.items()),
-            tuple(self._publication_candidates.values()), tuple(published))
+            tuple(self._publication_candidates.values()), tuple(published),
+            self._capture_native_proof_shapes(read, proof_keys), tuple(receiver_receipts.items()))
 
     def _bind_records(self, prepared, event, action):
         self._require_issued(prepared)
@@ -452,6 +526,7 @@ class ConfigurationAcceptanceStore:
                 key, records=1, octets=32768, cells=19, identities=2)
             if len(rows) != 1:
                 raise _Unavailable
+            _observe_publication_proof(read, "ref", cache_key, rows[0])
             _decode_ref(rows[0])
             read.refs[cache_key] = rows[0]
         row = read.refs[cache_key]
@@ -837,77 +912,250 @@ class ConfigurationAcceptanceStore:
             raise _Unavailable
 
     def _preflight(self, prepared):
-        """Admit the generated pair and publication envelope before first write."""
+        """Admit separate material, native-consumer and publication S/H gates."""
         from control_plane_kit_operations.configuration_preparation import (
-            ConfigurationEvidenceFootprint, ConfigurationCapacityDecision, configuration_evidence_capacity,
+            ConfigurationCapacityDecision, configuration_evidence_capacity,
         )
-        read = _EvidenceRead(self._connection)
-        action, event = prepared.action, prepared.event
-        texts = (action.action_id, action.session_id, action.actor_id, action.idempotency_key,
-            action.intent_fingerprint, event.event_id, event.run_id, prepared.workspace.workspace_id,
-            prepared.request.identity.request_id, prepared.plan.plan_id, prepared.plan.desired_graph_id,
-            prepared.desired_projection.projection_id, prepared.desired_projection.projection_digest)
-        if any(type(value) is not str or not 1 <= len(value.encode("utf-8")) <= 2048 for value in texts):
-            raise _Capacity
-        payload = {"activity_id": event.activity_id, "evidence": event.evidence.descriptor(),
-            "failure": None, "recovery": None}
-        # Consumers measure PostgreSQL JSON text, which is not JCS size.
-        sizes = read.query("SELECT octet_length((%s::jsonb)::text),octet_length((%s::jsonb)::text)",
-            (json.dumps(action.payload), json.dumps(payload)), records=1, octets=24, cells=2)
-        if any(type(size) is not int or not 1 <= size <= 65536 for size in sizes[0]):
-            raise _Capacity
-        # Measure the exact retained owner/projection portion of a future cold
-        # receipt read under this same ledger before any publication. These
-        # immutable/own-locked rows must still equal the prepared owner truth.
-        consumer_start = read.used
-        execution, history = PostgresExecutionStore(self._connection), PostgresActivityHistoryStore(self._connection)
-        if (execution.get_run(prepared.run.run_id) != prepared.run
-                or execution.get_request(prepared.request.identity.request_id) != prepared.request
-                or history.get_plan(prepared.plan.plan_id) != prepared.plan):
-            raise _Unavailable
-        history.get_session(prepared.plan.session_id)
-        self._projection(prepared.plan.desired_graph_id, prepared.desired_projection.projection_id,
-            prepared.workspace.workspace_id)
-        owner_snapshot = ConfigurationEvidenceFootprint(*(getattr(read.used, field) - getattr(consumer_start, field)
-            for field in ("records", "value_octets", "scalar_markers", "statements")))
-        count = len(prepared.slots)
-        slot_octets = sum(sum(len(str(value).encode("utf-8")) for value in slot) for slot in prepared.slots)
-        slot_snapshot = ConfigurationEvidenceFootprint(2 * count + 2,
-            slot_octets + 145 * count + 4096, 25 * count + 26, 2)
-        # Cold consumers fetch each complete source ref + reciprocal claim once
-        # for full material coverage before requested provenance. Use actual
-        # cached row bytes; spelling bool/None is conservatively larger than SQL.
-        ref_octets = sum(sum(len(value) if type(value) is bytes else len(str(value).encode("utf-8"))
-            for value in self._ref(prepared.evidence_read, slot[3:7])) for slot in prepared.slots)
-        ref_snapshot = ConfigurationEvidenceFootprint(2 * count, ref_octets, 19 * count, count)
-        ref_snapshot = ref_snapshot.plus(ConfigurationEvidenceFootprint(6 * count, 1648 * count, 20 * count, 4 * count))
-        # 512KiB bounds generated header + both originals (two <=64KiB JSON
-        # payloads, bounded text/scalars, size passes, statement/row overhead).
-        pair_snapshot = ConfigurationEvidenceFootprint(16, 512 * 1024, 256, 16)
-        snapshot = owner_snapshot.plus(slot_snapshot).plus(ref_snapshot).plus(pair_snapshot)
+        snapshot, future, publication = self._publication_budgets(prepared)
         if snapshot.accounted_bytes > 3 * 1024 * 1024:
             raise _Capacity
-        # A fresh consumer has no warm source cache. Prove its complete source
-        # work also fits, with discovery/initialization allowance, before CAS.
-        consumer = snapshot.plus(prepared.proof_footprint).plus(
-            ConfigurationEvidenceFootprint(64, 512 * 1024, 1024, 32))
-        if configuration_evidence_capacity(consumer) is not ConfigurationCapacityDecision.WITHIN_LIMITS:
-            raise _Capacity
-        # The fixed owner-publication portion retains the reviewed <=1MiB graph
-        # descriptor/metadata/projection/plan caps and bounded own rows. Reserve
-        # its 8MiB tail plus nonempty slot work below. Actual queries continue
-        # charging the same ledger, including every INSERT RETURNING row.
-        # All immutable ref/source/outcome proofs were validated before this
-        # point and are cached by exact PK in prepared.evidence_read. Readback
-        # still transports the actual header, complete slots and original pair.
-        # Add every slot INSERT return, both manifest passes (lengths + values),
-        # and the bounded sentinel to the previously reviewed zero-slot tail.
-        future = ConfigurationEvidenceFootprint(512 + 3 * count + 2,
-            8 * 1024 * 1024 + slot_octets + 145 * count + 4096,
-            8192 + 26 * count + 26, 130 + count)
-        future = future.plus(ConfigurationEvidenceFootprint(6 * count, 1648 * count, 20 * count, 4 * count))
-        if configuration_evidence_capacity(read.used.plus(future)) is not ConfigurationCapacityDecision.WITHIN_LIMITS:
-            raise _Capacity
+        for footprint in (future.settled, future.peak):
+            if configuration_evidence_capacity(footprint) is not ConfigurationCapacityDecision.WITHIN_LIMITS:
+                raise _Capacity
+        prior = prepared.evidence_read.used
+        for footprint in (publication.settled, publication.peak):
+            if configuration_evidence_capacity(prior.plus(footprint)) is not ConfigurationCapacityDecision.WITHIN_LIMITS:
+                raise _Capacity
+
+    def _publication_budgets(self, prepared):
+        """Pure composition of the fixed source query positions and captured facts."""
+        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint as F
+        from control_plane_kit_operations._configuration_preparation import _OrdinarySuffixBudget as Budget
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_issued(prepared)
+        bounds, read = prepared.read_bounds, prepared.evidence_read
+        zero = F(0, 0, 0, 0)
+        empty = Budget(zero, zero)
+
+        def chain(*parts):
+            result = empty
+            for part in parts:
+                result = result.then(part)
+            return result
+
+        def q(rows, octets, cells, identities=1, *, settled=None, cleanup=zero):
+            reserve = F(rows * identities, octets, rows * cells, 1)
+            return Budget(reserve if settled is None else settled, reserve.plus(cleanup))
+
+        guard = q(1, 20, 1)
+        unit = q(1, 1, 1)
+
+        def native(widths, *, count=1, maximum=1, point=True, identities=1):
+            cells, octets = len(widths), sum(widths)
+            nominal = maximum if point else maximum + 1
+            lengths = q(nominal, nominal * 12 * cells, cells, identities,
+                settled=F(count * identities, count * 12 * cells, count * cells, 1))
+            if count == 0:
+                return lengths
+            fetched = maximum if point else count + 1
+            return lengths.then(q(fetched, fetched * (octets + 1), cells + 1, identities,
+                settled=F(count * identities, count * (octets + 1), count * (cells + 1), 1)))
+
+        # Preserve exact identities as keys; role aliases use explicit maxima
+        # only at source positions whose concrete key is not retained there.
+        entries = {(role, entry.identity): entry for role, entry in bounds.points + bounds.collections}
+        entries.update(((role, entry.identity), entry) for role, entry, _ in bounds.optional)
+        entries.update(((role, entry.identity), entry) for role, entry in bounds.published)
+
+        def point(role, identity, *, captured=True):
+            value = entries.get((role, identity))
+            _require(value is not None)
+            result = native(value.widths, identities=2 if role == "origin-action" else 1)
+            return guard.then(result) if captured else result
+
+        def collection(role, identity, *, captured=True, native_maximum=None):
+            value = entries.get((role, identity))
+            _require(value is not None and hasattr(value, "keys"))
+            count = len(value.keys)
+            result = native(value.widths, count=count,
+                maximum=count if native_maximum is None else native_maximum, point=False)
+            return guard.then(result) if captured else result
+
+        def widest_point(role):
+            values = tuple(point(role, identity) for selected_role, identity in entries if selected_role == role)
+            _require(bool(values))
+            fields = ("records", "value_octets", "scalar_markers", "statements")
+            return Budget(F(*(max(getattr(value.settled, field) for value in values) for field in fields)),
+                F(*(max(getattr(value.peak, field) for value in values) for field in fields)))
+
+        workspace = prepared.workspace.workspace_id
+        request_id, run_id = prepared.request.identity.request_id, prepared.run.run_id
+        revision, plan_id = prepared.plan.desired_graph_revision, prepared.plan.plan_id
+        workspace_read = native((81920,) + (0,) * 8)
+
+        def context(header, plan, *, captured):
+            positions = (("header", (header["workspace_id"], header["pinned_revision"])),
+                ("receipt-action", (header["action_id"],)), ("receipt-event", (header["event_id"],)),
+                ("run", (header["run_id"],)), ("request", (header["request_id"],)), ("plan", (header["plan_id"],)),
+                ("session", (plan.session_id,)), ("graph", (header["graph_id"],)), ("projection", (header["projection_id"],)))
+            return chain(*(point(role, identity, captured=captured) for role, identity in positions))
+
+        own_header = dict(workspace_id=workspace, pinned_revision=revision, action_id=prepared.action.action_id,
+            event_id=prepared.event.event_id, run_id=run_id, request_id=request_id, plan_id=plan_id,
+            graph_id=prepared.plan.desired_graph_id, projection_id=prepared.desired_projection.projection_id)
+        proof_shapes = {(family, key): widths for family, key, widths in bounds.proof_shapes}
+        ref_memo, source_memo, outcome_memo, event_memo = set(), set(), set(), set()
+        context_memo, plan_memo, slot_memo = set(), set(), set()
+
+        def ref_key(key):
+            return EffectAttemptIdentity(RunId(key[0]), key[1], key[2]), key[3]
+
+        def ref_budget(key):
+            if key in ref_memo:
+                return empty
+            widths = proof_shapes[("ref", key)]
+            ref_memo.add(key)
+            return q(1, 32768, 19, 2, settled=F(2, sum(widths), 19, 1))
+
+        def source_budget(identity):
+            if identity in source_memo:
+                return empty
+            widths = proof_shapes[("source", identity)]
+            source_memo.add(identity)
+            source = read.sources[("cpk_effect_attempt_intents", identity)][0]
+            event_memo.add(source.original_event_id)
+            savepoint = q(0, 0, 0)
+            joined = q(1, 80032, 17, 3, settled=F(3, sum(widths), 17, 1), cleanup=F(0, 0, 0, 2))
+            return chain(savepoint, joined, savepoint)
+
+        snapshot_budget = chain(context(own_header, prepared.plan, captured=False),
+            collection("slots", (workspace, revision), captured=False, native_maximum=256),
+            *(ref_budget(ref_key(slot[3:7])) for slot in prepared.slots))
+        context_memo.add((workspace, revision))
+        plan_memo.add((workspace, plan_id))
+        future = snapshot_budget
+        for slot in prepared.slots:
+            source_key, birth_key = ref_key(slot[3:7]), ref_key(slot[7:11])
+            raw = read.refs[source_key]
+            source = next(value for value in read.sources[("cpk_effect_attempt_intents", source_key[0])]
+                if (value.ref.workspace_id, value.ref.allocation_id, value.ref.artifact_id) == (raw[4], raw[5], raw[3]))
+            future = chain(future, ref_budget(source_key), source_budget(source_key[0]),
+                ref_budget(birth_key), source_budget(birth_key[0]))
+            if source.identity.run_id.value != run_id:
+                source_plan = (source.source.workspace_id, source.source.plan_id)
+                saved = read.sources[("configuration-source-plan", *source_plan)]
+                header, _, _, plan, _, _, _ = saved
+                old_context = (source.source.workspace_id, header["pinned_revision"])
+                if source_plan not in plan_memo:
+                    future = future.then(point("plan", (source.source.plan_id,), captured=False))
+                    if old_context not in context_memo:
+                        future = future.then(context(header, plan, captured=False))
+                        context_memo.add(old_context)
+                    plan_memo.add(source_plan)
+                old_slot = ("configuration-original-slot", *old_context, *slot[:3])
+                if old_slot not in slot_memo:
+                    future = future.then(native(proof_shapes[("original-slot", old_slot)]))
+                    slot_memo.add(old_slot)
+            if source.identity not in outcome_memo:
+                future = future.then(native(proof_shapes[("outcome", source.identity)]))
+                row = read.sources[("cpk_effect_attempt_outcomes", source.identity)][0]
+                for event_id in (row[15], row[18]):
+                    if event_id not in event_memo:
+                        future = future.then(native(proof_shapes[("event", event_id)]))
+                        event_memo.add(event_id)
+                outcome_memo.add(source.identity)
+        future = chain(workspace_read, q(2, 20520, 6), q(2, 20520, 6), future)
+
+        current_slots = chain(*(chain(q(1, 1, 1, settled=F(0, 0, 0, 1)), q(1, 823, 9, 2))
+            for _ in prepared.slots))
+        prepared_guard = chain(guard, workspace_read, point("request", (request_id,)), point("run", (run_id,)), current_slots)
+        body = chain(prepared_guard, *(native((2048,)) for _ in range(3)), unit, workspace_read,
+            prepared_guard, unit, prepared_guard, unit, prepared_guard, unit,
+            *(unit for _ in prepared.slots), context(own_header, prepared.plan, captured=True),
+            collection("slots", (workspace, revision)))
+        if prepared.receiver_truth is not None:
+            before, after, origins, scopes, original, _, evidence = prepared.receiver_truth
+
+            def verify(selected_request):
+                return chain(widest_point("session-workspace"), widest_point("plan"),
+                    widest_point("graph"), widest_point("projection"), widest_point("graph"), widest_point("projection"),
+                    point("scope-header", (selected_request,)), collection("scopes", (selected_request,)))
+
+            def binding_material(graph_id, projection_id):
+                return chain(point("raw-graph", (workspace, graph_id)),
+                    point("raw-projection", (workspace, projection_id, graph_id)),
+                    collection("bindings", (workspace, graph_id, projection_id)))
+
+            def retained(graph_id, projection_id):
+                return chain(point("graph", (graph_id,)), point("projection", (projection_id,)), binding_material(graph_id, projection_id))
+
+            def origin_budget(origin):
+                return chain(point("introduction", (workspace, origin.receiver_id)),
+                    binding_material(origin.introducing_graph_id, origin.introducing_realized_projection_id),
+                    point("origin-action", (origin.introducing_action_id, origin.introducing_session_id, workspace)),
+                    point("projection", (origin.introducing_realized_projection_id,)), point("graph", (origin.introducing_graph_id,)), unit)
+
+            runtime_wide = {scope.runtime_id for scope in scopes if scope.node_id is None}
+            selected_scopes = {scope for scope in scopes if scope.node_id is None or scope.runtime_id not in runtime_wide}
+            prefixes = {(workspace, scope.runtime_id, kind, node) for scope in selected_scopes
+                for kind, node in (("runtime", None), ("all-nodes" if scope.node_id is None else "node", scope.node_id))}
+            candidates = {identity: (widths, rows) for identity, widths, rows in bounds.candidates}
+            history = guard
+            for identity in sorted(prefixes):
+                widths, rows = candidates[identity]
+                count, width = len(rows), sum(widths) + 1
+                history = chain(history, guard, q(count + 1, (count + 1) * width, 3,
+                    settled=F(count, count * width, count * 3, 1)))
+            for item in evidence.requests:
+                selected_request = item.request.identity.request_id
+                history = chain(history, point("request", (selected_request,)), verify(selected_request), collection("runs", (selected_request,)))
+                for run in item.runs:
+                    selected_run = run.run.run_id
+                    history = chain(history, collection("events", (selected_run,)), collection("attempts", (selected_run,)),
+                        collection("intents", (selected_run,)), collection("outcomes", (selected_run,)))
+                    for outcome in run.outcomes:
+                        identity = outcome.attempt.state.identity
+                        key = (identity.run_id.value, identity.activity_id, identity.attempt)
+                        members = entries[("outcome-memberships", key)]
+                        history = chain(history, collection("outcome-memberships", key),
+                            *(widest_point("observation") for _ in members.keys))
+                    optional = next((entry, present) for role, entry, present in bounds.optional
+                        if role == "compensation-header" and entry.identity == (selected_run,))
+                    history = chain(history, guard, native(optional[0].widths, count=int(optional[1])))
+                    for record, program in run.compensations:
+                        history = chain(history, collection("compensation-steps", (program.program_id,)),
+                            point("compensation-action", (record.action_id,)), collection("compensation-bindings", (program.program_id,)))
+                    history = chain(history, collection("advancement-actions", (item.request.identity.session_id, selected_run)),
+                        collection("cancellation-actions", (item.request.identity.session_id, selected_run)))
+            plan, base, desired = original
+            comparison = chain(point("request", (request_id,)), point("run", (run_id,)), workspace_read,
+                guard, verify(request_id), retained(plan.base_graph_id, base.projection_id), retained(plan.desired_graph_id, desired.projection_id),
+                *(point("introduction", (workspace, receiver)) for receiver in origins))
+            after_ids = {binding.receiver_id for binding in after}
+            witnesses = [binding.receiver_id for binding in after if origins[binding.receiver_id].first_accepted_action_id is None]
+            witnesses += [binding.receiver_id for binding in before if binding.receiver_id not in after_ids]
+            witness = chain(*(chain(guard, q(1, 1, 1, 2), point("introduction", (workspace, receiver)),
+                q(1, 32, 1), point("introduction", (workspace, receiver))) for receiver in witnesses))
+            receipts, seen_requests = empty, set()
+            relationships = dict(bounds.receiver_receipts)
+            actions = {(origins[binding.receiver_id].first_accepted_action_id or prepared.action.action_id,
+                origins[binding.receiver_id].first_accepted_session_id or prepared.action.session_id) for binding in after}
+            for action_id, session_id in sorted(actions):
+                selected_request, selected_run, graph_id, projection_id = relationships[(action_id, session_id)]
+                receipts = receipts.then(point("acceptance-action", (action_id, session_id)))
+                if selected_request not in seen_requests:
+                    receipts = chain(receipts, point("request", (selected_request,)), verify(selected_request), collection("runs", (selected_request,)))
+                    seen_requests.add(selected_request)
+                receipts = chain(receipts, collection("events", (selected_run,)), collection("advancement-actions", (session_id, selected_run)),
+                    collection("bindings", (workspace, graph_id, projection_id)))
+            sources = chain(retained(plan.desired_graph_id, desired.projection_id), retained(plan.desired_graph_id, desired.projection_id),
+                *(origin_budget(origins[binding.receiver_id]) for binding in after), receipts,
+                *(origin_budget(origins[binding.receiver_id]) for binding in after))
+            body = chain(body, history, comparison, witness, sources, comparison, history)
+        # Every failed query can leave its full reservation outstanding before
+        # the one usable close. INERROR cleanup performs less work, never more.
+        publication = Budget(body.settled.plus(guard.settled), body.peak.plus(guard.peak))
+        return snapshot_budget.settled, future, publication
 
     def _verify_replay(self, result):
         header, action, event = self._receipt(result.workspace_id, result.desired_graph_revision)

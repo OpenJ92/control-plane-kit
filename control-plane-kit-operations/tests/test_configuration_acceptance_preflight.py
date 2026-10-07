@@ -1,10 +1,9 @@
-"""Local production-envelope edges; synthetic values never authorize a write.
+"""Isolated admission laws; synthetic budgets never authorize publication.
 
-These are isolated arithmetic/assembly tests, not owner-valid retained history
-or naturally reachable exhaustion. Real owner wiring has separate PostgreSQL
-positive and explicitly fault-injected refusal witnesses.
+Real source composition, cold-read fit and publication have separate owning
+PostgreSQL targets. These preserve the original three gate/order/one-over laws
+while discarding the retired fixed 8MiB and measured-proof-delta arithmetic.
 """
-from contextlib import ExitStack
 from dataclasses import replace
 from types import SimpleNamespace
 import unittest
@@ -13,96 +12,70 @@ from unittest import mock
 from control_plane_kit_operations.configuration_preparation import (
     ConfigurationEvidenceFootprint as Footprint, configuration_evidence_capacity,
 )
+from control_plane_kit_operations._configuration_preparation import _OrdinarySuffixBudget as Budget
 from control_plane_kit_operations.postgres import configuration_acceptance_store as acceptance
 
 
 class ConfigurationAcceptancePreflightTests(unittest.TestCase):
-    def exercise(self, *, owner=Footprint(7, 101, 11, 5), prior=Footprint(13, 211, 17, 3),
-                 proof=Footprint(5, 31, 3, 2), refuses=False):
-        # No database, UoW, owner-issued value, publication or persistence. The
-        # actual _preflight method assembles every envelope and makes decisions.
-        read = SimpleNamespace(used=prior, query=lambda *args, **kwargs: [(2, 2)])
-        action = SimpleNamespace(action_id="action", session_id="session", actor_id="actor",
-            idempotency_key="key", intent_fingerprint="fingerprint", payload={})
-        event = SimpleNamespace(event_id="event", run_id="run", activity_id=None,
-            evidence=SimpleNamespace(descriptor=lambda: {}))
-        plan = SimpleNamespace(plan_id="plan", session_id="session", desired_graph_id="graph")
-        run = SimpleNamespace(run_id="run")
-        request = SimpleNamespace(identity=SimpleNamespace(request_id="request"))
-        slots = tuple(("r", "n", artifact, "source", "act", 1, artifact,
-            "birth", "act", 1, artifact, "0" * 64) for artifact in ("a", "b"))
-        local = SimpleNamespace(action=action, event=event, plan=plan, run=run, request=request,
-            workspace=SimpleNamespace(workspace_id="workspace"), slots=slots,
-            desired_projection=SimpleNamespace(projection_id="projection", projection_digest="digest"),
-            evidence_read=read, proof_footprint=proof)
-        execution = SimpleNamespace(get_run=lambda _: run, get_request=lambda _: request)
-        history = SimpleNamespace(get_plan=lambda _: plan, get_session=lambda _: None)
-        store = acceptance.ConfigurationAcceptanceStore(None)
-        decisions = []
+    snapshot = Footprint(5, 71, 7, 3)
+    future = Budget(Footprint(7, 101, 11, 5), Footprint(9, 151, 13, 6))
+    publication = Budget(Footprint(11, 181, 15, 7), Footprint(13, 211, 17, 9))
+    prior = Footprint(13, 211, 17, 3)
 
-        def projection(*args):
-            read.used = read.used.plus(owner)
+    def exercise(self, *, snapshot=None, future=None, publication=None, prior=None, refuses=False):
+        snapshot = self.snapshot if snapshot is None else snapshot
+        future = self.future if future is None else future
+        publication = self.publication if publication is None else publication
+        prior = self.prior if prior is None else prior
+        prepared = SimpleNamespace(evidence_read=SimpleNamespace(used=prior))
+        store, decisions = acceptance.ConfigurationAcceptanceStore(None), []
 
-        def decide(footprint):
-            result = configuration_evidence_capacity(footprint)
-            decisions.append((footprint, result.value))
+        def decide(value):
+            result = configuration_evidence_capacity(value)
+            decisions.append((value, result.value))
             return result
 
-        with ExitStack() as stack:
-            for name, replacement in (("_EvidenceRead", lambda _: read),
-                    ("PostgresExecutionStore", lambda _: execution), ("PostgresActivityHistoryStore", lambda _: history)):
-                stack.enter_context(mock.patch.object(acceptance, name, replacement))
-            stack.enter_context(mock.patch.object(store, "_projection", projection))
-            stack.enter_context(mock.patch.object(store, "_ref", lambda *args: (b"abc", True, None, 7)))
-            stack.enter_context(mock.patch(
-                "control_plane_kit_operations.configuration_preparation.configuration_evidence_capacity", decide))
+        # Only isolate the already-derived values. Exercise the actual gates;
+        # no UoW, source proof, owner preparation or write is fabricated.
+        with mock.patch.object(store, "_publication_budgets", return_value=(snapshot, future, publication)), \
+                mock.patch("control_plane_kit_operations.configuration_preparation.configuration_evidence_capacity", decide), \
+                mock.patch.object(acceptance._EvidenceRead, "query", side_effect=AssertionError("admission issued SQL")):
             if refuses:
                 with self.assertRaises(acceptance._Capacity):
-                    store._preflight(local)
+                    store._preflight(prepared)
             else:
-                store._preflight(local)
+                store._preflight(prepared)
+        self.assertEqual(prepared.evidence_read.used, prior)
         return decisions
 
     def test_snapshot_exact_three_mib_then_one_byte_over(self):
-        # Two88-octet slots; two12-octet conservative ref rows. Baseline snapshot
-        # includes the conservative protective-read allowance (12,3296,40,8),
-        # not observed transport maxima. It is (45,532271,421,33), accounting
-        # to553215 bytes, independent of prior.
-        baseline = self.exercise()
-        self.assertEqual(baseline, [
-            (Footprint(114, 1056590, 1448, 67), "within-limits"),
-            (Footprint(552, 8396778, 8338, 148), "within-limits")])
-        exact = self.exercise(owner=Footprint(7, 2592614, 11, 5))
-        self.assertEqual(exact[0][0].accounted_bytes, 3145728 + 557056 + 1231)
-        self.assertEqual(len(exact), 2)
-        # Snapshot failure precedes BOTH production global-budget decisions.
-        self.assertEqual(self.exercise(owner=Footprint(7, 2592615, 11, 5), refuses=True), [])
+        exact = replace(self.snapshot, value_octets=self.snapshot.value_octets + 3145728 - self.snapshot.accounted_bytes)
+        self.assertEqual(len(self.exercise(snapshot=exact)), 4)
+        self.assertEqual(self.exercise(snapshot=replace(exact, value_octets=exact.value_octets + 1), refuses=True), [])
 
     def test_cold_consumer_record_and_byte_edges_use_actual_envelope(self):
-        for field, boundary, expected in (("records", 3987, "record-limit"),
-                ("value_octets", 15665745, "byte-limit")):
+        for field, limit, refusal in (("records", 4096, "record-limit"), ("value_octets", 16777216, "byte-limit")):
             with self.subTest(dimension=field):
-                proof = replace(Footprint(5, 31, 3, 2), **{field: boundary})
-                exact = self.exercise(proof=proof)
-                self.assertEqual(len(exact), 2)
-                self.assertEqual(exact[0][1], "within-limits")
-                self.assertEqual(exact[0][0].records if field == "records" else exact[0][0].accounted_bytes,
-                    4096 if field == "records" else 16777216)
-                over = self.exercise(proof=replace(proof, **{field: boundary + 1}), refuses=True)
-                self.assertEqual(len(over), 1, "consumer refusal must precede publication reserve")
-                self.assertEqual(over[0][1], expected)
+                peak = self.future.peak
+                extra = limit - (peak.records if field == "records" else peak.accounted_bytes)
+                peak = replace(peak, **{field: getattr(peak, field) + extra})
+                exact = Budget(self.future.settled, peak)
+                accepted = self.exercise(future=exact)
+                self.assertEqual(accepted[:2], [(exact.settled, "within-limits"), (exact.peak, "within-limits")])
+                denied = self.exercise(future=Budget(exact.settled, replace(peak, **{field: getattr(peak, field) + 1})), refuses=True)
+                self.assertEqual(len(denied), 2, "consumer peak refusal must precede publication gates")
+                self.assertEqual(denied[-1][1], refusal)
 
     def test_publication_record_and_byte_edges_include_prior_command_work(self):
-        for field, boundary, expected in (("records", 3557, "record-limit"),
-                ("value_octets", 8138697, "byte-limit")):
+        for field, limit, refusal in (("records", 4096, "record-limit"), ("value_octets", 16777216, "byte-limit")):
             with self.subTest(dimension=field):
-                prior = replace(Footprint(13, 211, 17, 3), **{field: boundary})
-                exact = self.exercise(prior=prior)
-                self.assertEqual(len(exact), 2)
-                self.assertEqual(exact[1][1], "within-limits")
-                self.assertEqual(exact[1][0].records if field == "records" else exact[1][0].accounted_bytes,
-                    4096 if field == "records" else 16777216)
-                over = self.exercise(prior=replace(prior, **{field: boundary + 1}), refuses=True)
-                self.assertEqual(len(over), 2)
-                self.assertEqual(over[0], exact[0], "prior work must not leak into cold-consumer snapshot")
-                self.assertEqual(over[1][1], expected)
+                combined = self.prior.plus(self.publication.peak)
+                extra = limit - (combined.records if field == "records" else combined.accounted_bytes)
+                prior = replace(self.prior, **{field: getattr(self.prior, field) + extra})
+                accepted = self.exercise(prior=prior)
+                self.assertEqual(accepted[-2:], [(prior.plus(self.publication.settled), "within-limits"),
+                    (prior.plus(self.publication.peak), "within-limits")])
+                denied = self.exercise(prior=replace(prior, **{field: getattr(prior, field) + 1}), refuses=True)
+                self.assertEqual(len(denied), 4)
+                self.assertEqual(denied[:2], accepted[:2], "command prior cannot affect the fresh native consumer")
+                self.assertEqual(denied[-1][1], refusal)
