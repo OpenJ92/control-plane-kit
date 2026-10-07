@@ -263,8 +263,9 @@ class EffectAttemptStartService:
                         configuration_preparation = evidence_contexts.enter_context(cleanup_store._start_scope(
                             unit_of_work, command, request, plan, guard, prefix))
                     else:
-                        configuration_preparation = stores.configuration_preparation._prepare(
-                            stores, command, request, run, plan, guard, event_kind)
+                        configuration_preparation = evidence_contexts.enter_context(
+                            stores.configuration_preparation._start_scope(
+                                unit_of_work, command, request, run, plan, guard, event_kind, prefix))
                 except (KeyError, ValueError, TypeError, AttributeError):
                     configuration_preparation = None
                 if configuration_preparation is None:
@@ -347,7 +348,10 @@ class EffectAttemptStartService:
                 permission_failed = False
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
-            evidence_contexts.close()
+            try:
+                evidence_contexts.close()
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
             unit_of_work.commit()
             return result
 

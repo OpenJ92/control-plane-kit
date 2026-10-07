@@ -375,6 +375,20 @@ class PostgresActivityHistoryStore:
         The caller validates session ownership and all original associations.
         LIMIT bounds returned material, not PostgreSQL's internal scan work.
         """
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("action_id", "session_id", "ordinal", "action_type", "actor_id", "payload",
+                "created_at", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "json" if name == "payload" else "int" if name == "ordinal"
+                else "time" if name == "created_at" else "text", 65536 if name == "payload" else 2048)
+                for name in names)
+            # Two candidates, not a collection's three-row overflow sentinel.
+            # The semantic consumer still rejects ambiguity after decoding.
+            rows = read.bounded_rows("cpk_operation_actions", columns,
+                "session_id=%s AND action_type=%s AND payload->>'desired_realized_projection_id'=%s",
+                (session_id, OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION.value,
+                    desired_projection_id), maximum=2, point=True)
+            return tuple(_action_record(row) for row in rows)
         rows = self._connection.execute(
             """
             SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
