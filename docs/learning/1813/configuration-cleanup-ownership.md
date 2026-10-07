@@ -2962,9 +2962,16 @@ statements)` order:
 
 Kepler independently passed source shape and focused slice evidence in
 [issue comment 6032699413](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6032699413).
-This is not full B1, package, merge or provider evidence. One preserved
-ordinary-start/transfer-reader regression gate is running separately; no full
-suite has been duplicated while acceptance/carry remains incomplete.
+This is not full B1, package, merge or provider evidence. The preserved
+ordinary-start/transfer-reader regression gate passed 29 tests in 229.398 seconds,
+followed by compile/import and script exit zero. It covers 13 ordinary owner,
+lifetime, alias and failure cases; five transfer reuse/current/v1 cases; and 11
+typed transfer/schema/negative proof cases. Log
+`/tmp/cpk-1945-start-regression.log`, SHA-256
+`7c47c2bdee7bb1709bb7abf1eefad43df6d8c933ce81eeabec765f2d197746bb`.
+The exact `cpk-1945-start-regression-postgres` container and
+`cpk-1945-start-regression` network were absent afterward. No full suite has
+been duplicated while acceptance/carry remains incomplete.
 
 ### Acceptance prerequisite topology
 
