@@ -716,3 +716,214 @@ history, never lawful cleanup or provider evidence. The corrected tests preserve
 the pending-commit boundary, fresh exclusion and transaction rollback. #1945 stays
 held until North accepts and merges the actual dependency; its separate return
 plan releases neither dependent implementation nor B2/C activation.
+## #1952 accepted-base law cards and publication-bound design worksheet
+
+Draft for exact interface review; no target or source implementation release.
+
+Base: accepted roadmap merge `637a8e91c76d00d42736f8ee04bae423a67cecca`, tree
+`85c1e0b5845256a33639c37a455fdb0d8e3bca19`. Source/test inspection uses the clean
+equivalent `/tmp/cpk-1950-ordinary-start-tail` at `8bcd7a64027bf8fe4b262d144d6b7ade378a0902`.
+The dedicated planning worktree is now `/tmp/cpk-1952-receiver-publication`, branch
+`codex/1952-receiver-publication-bounds`, verified directly at that accepted merge
+and tree with no source changes.
+Full immutable dependency evidence is the accepted #1950 Operations 2514, Core
+945+21 and locked-backend gate. Do not rerun the retired reference suite. B1's
+typed-transfer schema and source are not this child's base.
+
+### Governing behavioral law cards, extracted before interface design
+
+All paths below are in `control-plane-kit-operations/tests/`.
+
+| Test identities inspected | Classification and observable law | Negative cases / structural assumptions to discard |
+| --- | --- | --- |
+| `test_receiver_execution_scope_queries.py::test_shared_accounting_reads_small_runtime_wide_candidates_after_prior_transport`, `test_shared_exhausted_record_or_byte_allowance_refuses_before_candidate_transport` | Isomorphic: candidate work shares the existing ledger; prior charges survive; exhausted record/byte allowance executes no candidate SQL | Never reset the ledger or reserve from a new one |
+| Same file: `test_shared_full_shortened_prefix_refuses_before_duplicate_request_deduplication` | Strengthened in bound publication: two raw rows for one request consume two rows; a filled shortened prefix cannot establish completeness | Retain multiplicity before dedup, even when every row names one request |
+| Same file: `test_shared_4096_raw_rows_fit_across_prefixes_and_4097_refuse_before_dedup`, `test_filled_transport_reduced_prefix_refuses_even_at_nominal_raw_row_cap` | Isomorphic native-reader laws: aggregate raw prefix count 4096 is a semantic ceiling; 4097 refuses; a transport-reduced full prefix can refuse earlier | Do not equate nominal raw limit with guaranteed command-wide fit; do not replace raw count with distinct request count |
+| `test_receiver_execution_scope_row_budgets.py::test_8192_journal_events_fit_and_8193_refuse_without_partial_history` | Isomorphic native history law: complete 8192-event history, not truncated latest state; overflow refuses | Native standalone limits do not promise that three repeated publication traversals fit the separate 4096-record command ledger |
+| Same file: `test_256_original_runs_fit_and_257_refuse_without_latest_run_shortcut` | Isomorphic: all original/retry runs remain visible, including failed predecessors | No latest-run shortcut or own-run exclusion |
+| Same file: `test_attempts_and_independent_intents_share_2048_row_budget` | Strengthened at publication closure: attempt and independent intent rows share the same aggregate budget; an orphan intent remains discoverable without an attempt | Do not drive intent collection from attempts or dedup away a row |
+| Same file: `test_compensation_steps_and_bindings_consume_the_same_effect_budget` | Isomorphic: compensation steps/bindings share the effect-row budget | No separate per-table reset or omission of compensation history |
+| `test_receiver_execution_scope_transport.py::test_growth_after_length_probe_returns_bounded_unavailable` | Strengthened: same-UoW field growth after the actual size probe is guarded before full transport; refusal rolls back and original read still works | Use real SQL growth, not a mocked decoder verdict |
+| Same file: `test_cancel_action_payload_at_64k_fits_and_one_over_is_guarded_before_transport`, `test_oversized_original_plan_or_graph_never_reaches_python_as_a_full_cell` | Isomorphic: 64KiB action/1MiB document native caps and safe cells remain; one-over refuses | New publication bounds narrow transport without weakening native caps |
+| Same file: `test_distinct_near_cap_originals_refuse_before_aggregate_transport_overflow` | Isomorphic: distinct necessary descriptors aggregate; repeated aliases can use only real same-reader caches | No cross-reader cache discount or identity dedup standing in for actual work |
+| `test_receiver_acceptance_advancement.py::test_real_advancement_alone_creates_acceptance_from_assumed_completion`, `test_desired_omission_does_not_retire_but_real_accepted_teardown_does` | Strengthened: supported Initial acceptance and Teardown retirement reach the actual finish and commit exact own witnesses; legitimate command replay returns its original result | Desired selection alone does not accept/retire. Do not invent retained managed Update to obtain a positive |
+| Same file: `test_failed_or_incomplete_teardown_never_changes_current_or_retirement`, `test_missing_native_outcome_refuses_without_acceptance` | Isomorphic: success/own outcome required; incomplete/failed truth cannot publish or retire | Captured transport bounds are never an authority verdict |
+| Same file: `test_late_action_and_deferred_commit_failure_roll_back_acceptance_and_retirement`, `test_competing_advancements_have_one_atomic_acceptance_winner` | Strengthened: CAS, receipt records and witness writes roll back together; concurrent commands have one atomic winner | Preserve the real UoW commit boundary and its late database failures |
+| Same file: `test_witness_time_membership_drift_rolls_back_acceptance_and_retirement`, `test_coherent_witness_time_intent_material_change_rolls_back` | Strengthened: fresh checks after a witness detect membership and coherent same-width semantic changes | Bounds cannot cache permission or bypass final material/history validation |
+| `test_configuration_acceptance_preflight.py::test_snapshot_exact_three_mib_then_one_byte_over` | Strengthened: exact 3MiB material boundary, independent of command prior, refuses before global consumer/publication decisions | Discard old hardcoded 8MiB envelope numbers and mocked field layout, retain the boundary/order law |
+| Same file: `test_cold_consumer_record_and_byte_edges_use_actual_envelope`, `test_publication_record_and_byte_edges_include_prior_command_work` | Strengthened: future cold consumer uses its own fresh budget; publication includes all actual command prior; record/byte one-over refuses at the correct gate | Old F/Q arithmetic is not the new interface. Separate S and H explicitly |
+| `test_current_graph_advancement.py` replay/fence/lock/CAS tests (identities enumerated in source review) | Isomorphic: exact legitimate replay, worker/fence/lineage congruence, lifecycle guard then request/run/session/workspace order, unchanged intent conflict and one CAS winner | Reject stale prepared-bound credentials, not legitimate existing command replay |
+| New closure and whole-tail targets | New-law: exact finite role identity/width/key or candidate-multiset closure; expected own publication growth; independent physical accounting and failure peaks; strict context lifetime | No silent native fallback, synthetic permission, generic SQL registry or weakened unique-key collection law |
+
+Some governing tests are old established behavior, not frozen-package imports.
+Preserve their laws in the owning package; do not change their public reader
+semantics to make a new publication fixture pass.
+
+### Existing owners and proposed private interface
+
+The semantic owners stay unchanged: `_ExecutionScopeStorage` interprets receiver
+history, `ConfigurationAcceptanceStore` issues and guards the prepared receipt,
+receiver lifecycle storage owns witness mutation, and advancement composes them.
+
+Proposed methods on the existing acceptance store, names still subject to review:
+
+1. `_publication_scope(unit_of_work, guard)` establishes the private lifetime
+   after replay exit and lifecycle guard acquisition. It captures connection,
+   stores/UoW, active accounting/execution context and transaction identity.
+   The existing `_advancement_evidence` remains the outer shared ledger.
+2. Receiver preparation returns its semantic truth plus an immutable fixed-role
+   selection/transport seed. Selection must retain actual SQL widths, complete
+   keys/counts and raw candidate multiplicity, not only decoded semantic values.
+3. `_prepare(..., receiver_truth=...)` continues ordinary receipt semantics.
+   Capture the remaining exact point/collection roles from verified selected
+   truth under that same ledger. No phase is bound until capture is complete.
+4. `with_records(event, action)` retains the existing exact-record checks and
+   owner `_issued` replacement. Bind prospective transport shapes for only
+   those records and the planned witness fields; this does not fabricate a
+   persisted receipt or semantic history.
+5. `_preflight` binds the final closed transport contract and computes source S/H
+   for the complete suffix. The prepared value carries immutable bounds; the
+   existing store owns active/spent state and requires its current `_issued`.
+6. Actual writes/readback and all receiver finish calls run under that contract.
+   Publication-stage membership distinguishes existing rows from the exact
+   generated additions. Unanticipated selectors, keysets, widths or child
+   relationships refuse before an unbounded read.
+7. Scope exit validates and invalidates credentials, resets context in `finally`
+   and closes BEFORE `unit_of_work.commit()` sets `_commit_requested`. Do not
+   append this scope to the existing outer `with` and close it after commit.
+
+No new owner class/service is proposed. A distinct private acceptance context
+and immutable bounds value may live with the existing prepared acceptance
+support. Shared fixed leaf readers may dispatch its data, never cleanup/start
+issuance credentials. All reads still join the same accounting object. Legitimate
+replay remains on its existing path before new issuance.
+
+Foreign UoW/stores/connection/accounting/context/transaction/guard, pending commit,
+spent state, reused original prepared value after `with_records`, and missing
+owner issuance must refuse. No context or proof cache survives command exit.
+
+### Closed role worksheet
+
+`k` is the exact number of columns in the cited existing declaration; `w` is the
+sum of captured per-column SQL octet ceilings, each no larger than its native
+cap. Forecasts use the rolewise maximum for reachable aliases, while reads keep
+exact per-selector membership/widths. `n` counts complete selected rows before
+any semantic deduplication. All roles are fixed package branches, not registered
+SQL supplied by callers.
+
+| Family | Selector and complete identity | Existing declaration / transport behavior |
+| --- | --- | --- |
+| candidate prefix | workspace/runtime/kind/node after existing normalization; raw projected `(request_id,workspace_id,valid)` multiset | Existing three-column candidate SQL; preserve duplicate multiplicity and native raw/request ceilings. Separate candidate contract, not `_PhaseCollection` with weakened uniqueness |
+| session-workspace | session ID, unique point | `_ExecutionScopeStorage.originals`, one workspace column |
+| request | request ID, unique point | `_REQUEST`, 15 columns |
+| scope-header | request ID, unique point | workspace/session/plan/count/digest, five columns |
+| plan / graph / projection | their exact IDs, strict parent children | `_PLAN` 10, `_GRAPH` 7, `_PROJECTION` 9; all non-null/base-derived projection alternatives selected before binding |
+| legacy optional projection | exact deterministically derived identity when the historical plan projection is null; zero/one persisted row | Existing `originals` permits absence and returns the derived in-memory identity projection without writing. Preserve that absence; do not require a synthetic persisted projection or backfill |
+| scopes | request ID; complete scope ordinals | `_SCOPE`, six columns |
+| runs | request ID; complete run IDs/attempt order | `_RUN`, ten columns; global 256 across the reader |
+| events | run ID; complete event identities/ordinal order | `_EVENT`, six columns; global 8192; expected own generated event explicit |
+| attempts / intents / outcomes | run ID; complete `(activity_id,attempt)` keys independently | Existing owner `_COLUMN_NAMES`; attempts/intents retain shared 2048 budget, full native preimage caps, no attempt-driven intent shortcut |
+| outcome memberships / observations | exact attempt + position; exact observation/workspace point | Three membership columns, owner `_OBSERVATION_COLUMNS`; expected count and original membership laws preserved |
+| compensation header | run ID; zero or one complete program | Fixed 17 columns; absence is evidence. Use an explicit zero/one collection/optional point contract, not `_capture_point`'s required-one assumption |
+| compensation steps / bindings / action | exact program; positions; exact original action | Existing ten step/eight binding columns and `_ACTION`; effect budget remains shared |
+| advancement / cancellation actions | exact session/run; complete zero/one action set | `_ACTION`, nine columns; both remain independently read; exact own generated advancement action explicit |
+| receiver material | exact workspace/graph/projection binding set; node/socket keys | Existing raw/decoded graph/projection and `_BIND_COLUMNS`; strict origin and introduction child closure |
+| origins / origin actions | workspace/receiver; exact original action/session/workspace | Existing introduction columns and joined action/session declaration; j=2 for actual origin-action join |
+| first-acceptance action and children | action/session, then exact request/plan/runs/events/advancement-actions/bindings | Existing `execution._receiver_acceptance_evidence`; old and prospective own receipts selected |
+| configuration header/pair/slots | workspace/revision; own action/event; complete material slot keys | Existing acceptance declarations, including exact prospective header/pair/slots generated before CAS; receipt owner remains semantic authority |
+
+Optional/empty roles need presence-aware capture; both absent compensation header
+and absent legacy identity projection are supported. All native absent-row checks
+remain executable. Candidate capture cannot use the unique-key capture helper.
+Unannotated receiver `_Transport.read` calls must not silently retain a native
+fallback while acceptance bounds are active; annotate the fixed missing roles
+above and reject absent phase identity in that command's receiver transport.
+Native unrelated readers outside this publication context retain their contracts.
+
+### Positioned source-derived S/H expression
+
+Reuse the existing sequential law `(S1,H1).then(S2,H2) =
+(S1+S2, max(H1,S1+H2))` componentwise. Each query includes the remaining close
+reservation in H; failed reservations remain charged. Denote a query by
+`Q(r,b,k,j)` and transaction guard by `G=Q(1,20,1,1)`.
+
+A captured required point is its actual guard plus `Q(1,12k,k,j)` followed by
+`Q(1,w+1,k+1,j)`. A captured collection observes n+1 sentinel rows, settles at
+most n, and includes length/value queries as the existing reader actually
+executes them. Empty collections still perform their sentinel length observation.
+Optional points must reserve and reject unexpected presence. Candidate prefixes
+use their existing guarded projection with n+1 sentinel reservation and exact
+raw multiset comparison, retaining all three cells and the actual identity
+multiplier. Expected publication additions change n/w only for the exact own
+roles. SQL size/capture work before admission remains prior work.
+
+Define `HISTORY` in source order: lifecycle guard; every normalized raw candidate
+prefix; then for every selected request: request, original session/plan/two graph
+and projection sides, scope header/scopes/runs; then for every selected run:
+events, independent attempts/intents/outcomes, each outcome's memberships and
+observation points, compensation header and conditional steps/action/bindings,
+advancement actions and cancellation actions. Preserve actual per-instance
+cache behavior, or conservatively assume misses within the closed set. Do not
+share caches between HISTORY instantiations.
+
+Define `ORIGINAL_RECEIPTS`: a third fresh receiver storage, each distinct
+first-acceptance action and its exact child closure; request/verified material/
+complete runs per distinct request; selected run events and advancement actions;
+complete desired bindings. Its cache discounts apply only within that call.
+
+Define `FINISH` in the actual order:
+
+1. First HISTORY (including actual tentative own event/action).
+2. First request/run/workspace/material/bindings/origin comparison block.
+3. Each planned witness: guard, action/session existence query, origin point,
+   conditional update-returned receiver identity, origin readback.
+4. `_receiver_sources`: both retained material sides, current and desired origin
+   traversals, and the complete ORIGINAL_RECEIPTS block.
+5. Second truth/material/binding/origin comparison block.
+6. Second independent HISTORY, final semantic validation, then owner close.
+
+Meter witness existence and update in their existing owner. Existence transports
+one Boolean but joins action/session, so its identity multiplier is explicit;
+the update transports one bounded receiver ID. An idempotent witness branch
+still has its preceding reads; a write branch reserves its return row and reread.
+
+The whole ordinary publication suffix is:
+
+`guarded CAS -> guarded event insert -> guarded action insert -> guarded receipt
+header/slot inserts and actual readback -> FINISH -> scope close`.
+
+Each of the four prepared guards includes lifecycle G, fresh workspace/request/
+run and current-slot exclusion/disposition checks. CAS additionally performs
+three non-null projection-ID points (`N(1,2048)` each), UPDATE RETURNING 1 and
+workspace readback. Event/action/header and each slot INSERT RETURNING 1 are
+already tracked, not ordinary raw-W precharges. Receipt readback transports the
+actual header/pair/full slot manifest and preserves ordinary original-source
+semantics. Zero receiver material makes FINISH empty, not the other suffix work.
+
+The remaining exact primitive expansion must enumerate workspace/receipt guard
+native columns, receipt readback/cache alternatives, all receiver material/origin
+alias multiplicities and exceptional cleanup/close positions. This draft is not
+a completed numeric forecast or fit claim. Source-derived future cold-consumer
+S/H and the separate 3MiB snapshot must also retain their existing domain/order
+laws; no old 8MiB/130+c constant is accepted as evidence.
+
+### Target interface and unresolved review points
+
+Use real supported Initial/Teardown owners for positives; existing PostgreSQL
+wire observers for record/byte/cell/statement and reservation-peak evidence; real
+same-UoW mutations/trigger failures for negatives. Synthetic prior-pressure and
+pure composition boundaries remain separately labeled. No generic harness,
+provider effects, new schema, managed Update or transfer producer is introduced.
+
+Before target writing, settle: exact immutable selection capture representation
+and how actual SQL widths are retained; fixed optional/empty role dispatch;
+candidate multiset shape; membership transition for prospective own publication;
+complete primitive expansion; supported-positive fit versus conservative alias
+upper bounds. Any previously successful bounded-domain narrowing must be
+explicitly disposed of before source implementation. B1 transfer costs return
+only after this prerequisite passes its own review and gates.
+
+Security/data/history: bounds only narrow transport, all permission and original
+history checks remain fresh; no new secret exposure or external mutation. All
+tentative pointer, event, action, receipt/slots and witness writes roll back as
+one existing UoW. Legitimate replay remains unchanged; bound credentials expire.
