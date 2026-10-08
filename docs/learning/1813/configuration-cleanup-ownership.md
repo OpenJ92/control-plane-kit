@@ -4876,3 +4876,36 @@ uncertain neighbors stay protective; retries follow original idempotency.
 External administrators remain outside CPK's fence. Full candidate package and
 locked-backend acceptance, independent whole-PR review and North's merge/D1921
 handoff remain required; focused evidence alone releases no live deployment.
+
+#### First full C validation and historical reader correction
+
+The first automatic full Operations gate at candidate `bbfafcd8` (tested merge
+`91cb34fd`) ran 2631 tests in 6627.013s and ended with one failure and one error.
+The [terminal record](https://github.com/OpenJ92/control-plane-kit/pull/1956#issuecomment-6068757605)
+preserves the exact failures and source coordinates. The genuine unprofiled64
+boundary, all four historical ownership methods above, genuine C65 growth and
+producer/departure cleanup passed individually. This supersedes their pending
+runtime status above without claiming whole-suite or compilation/import success.
+
+Both failures came from v1 historical premises: the snapshot-coherence test's
+concurrent profiled acceptance now transfers its claims, so a fresh v1 cleanup
+inspection cannot return its old digest-shaped result; retained-growth setup
+likewise transfers before the first recorded v1 cleanup. Kepler's
+[independent review](https://github.com/OpenJ92/control-plane-kit/pull/1956#issuecomment-6068754986)
+confirmed that the intended laws require explicit pre-C outstanding claims.
+The correction uses the existing counted/restored historical prefix only around
+the concurrent snapshot acceptance, initial growth acceptance and each later
+profiled growth acceptance. Real acceptance/receipt and snapshot owners still
+run. Departure, strict recorded closure, all rollback/reentry assertions,
+264 closed plus 8 active claims, new incarnations and indexed discovery remain
+unchanged. Production, shared fixtures and limits are unchanged.
+
+This is historical reader/discovery evidence, not current producer growth or
+provider deletion. The [focused owning two-method gate](https://github.com/OpenJ92/control-plane-kit/pull/1956#issuecomment-6068912280)
+at `2138551a` passed
+2 tests in 365.069s, package integrity, compilation/import and exit0. Named
+test resources were verified absent. Retained growth observed 264 closed and
+8 active claims, both active-slot indexes and constant empty discovery cost.
+The subsequent automatic full gates remain required before C acceptance.
+There is no new security surface, credential handling, provider call or durable
+production mutation in this correction.
