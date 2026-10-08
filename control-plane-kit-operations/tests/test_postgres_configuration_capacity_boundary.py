@@ -167,10 +167,11 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
         command = self.carry.prepare("extra", "graph-extra", StartRuntime(RuntimeTarget("runtime-b")),
             graph=self.carry.graph.add_runtime(extra.runtimes["runtime-b"]))
         revision = self.carry.original_acceptance.desired_graph_revision
-        # Only slot PK names change. Real receipt/source/birth/outcome FKs and
-        # the genuine header/count/digest survive; this is invalid history.
+        # Only slot PK node labels change. Artifact/source equality, all real
+        # receipt/source/birth/outcome FKs and the genuine header/count/digest
+        # survive; this is deliberately invalid history, not a producer claim.
         self.base.connection.execute("INSERT INTO cpk_configuration_accepted_slots "
-            "SELECT workspace_id,pinned_revision,runtime_id,node_id,'copied-' || n,source_run_id,"
+            "SELECT workspace_id,pinned_revision,runtime_id,'copied-' || n,artifact_id,source_run_id,"
             "source_activity_id,source_attempt,source_artifact_id,birth_run_id,birth_activity_id,"
             "birth_attempt,birth_artifact_id,full_ref_digest FROM cpk_configuration_accepted_slots "
             "CROSS JOIN generate_series(1,256) n WHERE pinned_revision=%s", (revision,))

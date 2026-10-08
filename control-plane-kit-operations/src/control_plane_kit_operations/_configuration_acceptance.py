@@ -21,6 +21,8 @@ class _PublicationReadBounds:
     published: tuple = ()
     proof_shapes: tuple = ()
     receiver_receipts: tuple = ()
+    transfer_dependencies: tuple = ()
+    invocation_members: tuple = ()
 
 
 def _require_publication_proof(read, family, key):

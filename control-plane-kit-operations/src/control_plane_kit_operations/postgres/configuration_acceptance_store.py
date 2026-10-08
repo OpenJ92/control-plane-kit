@@ -8,6 +8,7 @@ import json
 import rfc8785
 
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.planning import ActivityId, StartNode, ReconcileNode
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import (
@@ -17,18 +18,19 @@ from control_plane_kit_operations._configuration_acceptance import (
 )
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting, _ACCOUNTING, _execution_context
 from control_plane_kit_operations.configuration_preparation import (
-    ConfigurationAcceptedBinding, ConfigurationCurrentEvidence, _ref as _validate_ref,
+    ConfigurationAcceptedBinding, ConfigurationCurrentEvidence, ConfigurationAcceptedTransferRecord,
+    _ref as _validate_ref,
 )
 from control_plane_kit_operations.revision_history import historical_advancement
 from control_plane_kit_operations.records import OperationsRecordError
-from .configuration_evidence import _EvidenceRead, _Unavailable, _Capacity
+from .configuration_evidence import _EvidenceRead, _Unavailable, _Capacity, _joined_read
 from .activity_history import PostgresActivityHistoryStore, _action_record
 from .execution import PostgresExecutionStore, _activity_event
 from .graph_store import (
     PostgresGraphTopologyStore, PostgresRealizedGraphProjectionStore, PostgresWorkspaceStore,
     _read_workspace_initialization,
 )
-from .configuration_preparation_store import _SELECT as _REF_SELECT, _decode_ref, _decode
+from .configuration_preparation_store import _SELECT as _REF_SELECT, _decode_ref, _decode, _paired_disposition
 from .effect_outcome_store import EffectAttemptOutcomeStore
 
 
@@ -42,6 +44,11 @@ _SLOT = ("runtime_id", "node_id", "artifact_id", "source_run_id", "source_activi
     "source_artifact_id", "birth_run_id", "birth_activity_id", "birth_attempt", "birth_artifact_id", "full_ref_digest")
 _REF_KEY_COLUMNS = (("run_id", "text", 2048), ("activity_id", "text", 2048),
     ("attempt", "int", 16), ("artifact_id", "text", 2048))
+_TRANSFER_COLUMNS = (("run_id", "text", 200), ("activity_id", "text", 200), ("attempt", "int", 10),
+    ("artifact_id", "text", 63), ("workspace_id", "text", 128), ("allocation_id", "text", 128),
+    ("runtime_id", "text", 128), ("node_id", "text", 128), ("ref_digest", "text", 64),
+    ("request_fingerprint", "text", 64), ("selection_fingerprint", "text", 64),
+    ("outcome_fingerprint", "text", 64), ("acceptance_revision", "int", 16))
 
 
 def _membership_digest(slots):
@@ -142,6 +149,8 @@ class ConfigurationAcceptanceStore:
         self._publication_candidates = {}
         self._publication_proof_shapes = {}
         self._publication_receiver_receipts = {}
+        self._publication_transfer_dependencies = {}
+        self._publication_invocation_members = {}
         self._publication_active = True
         self._issued = None
         token = _PUBLICATION_SCOPE.set(self)
@@ -183,6 +192,8 @@ class ConfigurationAcceptanceStore:
             self._publication_candidates = {}
             self._publication_proof_shapes = {}
             self._publication_receiver_receipts = {}
+            self._publication_transfer_dependencies = {}
+            self._publication_invocation_members = {}
             _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
@@ -193,6 +204,105 @@ class ConfigurationAcceptanceStore:
                 or prepared.stores is not self._publication_stores or prepared.guard is not self._publication_guard
                 or prepared.stores.connection is not self._connection):
             raise OperationsRecordError("advancement requires owner-issued preparation")
+
+    @_closed_evidence
+    def _accepted_transfer(self, read, key, ref, revision):
+        """Own successful completion and original receipt; never current permission."""
+        accounting = _ACCOUNTING.get()
+        if (accounting is None or not accounting.active or read.accounting is not accounting
+                or read.connection is not self._connection or accounting.execution_context != _execution_context()
+                or type(key) is not tuple or len(key) != 4
+                or type(revision) is not int or not 0 <= revision <= 9007199254740991):
+            raise _Unavailable
+        _validate_ref(ref)
+        identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+        if key[3] != ref.artifact_id:
+            raise _Unavailable
+        paired = _paired_disposition(read, key, ref)
+        if paired.kind != "accepted-current" or paired.acceptance_revision != revision:
+            raise _Unavailable
+        digest = sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
+        memo = ("configuration-accepted-transfer", *key, ref.workspace_id, ref.allocation_id, digest, revision)
+        _require_publication_proof(read, "sources", memo)
+        if memo in read.sources:
+            return read.sources[memo]
+        rows = read.bounded_rows("cpk_configuration_claim_transfers", _TRANSFER_COLUMNS,
+            "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key)
+        if len(rows) != 1:
+            raise _Unavailable
+        row = rows[0]
+        if (row[:9] != (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id, digest)
+                or row[12] != revision):
+            raise _Unavailable
+        from .configuration_completion_store import ConfigurationCompletionStore
+        completion = ConfigurationCompletionStore(self._connection)._get(identity, read)
+        if (completion is None or completion.identity != identity or completion.workspace_id != ref.workspace_id
+                or row[9:12] != (completion.request_fingerprint, completion.selection_fingerprint,
+                    completion.outcome_fingerprint)):
+            raise _Unavailable
+        original = self._ref(read, key)
+        evidence = _decode(original, read)
+        if evidence.ref != ref:
+            raise _Unavailable
+        source = evidence.source
+        EffectAttemptOutcomeStore(self._connection)._configuration_success(source, read)
+        header, _, _, plan, request, run, material = self._receipt_context(ref.workspace_id, revision, read)
+        activity = plan.plan.activity(ActivityId(identity.activity_id))
+        if (run.run_id != identity.run_id.value or source.identity != identity
+                or source.source.request_id != request.identity.request_id
+                or source.source.workspace_id != request.identity.workspace_id
+                or source.source.plan_id != plan.plan_id
+                or (source.source.base_graph_id, source.source.desired_graph_id) != (plan.base_graph_id, plan.desired_graph_id)
+                or header["pinned_revision"] != revision
+                or type(activity.operation) not in (StartNode, ReconcileNode) or activity.operation != source.operation):
+            raise _Unavailable
+        slots = read.bounded_rows("cpk_configuration_accepted_slots", _columns(_SLOT),
+            "(workspace_id,pinned_revision,runtime_id,node_id,artifact_id)=(%s,%s,%s,%s,%s)",
+            (ref.workspace_id, revision, ref.runtime_id, ref.node_id, ref.artifact_id))
+        if len(slots) != 1 or slots[0][3:7] != key:
+            raise _Unavailable
+        if self._material_ref(read, slots[0], material, ref.workspace_id) != original:
+            raise _Unavailable
+        result = ConfigurationAcceptedTransferRecord(identity, ref, revision, *row[9:12])
+        _observe_publication_proof(read, "transfer", memo, row)
+        _observe_publication_proof(read, "transfer-slot", memo, slots[0])
+        owner = _PUBLICATION_SCOPE.get()
+        if owner is not None:
+            # Derive the closure from verified objects, including dependencies
+            # that an earlier root already populated on this exact reader.
+            owner._capture_transfer_dependencies(read, memo, ((identity, ref.artifact_id),),
+                tuple(dict.fromkeys((("cpk_effect_attempt_intents", identity),
+                    ("cpk_effect_attempt_outcomes", identity),
+                    ("cpk_activity_events", completion.original_event_id),
+                    ("cpk_activity_events", completion.direct_event_id),
+                    ("configuration-receipt-context", ref.workspace_id, revision),
+                    ("configuration-source-plan", ref.workspace_id, plan.plan_id)))))
+        read.sources[memo] = result
+        return result
+
+    def _capture_transfer_dependencies(self, read, memo, refs, sources):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        _require(self._issued is None or self._issued.read_bounds is None)
+        _require(all(key in read.refs for key in refs) and all(key in read.sources for key in sources))
+        captured = self._publication_transfer_dependencies.setdefault(read, {})
+        dependencies = refs, sources
+        _require(memo not in captured or captured[memo] == dependencies)
+        captured[memo] = dependencies
+
+    def _freeze_transfer_dependencies(self, read, proof_keys):
+        from .configuration_cleanup_read_ceilings import _require
+        captured = self._publication_transfer_dependencies.get(read, {})
+        frozen = []
+        for memo in proof_keys[1]:
+            if memo[0] != "configuration-accepted-transfer":
+                continue
+            _require(memo in captured and memo in read.sources)
+            refs, sources = captured[memo]
+            _require(all(key in proof_keys[0] and key in read.refs for key in refs)
+                and all(key in proof_keys[1] and key in read.sources for key in sources))
+            frozen.append((memo, refs, sources))
+        return tuple(frozen)
 
     def _require_proof_cache(self, read, family, key):
         from .configuration_cleanup_read_ceilings import _require
@@ -209,7 +319,17 @@ class ConfigurationAcceptanceStore:
             return
         _require(family == "sources" and key[0] in (
             "cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
-            "configuration-receipt-context", "configuration-original-slot"))
+            "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
+            "configuration-accepted-transfer"))
+        if key[0] == "configuration-accepted-transfer":
+            _require(key in prepared.read_bounds.proof_keys[1] and key in read.sources)
+            dependencies = {memo: (refs, sources)
+                for memo, refs, sources in prepared.read_bounds.transfer_dependencies}
+            _require(key in dependencies)
+            refs, sources = dependencies[key]
+            _require(all(item in prepared.read_bounds.proof_keys[0] and item in read.refs for item in refs)
+                and all(item in prepared.read_bounds.proof_keys[1] and item in read.sources for item in sources))
+            return
         own_context = ("configuration-receipt-context", prepared.workspace.workspace_id,
             prepared.plan.desired_graph_revision)
         own_plan = ("configuration-source-plan", prepared.workspace.workspace_id, prepared.plan.plan_id)
@@ -239,10 +359,38 @@ class ConfigurationAcceptanceStore:
         from .configuration_cleanup_read_ceilings import _require
         self._require_publication(read=read)
         _require(self._issued is None or self._issued.read_bounds is None)
-        _require(family in ("ref", "source") and len(row) == (19 if family == "ref" else 17))
+        if family == "invocation":
+            _require(type(row) is tuple and 1 <= len(row) <= 32
+                and type(key) is EffectAttemptIdentity)
+            identity = (key.run_id.value, key.activity_id, key.attempt)
+            _require(all(len(value) == 19 and value[:3] == identity and type(value[3]) is str for value in row))
+            members = tuple(value[3] for value in row)
+            _require(len(set(members)) == len(members))
+            previous = self._publication_invocation_members.get(key)
+            _require(previous is None or previous == members)
+            self._publication_invocation_members[key] = members
+            for value in row:
+                # Raw completion siblings are metadata, never point-ref cache.
+                self._observe_proof_shape(read, "invocation-ref", (key, value[3]), value)
+            return
+        columns = None
+        if family == "transfer":
+            columns = _TRANSFER_COLUMNS
+        elif family == "completion":
+            from .configuration_completion_store import _COLUMNS
+            columns = _COLUMNS
+        elif family == "invocation-ref":
+            from .configuration_preparation_store import _PHASE_REF_COLUMNS
+            columns = _PHASE_REF_COLUMNS
+        elif family == "transfer-slot":
+            columns = _columns(_SLOT)
+        _require(family in ("ref", "source") or columns is not None)
+        _require(len(row) == (len(columns) if columns is not None else 19 if family == "ref" else 17))
         _require(all(value is None or type(value) in (str, bytes, bool, int) for value in row))
         widths = tuple(0 if value is None else len(value) if type(value) is bytes else 1 if type(value) is bool
             else len(str(value).encode("utf-8")) for value in row)
+        if columns is not None:
+            _require(all(width <= cap for width, (_, _, cap) in zip(widths, columns, strict=True)))
         previous = self._publication_proof_shapes.get((family, key))
         if previous is not None:
             widths = tuple(max(a, b) for a, b in zip(previous, widths, strict=True))
@@ -465,7 +613,8 @@ class ConfigurationAcceptanceStore:
             tuple((role, value) for (role, _), value in collections.items()),
             tuple((role, value, present) for (role, _), (value, present) in optional.items()),
             tuple(self._publication_candidates.values()), tuple(published),
-            self._capture_native_proof_shapes(read, proof_keys), tuple(receiver_receipts.items()))
+            self._capture_native_proof_shapes(read, proof_keys), tuple(receiver_receipts.items()),
+            self._freeze_transfer_dependencies(read, proof_keys), tuple(self._publication_invocation_members.items()))
 
     def _bind_records(self, prepared, event, action):
         self._require_issued(prepared)
@@ -484,7 +633,8 @@ class ConfigurationAcceptanceStore:
         read = prepared.evidence_read
         proof_keys = (tuple(read.refs), tuple(key for key in read.sources
             if key[0] in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
-                "configuration-receipt-context", "configuration-original-slot")))
+                "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
+                "configuration-accepted-transfer")))
         bounds = self._freeze_publication(prepared, event, action, proof_keys)
         bound = replace(prepared, event=event, action=action, read_bounds=bounds)
         self._issued = bound
@@ -549,6 +699,20 @@ class ConfigurationAcceptanceStore:
         return original
 
     def _prove_use(self, read, row, plan, request, run):
+        owner = _PUBLICATION_SCOPE.get()
+        prepared = self._issued if owner is None else owner._issued
+        bound_readback = prepared is not None and prepared.read_bounds is not None
+        if bound_readback:
+            # The active owner governs even a fresh store using its reader.
+            # Check the outer command before historical source substitution.
+            if owner is not self:
+                raise _Unavailable
+            self._require_issued(prepared)
+            self._require_publication(read=read)
+            if (read is not prepared.evidence_read or not self._publication_published
+                    or row not in prepared.slots or plan != prepared.plan
+                    or request != prepared.request or run != prepared.run):
+                raise _Unavailable
         original = self._ref(read, row[3:7])
         evidence = _decode(original, read)
         root = self._ref(read, row[7:11])
@@ -556,6 +720,14 @@ class ConfigurationAcceptanceStore:
         if (root[16] is not True or birth.identity != birth.birth_identity
                 or birth.ref != evidence.ref or birth.identity != evidence.birth_identity):
             raise _Unavailable
+        # A newer outstanding use does not erase its direct birth's transfer
+        # provenance. Each distinct original must prove its own disposition.
+        for key in dict.fromkeys((tuple(row[3:7]), tuple(row[7:11]))):
+            disposition = _paired_disposition(read, key, evidence.ref)
+            if bound_readback and disposition.kind == "cleanup-closed":
+                raise _Unavailable
+            if disposition.kind == "accepted-current":
+                self._accepted_transfer(read, key, evidence.ref, disposition.acceptance_revision)
         source = evidence.source
         if source.identity.run_id.value != run.run_id:
             plan, request, run = self._original_use(read, row, source)
@@ -780,6 +952,9 @@ class ConfigurationAcceptanceStore:
         birth = _decode(row, read)
         if row[16] is not True or birth.identity != birth.birth_identity or birth.ref != exact_ref:
             raise _Unavailable
+        disposition = _paired_disposition(read, tuple(row[:4]), exact_ref)
+        if disposition.kind == "accepted-current":
+            self._accepted_transfer(read, tuple(row[:4]), exact_ref, disposition.acceptance_revision)
         # Known pending/failed/staged allocations need no successful outcome
         # merely to be observed absent. Their reciprocal claim remains protective.
         return birth
@@ -864,12 +1039,12 @@ class ConfigurationAcceptanceStore:
             row = (*slot, *candidates[0], *_ref_key(birth, birth_artifact), original[9])
             self._material_ref(read, row, material, workspace.workspace_id)
             slots.append(row)
-        self._require_current_slots(read, slots)
         # Snapshot material is admitted before provenance work; source/slot
         # consumer size is preflighted again with the complete generated pair.
         if read.used.accounted_bytes - snapshot_start > 3 * 1024 * 1024:
             raise _Capacity
         proof_start = read.used
+        self._require_current_slots(read, slots)
         for row in slots:
             self._prove_use(read, row, plan, request, run)
         from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
@@ -887,7 +1062,15 @@ class ConfigurationAcceptanceStore:
             row = self._ref(read, slot[3:7])
             _, ref, _, _ = _decode_ref(row)
             _require_unreserved(read, ref)
-            _paired_disposition(read, tuple(row[:4]), ref, protective=True)
+            for key in dict.fromkeys((tuple(slot[3:7]), tuple(slot[7:11]))):
+                original = self._ref(read, key)
+                if _decode_ref(original)[1] != ref:
+                    raise _Unavailable
+                disposition = _paired_disposition(read, key, ref)
+                if disposition.kind == "accepted-current":
+                    self._accepted_transfer(read, key, ref, disposition.acceptance_revision)
+                elif disposition.kind != "outstanding":
+                    raise _Unavailable
 
     @_closed_evidence
     def _require_current(self, prepared):
@@ -1030,11 +1213,66 @@ class ConfigurationAcceptanceStore:
             joined = q(1, 80032, 17, 3, settled=F(3, sum(widths), 17, 1), cleanup=F(0, 0, 0, 2))
             return chain(savepoint, joined, savepoint)
 
+        def outcome_budget(identity):
+            if identity in outcome_memo:
+                return empty
+            result = native(proof_shapes[("outcome", identity)])
+            row = read.sources[("cpk_effect_attempt_outcomes", identity)][0]
+            for event_id in (row[15], row[18]):
+                if event_id not in event_memo:
+                    result = result.then(native(proof_shapes[("event", event_id)]))
+                    event_memo.add(event_id)
+            outcome_memo.add(identity)
+            return result
+
+        transfers = {ref_key(memo[1:5]): memo for memo, _, _ in bounds.transfer_dependencies}
+        invocation_members, transfer_memo = dict(bounds.invocation_members), set()
+        native_pair = q(1, 855, 11, 2)
+        native_accepted = native_pair.then(q(1, 1, 1, 4))
+        sibling_branches = (native_pair, native_accepted, native_pair.then(q(1, 1, 1, 3)))
+        # Sibling disposition is not retained as authority. Bound its finite
+        # structural branches at every repeated completion position instead.
+        def sibling_cost(kind):
+            return F(*(max(getattr(getattr(branch, kind), field) for branch in sibling_branches)
+                for field in ("records", "value_octets", "scalar_markers", "statements")))
+
+        sibling_disposition = Budget(sibling_cost("settled"), sibling_cost("peak"))
+
+        def transfer_budget(key):
+            memo = transfers[key]
+            result = native_accepted  # Fresh D also runs on every warm T hit.
+            if memo in transfer_memo:
+                return result
+            identity, _ = key
+            members = invocation_members[identity]
+            widths = tuple(proof_shapes[("invocation-ref", (identity, artifact))] for artifact in members)
+            invocation = q(33, 33 * 32768, 19, 2,
+                settled=F(2 * len(members), sum(map(sum, widths)), 19 * len(members), 1))
+            result = chain(result, native(proof_shapes[("transfer", memo)]),
+                native(proof_shapes[("completion", identity)]), invocation,
+                *(source_budget(identity) for _ in members),
+                *(sibling_disposition for _ in members), source_budget(identity), outcome_budget(identity),
+                ref_budget(key), source_budget(identity), outcome_budget(identity))
+            # Completion/I repeat per cold root; their raw siblings never
+            # populate ref_memo, and there is no completion or slot memo.
+            context_key = (memo[5], memo[-1])
+            header, _, _, plan, _, _, _ = read.sources[("configuration-receipt-context", *context_key)]
+            if context_key not in context_memo:
+                result = result.then(context(header, plan, captured=False))
+                context_memo.add(context_key)
+                plan_memo.add((header["workspace_id"], plan.plan_id))
+            result = result.then(native(proof_shapes[("transfer-slot", memo)]))
+            transfer_memo.add(memo)
+            return result
+
         snapshot_budget = chain(context(own_header, prepared.plan, captured=False),
             collection("slots", (workspace, revision), captured=False, native_maximum=256),
             *(ref_budget(ref_key(slot[3:7])) for slot in prepared.slots))
         context_memo.add((workspace, revision))
         plan_memo.add((workspace, plan_id))
+        # Native S/H describes this captured post-publication proof state.
+        # Later changed-state readers can cold-prove new roots under their own
+        # shared ledger; they do not inherit publication's frozen-memo refusal.
         future = snapshot_budget
         for slot in prepared.slots:
             source_key, birth_key = ref_key(slot[3:7]), ref_key(slot[7:11])
@@ -1043,6 +1281,10 @@ class ConfigurationAcceptanceStore:
                 if (value.ref.workspace_id, value.ref.allocation_id, value.ref.artifact_id) == (raw[4], raw[5], raw[3]))
             future = chain(future, ref_budget(source_key), source_budget(source_key[0]),
                 ref_budget(birth_key), source_budget(birth_key[0]))
+            for key in dict.fromkeys((source_key, birth_key)):
+                future = future.then(native_accepted if key in transfers else native_pair)
+                if key in transfers:
+                    future = future.then(transfer_budget(key))
             if source.identity.run_id.value != run_id:
                 source_plan = (source.source.workspace_id, source.source.plan_id)
                 saved = read.sources[("configuration-source-plan", *source_plan)]
@@ -1058,23 +1300,37 @@ class ConfigurationAcceptanceStore:
                 if old_slot not in slot_memo:
                     future = future.then(native(proof_shapes[("original-slot", old_slot)]))
                     slot_memo.add(old_slot)
-            if source.identity not in outcome_memo:
-                future = future.then(native(proof_shapes[("outcome", source.identity)]))
-                row = read.sources[("cpk_effect_attempt_outcomes", source.identity)][0]
-                for event_id in (row[15], row[18]):
-                    if event_id not in event_memo:
-                        future = future.then(native(proof_shapes[("event", event_id)]))
-                        event_memo.add(event_id)
-                outcome_memo.add(source.identity)
+            future = future.then(outcome_budget(source.identity))
         future = chain(workspace_read, q(2, 20520, 6), q(2, 20520, 6), future)
 
-        current_slots = chain(*(chain(q(1, 1, 1, settled=F(0, 0, 0, 1)), q(1, 823, 9, 2))
-            for _ in prepared.slots))
+        transferred_keys = {memo[1:5] for memo, _, _ in bounds.transfer_dependencies}
+
+        def publication_disposition(key):
+            paired = q(1, 855, 11, 2)
+            accepted = paired.then(q(1, 1, 1, 4))
+            closed = paired.then(q(1, 1, 1, 3))
+            transferred = key in transferred_keys
+            success = accepted.then(accepted) if transferred else paired
+            # A fresh closure refuses at either disposition position. An
+            # outstanding key changed to accepted reaches both pair/anchor
+            # checks before the unknown frozen transfer memo refuses.
+            alternatives = (closed, accepted.then(closed) if transferred else accepted.then(accepted))
+            peak = F(*(max(getattr(value.peak, field) for value in (success, *alternatives))
+                for field in ("records", "value_octets", "scalar_markers", "statements")))
+            return Budget(success.settled, peak)
+
+        def publication_slot(slot):
+            return chain(*(publication_disposition(key)
+                for key in dict.fromkeys((tuple(slot[3:7]), tuple(slot[7:11])))))
+
+        current_slots = chain(*(chain(q(1, 1, 1, settled=F(0, 0, 0, 1)), publication_slot(slot))
+            for slot in prepared.slots))
+        readback = chain(*(publication_slot(slot) for slot in prepared.slots))
         prepared_guard = chain(guard, workspace_read, point("request", (request_id,)), point("run", (run_id,)), current_slots)
         body = chain(prepared_guard, *(native((2048,)) for _ in range(3)), unit, workspace_read,
             prepared_guard, unit, prepared_guard, unit, prepared_guard, unit,
             *(unit for _ in prepared.slots), context(own_header, prepared.plan, captured=True),
-            collection("slots", (workspace, revision)))
+            collection("slots", (workspace, revision)), readback)
         if prepared.receiver_truth is not None:
             before, after, origins, scopes, original, _, evidence = prepared.receiver_truth
 
@@ -1168,6 +1424,7 @@ class ConfigurationAcceptanceStore:
 def validate_configuration_advancement_rows(connection):
     """Bounded original-side scans; no backfill, adoption or repair."""
     store = ConfigurationAcceptanceStore(connection)
+    _validate_transfer_rows(connection, store)
     for table, key, kind, value in (("cpk_operation_actions", "action_id", "action_type", "advance-current-graph"),
             ("cpk_activity_events", "event_id", "event_type", "current_graph_advanced")):
         cursor = ""
@@ -1200,3 +1457,22 @@ def validate_configuration_advancement_rows(connection):
                     store._current_receipt(PostgresWorkspaceStore(connection).get(workspace_id))
                     previous_workspace = workspace_id
         cursor = rows[-1]
+
+
+def _validate_transfer_rows(connection, store):
+    """Independent original-key pages; every retained disposition is point-proved."""
+    cursor = ("", "", 0, "")
+    columns = _TRANSFER_COLUMNS[:4] + (_TRANSFER_COLUMNS[-1],)
+    while True:
+        rows = _EvidenceRead(connection, standalone=True).bounded_rows("cpk_configuration_claim_transfers",
+            columns, "(run_id,activity_id,attempt,artifact_id)>(%s,%s,%s,%s)", cursor,
+            maximum=32, order="run_id,activity_id,attempt,artifact_id")
+        if not rows:
+            return
+        for row in rows:
+            key = row[:4]
+            with _configuration_accounting(("configuration-transfer-verification", *key)):
+                with _joined_read(connection) as read:
+                    ref = _decode(store._ref(read, key), read).ref
+                    store._accepted_transfer(read, key, ref, row[4])
+            cursor = key

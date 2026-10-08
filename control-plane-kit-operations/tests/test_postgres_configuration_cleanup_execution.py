@@ -226,12 +226,36 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
 
     def test_public_k1_coordinator_preserves_one_complete_transport_ledger(self):
         from control_plane_kit_operations import _configuration_cleanup_ownership as cleanup
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
 
         claimed = self.ready_cleanup()
         observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
             accounting=None, role_label=lambda _query, _params: None)
         tails = []
+        pair_reservations = set()
         test = self
+
+        actual_query = _EvidenceRead.query
+
+        def observe_pair(reader, sql, params, **kwargs):
+            is_pair = ("r FULL JOIN " in sql and "cpk_effect_configuration_refs" in sql
+                and "cpk_configuration_claims" in sql)
+            if is_pair:
+                self.assertIs(reader.accounting, observed["accounting"])
+                before, offset = _components(reader.used), len(observed["queries"])
+            rows = actual_query(reader, sql, params, **kwargs)
+            if is_pair:
+                entries = observed["queries"][offset:]
+                self.assertEqual(len(entries), 1)
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0][6:8], (None, None))
+                disposition = "outstanding" if rows[0][8] else "cleanup-closed"
+                # The connection records this peak before execute/fetch; use
+                # neither query kwargs nor a copied reservation declaration.
+                reservation = tuple(peak - used for peak, used in
+                    zip(entries[0]["peak"], before, strict=True))
+                pair_reservations.add((disposition, reservation))
+            return rows
 
         class MeasuredUnitOfWork(PostgresUnitOfWork):
             def __exit__(uow, *args):
@@ -271,7 +295,8 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
                 ConfigurationCleanupOutcome(self.selected_ref, ConfigurationCleanupStatus.REMOVED, None),)))
 
         adapter = RecordingRuntimeAdapter(removed)
-        with mock.patch.object(cleanup, "_admit_tail", measure_tail):
+        with mock.patch.object(cleanup, "_admit_tail", measure_tail), \
+                mock.patch.object(_EvidenceRead, "query", observe_pair):
             result = self.coordinator(factory, adapter, "cleanup-execution").execute(
                 self.execution_command(claimed, "cleanup-execution"))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
@@ -316,3 +341,11 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
             charged_bytes=used.accounted_bytes, physical_weighted_bytes=observed["bytes"],
             maximum_query_reservation_bytes=max(peaks), statements=observed["statements"]))
         print("#1936 public K1 admitted tails", tail_metrics)
+        self.assertEqual({kind for kind, _ in pair_reservations},
+            {"outstanding", "cleanup-closed"})
+        for disposition, reservation in sorted(pair_reservations):
+            for component, needed, declared in zip(
+                    ("records", "value_octets", "scalar_markers", "statements"),
+                    reservation, _components(cleanup._PAIR), strict=True):
+                with self.subTest(disposition=disposition, component=component):
+                    self.assertLessEqual(needed, declared)

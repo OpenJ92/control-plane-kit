@@ -7,11 +7,11 @@ from contextlib import contextmanager, ExitStack
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_operations.configuration_preparation import (
-    ConfigurationAllocationEvidence, ConfigurationRefEvidence, _ref,
+    ConfigurationAllocationEvidence, ConfigurationRefEvidence, _ConfigurationClaimDisposition, _ref,
 )
 from control_plane_kit_operations._configuration_protection import _ProtectiveConfigurationAllocation
 from control_plane_kit_operations.records import OperationsRecordError
-from .configuration_evidence import _Capacity, _EvidenceRead, _Unavailable
+from .configuration_evidence import _Capacity, _EvidenceRead, _Unavailable, _COMPOSED_READ
 from .configuration_source import read_source
 
 
@@ -72,21 +72,28 @@ def _decode(row, read):
 
 
 def _paired_disposition(read, key, ref, *, expected=None, protective=False, allow_absent=False):
-    """Fresh nine-cell correspondence, below all full history proofs."""
-    valid = " AND ".join((
-        "(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id,r.ref_digest)=(%s,%s,%s,%s,%s)",
-        "(c.workspace_id,c.allocation_id,c.runtime_id,c.node_id)=(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id)",
-        "r.protective=((r.cleanup_run_id IS NULL) AND (r.cleanup_activity_id IS NULL) AND (r.cleanup_attempt IS NULL))",
-        "c.protective=((c.cleanup_run_id IS NULL) AND (c.cleanup_activity_id IS NULL) AND (c.cleanup_attempt IS NULL))",
-    ))
+    """Fresh bounded structural correspondence, below full history proofs."""
     shape = " AND ".join(
         f"(({side}.cleanup_run_id IS NULL AND {side}.cleanup_activity_id IS NULL AND {side}.cleanup_attempt IS NULL) OR "
         f"({side}.cleanup_run_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND "
-        f"{side}.cleanup_activity_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND {side}.cleanup_attempt>0))"
+        f"{side}.cleanup_activity_id COLLATE \"C\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{{0,199}}$' AND {side}.cleanup_attempt>0)) "
+        f"AND ({side}.accepted_revision IS NULL OR ({side}.accepted_revision BETWEEN 0 AND 9007199254740991 "
+        f"AND {side}.cleanup_run_id IS NULL AND {side}.cleanup_activity_id IS NULL AND {side}.cleanup_attempt IS NULL))"
         for side in ("r", "c"))
+    valid = " AND ".join((shape,
+        "(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id,r.ref_digest)=(%s,%s,%s,%s,%s)",
+        "(c.workspace_id,c.allocation_id,c.runtime_id,c.node_id)=(r.workspace_id,r.allocation_id,r.runtime_id,r.node_id)",
+        "r.disposition_kind=c.disposition_kind",
+        *(f"{side}.protective=({side}.cleanup_run_id IS NULL AND {side}.cleanup_activity_id IS NULL "
+          f"AND {side}.cleanup_attempt IS NULL AND {side}.accepted_revision IS NULL) AND "
+          f"{side}.disposition_kind=(CASE WHEN {side}.accepted_revision IS NOT NULL THEN 'accepted-current' "
+          f"WHEN {side}.cleanup_run_id IS NOT NULL THEN 'cleanup-closed' ELSE 'outstanding' END)"
+          for side in ("r", "c")),
+    ))
     # Invalid or oversized metadata is represented only as NULL/false.
     projections = [f"CASE WHEN {shape} THEN {side}.{name} END"
         for side in ("r", "c") for name in ("cleanup_run_id", "cleanup_activity_id", "cleanup_attempt")]
+    projections += [f"CASE WHEN {shape} THEN {side}.accepted_revision END" for side in ("r", "c")]
     rows = read.query("SELECT " + ",".join(projections) + ",r.protective,c.protective,(" + valid + ") "
         "FROM (SELECT * FROM cpk_effect_configuration_refs WHERE "
         "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)) r FULL JOIN "
@@ -95,20 +102,43 @@ def _paired_disposition(read, key, ref, *, expected=None, protective=False, allo
         "",
         (ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id,
          sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(), *key, *key),
-        records=1, octets=823, cells=9, identities=2)
+        records=1, octets=855, cells=11, identities=2)
     if not rows and allow_absent:
         return None
     if len(rows) != 1:
         raise _Unavailable
     row = rows[0]
     locator = row[:3]
-    if (row[8] is not True or locator != row[3:6] or type(row[6]) is not bool
-            or row[6] != row[7] or row[6] != (locator == (None, None, None))
-            or (protective and row[6] is not True)
-            or (expected is not None and locator != expected)):
+    revision = row[6]
+    if (row[10] is not True or locator != row[3:6] or revision != row[7]
+            or type(row[8]) is not bool or type(row[9]) is not bool or row[8] != row[9]
+            or row[8] != (locator == (None, None, None) and revision is None)
+            or (protective and row[8] is not True)
+            or (expected is not None and (locator != expected or revision is not None))):
         raise _Unavailable
-    if row[6]:
-        return None
+    if row[8]:
+        return _ConfigurationClaimDisposition("outstanding")
+    if revision is not None:
+        # Four exact relational identities, not successful-completion proof.
+        accepted = read.query("SELECT 1 FROM cpk_configuration_claim_transfers t "
+            "JOIN cpk_configuration_invocation_completions d ON "
+            "(d.run_id,d.activity_id,d.attempt,d.workspace_id,d.request_fingerprint,d.selection_fingerprint,d.outcome_fingerprint)="
+            "(t.run_id,t.activity_id,t.attempt,t.workspace_id,t.request_fingerprint,t.selection_fingerprint,t.outcome_fingerprint) "
+            "JOIN cpk_configuration_acceptances h ON (h.workspace_id,h.pinned_revision,h.run_id)="
+            "(t.workspace_id,t.acceptance_revision,t.run_id) "
+            "JOIN cpk_configuration_accepted_slots s ON "
+            "(s.workspace_id,s.pinned_revision,s.runtime_id,s.node_id,s.artifact_id,s.source_run_id,"
+            "s.source_activity_id,s.source_attempt,s.source_artifact_id,s.full_ref_digest)="
+            "(t.workspace_id,t.acceptance_revision,t.runtime_id,t.node_id,t.artifact_id,t.run_id,"
+            "t.activity_id,t.attempt,t.artifact_id,t.ref_digest) "
+            "WHERE (t.run_id,t.activity_id,t.attempt,t.artifact_id,t.workspace_id,t.allocation_id,"
+            "t.runtime_id,t.node_id,t.ref_digest,t.acceptance_revision)=(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id,
+             sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(), revision),
+            records=1, octets=1, cells=1, identities=4)
+        if accepted != [(1,)]:
+            raise _Unavailable
+        return _ConfigurationClaimDisposition("accepted-current", acceptance_revision=revision)
     if any(value is None for value in locator):
         raise _Unavailable
     # Exact key proof only. No D1/outcome/reservation recursion here.
@@ -124,7 +154,8 @@ def _paired_disposition(read, key, ref, *, expected=None, protective=False, allo
         (*key, *locator, ref.workspace_id, ref.allocation_id), records=1, octets=1, cells=1, identities=3)
     if closed != [(1,)]:
         raise _Unavailable
-    return locator
+    return _ConfigurationClaimDisposition("cleanup-closed",
+        cleanup_identity=EffectAttemptIdentity(RunId(locator[0]), locator[1], locator[2]))
 
 
 def _require_unreserved(read, ref):
@@ -146,6 +177,7 @@ class _OrdinaryStartReadBoundsOwner:
         self._guard, self._prefix = guard, prefix
         self._issued = None
         self._active = self._spent = False
+        self._transferred_roots = frozenset()
 
     def _context_is_current(self):
         from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
@@ -167,7 +199,7 @@ class _OrdinaryStartReadBoundsOwner:
         _require(self._active and issued is self._issued and issued.owner is self
             and connection is self._connection and _BOUND_ORDINARY_START.get() is issued)
 
-    def capture(self, material, request):
+    def capture(self, material, request, *, transfers=(), proof_read=None):
         from control_plane_kit_operations._configuration_preparation import (
             _BOUND_ORDINARY_START, _OrdinaryStartReadBounds,
         )
@@ -218,6 +250,36 @@ class _OrdinaryStartReadBoundsOwner:
         for identity, origin in origins.items():
             selectors.update((("introduction", identity),
                 ("origin-action", (origin.introducing_action_id, origin.introducing_session_id, workspace))))
+        invocations, roots = {}, []
+        if transfers:
+            _require(type(proof_read) is _EvidenceRead and proof_read.connection is self._connection
+                and proof_read.accounting is self._accounting)
+        for key, ref, revision in transfers:
+            digest = sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
+            roots.append((key, digest, revision))
+            memo = ("configuration-accepted-transfer", *key, ref.workspace_id, ref.allocation_id, digest, revision)
+            _require(memo in proof_read.sources)
+            identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+            selection = proof_read.sources.get(("cpk_effect_attempt_intents", identity))
+            context = proof_read.sources.get(("configuration-receipt-context", ref.workspace_id, revision))
+            _require(selection is not None and context is not None and ref.workspace_id == workspace)
+            # Complete own invocation, including unselected siblings; never
+            # lifetime allocation history or recursive transfer discovery.
+            invocations[key[:3]] = tuple((value.ref.artifact_id,) for value in selection)
+            header, _, _, historical_plan, _, _, _ = context
+            selectors.add(("header", (workspace, revision)))
+            for role, field in (("receipt-action", "action_id"), ("receipt-event", "event_id"),
+                    ("request", "request_id"), ("run", "run_id"), ("plan", "plan_id"),
+                    ("graph", "graph_id"), ("projection", "projection_id")):
+                selectors.add((role, (header[field],)))
+            selectors.add(("session", (historical_plan.session_id,)))
+            for graph in (historical_plan.base_graph_id, historical_plan.desired_graph_id):
+                selectors.add(("graph", (graph,)))
+            for projection in (historical_plan.base_realized_projection_id,
+                    historical_plan.desired_realized_projection_id):
+                if projection is not None:
+                    selectors.add(("projection", (projection,)))
+        _require(len(roots) == len(set(roots)))
         read = _EvidenceRead(self._connection)
         transaction = _transaction(read)
         _require(transaction == self._guard._transaction_id)
@@ -228,8 +290,20 @@ class _OrdinaryStartReadBoundsOwner:
         for pair, items in sorted(bindings.items()):
             expected = tuple(sorted((b.node_id, b.provider_socket_name) for b in items))
             collections.append(("bindings", _capture_collection(read, "bindings", (workspace, *pair), expected)))
+        for identity, expected in sorted(invocations.items()):
+            collections.append(("invocation-refs", _capture_collection(read, "invocation-refs", identity, expected)))
+        self._transferred_roots = frozenset(roots)
         self._issued = _OrdinaryStartReadBounds(self, transaction, points, tuple(collections))
         return self._issued
+
+    def require_transferred_roots(self, transfers):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require(self._issued, self._connection)
+        roots = tuple((key, sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(), revision)
+            for key, ref, revision in transfers)
+        # Captured identities restrict work, not permission. Every allowed
+        # occurrence still performs its fresh structural and cold proof reads.
+        _require(len(roots) == len(set(roots)) and set(roots) <= self._transferred_roots)
 
     @contextmanager
     def bind(self, issued):
@@ -302,11 +376,13 @@ def _ordinary_tail_budget(owner, intent, births):
     def collection(role):
         declared, n = widths(role), count(role)
         k, w = len(declared), sum(declared)
+        identities = 2 if role == "invocation-refs" else 1
         result = sequence(query(1, 20, 1),
-            query(n + 1, 12 * k * (n + 1), k, settled=F(n, 12 * k * n, k * n, 1)))
+            query(n + 1, 12 * k * (n + 1), k, identities,
+                settled=F(n * identities, 12 * k * n, k * n, 1)))
         if n:
-            result = result.then(query(n + 1, (w + 1) * (n + 1), k + 1,
-                settled=F(n, (w + 1) * n, (k + 1) * n, 1)))
+            result = result.then(query(n + 1, (w + 1) * (n + 1), k + 1, identities,
+                settled=F(n * identities, (w + 1) * n, (k + 1) * n, 1)))
         return result
 
     def bindings():
@@ -350,13 +426,17 @@ def _ordinary_tail_budget(owner, intent, births):
 
     c = len(intent.configuration_instances.instances)
     raw = F(0, 0, 0, 1 + 2 * c)
-    pair = query(1, 823, 9, 2)
-    possible_closure = query(1, 1, 1, 3)
+    pair = query(1, 855, 11, 2)
+    # The four-identity accepted anchor also bounds the mutually exclusive
+    # cleanup anchor's three identities, without granting cleanup permission.
+    possible_closure = query(1, 1, 1, 4)
 
     def issued_check():
         result = query(1, 20, 1)
         for _ in range(c):
-            result = result.then(sequence(query(1, 1, 1, settled=F(0, 0, 0, 1)), pair))
+            result = result.then(sequence(query(1, 1, 1, settled=F(0, 0, 0, 1)), pair, possible_closure))
+        for _ in owner._transferred_roots:
+            result = result.then(cold_transfer())
         return result
 
     def original_intent():
@@ -368,6 +448,20 @@ def _ordinary_tail_budget(owner, intent, births):
         # Failed join keeps its full reservation; DataError adds rollback and
         # release before the owner closes. Other failure needs only release.
         return sequence(query(0, 0, 0), query(1, 80032, 17, 3, cleanup=2), query(0, 0, 0))
+
+    def cold_transfer():
+        # One cold upper per captured root conservatively covers same-pass
+        # sharing without importing measured Q or cross-pass authority caches.
+        result = sequence(pair, possible_closure, native(13, 1257), native(7, 730),
+            collection("invocation-refs"), source())
+        for _ in range(count("invocation-refs")):
+            result = result.then(sequence(pair, possible_closure))
+        result = result.then(sequence(native(22, 51200), native(6, 18776), native(6, 18776),
+            query(1, 32768, 19, 2)))
+        for role in ("header", "receipt-action", "receipt-event", "run", "request", "plan",
+                "session", "graph", "projection"):
+            result = result.then(point(role))
+        return result.then(native(12, 24576))
 
     result = sequence(_OrdinarySuffixBudget(raw, raw), query(1, 1, 1), point("request"),
         query(1, 65, 2), query(1, 1, 1), query(1, 20, 1), query(1, 1, 1),
@@ -784,24 +878,45 @@ class ConfigurationPreparationStore:
         by_allocation = {value.birth.ref.allocation_id: value for value in allocations}
         selected = tuple(by_allocation.get(ref.allocation_id) for ref in refs)
         if bindings:
-            if (any(value is None for value in selected)
-                    or tuple(value.birth for value in selected) != tuple(binding.birth for binding in bindings)):
+            resolved = []
+            for ref, allocation in zip(refs, selected, strict=True):
+                if allocation is None:
+                    # Active-node discovery cannot find a transferred birth
+                    # with zero outstanding uses. Prove that exact root and
+                    # allocation independently, without recreating protection.
+                    allocation = self._protective_allocation_evidence(ref, read)
+                    if allocation.claims:
+                        raise _Unavailable
+                resolved.append(allocation)
+            selected = tuple(resolved)
+            if tuple(value.birth for value in selected) != tuple(binding.birth for binding in bindings):
                 raise _Unavailable
         elif any(value is not None for value in selected):
             # A fresh birth must never silently adopt a historical allocation.
             raise _Unavailable
+        transfers = []
         for ref, allocation in zip(refs, selected, strict=True):
             _require_unreserved(read, ref)
             if allocation is not None:
                 root = allocation.birth
-                _paired_disposition(read, (root.identity.run_id.value, root.identity.activity_id,
-                    root.identity.attempt, root.ref.artifact_id), ref, protective=True)
+                key = (root.identity.run_id.value, root.identity.activity_id, root.identity.attempt, root.ref.artifact_id)
+                disposition = _paired_disposition(read, key, ref)
+                if disposition.kind == "cleanup-closed":
+                    raise _Unavailable
+                if disposition.kind == "accepted-current":
+                    transfers.append((key, ref, disposition.acceptance_revision))
+        proof_read, _ = (self._prove_transferred_roots(stores.configuration_acceptance, transfers)
+            if transfers else (None, None))
         total_claims = sum(len(value.claims) for value in allocations)
         count = len(refs)
         births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in selected)
             if bindings else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
-        issued = owner.capture(material, request)
+        issued = owner.capture(material, request, transfers=transfers, proof_read=proof_read)
         owner._contexts.enter_context(owner.bind(issued))
+        if transfers:
+            # Verify the complete cold traversal under the final transport
+            # contract. Discovery/capture/measurement remain prior charges.
+            self._prove_transferred_roots(stores.configuration_acceptance, transfers)
         from control_plane_kit_operations.effect_attempt_start_interpreter import _require_fresh_effect_receiver_permission
         _require_fresh_effect_receiver_permission(stores, request, guard, expected, compensation=False)
         budget, raw = _ordinary_tail_budget(owner, expected, births)
@@ -822,17 +937,45 @@ class ConfigurationPreparationStore:
         self._issued = prepared
         return prepared
 
+    def _prove_transferred_roots(self, acceptance, transfers):
+        """Cold exact-root pass on the caller ledger, including nested owners."""
+        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        from control_plane_kit_operations._configuration_preparation import _BOUND_ORDINARY_START
+        if _BOUND_ORDINARY_START.get() is not None:
+            if self._ordinary_owner is None:
+                raise _Unavailable
+            self._ordinary_owner.require_transferred_roots(transfers)
+        read = _EvidenceRead(self._connection)
+        before = read.used
+        token = _COMPOSED_READ.set(read)
+        try:
+            for key, ref, revision in transfers:
+                acceptance._accepted_transfer(read, key, ref, revision)
+        finally:
+            _COMPOSED_READ.reset(token)
+        return read, ConfigurationEvidenceFootprint(*(getattr(read.used, field) - getattr(before, field)
+            for field in ("records", "value_octets", "scalar_markers", "statements")))
+
     def _require_current(self, prepared):
         """Selected allocation permission is never an issued-value cache."""
         read = _EvidenceRead(self._connection)
         try:
+            transfers = []
             for ref, (birth, artifact) in zip(prepared.intent.configuration_instances.instances,
                     prepared.births, strict=True):
                 _require_unreserved(read, ref)
                 # Absence is expected only for this new birth before insertion.
-                # Once either side exists, its complete pair must be protective.
-                _paired_disposition(read, (birth.run_id.value, birth.activity_id, birth.attempt, artifact),
-                    ref, protective=True, allow_absent=birth == prepared.identity)
+                # Existing transferred roots require their own complete proof;
+                # cleanup closure never grants fresh allocation permission.
+                key = (birth.run_id.value, birth.activity_id, birth.attempt, artifact)
+                disposition = _paired_disposition(read, key, ref, allow_absent=birth == prepared.identity)
+                if disposition is not None:
+                    if disposition.kind == "cleanup-closed":
+                        raise _Unavailable
+                    if disposition.kind == "accepted-current":
+                        transfers.append((key, ref, disposition.acceptance_revision))
+            if transfers:
+                self._prove_transferred_roots(prepared.stores.configuration_acceptance, transfers)
         except (_Capacity, _Unavailable):
             raise OperationsRecordError("configuration start requires current allocation permission") from None
 
@@ -878,7 +1021,11 @@ class ConfigurationPreparationStore:
                 read.refs[_key(row)] = row
             claims = tuple(_decode(row, read) for row in rows)
             for row, claim in zip(rows, claims, strict=True):
-                _paired_disposition(read, tuple(row[:4]), claim.ref)
+                disposition = _paired_disposition(read, tuple(row[:4]), claim.ref)
+                # This is v1 lifetime protection evidence. Accepted transfer
+                # requires the later v2 cleanup policy, never an implicit grant.
+                if disposition.kind == "accepted-current":
+                    raise _Unavailable
             if any(claim.ref != exact_ref for claim in claims):
                 raise _Unavailable
             births = {(claim.birth_identity, claim.birth_artifact_id) for claim in claims}

@@ -65,6 +65,8 @@ class ConfigurationCompletionStore:
         if not rows:
             return None
         row = rows[0]
+        from control_plane_kit_operations._configuration_acceptance import _observe_publication_proof
+        _observe_publication_proof(read, "completion", identity, row)
         from .configuration_cleanup_phase_read_bounds import _phase_rows
         refs = _phase_rows(read, "invocation-refs", _key(identity))
         if refs is None:
@@ -73,6 +75,7 @@ class ConfigurationCompletionStore:
             records=33, octets=33 * 32768, cells=19, identities=2)
         if not 1 <= len(refs) <= 32:
             raise _Unavailable
+        _observe_publication_proof(read, "invocation", identity, tuple(refs))
         evidence = tuple(_decode(value, read) for value in refs)
         for value, claim in zip(refs, evidence, strict=True):
             _paired_disposition(read, tuple(value[:4]), claim.ref)

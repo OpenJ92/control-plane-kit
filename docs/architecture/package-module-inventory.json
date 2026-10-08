@@ -493,6 +493,8 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_operations.postgres.configuration_completion_store",
         "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_core.topology",
         "control_plane_kit_operations._configuration_acceptance",
@@ -546,6 +548,7 @@
         "ConfigurationSourceProjection",
         "ConfigurationSourceEvidence",
         "ConfigurationRefEvidence",
+        "ConfigurationAcceptedTransferRecord",
         "ConfigurationAllocationEvidence",
         "ConfigurationAcceptedBinding",
         "ConfigurationCurrentEvidence",

@@ -50,6 +50,49 @@ def _key(value: object) -> None:
 
 
 @dataclass(frozen=True)
+class _ConfigurationClaimDisposition:
+    """Closed structural correspondence, never permission to reuse a claim."""
+    kind: str
+    cleanup_identity: EffectAttemptIdentity | None = None
+    acceptance_revision: int | None = None
+
+    def __post_init__(self) -> None:
+        _require(type(self.kind) is str and self.kind in
+            ("outstanding", "accepted-current", "cleanup-closed"))
+        if self.kind == "cleanup-closed":
+            _identity(self.cleanup_identity)
+        else:
+            _require(self.cleanup_identity is None)
+        if self.kind == "accepted-current":
+            _require(type(self.acceptance_revision) is int and
+                0 <= self.acceptance_revision <= 9007199254740991)
+        else:
+            _require(self.acceptance_revision is None)
+
+
+@dataclass(frozen=True, repr=False)
+class ConfigurationAcceptedTransferRecord:
+    """Original immutable provenance; construction confers no store authority."""
+    identity: EffectAttemptIdentity
+    ref: ConfigurationInstanceRef
+    acceptance_revision: int
+    request_fingerprint: str
+    selection_fingerprint: str
+    outcome_fingerprint: str
+
+    def __post_init__(self) -> None:
+        _identity(self.identity)
+        _ref(self.ref)
+        _require(type(self.acceptance_revision) is int and
+            0 <= self.acceptance_revision <= 9007199254740991)
+        for digest in (self.request_fingerprint, self.selection_fingerprint, self.outcome_fingerprint):
+            _require(type(digest) is str and _DIGEST.fullmatch(digest) is not None)
+
+    def __repr__(self) -> str:
+        return "ConfigurationAcceptedTransferRecord(<redacted>)"
+
+
+@dataclass(frozen=True)
 class ConfigurationEvidenceFootprint:
     records: int
     value_octets: int

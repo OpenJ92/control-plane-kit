@@ -17,6 +17,7 @@ class PostgresConfigurationCurrentReadTests(unittest.TestCase):
         self.fixture = membership_fixture.PostgresConfigurationAcceptanceMembershipTests()
         self.fixture.node_ids = getattr(self, "node_ids", ("api",))
         self.fixture.registered_product = getattr(self, "registered_product", None)
+        self.fixture.configuration_result_for_request = getattr(self, "configuration_result_for_request", None)
         self.addCleanup(self.cleanup_fixture)
         self.fixture.setUp()
         self.base = self.fixture.fixture
