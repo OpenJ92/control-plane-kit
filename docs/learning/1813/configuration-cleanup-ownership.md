@@ -4419,3 +4419,44 @@ delta must equal exactly the measured two-cell width delta; records, cells and
 statements remain exactly equal. Graph/ref equality and every actual raw
 snapshot/ledger cap remain unchanged. This is attribution in the test comparison,
 not normalization of stored timestamps or adjustment of production accounting.
+
+### Final temporal inventory correction: run creation time
+
+The second focused run at `ed13b303641d86c1cf8bf92960157f5cbdfd1afd` was a class
+FAIL: 2 tests/370.351s, exit 1, no compile/import credit. The nearby capacity
+method passed; the material comparison failed with actual delta 3 versus the
+two-request-time prediction 2. Preserve #1945 evidence `6052323892` and log
+SHA256 `eae22de68b7a627931683d2d9269fdfe4b5a2b9c47cc45f0d2400af66d4a23a0`.
+Nested and exact Docker cleanup passed. The third cell was not recorded in
+that run, so its individual width difference is not retrospective observation.
+
+The source omission was `ActivityRunRecord.created_at`: lifecycle.py:437-445
+copies the database-observed claim time into it. Started/settled transitions
+use the injected clock; RUN_OPENED was already covered by the current event
+collection allowance. Our earlier source proposal and review incorrectly
+treated all run timestamps as fixed. North's independent bounded source audit
+is #1945 comment `6052395532`; no additional omitted field was found in this
+fixed receiver-free traversal.
+
+The corrected prior allowance is **874**: 114 temporal cells at most seven
+bytes apart (22 request reads ×2, 22 run-created reads, two passes ×8 original/
+direct pairs, two current-event collections ×8), plus four txid cells at most
+19 bytes apart. Publication allowance is **105**: the four guards plus own
+context each read two request times and one run-created time. Combined **979**
+uses a **1000**-byte input-selection margin and invariant measured H-S **>1984**
+(1000+979+5). The observed gap in the failed class was 3113; the corrected test
+continues to obtain and check it from actual source forecasts.
+
+The minimal correction checks persisted run-created SQL widths as well as the
+existing request/event widths. Before advancement, it independently measures
+the final request's claim/expiry widths and the final run's creation width.
+Material/snapshot value-byte deltas must equal exactly that three-cell sum
+delta, with exact other dimensions and unchanged graph/ref material. All raw
+ledger/capacity checks, before-write sentinels and durable rollback remain.
+The new sum is logged as `final_context_time_octets`.
+
+These figures supersede the incomplete 720/70/800 proposal above. This is a
+test-input/attribution correction; no production ledger, limit, clock or stored
+history changes. Exact isolated B/B+1 predicates remain unchanged. The corrected
+draft remains unexecuted until the next owning two-test class result; B1 final
+hosted validation and whole-PR review remain pending, and B2/C remain held.

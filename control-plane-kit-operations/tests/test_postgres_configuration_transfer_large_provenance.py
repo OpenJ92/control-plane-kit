@@ -243,14 +243,19 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             ).fetchall() for width in row]
             temporal_widths += [row[0] for row in self.connection.execute(
                 "SELECT octet_length(occurred_at::text) FROM cpk_activity_events").fetchall()]
+            temporal_widths += [row[0] for row in self.connection.execute(
+                "SELECT octet_length(created_at::text) FROM cpk_activity_runs").fetchall()]
             self.assertTrue(temporal_widths)
             self.assertTrue(all(22 <= width <= 29 for width in temporal_widths))
             final_claim_widths = self.connection.execute(
                 "SELECT octet_length(claimed_at::text),octet_length(lease_expires_at::text) "
                 "FROM cpk_execution_requests WHERE request_id='request-final'").fetchone()
             self.assertTrue(all(22 <= width <= 29 for width in final_claim_widths))
+            final_run_width = self.connection.execute("SELECT octet_length(created_at::text) "
+                "FROM cpk_activity_runs WHERE run_id='run-final'").fetchone()[0]
+            self.assertTrue(22 <= final_run_width <= 29)
             measured = self.measure_final(command, originals, refs, refuses=refuses)
-            measured["final_claim_time_octets"] = sum(final_claim_widths)
+            measured["final_context_time_octets"] = sum(final_claim_widths) + final_run_width
             self.assertEqual(self.transfer_snapshot(), before)
             # Independent diagnostic SQL is outside the command/read accounting.
             widths = self.connection.execute("SELECT graph_id,octet_length(metadata::text) "
@@ -273,10 +278,10 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
         large = self.construct(409585)
         self.assertEqual(large["ref_bytes"], small["ref_bytes"])
         self.assertEqual(large["graph"], small["graph"])
-        # The material context reads one final request. Its real database claim
-        # times may render differently across fresh fixtures; attribute exactly
-        # those measured two-cell bytes without changing either raw footprint.
-        temporal_delta = large["final_claim_time_octets"] - small["final_claim_time_octets"]
+        # The material context reads one final request and run. Attribute exactly
+        # their three measured database timestamp cells without changing either
+        # raw footprint: claim time, lease expiry and run creation time.
+        temporal_delta = large["final_context_time_octets"] - small["final_context_time_octets"]
         for key in ("material", "snapshot"):
             self.assertEqual(large[key].value_octets - small[key].value_octets, temporal_delta)
             for field in ("records", "scalar_markers", "statements"):
@@ -299,7 +304,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             "publication_settled": footprint(case["publication"].settled),
             "publication_peak": footprint(case["publication"].peak),
             "metadata_octets": case["metadata_octets"],
-            "final_claim_time_octets": case["final_claim_time_octets"],
+            "final_context_time_octets": case["final_context_time_octets"],
         } for label, case in (("baseline", small), ("large", large))}, sort_keys=True))
 
     def test_nearby_legal_metadata_widths_fit_settled_but_refuse_publication_peak(self):
@@ -307,7 +312,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
         # tests. Metadata contributes +5 prior/+1 publication bytes per input
         # byte; fresh database timestamps/txids can also change actual widths.
         limit, calibration_width = 16 * 1024 * 1024, 1000000
-        prior_variation, publication_variation, margin = 720, 70, 800
+        prior_variation, publication_variation, margin = 874, 105, 1000
         self.assertGreater(margin, prior_variation + publication_variation)
         def build(width, *, refuses=False):
             self.assertGreaterEqual(width, 1000000)
