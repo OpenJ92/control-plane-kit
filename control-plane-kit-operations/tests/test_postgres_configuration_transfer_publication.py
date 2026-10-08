@@ -211,3 +211,167 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
             self.advance(command)
         self.assertEqual(len(visited), 8)
         self.assertEqual(self.transfer_snapshot(), before)
+
+    def fetch_failure_snapshot(self):
+        return self.proof_snapshot(), tuple((table, self.connection.execute(
+            f"SELECT * FROM {table} ORDER BY {order}").fetchall()) for table, order in (
+                ("cpk_effect_attempt_intents", "run_id,activity_id,attempt"),
+                ("cpk_activity_runs", "run_id"),
+                ("cpk_execution_requests", "request_id"),
+                ("cpk_operation_sessions", "session_id"),
+                ("cpk_activity_plans", "plan_id"),
+                ("cpk_execution_receiver_scopes", "request_id,scope_ordinal"),
+                ("cpk_graph_receiver_introductions", "workspace_id,receiver_id"),
+                ("cpk_graph_receiver_bindings", "workspace_id,graph_id,realized_projection_id,node_id,provider_socket_name"),
+                ("cpk_configuration_cleanup_members", "cleanup_run_id,cleanup_activity_id,cleanup_attempt,allocation_id"),
+                ("cpk_configuration_invocation_closures", "run_id,activity_id,attempt"),
+                ("cpk_configuration_claim_closures", "run_id,activity_id,attempt,artifact_id")))
+
+    def late_pair_fetch_failure(self, *, reused):
+        from psycopg.pq import TransactionStatus
+        from control_plane_kit_operations import advancement as advancement_module
+        from control_plane_kit_operations.records import OperationsRecordError
+
+        command = self.reuse.execute_reuse()[0] if reused else self.carry_command()
+        before, observed, state = self.fetch_failure_snapshot(), observation(), {}
+        armed, faults, after_failure, finished, commits = [], [], [], [], []
+        root, reservation = self.key(self.refs[0]), Footprint(2, 855, 11, 1)
+        error = psycopg.DataError("injected transferred-disposition fetch failure")
+        preflight, receipt, query = (ConfigurationAcceptanceStore._preflight,
+            ConfigurationAcceptanceStore._receipt, _EvidenceRead.query)
+        finish, commit = advancement_module._finish_receiver_advancement, PostgresUnitOfWork.commit
+        case = self
+
+        def admit(store, prepared):
+            prior = prepared.evidence_read.used
+            caches = deepcopy((prepared.evidence_read.refs, prepared.evidence_read.sources))
+            with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("forecast issued SQL")):
+                snapshot, future, publication = store._publication_budgets(prepared)
+            self.assertEqual(prepared.evidence_read.used, prior)
+            self.assertEqual((prepared.evidence_read.refs, prepared.evidence_read.sources), caches)
+            result = preflight(store, prepared)
+            self.assertEqual(prepared.evidence_read.used, prior)
+            observed["accounting"] = _ACCOUNTING.get()
+            self.assertIs(prepared.evidence_read.accounting, observed["accounting"])
+            state.update(owner=store, prepared=prepared, prior=prior,
+                snapshot=snapshot, future=future, publication=publication)
+            return result
+
+        def readback(store, workspace, revision, *, read=None):
+            value = state.get("prepared")
+            if value is not None and read is value.evidence_read and revision == value.plan.desired_graph_revision:
+                self.assertEqual(armed, [])
+                self.assertIs(store, state["owner"])
+                self.assertTrue(store._publication_published)
+                slot = next(row for row in value.slots if row[7:11] == root)
+                self.assertEqual(slot[3:7] != slot[7:11], reused)
+                # Read test-only stage witnesses on the same raw transaction.
+                # They are excluded from application wire/ledger accounting.
+                raw = store._connection.connection
+                self.assertEqual(raw.execute("SELECT current_graph_id,current_realized_projection_id "
+                    "FROM cpk_workspaces WHERE workspace_id=%s", (workspace,)).fetchone(),
+                    (value.plan.desired_graph_id, value.desired_projection.projection_id))
+                self.assertEqual(raw.execute("SELECT action_id,event_id,slot_count FROM cpk_configuration_acceptances "
+                    "WHERE workspace_id=%s AND pinned_revision=%s", (workspace, revision)).fetchone(),
+                    (value.action.action_id, value.event.event_id, len(value.slots)))
+                self.assertEqual(raw.execute("SELECT count(*) FROM cpk_configuration_accepted_slots "
+                    "WHERE workspace_id=%s AND pinned_revision=%s", (workspace, revision)).fetchone(), (len(value.slots),))
+                self.assertEqual(raw.execute("SELECT 1 FROM cpk_activity_events WHERE event_id=%s",
+                    (value.event.event_id,)).fetchone(), (1,))
+                self.assertEqual(raw.execute("SELECT 1 FROM cpk_operation_actions WHERE action_id=%s",
+                    (value.action.action_id,)).fetchone(), (1,))
+                armed.append(slot)
+            return receipt(store, workspace, revision, read=read)
+
+        def observed_query(read, statement, params, **options):
+            selected = (bool(armed) and query_role(statement) == "pair"
+                and tuple(params[5:9]) == root and tuple(params[9:13]) == root)
+            if not selected:
+                return query(read, statement, params, **options)
+            self.assertIs(read, state["prepared"].evidence_read)
+            self.assertIs(read.accounting, observed["accounting"])
+            self.assertNotIn("pair_before", state)
+            self.assertEqual((options["records"], options["octets"], options["cells"], options.get("identities", 1)),
+                (1, 855, 11, 2))
+            state.update(pair_before=read.used, pair_inflight=True)
+            try:
+                return query(read, statement, params, **options)
+            except psycopg.DataError as caught:
+                self.assertIs(caught, error)
+                state["failed"] = read.used
+                self.assertEqual(difference(read.used, state["pair_before"]), reservation)
+                raise
+            finally:
+                state["pair_inflight"] = False
+
+        class FailedFetch:
+            def __init__(self, cursor, connection):
+                self.cursor, self.connection = cursor, connection
+
+            def __getattr__(self, name):
+                return getattr(self.cursor, name)
+
+            def fetchall(self):
+                case.assertEqual(faults, [])
+                case.assertIs(_ACCOUNTING.get(), observed["accounting"])
+                case.assertEqual(self.connection.info.transaction_status, TransactionStatus.INTRANS)
+                case.assertEqual(self.cursor.rowcount, 1, "the real selected SQL must execute before the driver fault")
+                faults.append(observed["accounting"].used)
+                raise error
+
+        class FetchWire(PublicationWire):
+            def execute(self, statement, params=None, **options):
+                if faults and _ACCOUNTING.get() is observed["accounting"]:
+                    after_failure.append(str(statement))
+                cursor = super().execute(statement, params, **options)
+                if state.get("pair_inflight"):
+                    case.assertEqual(query_role(str(statement)), "pair")
+                    case.assertEqual(tuple(params[5:9]), root)
+                    case.assertEqual(tuple(params[9:13]), root)
+                    state["failed_entry"] = observed["queries"][-1]
+                    return FailedFetch(cursor, self.connection)
+                return cursor
+
+        def observed_finish(*args, **kwargs):
+            finished.append(True)
+            return finish(*args, **kwargs)
+
+        def observed_commit(uow):
+            commits.append(True)
+            return commit(uow)
+
+        factory = lambda: PostgresUnitOfWork(lambda: FetchWire(psycopg.connect(self.base.database_url), observed))
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admit), \
+                mock.patch.object(ConfigurationAcceptanceStore, "_receipt", readback), \
+                mock.patch.object(_EvidenceRead, "query", observed_query), \
+                mock.patch.object(advancement_module, "_finish_receiver_advancement", observed_finish), \
+                mock.patch.object(PostgresUnitOfWork, "commit", observed_commit), \
+                self.assertRaises(psycopg.DataError) as caught:
+            self.advance(command, factory)
+        self.assertIs(caught.exception, error, "the actual injected fetch fault must escape unchanged")
+        self.assertEqual(len(armed), 1)
+        self.assertEqual(faults, [state["failed"]])
+        self.assertEqual((finished, commits), ([], []))
+        self.assertEqual(after_failure, ["SELECT txid_current()"])
+        end = observed["accounting"].used
+        close = difference(end, state["failed"])
+        self.assertEqual((close.records, close.scalar_markers, close.statements), (1, 1, 1))
+        self.assertGreater(close.value_octets, 0)
+        self.assertLessEqual(close.value_octets, 20)
+        self.assertEqual(state["failed_entry"]["widths"], [])
+        successful = dict(observed, queries=[entry for entry in observed["queries"] if entry is not state["failed_entry"]])
+        self.assertEqual(len(successful["queries"]), len(observed["queries"]) - 1)
+        reconciles(self, difference(difference(end, state["prior"]), reservation), successful)
+        for entry in observed["queries"]:
+            within(self, difference(Footprint(*entry["peak"]), state["prior"]), state["publication"].peak)
+        within(self, difference(end, state["prior"]), state["publication"].peak)
+        with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("spent owner reached SQL")), \
+                self.assertRaises(OperationsRecordError):
+            state["owner"]._require_issued(state["prepared"])
+        self.assertEqual(self.fetch_failure_snapshot(), before, "all command writes must roll back before cleanup")
+
+    def test_late_carried_transfer_fetch_retains_reservation_and_rolls_back(self):
+        self.late_pair_fetch_failure(reused=False)
+
+    def test_late_distinct_birth_fetch_retains_reservation_and_rolls_back(self):
+        self.late_pair_fetch_failure(reused=True)
