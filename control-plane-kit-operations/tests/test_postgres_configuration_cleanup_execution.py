@@ -248,8 +248,14 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
                 entries = observed["queries"][offset:]
                 self.assertEqual(len(entries), 1)
                 self.assertEqual(len(rows), 1)
-                self.assertEqual(rows[0][6:8], (None, None))
-                disposition = "outstanding" if rows[0][8] else "cleanup-closed"
+                if getattr(self, "expect_transferred_pairs", False):
+                    self.assertIsNotNone(rows[0][6])
+                    self.assertEqual(rows[0][6], rows[0][7])
+                    self.assertFalse(rows[0][8])
+                    disposition = "accepted-transfer"
+                else:
+                    self.assertEqual(rows[0][6:8], (None, None))
+                    disposition = "outstanding" if rows[0][8] else "cleanup-closed"
                 # The connection records this peak before execute/fetch; use
                 # neither query kwargs nor a copied reservation declaration.
                 reservation = tuple(peak - used for peak, used in
@@ -342,7 +348,8 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
             maximum_query_reservation_bytes=max(peaks), statements=observed["statements"]))
         print("#1936 public K1 admitted tails", tail_metrics)
         self.assertEqual({kind for kind, _ in pair_reservations},
-            {"outstanding", "cleanup-closed"})
+            {"accepted-transfer"} if getattr(self, "expect_transferred_pairs", False)
+            else {"outstanding", "cleanup-closed"})
         for disposition, reservation in sorted(pair_reservations):
             for component, needed, declared in zip(
                     ("records", "value_octets", "scalar_markers", "statements"),

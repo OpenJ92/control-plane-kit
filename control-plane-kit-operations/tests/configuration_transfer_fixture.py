@@ -65,10 +65,10 @@ class ConfigurationTransferFixture:
         identity = self.original.identity
         return identity.run_id.value, identity.activity_id, identity.attempt, ref.artifact_id
 
-    def record_transfer(self, refs=None):
+    def record_transfer(self, refs=None, *, unit_of_work=None):
         """Below-owner recorded premise only. B1 exposes no transfer writer."""
         self.require_transfer_schema()
-        with self.base.unit_of_work() as uow:
+        with (self.base.unit_of_work if unit_of_work is None else unit_of_work)() as uow:
             for ref in self.refs if refs is None else refs:
                 key = self.key(ref)
                 digest = sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
