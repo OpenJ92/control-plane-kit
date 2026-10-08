@@ -4643,3 +4643,49 @@ v1 canonical bytes/replay, all capacity limits and no-backfill rules remain.
 Recorded transfers are defensive consumer evidence only. C #1947 retains the
 real writer, greater-than-64 accepted-use growth, race and rollback obligations;
 provider work and Servers #225 acceptance remain later boundaries.
+
+## B2 stage 1: representation and focused evidence — 2026-10-08
+
+[North released the representation slice](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057762967).
+Commands now carry closed keyword-only profiles, defaulting to the unchanged
+v1 fingerprint domain. The reservation value and SQL header distinguish v1's
+nonempty closure law from v2's symmetric zero-count representation with positive
+member coverage. Original plan/proposal binding remains explicit. These values
+do not grant cleanup authority: v2 planning and retained execution still refuse
+until the complete later proof path is implemented and reviewed.
+
+Seven reviewed targets established causal red at `c37ad505` (seven assertion
+failures, no errors) before source changes. The first implementation's focused
+run at `84c358a0` failed with three static failures and 18 installation errors.
+The exported fingerprint was stale, and the existing direct catalog comparison
+proved a separate CHECK-column ordering mismatch: PostgreSQL records first
+reference order, placing `derivation_profile` first. Correcting the contract's
+tuple and its hash companions preserved SQL, verifier strictness and every
+behavioral assertion. The original failed evidence and
+[catalog diagnosis](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058256310)
+remain part of the record; neither a guessed rebaseline nor a schema repair was
+used.
+
+After [independent correction review](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058258326),
+candidate `fb28a9c85e406f9834303ad11b9ecc0d5e540ccf`, tree
+`f006ee45b47fc6ae2e408077219a1b23cabf5169`, passed the ordinary focused
+Operations Docker suite: 37 tests in 290.116s, compilation/import and exit 0.
+[Green evidence](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058400416)
+records clean source and exact test-resource cleanup. The actual catalog,
+fingerprint, query-only reentry/drift, atlas, v1 replay, ledger/preflight and four
+existing v2 nonactivation tests pass. This is focused stage evidence, not full
+B2/package or live acceptance.
+
+The [later read/accounting refinement](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057879278)
+has [planning PASS](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057978107).
+It names independent outstanding allocation drivers, positive transfer receipt
+closure even when outstanding claims are empty, complete original selections,
+and repeated fresh-proof costs at actual start/fold positions. Its source work
+still requires North's next release. Existing limits remain unchanged; v1's
+passing ledger is not proof that every planned v2 composition fits.
+
+Security/data/history: profiles remain bound to original approved history;
+missing or unsupported proof refuses. Transactions, no-backfill/no-repair
+policy and existing approval semantics are unchanged. No provider resources,
+credentials, tunnel, DNS or protected tokens were touched. C's producer and
+reachable growth proof remain held.
