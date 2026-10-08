@@ -4689,3 +4689,43 @@ missing or unsupported proof refuses. Transactions, no-backfill/no-repair
 policy and existing approval semantics are unchanged. No provider resources,
 credentials, tunnel, DNS or protected tokens were touched. C's producer and
 reachable growth proof remain held.
+
+## B2 stage 2: public inspection, publication and approval — 2026-10-08
+
+[North accepted stage 1 and released stage 2](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058453004).
+The existing inspection owner now branches explicitly to v2, composing native
+active allocation drivers, independent seed/birth evidence and each required
+transfer's own completion/receipt/slot proof. It retains the complete original
+selection: selected outstanding claims and proved transfers are disjoint;
+uncovered outstanding siblings remain count-only blockers. An empty active set
+alone grants no eligibility.
+
+The existing public service publishes the chosen typed profile and uses A's
+pure v2 inspection projection for immutable replay. Approval uses the original
+destructive policy, distinct approver and lifecycle-locked fresh proof. Changed
+pins or original source/outcome evidence refuse fresh commands, while exact
+original receipts remain replayable. V1 behavior remains on its existing path.
+
+Seven [reviewed targets](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058627873)
+failed at the intended missing public v2 inspection boundary at `dcc2f445`:
+seven failures, no errors, 37.931s. After
+[source review](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058768984),
+candidate `f29648a417731c3dfda1257bbe0ceea103574006`, tree
+`18a6929dbb86a9fd0dd1712368a3cc9ff7fae020`, passed 23 focused Operations
+Docker tests in 281.675s, compilation/import and exit 0.
+[Green evidence](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058907648)
+records unchanged targets, clean source and exact test-resource cleanup.
+
+The recorded-transfer cases are explicitly defensive consumer evidence. An
+a-only zero-use proposal creates no invocation closure; b-only accounting keeps
+a's required transfer provenance under a rollback-only member exclusion. This
+is not a committed a-retirement-to-b execution or a reachable transfer writer.
+Those proofs remain with stage 3 and C respectively.
+
+The temporary blanket v2 planning/approval refusals are superseded by exact
+profile behavior and stale/corrupt negatives. All four remaining admission,
+native-start and coordinator denial/replay guards passed and remain closed.
+Stage-3 issued start/fold/retained transport has not been implemented. Security,
+history and fixed limits remain with existing owners; no schema policy,
+credential or provider resources changed. This is focused stage evidence,
+not full B2/package or live acceptance.
