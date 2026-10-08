@@ -14,6 +14,7 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.configuration_cleanup import (
     ConfigurationCleanupExpectedContext, ConfigurationCleanupSourceSelector,
     ConfigurationCleanupProposalCodec, ConfigurationCleanupInspectionCodec, _text, _scope, _digest, _require,
+    ConfigurationCleanupProposalV2Codec, configuration_cleanup_inspection_from_proposal,
 )
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, encode_stored_activity_plan
 from control_plane_kit_operations.records import (
@@ -111,13 +112,6 @@ def _cleanup_profile(profile):
         PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, PlanDerivationProfile.CONFIGURATION_CLEANUP_V2))
 
 
-def _require_planning_profile(command):
-    # B2's representation cannot silently select the still-v1 reader/writer.
-    # The complete v2 inspection/publication owner replaces this stage-1 guard.
-    if command.profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
-        raise ConfigurationCleanupCommandError("configuration cleanup profile is unavailable")
-
-
 def _authorize(command, context, *, publish):
     admitted = False
     try:
@@ -164,10 +158,19 @@ def _fingerprint(command, actor):
 def _proposal_matches_command(proposal, command):
     """Reconstruct only the immutable original review, never current authority."""
     document = proposal.descriptor()
+    expected = ("configuration-cleanup-proposal.v2" if command.profile is
+        PlanDerivationProfile.CONFIGURATION_CLEANUP_V2 else "configuration-cleanup-proposal.v1")
+    if document["profile"] != expected:
+        return False
     context = document["context"]
     if (context["workspace_id"] != command.workspace_id or context["session_id"] != command.session_id
             or any(context[name] != value for name, value in command.expected_context.descriptor().items())):
         return False
+    if command.profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V2:
+        inspection = configuration_cleanup_inspection_from_proposal(proposal)
+        return ([dict(**row["seed"], expected_ref=row["ref"]) for row in document["candidates"]]
+            == [selector.descriptor() for selector in command.selectors]
+            and inspection.evidence_digest == command.expected_inspection_fingerprint)
     selectors, candidates = [], []
     for row in document["candidates"]:
         selectors.append(dict(**row["seed"], expected_ref=row["ref"]))
@@ -204,7 +207,9 @@ def revalidate_cleanup_proposal(stores, record):
     """Fresh original evidence under the caller's existing lifecycle lock."""
     from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
     from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
-    document = ConfigurationCleanupProposalCodec().encode(record.cleanup_proposal)
+    codec = (ConfigurationCleanupProposalV2Codec() if record.derivation_profile is
+        PlanDerivationProfile.CONFIGURATION_CLEANUP_V2 else ConfigurationCleanupProposalCodec())
+    document = codec.encode(record.cleanup_proposal)
     context = document["context"]
     pins = ConfigurationCleanupExpectedContext(**{name: context[name] for name in (
         "base_graph_id", "base_realized_projection_id", "desired_graph_id",
@@ -215,7 +220,8 @@ def revalidate_cleanup_proposal(stores, record):
         selectors.append(ConfigurationCleanupSourceSelector(EffectAttemptIdentity(
             RunId(source["run_id"]), source["activity_id"], source["attempt"]), row["seed"]["artifact_id"],
             ConfigurationInstanceRefCodec().decode(row["ref"])))
-    query = InspectConfigurationCleanup(context["session_id"], context["workspace_id"], pins, tuple(selectors))
+    query = InspectConfigurationCleanup(context["session_id"], context["workspace_id"], pins, tuple(selectors),
+        profile=record.derivation_profile)
     result, proposal = stores.configuration_cleanup.read(query)
     if result.state != "complete" or proposal != record.cleanup_proposal:
         raise ConfigurationCleanupCommandError("configuration cleanup evidence changed")
@@ -228,14 +234,12 @@ class ConfigurationCleanupPlanningService:
 
     def inspect(self, command, *, context):
         _authorize(command, context, publish=False)
-        _require_planning_profile(command)
         with self._unit_of_work_factory().configuration_cleanup_snapshot() as snapshot:
             return snapshot.inspect(command)
 
     @_command_domain_errors
     def request_plan(self, command, *, context):
         _authorize(command, context, publish=True)
-        _require_planning_profile(command)
         fingerprint = _fingerprint(command, context.actor_id)
         with (self._unit_of_work_factory() as uow,
               uow.stores.configuration_cleanup.evidence()):
@@ -269,7 +273,7 @@ class ConfigurationCleanupPlanningService:
                     or result.inspection.evidence_digest != command.expected_inspection_fingerprint):
                 raise ConfigurationCleanupCommandError("configuration cleanup evidence is unavailable")
             plan = _plan(proposal)
-            profile = PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+            profile = command.profile
             encode_stored_activity_plan(plan, profile=profile, cleanup_proposal=proposal)
             uow.stores.configuration_cleanup.preflight_tail(publication=True)
             timestamp = self._clock()

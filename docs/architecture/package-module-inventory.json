@@ -441,6 +441,7 @@
       "migration_prerequisites": ["#1928"],
       "canonical_public_exports": [],
       "internal_dependencies": ["control_plane_kit_operations.configuration_cleanup",
+        "control_plane_kit_operations.plan_derivation",
         "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_operations.postgres.configuration_source",
         "control_plane_kit_operations.postgres.configuration_preparation_store",
