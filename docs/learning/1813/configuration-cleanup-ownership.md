@@ -4355,3 +4355,67 @@ package/composition and review gates. No broader framework or production scope;
 B1 remains incomplete until those gates pass, and B2/C remain held. Security and
 data scope stays within the owning suite's disposable database, with no new
 authority, provider effects, secrets, network surface or transfer writer.
+### Correction: bound fresh-history temporal variability
+
+The adjacent-input target at `adfe8f146b494a13fe7650679dbff861e161e638` failed:
+2 tests/387.698s, one failure, exit 1; the original large-provenance test passed.
+Its three constructions reached successful calibration, successful fitting
+publication/cold read and intended H-only refusal/full rollback, but the final
+prior-growth assertion measured 153582 bytes instead of 153585. Preserve log
+SHA256 `945eb712f7bd1a6101b539f1c64c919e8528da22aba214c619c64f831d3bb08e`
+and #1945 failure record `6052021291`; no compile/import credit belongs to that
+failed run. Per-cell width observations were not retained, so no specific-cell
+attribution of that delta is claimed.
+
+Source review found the invalid assumption: real database clocks supply request
+claim/expiry and original/direct event times even with fixed fixture clocks.
+Their SQL timestamptz text widths can vary from 22 to 29 bytes. Consequently,
+metadata's +5 prior/+1 publication contribution is not necessarily the complete
+cross-fixture delta. North approved replacing adjacent-input precision with a
+finite nearby fit/refusal bracket; source-bound review PASS is #1945 comment
+`6052138815`. No production law or limit changes.
+
+The corrected draft target is
+`PostgresConfigurationTransferLargeProvenanceTests.test_nearby_legal_metadata_widths_fit_settled_but_refuse_publication_peak`.
+It supersedes the adjacent-input row above; the earlier plan remains history,
+not a claim of passing evidence. Exact isolated native/publication B/B+1 tests
+remain unchanged. This corrected target is **unexecuted** until a new ordinary
+owning run supplies evidence.
+
+The finite source variability allowance is 720 prior value bytes: at most 22
+request reads with two variable temporal cells, two proof passes over eight
+original/direct event pairs, and two current-run event reads of at most eight
+rows give 92 cells ×7; four prior txid scalar reads add at most 4×19. Publication
+S/H varies by at most 70 value bytes: two current-request temporal cells at four
+prepared guards and the own receipt context, 5×2×7. Two-digit temporal length
+probes do not vary. Outcome preimages contain result descriptors, not event
+times. Other IDs, digests, clocks, counts and material remain fixed.
+
+One real calibration selects low/high metadata widths using an 800-byte input
+selection margin, larger than the combined variability bound 790. Integer floor
+and ceiling select once; there is no search loop. The measured invariant H-S gap
+must exceed 1595 (=800+790+5), ensuring the nearby negative case's S still fits.
+Persisted SQL temporal-width checks, positive <=20-digit txids and stable other
+footprint dimensions guard the premise. The test reports measured nonmetadata
+residuals separately, bounds them by 720/70, and never removes them from ledger
+usage or admission.
+
+The actual product assertions remain strict: lower H fits, higher H returns
+BYTE_LIMIT, higher S/native/material fit, all before-write sentinels remain,
+and full durable state rolls back. Successful publication/cold wire accounting
+and ordinary cleanup remain required. No +/-3 allowance, clock substitution,
+timestamp/history rewrite, ledger/forecast adjustment, limit change, additional
+history topology, or supporting framework. Final B1 hosted validation/review
+still follows accepted focused evidence; B2/C remain held.
+
+The original material comparison has the same fresh-history timestamp caveat.
+Graph/ref material stays unchanged; the receipt-stage footprint also contains
+the two operational timestamp cells. The earlier logged 82302-byte equality is
+true for that observed run, not a promise of unconditional total-byte identity.
+The corrected draft independently measures the final request's claimed/expiry
+SQL-text widths before advancement and retains their sum. Each material context
+and snapshot budget contains that request once. Their cross-case value-byte
+delta must equal exactly the measured two-cell width delta; records, cells and
+statements remain exactly equal. Graph/ref equality and every actual raw
+snapshot/ledger cap remain unchanged. This is attribution in the test comparison,
+not normalization of stored timestamps or adjustment of production accounting.
