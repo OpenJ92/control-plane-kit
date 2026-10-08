@@ -13,6 +13,7 @@ from control_plane_kit_core.configuration_invocation import (
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult
 from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+from control_plane_kit_operations import advancement as advancement_module
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
@@ -39,7 +40,7 @@ class PostgresConfigurationTransferProducerReceiverTests(receiver.ReceiverHealth
         super().setUp()
         self.runtime = ProfiledRecordingRuntime(self)
 
-    async def test_genuine_nonempty_transfers_compose_with_receiver_finish_and_physical_bounds(self):
+    async def test_genuine_transfer_receiver_finish_is_atomic_replayable_and_within_physical_bounds(self):
         self.health.responses = [NativeConnectionOutcome.CONNECTED]
         await self.prepare_and_start()
         for _ in range(len(self.plan.activities) + 2):
@@ -85,6 +86,32 @@ class PostgresConfigurationTransferProducerReceiverTests(receiver.ReceiverHealth
             "desired_realized_projection_id": plan["desired_realized_projection_id"],
             "expected_desired_graph_revision": plan["desired_graph_revision"],
             "claim_generation": self.generation, "idempotency_key": "advance-profiled-receiver"}
+        def compound_truth():
+            tables = ("cpk_workspaces", "cpk_operation_actions", "cpk_activity_events",
+                "cpk_configuration_acceptances", "cpk_configuration_accepted_slots",
+                "cpk_configuration_claim_transfers", "cpk_effect_configuration_refs", "cpk_configuration_claims",
+                "cpk_graph_receiver_introductions", "cpk_graph_receiver_bindings")
+            return tuple((table, self.connection.execute("SELECT row_to_json(t)::text FROM " + table
+                + " t ORDER BY row_to_json(t)::text").fetchall()) for table in tables)
+        before, finished = compound_truth(), []
+        finish = advancement_module._finish_receiver_advancement
+        def fail_after_finish(stores, request, run, guard, prepared, action, advanced):
+            finish(stores, request, run, guard, prepared, action, advanced)
+            self.assertIsNotNone(prepared)
+            self.assertEqual(stores.connection.execute("SELECT count(*) FROM cpk_configuration_claim_transfers "
+                "WHERE run_id=%s", (self.run_id,)).fetchone(), (len(refs),))
+            for target in self.targets.values():
+                origin = stores.graphs.receiver_introduction("workspace-a", target.receiver_id)
+                self.assertEqual(origin.first_accepted_action_id, action.action_id)
+            finished.append(True)
+            raise RuntimeError("injected after real receiver finish")
+        with mock.patch.object(advancement_module, "_finish_receiver_advancement", fail_after_finish), \
+                self.assertRaisesRegex(RuntimeError, "^injected after real receiver finish$"):
+            await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+                path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker, payload=payload)
+        self.assertEqual(finished, [True])
+        self.assertEqual(compound_truth(), before)
+        self.assertEqual(self.tracker.active, 0)
         with mock.patch.object(self.tracker, "_connect", side_effect=lambda: physical.PublicationWire(connect(), observed)), \
                 mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admit), \
                 mock.patch.object(PostgresUnitOfWork, "commit", committed):
@@ -130,3 +157,13 @@ class PostgresConfigurationTransferProducerReceiverTests(receiver.ReceiverHealth
                 physical.within(self, physical.Footprint(*entry["peak"]), future.peak)
         physical.reconciles(self, cold["accounting"].used, cold)
         self.assertEqual(self.tracker.active, 0)
+        committed_truth = compound_truth()
+        advance_ids = self.ids["advance"].next
+        runtime_calls = tuple(self.runtime.calls)
+        replay = await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker, payload=payload)
+        self.assertTrue(replay["replayed"])
+        self.assertEqual((replay["action_id"], replay["event_id"]), (advanced["action_id"], advanced["event_id"]))
+        self.assertEqual(self.ids["advance"].next, advance_ids)
+        self.assertEqual(tuple(self.runtime.calls), runtime_calls)
+        self.assertEqual(compound_truth(), committed_truth)

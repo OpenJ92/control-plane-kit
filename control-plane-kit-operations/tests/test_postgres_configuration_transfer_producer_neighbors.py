@@ -5,7 +5,7 @@ from dataclasses import replace
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import NodeTarget, ReconcileNode
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure
-from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService, CurrentGraphAdvancementConflict
+from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService, CurrentGraphAdvancementIncomplete
 from control_plane_kit_operations.coordinator import CoordinatorStatus, ExecutionCoordinatorConflict
 from tests import test_configuration_cleanup_v2_planning as planning
 from tests import test_execution_coordinator as execution
@@ -109,7 +109,7 @@ class PostgresConfigurationTransferProducerNeighborTests(planning._V2PlanningFix
             self.assertIsNotNone(uow.stores.configuration_completions.get(identity),
                 "a failed own completion must not be confused with absent profile evidence")
         before = self.snapshot()
-        with self.assertRaises(CurrentGraphAdvancementConflict):
+        with self.assertRaisesRegex(CurrentGraphAdvancementIncomplete, "^run is not settled as succeeded$"):
             self.advance(command, replay=True)
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_configuration_claim_transfers "
