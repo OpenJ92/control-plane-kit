@@ -317,7 +317,10 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
             future = pool.submit(self.inspect, query, factory=factory)
             try:
                 self.assertTrue(entered.wait(10))
-                pool.submit(self.member.advance).result(timeout=10)
+                # Keep this v1 snapshot law on an explicit pre-C disposition;
+                # the real acceptance still changes the committed occurrence.
+                with historical_transfer_prefix(self):
+                    pool.submit(self.member.advance).result(timeout=10)
             finally:
                 release.set()
             self.assertEqual(future.result(timeout=15), original)
