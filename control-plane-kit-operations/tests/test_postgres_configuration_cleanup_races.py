@@ -23,6 +23,7 @@ from tests.receiver_scope_history_fixture import admit_fixture_plan
 from tests.receiver_fresh_execution_fixture import load_execution_context
 from tests import test_postgres_effect_attempt_start_concurrency as concurrency
 from tests import test_execution_coordinator as coordinator_fixture
+from tests import test_configuration_cleanup_v2_planning as v2_planning
 
 
 class PostgresConfigurationCleanupRaceTests(ConfigurationCleanupPostgresFixture, unittest.TestCase):
@@ -172,3 +173,18 @@ class PostgresConfigurationCleanupRaceTests(ConfigurationCleanupPostgresFixture,
 
     def test_second_cleanup_wins_over_distinct_competing_cleanup(self):
         self.competing_cleanup(right_first=True)
+
+
+class PostgresConfigurationCleanupV2RaceTests(v2_planning._V2PlanningFixture, unittest.TestCase):
+    """Same actual producer/locking laws with explicit v2 plan/approval input."""
+    single_artifact = True
+    runtime_authority_ref = PostgresConfigurationCleanupRaceTests.runtime_authority_ref
+    _factory_with_pids = PostgresConfigurationCleanupRaceTests._factory_with_pids
+    _wait_until_blocked_by = PostgresConfigurationCleanupRaceTests._wait_until_blocked_by
+    no_ids = PostgresConfigurationCleanupRaceTests.no_ids
+    ready_cleanup = PostgresConfigurationCleanupRaceTests.ready_cleanup
+    race = PostgresConfigurationCleanupRaceTests.race
+    test_cleanup_wins_before_pending_real_membership_advancement = (
+        PostgresConfigurationCleanupRaceTests.test_cleanup_wins_before_pending_real_membership_advancement)
+    test_real_membership_advancement_wins_before_cleanup_start = (
+        PostgresConfigurationCleanupRaceTests.test_real_membership_advancement_wins_before_cleanup_start)

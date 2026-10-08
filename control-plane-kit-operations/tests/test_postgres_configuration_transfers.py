@@ -28,7 +28,7 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
         self.require_transfer_schema()
         self.assert_produced_transfers()
         self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {TRANSFER_TABLE}").fetchone(), (len(self.refs),))
-        self.assertEqual(self.membership.protective_claims(), [])
+        self.assertEqual([row[-1] for row in self.membership.protective_claims()], [False] * len(self.refs))
         before = self.proof_snapshot()
         replay = self.membership.advance()
         self.assertTrue(replay.replayed)
