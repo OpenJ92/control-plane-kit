@@ -4583,7 +4583,14 @@ This companion/fixture correction changes no application or schema code and
 weakens no assertion. Independent diff review verified the exact ledger,
 graph, sections and fixture shape, with one existing completion-dependent
 prose omission corrected before validation. The focused ordinary Docker gate
-covers all failed methods plus directly affected atlas and intent-atlas laws;
-its result remains pending. Earlier companion-completeness claims are
+covers all failed methods plus directly affected atlas and intent-atlas laws.
+At checkpoint `05f10a43be8f34d3b6055f268851f45f6aaffc14`, it passed 13 tests
+in 14.429s, compile/import and observed exit 0, also saved separately. Exact
+disposable Docker resources were absent and source remained clean.
+[Focused green evidence](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6055257582)
+preserves log SHA256
+`4096b92eb8919fe1ccbac04d03af245d125f43997a27c7ce9fcf996f27852750`.
+[Independent scoped review passed](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6055275904).
+Earlier companion-completeness claims are
 superseded by this explicit failure and correction record. Corrected-head
 hosted checks and final review still govern B1 acceptance; B2/C remain held.
