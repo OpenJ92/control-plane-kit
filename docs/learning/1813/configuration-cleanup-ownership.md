@@ -4594,3 +4594,52 @@ preserves log SHA256
 Earlier companion-completeness claims are
 superseded by this explicit failure and correction record. Corrected-head
 hosted checks and final review still govern B1 acceptance; B2/C remain held.
+
+## B1 accepted; B2 exact-interface planning — 2026-10-08
+
+This disposition supersedes the pending-gate status above, without erasing the
+earlier failures or their evidence. PR #1954 is merged at actual roadmap merge
+`486a03e08d5c7d8106bb51351936f806aaa79607`, with reviewed parents
+`abdb7c8583a274588eb9ffc3c2d63812535bdedd` and
+`7f8e2e3c6eb6c1cfc97d262d509c19b2e57ba161`, and tested tree
+`4ef5ce7c836e5135069e97408799d4400992d13b`.
+[Independent whole-B1 acceptance](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6057426299)
+and [final green evidence](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6057394137)
+govern. Core passed 945 package plus 21 support tests; Operations passed 2585
+tests in 7670.006 seconds, with compilation/import. The separate locked-backend
+gate passed all nine stages using its declared CPK source `f45384e7`; it is not
+candidate adoption or provider evidence. No baseline rerun is needed for B2.
+
+North closed #1945 and released #1946 exact-interface/test-context planning from
+that actual merge. The dedicated branch is
+`codex/1946-cleanup-profile-composition`, targeting
+`roadmap/1813-runtime-control`. The
+[B2 interface draft](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057689678)
+contains the governing test law cards, changed source trace, concrete public
+command and reservation shape, alternatives, and ordered target groups. Kepler
+reviews before source/test implementation or executable validation is released.
+
+The dry run found a necessary representation seam: the current reservation
+value, reader and SQL count constraint all require nonempty closure sets. North
+extended planning to the minimal reservation/schema/current-contract/atlas
+companions. The proposed closed header discriminator retains v1's database count
+rules and is checked against the exact original approved plan/proposal. Simply
+lowering shared SQL bounds would lose that v1 enforcement. V2 can then represent
+physical members with zero outstanding uses, but only with positive independent
+birth/seed and own accepted-transfer proof. No schema mutation has occurred.
+
+The proposed composition reuses B1 proof owners and A's v2 values: explicit
+keyword-only profile selection with an unchanged v1 default/fingerprint;
+bounded outstanding discovery; full original-selection coverage by newly closed
+claims and separately proved transfers; the existing approval/start/fold/replay
+owners; and their existing cumulative read/accounting framework. Physical
+deletion candidates remain distinct from provenance-only transferred siblings.
+An a-only zero-use cleanup cannot close an invocation that still protects b;
+later b cleanup can account for a's original transfer without dispatching a again.
+
+Security/data/history: planning changes no executable behavior, credentials,
+network exposure or durable runtime state. Existing scopes, destructive approval,
+v1 canonical bytes/replay, all capacity limits and no-backfill rules remain.
+Recorded transfers are defensive consumer evidence only. C #1947 retains the
+real writer, greater-than-64 accepted-use growth, race and rollback obligations;
+provider work and Servers #225 acceptance remain later boundaries.
