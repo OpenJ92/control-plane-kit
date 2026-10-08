@@ -1,9 +1,11 @@
 """Actual cleanup starts compete with real acceptance and other cleanup starts."""
 import queue
 import unittest
+from hashlib import sha256
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
+from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptTransition, EffectAttemptTransitionKind
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
@@ -97,6 +99,13 @@ class PostgresConfigurationCleanupRaceTests(ConfigurationCleanupPostgresFixture,
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_configuration_accepted_slots "
             "WHERE workspace_id='workspace-a' AND pinned_revision=%s",
             (self.member.workspace.desired_graph_revision,)).fetchone(), (0,))
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_configuration_claim_transfers").fetchone(), (0,))
+        # The winning cleanup legitimately creates ownership; the losing
+        # advancement must not introduce accepted-current dispositions.
+        for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+            self.assertEqual(self.connection.execute("SELECT artifact_id,accepted_revision FROM " + table
+                + " WHERE run_id=%s ORDER BY artifact_id", (self.original.identity.run_id.value,)).fetchall(),
+                [(ref.artifact_id, None) for ref in self.refs])
 
     def test_real_membership_advancement_wins_before_cleanup_start(self):
         command = self.ready_cleanup()
@@ -113,7 +122,7 @@ class PostgresConfigurationCleanupRaceTests(ConfigurationCleanupPostgresFixture,
         advance = CurrentGraphAdvancementCommandService(self._factory_with_pids(pids),
             clock=self.sample_clock, id_factory=identity)
         start = EffectAttemptStartService(self._factory_with_pids(pids), id_factory=self.no_ids)
-        self.race(lambda: advance.execute(advancement), lambda: start.execute(command),
+        accepted = self.race(lambda: advance.execute(advancement), lambda: start.execute(command),
             blocker, pids, (EffectAttemptStartConflict, EffectAttemptStartDenied))
         with self.unit_of_work() as uow:
             self.assertIsNone(uow.stores.configuration_cleanup_ownership.get(command.transition.identity))
@@ -121,6 +130,22 @@ class PostgresConfigurationCleanupRaceTests(ConfigurationCleanupPostgresFixture,
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_configuration_accepted_slots "
             "WHERE workspace_id='workspace-a' AND pinned_revision=%s",
             (self.member.workspace.desired_graph_revision,)).fetchone(), (1,))
+        with self.unit_of_work() as uow:
+            completion = uow.stores.configuration_completions.get(self.original.identity)
+        self.assertIsNotNone(completion)
+        identity = self.original.identity
+        self.assertEqual(self.connection.execute("SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,"
+            "runtime_id,node_id,ref_digest,request_fingerprint,selection_fingerprint,outcome_fingerprint,"
+            "acceptance_revision FROM cpk_configuration_claim_transfers ORDER BY artifact_id").fetchall(), [(
+                identity.run_id.value, identity.activity_id, identity.attempt, ref.artifact_id, ref.workspace_id,
+                ref.allocation_id, ref.runtime_id, ref.node_id,
+                sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest(),
+                completion.request_fingerprint, completion.selection_fingerprint, completion.outcome_fingerprint,
+                accepted.desired_graph_revision) for ref in self.refs])
+        for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+            self.assertEqual(self.connection.execute("SELECT artifact_id,protective,accepted_revision,disposition_kind "
+                "FROM " + table + " ORDER BY artifact_id").fetchall(),
+                [(ref.artifact_id, False, accepted.desired_graph_revision, "accepted-current") for ref in self.refs])
 
     def competing_cleanup(self, *, right_first):
         left, right = self.ready_cleanup("left"), self.ready_cleanup("right")
