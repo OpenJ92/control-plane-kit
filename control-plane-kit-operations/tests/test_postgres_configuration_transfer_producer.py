@@ -128,6 +128,8 @@ class PostgresConfigurationTransferProducerTests(unittest.TestCase):
         for phase in ("pre_id", "bound"):
             prior, _, _, declaration, offset = state[phase]
             used = physical.difference(state["end"], prior)
+            print("producer-accounting", phase, "used", used, "settled", declaration.settled,
+                "peak", declaration.peak)
             physical.within(self, used, declaration.settled)
             selected = observed["queries"][offset:]
             for entry in selected:
@@ -152,6 +154,7 @@ class PostgresConfigurationTransferProducerTests(unittest.TestCase):
         self.assertEqual(result.state, "complete")
         self.assertEqual(tuple(binding.ref for binding in result.bindings), member.refs)
         self.assertEqual(len(snapshots), 1)
+        print("producer-accounting cold", cold["accounting"].used, "snapshot", snapshots[0])
         for phase in ("pre_id", "bound"):
             _, snapshot, future, _, _ = state[phase]
             physical.within(self, snapshots[0], snapshot)

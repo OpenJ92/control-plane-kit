@@ -1567,6 +1567,9 @@ class ConfigurationAcceptanceStore:
                 native(tuple(cap for _, _, cap in completion_columns)),
                 collection("invocation-refs", identity),
                 *(sibling_disposition for _ in invocation_members[item.identity]),
+                # _receipt_context checks the bound header's transaction even
+                # on its actual-readback cache hit, before returning context.
+                guard,
                 native(tuple(cap for _, _, cap in _columns(_SLOT))))
         if prepared.receiver_truth is not None:
             before, after, origins, scopes, original, _, evidence = prepared.receiver_truth
