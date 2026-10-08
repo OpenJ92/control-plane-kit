@@ -14,7 +14,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import (
     _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records, _PUBLICATION_SCOPE,
     _PublicationReadBounds, _require_publication_proof,
-    _observe_publication_proof,
+    _observe_publication_proof, _ProspectiveConfigurationTransfer,
 )
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting, _ACCOUNTING, _execution_context
 from control_plane_kit_operations.configuration_preparation import (
@@ -151,6 +151,8 @@ class ConfigurationAcceptanceStore:
         self._publication_receiver_receipts = {}
         self._publication_transfer_dependencies = {}
         self._publication_invocation_members = {}
+        self._publication_transfers_written = False
+        self._publication_transfer_proofs = set()
         self._publication_active = True
         self._issued = None
         token = _PUBLICATION_SCOPE.set(self)
@@ -194,6 +196,8 @@ class ConfigurationAcceptanceStore:
             self._publication_receiver_receipts = {}
             self._publication_transfer_dependencies = {}
             self._publication_invocation_members = {}
+            self._publication_transfers_written = False
+            self._publication_transfer_proofs = set()
             _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
@@ -280,11 +284,24 @@ class ConfigurationAcceptanceStore:
                     ("configuration-receipt-context", ref.workspace_id, revision),
                     ("configuration-source-plan", ref.workspace_id, plan.plan_id)))))
         read.sources[memo] = result
+        if owner is not None and owner._prospective_transfer(memo) is not None:
+            owner._publication_transfer_proofs.add(memo)
         return result
+
+    def _prospective_transfer(self, memo):
+        prepared = self._issued
+        return None if prepared is None else next((item for item in prepared.transfers if item.memo == memo), None)
 
     def _capture_transfer_dependencies(self, read, memo, refs, sources):
         from .configuration_cleanup_read_ceilings import _require
         self._require_publication(read=read)
+        if self._issued is not None and self._issued.read_bounds is not None:
+            expected = self._prospective_transfer(memo)
+            _require(expected is not None and self._publication_transfers_written
+                and read is self._issued.evidence_read and memo not in self._publication_transfer_proofs
+                and memo not in read.sources and refs == expected.refs and sources == expected.sources
+                and all(key in read.refs for key in refs) and all(key in read.sources for key in sources))
+            return
         _require(self._issued is None or self._issued.read_bounds is None)
         _require(all(key in read.refs for key in refs) and all(key in read.sources for key in sources))
         captured = self._publication_transfer_dependencies.setdefault(read, {})
@@ -324,6 +341,15 @@ class ConfigurationAcceptanceStore:
             "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
             "configuration-accepted-transfer"))
         if key[0] == "configuration-accepted-transfer":
+            expected = self._prospective_transfer(key)
+            if expected is not None:
+                _require(self._publication_transfers_written and self._publication_published
+                    and self._publication_own_context_started
+                    and all(item in prepared.read_bounds.proof_keys[0] and item in read.refs for item in expected.refs)
+                    and all(item in read.sources for item in expected.sources)
+                    and all(item in prepared.read_bounds.proof_keys[1] for item in expected.sources[:-2]))
+                _require((key in read.sources) == (key in self._publication_transfer_proofs))
+                return
             _require(key in prepared.read_bounds.proof_keys[1] and key in read.sources)
             dependencies = {memo: (refs, sources)
                 for memo, refs, sources in prepared.read_bounds.transfer_dependencies}
@@ -360,7 +386,32 @@ class ConfigurationAcceptanceStore:
     def _observe_proof_shape(self, read, family, key, row):
         from .configuration_cleanup_read_ceilings import _require
         self._require_publication(read=read)
-        _require(self._issued is None or self._issued.read_bounds is None)
+        bounds = None if self._issued is None else self._issued.read_bounds
+        if bounds is not None:
+            _require(read is self._issued.evidence_read and self._publication_transfers_written)
+            if family == "invocation":
+                members = dict(bounds.invocation_members).get(key)
+                _require(members is not None and tuple(value[3] for value in row) == members)
+                for value in row:
+                    _require(len(value) == 19 and value[:3] == (key.run_id.value, key.activity_id, key.attempt))
+                    self._observe_proof_shape(read, "invocation-ref", (key, value[3]), value)
+                return
+            shapes = {(name, identity): widths for name, identity, widths in bounds.proof_shapes}
+            widths = shapes.get((family, key))
+            _require(widths is not None and len(row) == len(widths)
+                and all(value is None or type(value) in (str, bytes, bool, int) for value in row))
+            actual = tuple(0 if value is None else len(value) if type(value) is bytes else 1 if type(value) is bool
+                else len(str(value).encode("utf-8")) for value in row)
+            _require(all(value <= cap for value, cap in zip(actual, widths, strict=True)))
+            if family == "transfer":
+                expected = self._prospective_transfer(key)
+                _require(expected is not None and row == expected.row)
+            elif family == "transfer-slot":
+                expected = self._prospective_transfer(key)
+                _require(expected is not None and row == expected.slot)
+            else:
+                _require(family in ("completion", "invocation-ref"))
+            return
         if family == "invocation":
             _require(type(row) is tuple and 1 <= len(row) <= 32
                 and type(key) is EffectAttemptIdentity)
@@ -539,7 +590,8 @@ class ConfigurationAcceptanceStore:
         _require(all(type(width) is int and 0 <= width <= cap for width, (_, _, cap) in zip(widths, columns, strict=True)))
         return widths
 
-    def _freeze_publication(self, prepared, event, action, proof_keys):
+    def _capture_publication(self, prepared, proof_keys):
+        """Freeze all existing selectors and SQL widths before any IDs exist."""
         from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _PhasePoint, _PhaseCollection
         from .configuration_cleanup_phase_read_bounds import _capture_point, _capture_collection, _shape
         from .configuration_cleanup_read_ceilings import _require
@@ -564,6 +616,56 @@ class ConfigurationAcceptanceStore:
                 value = replace(value, widths=tuple(max(a, b) for a, b in zip(previous.widths, value.widths, strict=True)))
             collections[(role, identity)] = value
 
+        for item in prepared.transfers:
+            identity = (item.identity.run_id.value, item.identity.activity_id, item.identity.attempt)
+            key = ("invocation-refs", identity)
+            if key not in collections:
+                members = self._publication_invocation_members[item.identity]
+                collections[key] = _capture_collection(read, key[0], identity, tuple((artifact,) for artifact in members))
+        # Generated values are declared transport bounds, never semantic rows
+        # or invented IDs. Actual PostgreSQL representations bind after IDs.
+        generated = tuple((role, tuple(cap for _, _, cap in _shape(role)[1]))
+            for role in ("header", "receipt-action", "receipt-event", "acceptance-action", "events", "advancement-actions"))
+        slot_widths = tuple(max((len(str(row[index]).encode("utf-8")) for row in prepared.slots), default=0)
+            for index in range(len(_SLOT)))
+        generated += (("slots", slot_widths),)
+        if prepared.receiver_truth is not None:
+            before, after, origins = prepared.receiver_truth[:3]
+            after_ids = {item.receiver_id for item in after}
+            for receiver, origin in origins.items():
+                key = ("introduction", (prepared.workspace.workspace_id, receiver))
+                value, widths = points[key], list(points[key].widths)
+                if receiver in after_ids and origin.first_accepted_action_id is None:
+                    widths[10:12] = (2048, max(widths[11], len(prepared.plan.session_id.encode("utf-8"))))
+                if receiver not in after_ids and any(item.receiver_id == receiver for item in before):
+                    widths[12:14] = (2048, max(widths[13], len(prepared.plan.session_id.encode("utf-8"))))
+                points[key] = replace(value, widths=tuple(widths))
+        return _PublicationReadBounds(proof_keys, self._publication_transaction,
+            tuple((role, value) for (role, _), value in points.items()),
+            tuple((role, value) for (role, _), value in collections.items()),
+            tuple((role, value, present) for (role, _), (value, present) in optional.items()),
+            tuple(self._publication_candidates.values()), (),
+            self._capture_native_proof_shapes(read, proof_keys), tuple(self._publication_receiver_receipts.items()),
+            self._freeze_transfer_dependencies(read, proof_keys), tuple(self._publication_invocation_members.items()), generated)
+
+    def _freeze_publication(self, prepared, event, action):
+        """Bind only actual generated additions; existing bounds cannot grow."""
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _PhasePoint, _PhaseCollection
+        from .configuration_cleanup_phase_read_bounds import _shape
+        from .configuration_cleanup_read_ceilings import _require
+        read, bounds = prepared.evidence_read, prepared.read_bounds
+        _require(bounds is not None)
+        points = {(role, entry.identity): entry for role, entry in bounds.points}
+        collections = {(role, entry.identity): entry for role, entry in bounds.collections}
+        generated = dict(bounds.generated_widths)
+
+        def measured(role, columns, rows):
+            widths = self._generated_publication_widths(read, columns, rows)
+            _require(len(widths) == len(generated[role])
+                and all(width <= cap for width, cap in zip(widths, generated[role], strict=True)))
+            generated[role] = widths
+            return widths
+
         workspace = prepared.workspace.workspace_id
         revision = prepared.plan.desired_graph_revision
         locator = (workspace, prepared.request.identity.request_id, prepared.plan.plan_id, revision)
@@ -581,8 +683,8 @@ class ConfigurationAcceptanceStore:
                 ("receipt-action", (action.action_id,), (*action_values, *locator, event.run_id)),
                 ("receipt-event", (event.event_id,), (*event_values, *locator)),
                 ("acceptance-action", (action.action_id, action.session_id), action_values)):
-            published.append((role, _PhasePoint(identity, self._generated_publication_widths(read, _shape(role)[1], (values,)))))
-        slot_widths = self._generated_publication_widths(read, _columns(_SLOT), prepared.slots)
+            published.append((role, _PhasePoint(identity, measured(role, _shape(role)[1], (values,)))))
+        slot_widths = measured("slots", _columns(_SLOT), prepared.slots)
         published.append(("slots", _PhaseCollection((workspace, revision), slot_widths,
             tuple(tuple(str(cell) for cell in row[:3]) for row in prepared.slots))))
         for role, identity, values, added in (
@@ -591,7 +693,7 @@ class ConfigurationAcceptanceStore:
             key = (role, identity)
             if key in collections:
                 original = collections[key]
-                widths = self._generated_publication_widths(read, _shape(role)[1], (values,))
+                widths = measured(role, _shape(role)[1], (values,))
                 _require(added not in original.keys)
                 published.append((role, replace(original, widths=tuple(max(a, b) for a, b in zip(original.widths, widths, strict=True)),
                     keys=(*original.keys, added))))
@@ -610,13 +712,8 @@ class ConfigurationAcceptanceStore:
         receiver_receipts = dict(self._publication_receiver_receipts)
         receiver_receipts[(action.action_id, action.session_id)] = (prepared.request.identity.request_id,
             prepared.run.run_id, prepared.plan.desired_graph_id, prepared.desired_projection.projection_id)
-        return _PublicationReadBounds(proof_keys, self._publication_transaction,
-            tuple((role, value) for (role, _), value in points.items()),
-            tuple((role, value) for (role, _), value in collections.items()),
-            tuple((role, value, present) for (role, _), (value, present) in optional.items()),
-            tuple(self._publication_candidates.values()), tuple(published),
-            self._capture_native_proof_shapes(read, proof_keys), tuple(receiver_receipts.items()),
-            self._freeze_transfer_dependencies(read, proof_keys), tuple(self._publication_invocation_members.items()))
+        return replace(bounds, points=tuple((role, value) for (role, _), value in points.items()),
+            published=tuple(published), receiver_receipts=tuple(receiver_receipts.items()), generated_widths=tuple(generated.items()))
 
     def _bind_records(self, prepared, event, action):
         self._require_issued(prepared)
@@ -632,12 +729,7 @@ class ConfigurationAcceptanceStore:
         history.get_session(prepared.plan.session_id)
         self._projection(prepared.plan.desired_graph_id, prepared.desired_projection.projection_id,
             prepared.workspace.workspace_id)
-        read = prepared.evidence_read
-        proof_keys = (tuple(read.refs), tuple(key for key in read.sources
-            if key[0] in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
-                "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
-                "configuration-accepted-transfer")))
-        bounds = self._freeze_publication(prepared, event, action, proof_keys)
+        bounds = self._freeze_publication(prepared, event, action)
         bound = replace(prepared, event=event, action=action, read_bounds=bounds)
         self._issued = bound
         return bound
@@ -1056,7 +1148,107 @@ class ConfigurationAcceptanceStore:
             current_projection, desired_projection, slots=tuple(slots), evidence_read=read, proof_footprint=proof,
             receiver_truth=receiver_truth)
         self._issued = prepared
+        transfers = self._prepare_transfers(prepared)
+        # These reads both verify and select every existing bind-parent role.
+        # They precede the pre-ID gate; later bind rereads are strictly bounded.
+        if (stores.execution.get_run(run.run_id) != run
+                or stores.execution.get_request(request.identity.request_id) != request
+                or stores.activity_history.get_plan(plan.plan_id) != plan):
+            raise _Unavailable
+        stores.activity_history.get_session(plan.session_id)
+        self._projection(plan.desired_graph_id, desired_projection.projection_id, workspace.workspace_id)
+        prepared = replace(prepared, transfers=transfers)
+        self._issued = prepared
+        proof_keys = (tuple(read.refs), tuple(key for key in read.sources
+            if key[0] in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
+                "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
+                "configuration-accepted-transfer")))
+        bounds = self._capture_publication(prepared, proof_keys)
+        prepared = replace(prepared, read_bounds=bounds)
+        self._issued = prepared
         return prepared
+
+    def _require_transfer_absent(self, read, key):
+        if read.query("SELECT 1 FROM cpk_configuration_claim_transfers WHERE "
+                "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s) LIMIT 1",
+                key, records=1, octets=1, cells=1):
+            raise _Unavailable
+
+    def _prepare_transfers(self, prepared):
+        from .configuration_completion_store import ConfigurationCompletionStore
+        from .configuration_preparation_store import _require_unreserved
+        read, completions, transfers = prepared.evidence_read, {}, []
+        for slot in prepared.slots:
+            key = tuple(slot[3:7])
+            if key[0] != prepared.run.run_id:
+                continue
+            identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+            original = self._ref(read, key)
+            _, ref, _, _ = _decode_ref(original)
+            if _paired_disposition(read, key, ref).kind != "outstanding":
+                continue
+            if identity not in completions:
+                completions[identity] = ConfigurationCompletionStore(self._connection)._get(identity, read)
+            completion = completions[identity]
+            if completion is None:
+                continue
+            _require_unreserved(read, ref)
+            self._require_transfer_absent(read, key)
+            digest, revision = original[9], prepared.plan.desired_graph_revision
+            row = (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id, digest,
+                completion.request_fingerprint, completion.selection_fingerprint, completion.outcome_fingerprint, revision)
+            memo = ("configuration-accepted-transfer", *key, ref.workspace_id, ref.allocation_id, digest, revision)
+            sources = tuple(dict.fromkeys((("cpk_effect_attempt_intents", identity),
+                ("cpk_effect_attempt_outcomes", identity), ("cpk_activity_events", completion.original_event_id),
+                ("cpk_activity_events", completion.direct_event_id),
+                ("configuration-receipt-context", ref.workspace_id, revision),
+                ("configuration-source-plan", ref.workspace_id, prepared.plan.plan_id))))
+            if (memo in read.sources or any(source not in read.sources for source in sources[:-2])
+                    or any(source in read.sources for source in sources[-2:])):
+                raise _Unavailable
+            # Only width/selector commitments are prospective. The reader's
+            # semantic memo remains absent until actual stored proof succeeds.
+            self._observe_proof_shape(read, "transfer", memo, row)
+            self._observe_proof_shape(read, "transfer-slot", memo, slot)
+            transfers.append(_ProspectiveConfigurationTransfer(identity, ref, completion, slot,
+                row, memo, ((identity, ref.artifact_id),), sources))
+        return tuple(sorted(transfers, key=lambda item: item.row[:4]))
+
+    def _insert_transfers(self, prepared):
+        from .configuration_preparation_store import _require_unreserved
+        self._require_issued(prepared)
+        if self._publication_transfers_written or not self._publication_published:
+            raise _Unavailable
+        _require_prepared_advancement(prepared, self._connection, prepared.workspace.workspace_id, after_cas=True)
+        read = prepared.evidence_read
+        own_context = ("configuration-receipt-context", prepared.workspace.workspace_id,
+            prepared.plan.desired_graph_revision)
+        context = read.sources.get(own_context)
+        if (context is None or context[1:3] != (prepared.action, prepared.event)
+                or context[3:6] != (prepared.plan, prepared.request, prepared.run)):
+            raise _Unavailable
+        for item in prepared.transfers:
+            _require_unreserved(read, item.ref)
+            _paired_disposition(read, tuple(item.row[:4]), item.ref, protective=True)
+            self._require_transfer_absent(read, tuple(item.row[:4]))
+        for item in prepared.transfers:
+            inserted = read.query("INSERT INTO cpk_configuration_claim_transfers ("
+                + ",".join(name for name, _, _ in _TRANSFER_COLUMNS) + ") VALUES ("
+                + ",".join("%s" for _ in item.row) + ") RETURNING 1",
+                item.row, records=1, octets=1, cells=1)
+            if inserted != [(1,)]:
+                raise _Unavailable
+            for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+                updated = read.query("UPDATE " + table + " SET accepted_revision=%s WHERE "
+                    "(run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s) "
+                    "AND protective AND accepted_revision IS NULL AND cleanup_run_id IS NULL "
+                    "AND cleanup_activity_id IS NULL AND cleanup_attempt IS NULL RETURNING 1",
+                    (item.row[-1], *item.row[:4]), records=1, octets=1, cells=1)
+                if updated != [(1,)]:
+                    raise _Unavailable
+        self._publication_transfers_written = True
+        for item in prepared.transfers:
+            self._accepted_transfer(read, tuple(item.row[:4]), item.ref, item.row[-1])
 
     def _require_current_slots(self, read, slots):
         from .configuration_preparation_store import _paired_disposition, _require_unreserved
@@ -1153,6 +1345,29 @@ class ConfigurationAcceptanceStore:
         entries = {(role, entry.identity): entry for role, entry in bounds.points + bounds.collections}
         entries.update(((role, entry.identity), entry) for role, entry, _ in bounds.optional)
         entries.update(((role, entry.identity), entry) for role, entry in bounds.published)
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _PhasePoint, _PhaseCollection
+        generated = dict(bounds.generated_widths)
+        before_ids = prepared.event is None
+        workspace = prepared.workspace.workspace_id
+        request_id, run_id = prepared.request.identity.request_id, prepared.run.run_id
+        revision, plan_id = prepared.plan.desired_graph_revision, prepared.plan.plan_id
+        # None identifies an arithmetic-only generated position before IDs.
+        # These local entries are never issued to a reader or inserted in a
+        # proof cache. Real publication selectors bind only actual records.
+        action_id = None if before_ids else prepared.action.action_id
+        event_id = None if before_ids else prepared.event.event_id
+        for role, identity in (("header", (workspace, revision)), ("receipt-action", (action_id,)),
+                ("receipt-event", (event_id,)), ("acceptance-action", (action_id, prepared.plan.session_id))):
+            entries[(role, identity)] = _PhasePoint(identity, generated[role])
+        entries[("slots", (workspace, revision))] = _PhaseCollection((workspace, revision), generated["slots"],
+            tuple(tuple(str(cell) for cell in slot[:3]) for slot in prepared.slots))
+        if before_ids:
+            for role, identity in (("events", (run_id,)), ("advancement-actions", (prepared.plan.session_id, run_id))):
+                key = (role, identity)
+                if key in entries:
+                    original = entries[key]
+                    entries[key] = replace(original, keys=(*original.keys, (None,)),
+                        widths=tuple(max(a, b) for a, b in zip(original.widths, generated[role], strict=True)))
 
         def point(role, identity, *, captured=True):
             value = entries.get((role, identity))
@@ -1165,7 +1380,8 @@ class ConfigurationAcceptanceStore:
             _require(value is not None and hasattr(value, "keys"))
             count = len(value.keys)
             result = native(value.widths, count=count,
-                maximum=count if native_maximum is None else native_maximum, point=False)
+                maximum=count if native_maximum is None else native_maximum, point=False,
+                identities=2 if role == "invocation-refs" else 1)
             return guard.then(result) if captured else result
 
         def widest_point(role):
@@ -1175,9 +1391,6 @@ class ConfigurationAcceptanceStore:
             return Budget(F(*(max(getattr(value.settled, field) for value in values) for field in fields)),
                 F(*(max(getattr(value.peak, field) for value in values) for field in fields)))
 
-        workspace = prepared.workspace.workspace_id
-        request_id, run_id = prepared.request.identity.request_id, prepared.run.run_id
-        revision, plan_id = prepared.plan.desired_graph_revision, prepared.plan.plan_id
         workspace_read = native((81920,) + (0,) * 8)
 
         def context(header, plan, *, captured):
@@ -1187,8 +1400,8 @@ class ConfigurationAcceptanceStore:
                 ("session", (plan.session_id,)), ("graph", (header["graph_id"],)), ("projection", (header["projection_id"],)))
             return chain(*(point(role, identity, captured=captured) for role, identity in positions))
 
-        own_header = dict(workspace_id=workspace, pinned_revision=revision, action_id=prepared.action.action_id,
-            event_id=prepared.event.event_id, run_id=run_id, request_id=request_id, plan_id=plan_id,
+        own_header = dict(workspace_id=workspace, pinned_revision=revision, action_id=action_id,
+            event_id=event_id, run_id=run_id, request_id=request_id, plan_id=plan_id,
             graph_id=prepared.plan.desired_graph_id, projection_id=prepared.desired_projection.projection_id)
         proof_shapes = {(family, key): widths for family, key, widths in bounds.proof_shapes}
         ref_memo, source_memo, outcome_memo, event_memo = set(), set(), set(), set()
@@ -1228,6 +1441,8 @@ class ConfigurationAcceptanceStore:
             return result
 
         transfers = {ref_key(memo[1:5]): memo for memo, _, _ in bounds.transfer_dependencies}
+        prospective = {item.memo: item for item in prepared.transfers}
+        transfers.update((ref_key(item.memo[1:5]), item.memo) for item in prepared.transfers)
         invocation_members, transfer_memo = dict(bounds.invocation_members), set()
         native_pair = q(1, 855, 11, 2)
         native_accepted = native_pair.then(q(1, 1, 1, 4))
@@ -1258,7 +1473,10 @@ class ConfigurationAcceptanceStore:
             # Completion/I repeat per cold root; their raw siblings never
             # populate ref_memo, and there is no completion or slot memo.
             context_key = (memo[5], memo[-1])
-            header, _, _, plan, _, _, _ = read.sources[("configuration-receipt-context", *context_key)]
+            if memo in prospective:
+                header, plan = own_header, prepared.plan
+            else:
+                header, _, _, plan, _, _, _ = read.sources[("configuration-receipt-context", *context_key)]
             if context_key not in context_memo:
                 result = result.then(context(header, plan, captured=False))
                 context_memo.add(context_key)
@@ -1333,6 +1551,23 @@ class ConfigurationAcceptanceStore:
             prepared_guard, unit, prepared_guard, unit, prepared_guard, unit,
             *(unit for _ in prepared.slots), context(own_header, prepared.plan, captured=True),
             collection("slots", (workspace, revision)), readback)
+        # All old-state checks precede every write; all paired writes precede
+        # any cold prospective root. The exact own receipt is already proved.
+        absent = q(1, 1, 1, settled=F(0, 0, 0, 1))
+        body = chain(body, prepared_guard,
+            *(chain(absent, native_pair, absent) for _ in prepared.transfers),
+            *(chain(unit, unit, unit) for _ in prepared.transfers))
+        from .configuration_completion_store import _COLUMNS as completion_columns
+        for item in prepared.transfers:
+            identity = (item.identity.run_id.value, item.identity.activity_id, item.identity.attempt)
+            # These two unchanged native point readers use their declared caps;
+            # the full-S role itself uses SQL-captured per-column bounds.
+            body = chain(body, native_accepted,
+                native(tuple(cap for _, _, cap in _TRANSFER_COLUMNS)),
+                native(tuple(cap for _, _, cap in completion_columns)),
+                collection("invocation-refs", identity),
+                *(sibling_disposition for _ in invocation_members[item.identity]),
+                native(tuple(cap for _, _, cap in _columns(_SLOT))))
         if prepared.receiver_truth is not None:
             before, after, origins, scopes, original, _, evidence = prepared.receiver_truth
 
@@ -1398,11 +1633,13 @@ class ConfigurationAcceptanceStore:
                 q(1, 32, 1), point("introduction", (workspace, receiver))) for receiver in witnesses))
             receipts, seen_requests = empty, set()
             relationships = dict(bounds.receiver_receipts)
-            actions = {(origins[binding.receiver_id].first_accepted_action_id or prepared.action.action_id,
-                origins[binding.receiver_id].first_accepted_session_id or prepared.action.session_id) for binding in after}
-            for action_id, session_id in sorted(actions):
-                selected_request, selected_run, graph_id, projection_id = relationships[(action_id, session_id)]
-                receipts = receipts.then(point("acceptance-action", (action_id, session_id)))
+            relationships[(action_id, prepared.plan.session_id)] = (request_id, run_id,
+                prepared.plan.desired_graph_id, prepared.desired_projection.projection_id)
+            actions = {(origins[binding.receiver_id].first_accepted_action_id or action_id,
+                origins[binding.receiver_id].first_accepted_session_id or prepared.plan.session_id) for binding in after}
+            for selected_action, session_id in sorted(actions, key=lambda item: (item[0] is not None, item[0] or "", item[1])):
+                selected_request, selected_run, graph_id, projection_id = relationships[(selected_action, session_id)]
+                receipts = receipts.then(point("acceptance-action", (selected_action, session_id)))
                 if selected_request not in seen_requests:
                     receipts = chain(receipts, point("request", (selected_request,)), verify(selected_request), collection("runs", (selected_request,)))
                     seen_requests.add(selected_request)
@@ -1412,6 +1649,21 @@ class ConfigurationAcceptanceStore:
                 *(origin_budget(origins[binding.receiver_id]) for binding in after), receipts,
                 *(origin_budget(origins[binding.receiver_id]) for binding in after))
             body = chain(body, history, comparison, witness, sources, comparison, history)
+        if before_ids:
+            # This gate precedes clock/IDs. Keep both ordinal allocators, all
+            # guarded existing-parent bind rereads and every generated probe.
+            probes = chain(*(q(1, 12 * len(generated[role]), len(generated[role]))
+                for role in ("header", "receipt-action", "receipt-event", "acceptance-action")))
+            if prepared.slots:
+                probes = probes.then(q(1, 144, 12))
+            for role, identity in (("events", (run_id,)), ("advancement-actions", (prepared.plan.session_id, run_id))):
+                if (role, identity) in entries:
+                    probes = probes.then(q(1, 12 * len(generated[role]), len(generated[role])))
+            binding = chain(guard, point("run", (run_id,)), point("request", (request_id,)),
+                point("plan", (plan_id,)), point("session", (prepared.plan.session_id,)),
+                point("graph", (prepared.plan.desired_graph_id,)),
+                point("projection", (prepared.desired_projection.projection_id,)), probes)
+            body = chain(unit, q(1, 20, 1), unit, q(1, 20, 1), binding, body)
         # Every failed query can leave its full reservation outstanding before
         # the one usable close. INERROR cleanup performs less work, never more.
         publication = Budget(body.settled.plus(guard.settled), body.peak.plus(guard.peak))

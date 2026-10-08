@@ -1,6 +1,9 @@
 """Real Operations transfer production; the terminal adapter is simulated."""
 from hashlib import sha256
 import unittest
+from unittest import mock
+
+import psycopg
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.configuration_invocation import (
@@ -9,10 +12,15 @@ from control_plane_kit_core.configuration_invocation import (
 )
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from tests import test_postgres_configuration_acceptance_membership as membership
+from tests import test_postgres_configuration_transfer_publication as physical
+from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+from control_plane_kit_operations.postgres import PostgresUnitOfWork
+from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
+from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
 
 
 class PostgresConfigurationTransferProducerTests(unittest.TestCase):
-    def test_fresh_own_success_transfers_exact_accepted_claims(self):
+    def configured_member(self):
         def simulated_completion(request):
             context = configuration_invocation_correlation_for_request(request)
             completion = ConfigurationInvocationCompletion(context.request_fingerprint,
@@ -25,6 +33,10 @@ class PostgresConfigurationTransferProducerTests(unittest.TestCase):
         member.configuration_result_for_request = simulated_completion
         self.addCleanup(lambda: self.assertTrue(member.doCleanups(), "membership fixture cleanup failed"))
         member.setUp()
+        return member
+
+    def test_fresh_own_success_transfers_exact_accepted_claims(self):
+        member = self.configured_member()
         original, refs, connection = member.original, member.refs, member.connection
         identity = original.identity
         key = identity.run_id.value, identity.activity_id, identity.attempt
@@ -78,3 +90,72 @@ class PostgresConfigurationTransferProducerTests(unittest.TestCase):
         self.assertEqual(current.state, "complete")
         self.assertEqual(tuple(binding.ref for binding in current.bindings), refs)
         self.assertTrue(all(binding.source.identity == identity for binding in current.bindings))
+
+    def test_writer_suffix_and_fresh_consumer_reconcile_physical_accounting(self):
+        member = self.configured_member()
+        observed, state = physical.observation(), {}
+        preflight, commit = ConfigurationAcceptanceStore._preflight, PostgresUnitOfWork.commit
+
+        def admit(store, prepared):
+            before = prepared.evidence_read.used
+            with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("forecast issued SQL")):
+                snapshot, future, publication = store._publication_budgets(prepared)
+            self.assertEqual(prepared.evidence_read.used, before)
+            result = preflight(store, prepared)
+            phase = "pre_id" if prepared.event is None else "bound"
+            self.assertNotIn(phase, state)
+            state[phase] = (before, snapshot, future, publication, len(observed["queries"]))
+            observed["accounting"] = _ACCOUNTING.get()
+            self.assertEqual(len(prepared.transfers), 2)
+            invocations = [entry for role, entry in prepared.read_bounds.collections if role == "invocation-refs"]
+            self.assertEqual(len(invocations), 1)
+            self.assertEqual(invocations[0].keys, tuple((ref.artifact_id,) for ref in member.refs))
+            self.assertGreaterEqual(invocations[0].widths[16], len("true"))
+            return result
+
+        def committed(uow):
+            if _ACCOUNTING.get() is observed["accounting"]:
+                state["end"] = observed["accounting"].used
+            return commit(uow)
+
+        factory = lambda: PostgresUnitOfWork(lambda: physical.PublicationWire(
+            psycopg.connect(member.fixture.database_url), observed))
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admit), \
+                mock.patch.object(PostgresUnitOfWork, "commit", committed):
+            accepted = member.advance(factory)
+        self.assertFalse(accepted.replayed)
+        self.assertEqual(set(state), {"pre_id", "bound", "end"})
+        for phase in ("pre_id", "bound"):
+            prior, _, _, declaration, offset = state[phase]
+            used = physical.difference(state["end"], prior)
+            physical.within(self, used, declaration.settled)
+            selected = observed["queries"][offset:]
+            for entry in selected:
+                physical.within(self, physical.difference(physical.Footprint(*entry["peak"]), prior), declaration.peak)
+            physical.reconciles(self, used, {"queries": selected})
+        self.assertEqual(sum(entry["sql"].startswith("INSERT INTO cpk_configuration_claim_transfers")
+            for entry in observed["queries"]), 2)
+        self.assertTrue(any("FROM (VALUES " in entry["sql"] for entry in observed["queries"]),
+            "actual generated width probes must remain in the pre-ID suffix")
+
+        cold, snapshots = physical.observation(), []
+        manifest = ConfigurationAcceptanceStore._receipt_manifest
+        def read_manifest(store, workspace, revision, read):
+            before = read.used
+            result = manifest(store, workspace, revision, read)
+            snapshots.append(physical.difference(read.used, before))
+            return result
+        with mock.patch.object(ConfigurationAcceptanceStore, "_receipt_manifest", read_manifest):
+            with PostgresUnitOfWork(lambda: physical.PublicationWire(
+                    psycopg.connect(member.fixture.database_url), cold, cold=True)) as uow:
+                result = uow.stores.configuration_acceptance.read_current_configuration("workspace-a")
+        self.assertEqual(result.state, "complete")
+        self.assertEqual(tuple(binding.ref for binding in result.bindings), member.refs)
+        self.assertEqual(len(snapshots), 1)
+        for phase in ("pre_id", "bound"):
+            _, snapshot, future, _, _ = state[phase]
+            physical.within(self, snapshots[0], snapshot)
+            physical.within(self, cold["accounting"].used, future.settled)
+            for entry in cold["queries"]:
+                physical.within(self, physical.Footprint(*entry["peak"]), future.peak)
+        physical.reconciles(self, cold["accounting"].used, cold)
