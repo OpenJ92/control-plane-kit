@@ -29,7 +29,7 @@ from tests.test_runtime_effect_translation import _configuration_product
 
 
 class PostgresConfigurationTransferProducerGrowthTests(unittest.TestCase):
-    # Reuse the existing approval/admission/lifecycle helper unchanged. It
+    # Reuse store-authored approved-plan premises and real admission/lifecycle. It
     # requires only this case's base, graph_version and unittest assertions.
     admit = carry_fixture.PostgresConfigurationCarryTests.admit
 
@@ -41,6 +41,7 @@ class PostgresConfigurationTransferProducerGrowthTests(unittest.TestCase):
         self.refs, self.birth = self.member.refs, self.member.original.identity
         self.product = _configuration_product().descriptor_document.product
         self.samples = []
+        self.work = {}
 
     def changed_graph(self, number):
         configuration = replace(ProductInstanceConfiguration.from_contract(self.product.runtime_contract),
@@ -97,9 +98,11 @@ class PostgresConfigurationTransferProducerGrowthTests(unittest.TestCase):
         if not sample:
             return
         self.assertEqual(set(state), {"pre_id", "bound", "end"})
+        work = {}
         for phase in ("pre_id", "bound"):
             prior, _, _, declaration, offset = state[phase]
             used = physical.difference(state["end"], prior)
+            work[phase] = (used.records, used.scalar_markers, used.statements)
             physical.within(self, used, declaration.settled)
             selected = observed["queries"][offset:]
             for entry in selected:
@@ -121,6 +124,9 @@ class PostgresConfigurationTransferProducerGrowthTests(unittest.TestCase):
             for entry in cold["queries"]:
                 physical.within(self, physical.Footprint(*entry["peak"]), future.peak)
         physical.reconciles(self, cold["accounting"].used, cold)
+        used = cold["accounting"].used
+        work["cold"] = (used.records, used.scalar_markers, used.statements)
+        self.work[number] = work
         self.samples.append(number)
         print("producer-growth", number, "cold", cold["accounting"].used)
 
@@ -149,7 +155,9 @@ class PostgresConfigurationTransferProducerGrowthTests(unittest.TestCase):
                 "FROM cpk_effect_configuration_refs WHERE run_id=%s ORDER BY artifact_id", (command.run_id,)).fetchall(),
                 [(self.birth.run_id.value, self.birth.activity_id, self.birth.attempt, ref.artifact_id, False) for ref in self.refs])
             self.assert_claim_counts(number, 1)
-            self.accept(command, number, identity, sample=number in (2, 65))
-        self.assertEqual(self.samples, [1, 2, 65])
+            self.accept(command, number, identity, sample=number in (2, 3, 65))
+        self.assertEqual(self.samples, [1, 2, 3, 65])
+        self.assertEqual(self.work[3], self.work[65],
+            "steady-shape physical work must not grow with historical accepted uses")
         self.assertEqual(self.member.connection.execute("SELECT count(*) FROM cpk_configuration_invocation_completions").fetchone(), (65,))
         self.assert_claim_counts(65, 0)
