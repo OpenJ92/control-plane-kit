@@ -7,6 +7,9 @@ node_control_surface_read_results. Reexports introduce no wrapper implementation
 new module ownership, optional server dependency, signing or process bootstrap.
 Existing clean-import and module-boundary tests remain governing checks.
 
+Core #1910 also reexports the pure managed-update compiler. The export adds no
+product dependency, permission, execution admission or provider interpretation.
+
 Core #1826 exports the new pure health request/grant/verifier and result
 contracts, profiles and derived byte limits from node_health_reads and
 node_health_read_results. No SDK, persistence or provider import is introduced.

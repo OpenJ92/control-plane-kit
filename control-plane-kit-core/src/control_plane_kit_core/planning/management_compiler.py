@@ -10,7 +10,7 @@ from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNode
 from control_plane_kit_core.planning.activity_plan import (
     ActivityDependency, ActivityId, ActivityPlan, AllocatePublicIngress,
     ChangeTarget, PlannedActivity, ReconcileNode, ReviewChange, ReviewReason,
-    RiskLevel, StartNode, StartRuntime, WaitForHealthy,
+    RiskLevel, StartNode, StartRuntime, StopNode, WaitForHealthy,
 )
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
 from control_plane_kit_core.planning.compiler import compile_activity_plan
@@ -19,7 +19,9 @@ from control_plane_kit_core.planning.management_observations import (
     ObserveManagementBootstrap, ObserveNodeHealth, PlanGraphSide, _bounded_wire,
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngress
-from control_plane_kit_core.topology.changes import FieldSubject, StructuralField
+from control_plane_kit_core.topology.changes import (
+    AddedChange, FieldSubject, ModifiedChange, RemovedChange, StructuralField,
+)
 from control_plane_kit_core.topology.codec import _management_ingress
 from control_plane_kit_core.topology.diff import diff_graphs
 from control_plane_kit_core.topology.graph import Node
@@ -53,6 +55,16 @@ class ResolvedNodeHealth:
     ingress: NamedPublicIngress
     workload_node: Node
     workload_surface: WorkloadNodeControlSurfaceDescriptor
+
+
+@dataclass(frozen=True)
+class _ManagedUpdateShape:
+    mode: str
+    runtime_id: str
+    gateway_id: str
+    connector_id: str
+    retained_node_id: str
+    changed_node_id: str
 
 
 def _require_pair(current, desired):
@@ -152,6 +164,191 @@ def _review_activity(subject, reason):
 
 def _independent_verification(node):
     return bool(node.block_spec.verification.checks) or node.block_spec.health_path is not None
+
+
+def _managed_update_shape(current, desired, diff):
+    """Recognize one generic retained-path workload add/remove graph relation."""
+    added = [value.subject.node_id for value in diff.changes
+             if isinstance(value, AddedChange) and isinstance(value.subject, NodeSubject)]
+    removed = [value.subject.node_id for value in diff.changes
+               if isinstance(value, RemovedChange) and isinstance(value.subject, NodeSubject)]
+    configurations = [value.subject.owner.node_id for value in diff.changes
+                      if isinstance(value, ModifiedChange)
+                      and isinstance(value.subject, FieldSubject)
+                      and value.subject.field is StructuralField.CONFIGURATION_ARTIFACTS
+                      and isinstance(value.subject.owner, NodeSubject)]
+    containments = [value.subject.owner.runtime_id for value in diff.changes
+                    if isinstance(value, ModifiedChange)
+                    and isinstance(value.subject, FieldSubject)
+                    and value.subject.field is StructuralField.RUNTIME_CONTAINMENT
+                    and isinstance(value.subject.owner, RuntimeSubject)]
+    if (len(diff.changes) != 3 or len(configurations) != 1 or len(containments) != 1
+            or (len(added), len(removed)) not in ((1, 0), (0, 1))):
+        return None
+    mode = "add" if added else "remove"
+    changed_node_id = (added or removed)[0]
+    runtime_id = containments[0]
+    if (set(current.graph.runtimes) != set(desired.graph.runtimes)
+            or runtime_id not in current.graph.runtimes):
+        return None
+    current_runtime = current.graph.runtimes[runtime_id]
+    desired_runtime = desired.graph.runtimes[runtime_id]
+    if (current_runtime.management is None
+            or current_runtime.management != desired_runtime.management):
+        return None
+    gateway_id = current_runtime.management.gateway_node_id
+    if configurations[0] != gateway_id:
+        return None
+    try:
+        ingress = _management_ingress(desired.graph, runtime_id)
+        connector_id = ingress.connector_node_id
+        current_gateway = current.graph.nodes[gateway_id]
+        desired_gateway = desired.graph.nodes[gateway_id]
+        connector = desired.graph.nodes[connector_id]
+        changed = (desired.graph if mode == "add" else current.graph).nodes[changed_node_id]
+    except (KeyError, ValueError, AttributeError):
+        return None
+    if (changed.runtime_id != runtime_id or current_gateway.runtime_id != runtime_id
+            or desired_gateway.runtime_id != runtime_id or connector.runtime_id != runtime_id
+            or _independent_verification(changed) or _independent_verification(desired_gateway)):
+        return None
+    changed_surface, _ = _selected_surface(changed)
+    gateway_surface, _ = _selected_surface(desired_gateway, gateway=True)
+    if changed_surface is None or gateway_surface is None:
+        return None
+    current_nodes = {key for key, value in current.graph.nodes.items() if value.runtime_id == runtime_id}
+    desired_nodes = {key for key, value in desired.graph.nodes.items() if value.runtime_id == runtime_id}
+    retained = sorted((current_nodes & desired_nodes) - {gateway_id, connector_id})
+    if len(retained) != 1:
+        return None
+    retained_id = retained[0]
+    retained_node = desired.graph.nodes[retained_id]
+    retained_surface, _ = _selected_surface(retained_node)
+    if (_independent_verification(retained_node) or retained_surface is None
+            or current.graph.nodes[retained_id] != retained_node):
+        return None
+    if mode == "add":
+        if current_nodes != {gateway_id, connector_id, retained_id}:
+            return None
+        if desired_nodes != current_nodes | {changed_node_id}:
+            return None
+    else:
+        if desired_nodes != {gateway_id, connector_id, retained_id}:
+            return None
+        if current_nodes != desired_nodes | {changed_node_id}:
+            return None
+    return _ManagedUpdateShape(
+        mode, runtime_id, gateway_id, connector_id, retained_id, changed_node_id,
+    )
+
+
+def _review_blocked(plan, diff):
+    if not diff.changes:
+        return plan
+    review = _review_activity(diff.changes[0].subject, ReviewReason.UNSUPPORTED_CHANGE)
+    if any(value.activity_id == review.activity_id for value in plan.activities):
+        return plan
+    return ActivityPlan(plan.activities + (review,))
+
+
+def _matching_activity(plan, operation_type, predicate):
+    matches = [value for value in plan.activities
+               if isinstance(value.operation, operation_type) and predicate(value.operation)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def compile_managed_update_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
+    """Derive the closed retained-path add/remove plan without granting execution."""
+    _require_pair(current, desired)
+    diff = diff_graphs(current, desired)
+    base = compile_graph_activity_plan(current, desired)
+    shape = _managed_update_shape(current, desired, diff)
+    if shape is None or not base.ready_for_execution:
+        return _review_blocked(base, diff) if shape is None else base
+
+    activities = {value.activity_id: value for value in base.activities}
+    dependencies = {
+        value.activity_id: {item.predecessor for item in value.dependencies}
+        for value in base.activities
+    }
+    reconcile = _matching_activity(
+        base, ReconcileNode, lambda value: value.target.node_id == shape.gateway_id,
+    )
+    local = _matching_activity(
+        base, ObserveManagementBootstrap,
+        lambda value: value.target.runtime_id == shape.runtime_id
+        and value.stage is ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+    )
+    if reconcile is None or local is None:
+        return _review_blocked(base, diff)
+
+    try:
+        target = _pin_path(desired, shape.runtime_id, PlanGraphSide.DESIRED_GRAPH)[0]
+        retained = desired.graph.nodes[shape.retained_node_id]
+        retained_surface, _ = _selected_surface(retained)
+        if retained_surface is None:
+            return _review_blocked(base, diff)
+
+        if shape.mode == "add":
+            start = _matching_activity(
+                base, StartNode,
+                lambda value: value.target.node_id == shape.changed_node_id,
+            )
+            connected = _matching_activity(
+                base, ObserveManagementBootstrap,
+                lambda value: value.target.runtime_id == shape.runtime_id
+                and value.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED,
+            )
+            path = _matching_activity(
+                base, ObserveManagementBootstrap,
+                lambda value: value.target.runtime_id == shape.runtime_id
+                and value.stage is ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+            )
+            if start is None or connected is None or path is None:
+                return _review_blocked(base, diff)
+            dependencies[reconcile.activity_id].add(start.activity_id)
+        else:
+            stop = _matching_activity(
+                base, StopNode,
+                lambda value: value.target.node_id == shape.changed_node_id,
+            )
+            if stop is None:
+                return _review_blocked(base, diff)
+            connected = _observation_activity(
+                ObserveManagementBootstrap(target, ManagementBootstrapStage.CONNECTOR_CONNECTED),
+                (local.activity_id,),
+            )
+            path = _observation_activity(
+                ObserveManagementBootstrap(target, ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH),
+                (connected.activity_id,),
+            )
+            for activity in (connected, path):
+                activities[activity.activity_id] = activity
+                dependencies[activity.activity_id] = {
+                    item.predecessor for item in activity.dependencies
+                }
+
+        retained_health = _observation_activity(
+            ObserveNodeHealth(
+                target, shape.retained_node_id,
+                retained_surface.provider_socket_name.value,
+                _health_kind(retained_surface),
+            ),
+            (path.activity_id,),
+        )
+        activities[retained_health.activity_id] = retained_health
+        dependencies[retained_health.activity_id] = {path.activity_id}
+        if shape.mode == "remove":
+            dependencies[stop.activity_id].add(retained_health.activity_id)
+    except (KeyError, ValueError, TypeError, AttributeError):
+        return _review_blocked(base, diff)
+
+    return ActivityPlan(tuple(
+        replace(activity, dependencies=tuple(
+            ActivityDependency(value) for value in sorted(dependencies[identity])
+        ))
+        for identity, activity in activities.items()
+    ))
 
 
 def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:

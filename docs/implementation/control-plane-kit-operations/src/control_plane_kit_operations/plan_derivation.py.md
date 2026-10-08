@@ -8,6 +8,13 @@ This pure Operations module declares which interpretation defines a stored plan.
 explicit structural meaning. Selection happens before compilation; there is no
 comparison-driven fallback. The existing `Deploy` language owns classification.
 
+`MANAGED_UPDATE_V1` calls Core's closed managed-update compiler on the same two
+validated graph values. It is a distinct stored semantic identity for A -> B and
+B -> C update ordering; it does not change `MANAGEMENT_GRAPH_PAIR_V1`, structural
+or absent-profile meaning. The profile alone grants no planning or execution
+admission. Existing runtime-management guards continue to reject it until the
+separate Operations eligibility and permission work is accepted.
+
 Typed APIs require the exact closed enum or historical None. Wire/action values
 require plain declared strings. Action key presence matters: only absent record
 profile plus an absent action key is legacy. Explicit null, unequal markers or
