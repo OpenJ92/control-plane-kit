@@ -193,3 +193,80 @@ class PostgresConfigurationTransferReadbackTests(ConfigurationTransferredConsume
             self.assertEqual(uow.stores.configuration_completions.get(self.original.identity), self.completion)
             self.assertEqual(self.prove_transfer(uow, self.refs[1]).acceptance_revision, self.revision)
         self.assertEqual(self.snapshot(), before)
+
+    def selected_guard_rollback(self, *, reused):
+        if reused:
+            command = self.reuse.execute_reuse()[0]
+        else:
+            extra = compile_topology(DeploymentTopology("extra", DockerRuntime(runtime_id="runtime-b")))
+            command = self.carry.prepare("guard-rollback", "graph-guard-rollback",
+                StartRuntime(RuntimeTarget("runtime-b")),
+                graph=self.carry.graph.add_runtime(extra.runtimes["runtime-b"]))
+        before = self.snapshot()
+        actual = ConfigurationAcceptanceStore._require_current
+        finish = advancement_module._finish_receiver_advancement
+        for selected in range(1, 5):
+            for fault in ("pair", "exclusion"):
+                with self.subTest(entrance=selected, fault=fault, distinct_birth=reused):
+                    calls, injected, refused, finished = [], [], [], []
+
+                    def guard(store, value):
+                        calls.append(len(calls) + 1)
+                        entrance = calls[-1]
+                        if entrance != selected:
+                            return actual(store, value)
+                        self.assertIsNotNone(value.read_bounds)
+                        self.assertFalse(store._publication_published)
+                        slot = next(row for row in value.slots if row[7:11] == self.key(self.refs[0]))
+                        self.assertEqual(slot[3:7] != slot[7:11], reused)
+                        connection = store._connection
+                        pointer = connection.execute("SELECT current_graph_id,current_realized_projection_id "
+                            "FROM cpk_workspaces WHERE workspace_id=%s", (value.workspace.workspace_id,)).fetchone()
+                        expected = ((value.workspace.current_graph_id, value.workspace.current_realized_projection_id)
+                            if entrance == 1 else (value.plan.desired_graph_id, value.desired_projection.projection_id))
+                        self.assertEqual(pointer, expected)
+                        self.assertEqual(connection.execute("SELECT count(*) FROM cpk_activity_events WHERE event_id=%s",
+                            (value.event.event_id,)).fetchone(), (int(entrance >= 3),))
+                        self.assertEqual(connection.execute("SELECT count(*) FROM cpk_operation_actions WHERE action_id=%s",
+                            (value.action.action_id,)).fetchone(), (int(entrance >= 4),))
+                        for table in ("cpk_configuration_acceptances", "cpk_configuration_accepted_slots"):
+                            self.assertEqual(connection.execute(f"SELECT count(*) FROM {table} "
+                                "WHERE workspace_id=%s AND pinned_revision=%s",
+                                (value.workspace.workspace_id, value.plan.desired_graph_revision)).fetchone(), (0,))
+                        injected.append(entrance)
+                        try:
+                            if fault == "exclusion":
+                                # Restore only this recorded local premise on
+                                # unwind. The actual refusal must still escape
+                                # to the command and roll back earlier writes.
+                                with self.recorded_exclusion(connection):
+                                    return actual(store, value)
+                            changed = connection.execute("UPDATE cpk_configuration_claims SET accepted_revision=NULL "
+                                "WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", self.key(self.refs[0]))
+                            self.assertEqual(changed.rowcount, 1)
+                            return actual(store, value)
+                        except _Unavailable:
+                            refused.append(entrance)
+                            raise
+
+                    def observed_finish(*args, **kwargs):
+                        finished.append(True)
+                        return finish(*args, **kwargs)
+
+                    with mock.patch.object(ConfigurationAcceptanceStore, "_require_current", guard), \
+                            mock.patch.object(advancement_module, "_finish_receiver_advancement", observed_finish), \
+                            self.assertRaises(CurrentGraphAdvancementConflict):
+                        CurrentGraphAdvancementCommandService(self.base.unit_of_work,
+                            clock=lambda: "2026-07-22T13:05:00Z",
+                            id_factory=iter(("event-guard-rollback", "action-guard-rollback")).__next__).execute(command)
+                    self.assertEqual(calls, list(range(1, selected + 1)))
+                    self.assertEqual(injected, [selected])
+                    self.assertEqual(refused, [selected], "the real selected guard must propagate refusal")
+                    self.assertEqual(finished, [], "selected guard refusal must precede receiver finish")
+                    self.assertEqual(self.snapshot(), before, "the command must roll back before fixture cleanup")
+
+    def test_each_carried_source_guard_refuses_and_rolls_back(self):
+        self.selected_guard_rollback(reused=False)
+
+    def test_each_distinct_birth_guard_refuses_and_rolls_back(self):
+        self.selected_guard_rollback(reused=True)
