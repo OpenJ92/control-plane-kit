@@ -66,7 +66,8 @@ class PostgresConfigurationTransferProducerTransactionTests(unittest.TestCase):
                 visited = []
                 def fail(reader, statement, params=(), **options):
                     result = query(reader, statement, params, **options)
-                    selected = next((index for index, prefix in enumerate(prefixes) if statement.startswith(prefix)), None)
+                    normalized = " ".join(statement.split())
+                    selected = next((index for index, prefix in enumerate(prefixes) if normalized.startswith(prefix)), None)
                     if selected is not None:
                         visited.append(selected)
                         if len(visited) == fail_at:
