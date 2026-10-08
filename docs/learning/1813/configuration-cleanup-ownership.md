@@ -4729,3 +4729,58 @@ Stage-3 issued start/fold/retained transport has not been implemented. Security,
 history and fixed limits remain with existing owners; no schema policy,
 credential or provider resources changed. This is focused stage evidence,
 not full B2/package or live acceptance.
+
+## B2 stage 3: execution and retained transfer composition — 2026-10-08
+
+[North released stage 3](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058942111)
+through the existing public admission, native/coordinator start, reservation,
+fold and retained owners. Sixteen reviewed targets reached the intended
+v1-only admission obstruction at `77836ba8`: 16 assertion failures, no errors,
+434.643s. The [causal-red record](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6059534685)
+does not claim the later unreachable assertions were already exercised.
+
+The implementation consumes two independent captured active allocation drivers,
+preserves full original selections for outstanding and transferred invocations,
+and captures each required transfer's original receipt parents even with zero
+outstanding claims. Physical candidates remain reserved; only outstanding
+claims and their invocations receive new closures. Retained proof reconstructs
+the exact original seed/birth/selection-required transfer set, approval, profile
+and results without rereading current eligibility or granting new dispatch.
+
+Review found that the first cold transfer traversal preceded the later explicit
+dependency check. The corrected cleanup-only hook now requires captured
+invocation and receipt-header dependencies before that first traversal. The
+fault tests target the original transfer identity, preserving the unrelated
+current-manifest header and unchanged forecast inputs. A separate correction
+permits a distinct candidate-local seed transfer at the nonauthorizing value
+boundary; the retained owner still rejects any unrelated extra transfer.
+
+After [source and exact entrance PASS](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6059979426),
+candidate `92f1c19c50bc5ead75635ac6b9d060931a5b81f1`, tree
+`aa297ca873c71912b33e9b3cebab0f538b10cb51`, passed 24 focused Operations
+Docker tests in 1064.913s, compilation/import and exit 0. The
+[completed evidence](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6060376592)
+records clean source and exact test-resource cleanup. Public v2 lifecycle,
+atomic rollback, original-history replay, before-ID refusal and result
+conservation pass alongside selected v1 regressions and invalid-profile denial.
+
+The recorded-transfer cases now execute A-only and then B cleanup, retaining
+full original selection and A's provenance without dispatching A again. Zero
+claim start/fold/replay, missing-proof refusal, generic observation without
+invented member deletion, uncertain-result exclusion and current-schema reentry
+also pass. These remain defensive consumer premises; C still owns the real
+same-transaction transfer producer and reachable growth acceptance.
+
+Repeated paired checks are charged inside every fresh pass, including memo
+hits, all three issued checks and final retained verification. The physical
+observer measured 2753 records / 2,977,968 accounted bytes for outstanding v2
+K1 and 3106 records / 3,174,444 bytes for transferred zero-claim K1. Their maximum
+query reservations were 3,829,004 and 4,025,480 bytes. Declared tails bounded
+all observed peaks under unchanged 4096-record / 16-MiB limits; this is selected
+composition evidence, not a maximal-topology capacity guarantee.
+
+Security/data/history stay with the existing approval and transaction owners.
+No provider call was introduced under database locks, no uncertainty releases
+exclusion, and no credential, tunnel, DNS, token, image or schema reset/backfill
+was touched. Focused stage 3 evidence does not replace independent acceptance,
+the whole-B2 PR and full package/composition gates, or C's producer proof.
