@@ -941,12 +941,12 @@ class ConfigurationAcceptanceStore:
             row = (*slot, *candidates[0], *_ref_key(birth, birth_artifact), original[9])
             self._material_ref(read, row, material, workspace.workspace_id)
             slots.append(row)
-        self._require_current_slots(read, slots)
         # Snapshot material is admitted before provenance work; source/slot
         # consumer size is preflighted again with the complete generated pair.
         if read.used.accounted_bytes - snapshot_start > 3 * 1024 * 1024:
             raise _Capacity
         proof_start = read.used
+        self._require_current_slots(read, slots)
         for row in slots:
             self._prove_use(read, row, plan, request, run)
         from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
@@ -964,7 +964,15 @@ class ConfigurationAcceptanceStore:
             row = self._ref(read, slot[3:7])
             _, ref, _, _ = _decode_ref(row)
             _require_unreserved(read, ref)
-            _paired_disposition(read, tuple(row[:4]), ref, protective=True)
+            for key in dict.fromkeys((tuple(slot[3:7]), tuple(slot[7:11]))):
+                original = self._ref(read, key)
+                if _decode_ref(original)[1] != ref:
+                    raise _Unavailable
+                disposition = _paired_disposition(read, key, ref)
+                if disposition.kind == "accepted-current":
+                    self._accepted_transfer(read, key, ref, disposition.acceptance_revision)
+                elif disposition.kind != "outstanding":
+                    raise _Unavailable
 
     @_closed_evidence
     def _require_current(self, prepared):
