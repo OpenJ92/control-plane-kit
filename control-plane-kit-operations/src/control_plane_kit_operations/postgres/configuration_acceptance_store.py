@@ -149,6 +149,7 @@ class ConfigurationAcceptanceStore:
         self._publication_candidates = {}
         self._publication_proof_shapes = {}
         self._publication_receiver_receipts = {}
+        self._publication_transfer_dependencies = {}
         self._publication_active = True
         self._issued = None
         token = _PUBLICATION_SCOPE.set(self)
@@ -190,6 +191,7 @@ class ConfigurationAcceptanceStore:
             self._publication_candidates = {}
             self._publication_proof_shapes = {}
             self._publication_receiver_receipts = {}
+            self._publication_transfer_dependencies = {}
             _PUBLICATION_SCOPE.reset(token)
 
     def _require_issued(self, prepared):
@@ -219,6 +221,7 @@ class ConfigurationAcceptanceStore:
             raise _Unavailable
         digest = sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
         memo = ("configuration-accepted-transfer", *key, ref.workspace_id, ref.allocation_id, digest, revision)
+        _require_publication_proof(read, "sources", memo)
         if memo in read.sources:
             return read.sources[memo]
         rows = read.bounded_rows("cpk_configuration_claim_transfers", _TRANSFER_COLUMNS,
@@ -259,8 +262,43 @@ class ConfigurationAcceptanceStore:
         if self._material_ref(read, slots[0], material, ref.workspace_id) != original:
             raise _Unavailable
         result = ConfigurationAcceptedTransferRecord(identity, ref, revision, *row[9:12])
+        owner = _PUBLICATION_SCOPE.get()
+        if owner is not None:
+            # Derive the closure from verified objects, including dependencies
+            # that an earlier root already populated on this exact reader.
+            owner._capture_transfer_dependencies(read, memo, ((identity, ref.artifact_id),),
+                tuple(dict.fromkeys((("cpk_effect_attempt_intents", identity),
+                    ("cpk_effect_attempt_outcomes", identity),
+                    ("cpk_activity_events", completion.original_event_id),
+                    ("cpk_activity_events", completion.direct_event_id),
+                    ("configuration-receipt-context", ref.workspace_id, revision),
+                    ("configuration-source-plan", ref.workspace_id, plan.plan_id)))))
         read.sources[memo] = result
         return result
+
+    def _capture_transfer_dependencies(self, read, memo, refs, sources):
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        _require(self._issued is None or self._issued.read_bounds is None)
+        _require(all(key in read.refs for key in refs) and all(key in read.sources for key in sources))
+        captured = self._publication_transfer_dependencies.setdefault(read, {})
+        dependencies = refs, sources
+        _require(memo not in captured or captured[memo] == dependencies)
+        captured[memo] = dependencies
+
+    def _freeze_transfer_dependencies(self, read, proof_keys):
+        from .configuration_cleanup_read_ceilings import _require
+        captured = self._publication_transfer_dependencies.get(read, {})
+        frozen = []
+        for memo in proof_keys[1]:
+            if memo[0] != "configuration-accepted-transfer":
+                continue
+            _require(memo in captured and memo in read.sources)
+            refs, sources = captured[memo]
+            _require(all(key in proof_keys[0] and key in read.refs for key in refs)
+                and all(key in proof_keys[1] and key in read.sources for key in sources))
+            frozen.append((memo, refs, sources))
+        return tuple(frozen)
 
     def _require_proof_cache(self, read, family, key):
         from .configuration_cleanup_read_ceilings import _require
@@ -277,7 +315,17 @@ class ConfigurationAcceptanceStore:
             return
         _require(family == "sources" and key[0] in (
             "cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
-            "configuration-receipt-context", "configuration-original-slot"))
+            "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
+            "configuration-accepted-transfer"))
+        if key[0] == "configuration-accepted-transfer":
+            _require(key in prepared.read_bounds.proof_keys[1] and key in read.sources)
+            dependencies = {memo: (refs, sources)
+                for memo, refs, sources in prepared.read_bounds.transfer_dependencies}
+            _require(key in dependencies)
+            refs, sources = dependencies[key]
+            _require(all(item in prepared.read_bounds.proof_keys[0] and item in read.refs for item in refs)
+                and all(item in prepared.read_bounds.proof_keys[1] and item in read.sources for item in sources))
+            return
         own_context = ("configuration-receipt-context", prepared.workspace.workspace_id,
             prepared.plan.desired_graph_revision)
         own_plan = ("configuration-source-plan", prepared.workspace.workspace_id, prepared.plan.plan_id)
@@ -533,7 +581,8 @@ class ConfigurationAcceptanceStore:
             tuple((role, value) for (role, _), value in collections.items()),
             tuple((role, value, present) for (role, _), (value, present) in optional.items()),
             tuple(self._publication_candidates.values()), tuple(published),
-            self._capture_native_proof_shapes(read, proof_keys), tuple(receiver_receipts.items()))
+            self._capture_native_proof_shapes(read, proof_keys), tuple(receiver_receipts.items()),
+            self._freeze_transfer_dependencies(read, proof_keys))
 
     def _bind_records(self, prepared, event, action):
         self._require_issued(prepared)
@@ -552,7 +601,8 @@ class ConfigurationAcceptanceStore:
         read = prepared.evidence_read
         proof_keys = (tuple(read.refs), tuple(key for key in read.sources
             if key[0] in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
-                "configuration-receipt-context", "configuration-original-slot")))
+                "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
+                "configuration-accepted-transfer")))
         bounds = self._freeze_publication(prepared, event, action, proof_keys)
         bound = replace(prepared, event=event, action=action, read_bounds=bounds)
         self._issued = bound
