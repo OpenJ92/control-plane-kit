@@ -25,6 +25,10 @@ from tests.postgres_effect_attempt_coordinator_fixture import RecordingRuntimeAd
 class PostgresConfigurationTransferProducerCleanupTests(ConfigurationCleanupExecutionFixture, unittest.TestCase):
     cleanup_profile = PlanDerivationProfile.CONFIGURATION_CLEANUP_V2
 
+    def accept_configuration_target(self, claimed, suffix):
+        # C evidence uses the actual producer; no legacy disposition premise.
+        return self.advance(claimed, suffix)
+
     def transfer_rows(self):
         return self.connection.execute("SELECT run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,"
             "runtime_id,node_id,ref_digest,request_fingerprint,selection_fingerprint,outcome_fingerprint,"

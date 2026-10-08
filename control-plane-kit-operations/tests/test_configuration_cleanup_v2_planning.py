@@ -15,6 +15,7 @@ from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.configuration_cleanup_postgres_fixture import ConfigurationCleanupPostgresFixture
 from tests.configuration_transfer_fixture import (
     ConfigurationTransferFixture, ConfigurationTransferredConsumerFixture,
+    historical_transfer_prefix,
 )
 
 
@@ -186,7 +187,8 @@ class ConfigurationCleanupV2RecordedTransferPlanningTests(
         with self.unit_of_work() as uow:
             self.completion = uow.stores.configuration_completions.get(self.original.identity)
         self.assertIsNotNone(self.completion)
-        self.acceptance = self.member.advance()
+        with historical_transfer_prefix(self):
+            self.acceptance = self.member.advance()
         self.revision = self.acceptance.desired_graph_revision
         self.record_transfer(refs)
         self.member.claims = self.member.protective_claims()

@@ -1,4 +1,9 @@
-"""One real receiver/D1 chronology with an optional recorded cleanup suffix."""
+"""Target D1/receipt chronology with explicit legacy pre-transfer dispositions.
+
+Cleanup execution/reader laws preserve their historical outstanding-claim premise.
+The separate C producer fixture overrides only that historical acceptance step.
+The companion receiver completion and optional cleanup suffix remain recorded.
+"""
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -58,6 +63,7 @@ from tests.receiver_scope_history_fixture import insert_recorded_request
 from tests.test_postgres_configuration_evidence import _ObservedConnection
 from tests.test_receiver_acceptance_advancement import ReceiverAcceptanceAdvancementTests
 from tests.test_runtime_effect_translation import _configuration_product
+from tests.configuration_transfer_fixture import historical_transfer_prefix
 
 
 class _CeilingObservedConnection(_ObservedConnection):
@@ -74,6 +80,12 @@ class _CeilingObservedConnection(_ObservedConnection):
 class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture):
     accept_receiver = ReceiverAcceptanceAdvancementTests.accept_receiver
     cleanup_profile = PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+
+    def accept_configuration_target(self, claimed, suffix):
+        # Exact legacy setup boundary: real D1/receipt, pre-C dispositions.
+        # This is not a producer test and never repairs already-written T rows.
+        with historical_transfer_prefix(self):
+            return self.advance(claimed, suffix)
 
     def prepare_ceiling_premise(self, *, distinct_pins=False, recorded_cleanup=True,
                                artifact_ids=("settings",)):
@@ -143,7 +155,7 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         self.assertEqual((self.selected_ref.runtime_id, self.selected_ref.node_id,
             self.selected_ref.artifact_id), ("docker", "cleanup-target", "settings"))
         self.configuration_source = source
-        self.configuration_acceptance = self.advance(claimed, "ceilings-install")
+        self.configuration_acceptance = self.accept_configuration_target(claimed, "ceilings-install")
 
         self.assert_registration_unchanged()
         # A real full teardown avoids unsupported managed UpdateDeployment.
