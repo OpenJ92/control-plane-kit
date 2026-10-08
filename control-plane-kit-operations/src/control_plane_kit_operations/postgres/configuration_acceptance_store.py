@@ -667,6 +667,20 @@ class ConfigurationAcceptanceStore:
         return original
 
     def _prove_use(self, read, row, plan, request, run):
+        owner = _PUBLICATION_SCOPE.get()
+        prepared = self._issued if owner is None else owner._issued
+        bound_readback = prepared is not None and prepared.read_bounds is not None
+        if bound_readback:
+            # The active owner governs even a fresh store using its reader.
+            # Check the outer command before historical source substitution.
+            if owner is not self:
+                raise _Unavailable
+            self._require_issued(prepared)
+            self._require_publication(read=read)
+            if (read is not prepared.evidence_read or not self._publication_published
+                    or row not in prepared.slots or plan != prepared.plan
+                    or request != prepared.request or run != prepared.run):
+                raise _Unavailable
         original = self._ref(read, row[3:7])
         evidence = _decode(original, read)
         root = self._ref(read, row[7:11])
@@ -678,6 +692,8 @@ class ConfigurationAcceptanceStore:
         # provenance. Each distinct original must prove its own disposition.
         for key in dict.fromkeys((tuple(row[3:7]), tuple(row[7:11]))):
             disposition = _paired_disposition(read, key, evidence.ref)
+            if bound_readback and disposition.kind == "cleanup-closed":
+                raise _Unavailable
             if disposition.kind == "accepted-current":
                 self._accepted_transfer(read, key, evidence.ref, disposition.acceptance_revision)
         source = evidence.source
