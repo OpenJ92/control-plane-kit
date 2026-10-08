@@ -897,13 +897,13 @@ deleting its retained draft history.
 - **Identity and cardinality:** One lifetime has 1–32 physical members. V1 retains nonempty invocation/claim sets, claims covering members, and at most 256 invocations/claims. V2 permits both closure counts to be zero together, with invocations no greater than claims; positive birth/transfer proof remains necessary. Permanent unique workspace/allocation membership is unchanged.
 - **Outgoing foreign keys:** `cpk_cleanup_reservations_approval_fk`, `cpk_cleanup_reservations_authority_fk`, `cpk_cleanup_reservations_intent_fk`, `cpk_cleanup_reservations_plan_fk`, `cpk_cleanup_reservations_request_fk`, `cpk_cleanup_reservations_run_fk`.
 - **Inbound dependents:** `cpk_configuration_cleanup_members`, `cpk_configuration_invocation_closures`.
-- **Writers and transactions:** The existing start owner writes v1 reservations, members and closures in one caller-owned transaction. The v1 profile is the scalar default. B2 stage 1 adds a nonauthorizing v2 representation; all v2 publication/start/fold activation remains closed.
+- **Writers and transactions:** The existing start owner writes v1 or explicitly selected v2 reservations, members and outstanding-claim closures in one caller-owned transaction. V1 remains the scalar default. V2 requires the exact approved proposal and positive original seed/birth/transfer proof; transferred claims receive no new closure.
 - **Readers and projections:** `configuration_cleanup_ownership.get` composes bounded source/D1/approval/result owners with one ledger; no permission token.
 - **Mutation, locks, retries, and idempotency:** Permanent evidence; no reopen, reset, retry, release or independent commit API. Ordinary permission is rechecked under L.
 - **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. This changed exact schema accepts only empty installation or exact current verification; older baselines require separately authorized data preservation/reset work. No migration, reset, backfill or pruning runs here.
 - **JSON boundary:** Scalar exact identities only; original canonical documents remain with existing owners.
 - **Sensitive material:** No credentials, provider bodies or authority endpoint payloads. Fixed errors and bounded reads.
-- **Future impact:** Later B2 stages must complete v2 positive proof and retained replay before activation; C owns the transfer producer. E4 remains mandatory. No published/live acceptance inferred.
+- **Future impact:** B2 composes v2 publication, approval, start, fold and retained replay through existing owners. Recorded-transfer fixtures establish consumer evidence only; C owns the real transfer producer and growth acceptance. E4 remains mandatory. No published/live acceptance inferred.
 
 ### `cpk_configuration_invocation_closures`
 
