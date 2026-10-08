@@ -4458,5 +4458,45 @@ The new sum is logged as `final_context_time_octets`.
 These figures supersede the incomplete 720/70/800 proposal above. This is a
 test-input/attribution correction; no production ledger, limit, clock or stored
 history changes. Exact isolated B/B+1 predicates remain unchanged. The corrected
-draft remains unexecuted until the next owning two-test class result; B1 final
-hosted validation and whole-PR review remain pending, and B2/C remain held.
+draft was subsequently executed at the checkpoint below; B1 final hosted
+validation and whole-PR review remain pending, and B2/C remain held.
+
+### Corrected focused result at 1a92654e
+
+The ordinary owning two-method class at
+`1a92654e38a35265dfe63f68cc3a57d0d1aa4f00` passed 2 tests in 370.526s and
+reached the runner's final compile/import success. Exact disposable test
+container and network are absent. After context compaction the session handle
+was unavailable, so the numeric runner exit was not recovered and is not
+claimed as observed zero. The [durable evidence and limitation](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6052600446)
+preserve log SHA256
+`21a92fc96687d5ae13d4e30460950bc68490248bd29f99445af635d46dd7464c`.
+[Independent focused review passed](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6052610006)
+with that explicit exit-code qualification; this is not full package acceptance.
+
+The independently measured three-cell sums were 87 and 81 bytes, exactly
+matching material 82,302 and 82,296: both deltas are -6, with unchanged graph/ref
+material and other footprint dimensions. Large historical proof excluding
+material reached 3,498,555 value bytes while current material remained small.
+
+At metadata widths 1,030,555 and 1,030,889, actual prior plus publication peak
+was respectively 16,776,250 and 16,778,246 against the unchanged 16,777,216
+limit. The refusal's settled total was 16,775,133; peak-only BYTE_LIMIT,
+before-write sentinels and complete durable rollback passed. Peak records were
+2,999 and the measured peak-minus-settled gap was 3,113. Prior/publication
+nonmetadata residuals +21/+15 and +13/+15 fit the reviewed 874/105 allowances.
+These allowances select legal inputs; actual admission remains strict.
+
+Both earlier failures remain failed evidence: [adfe8f14](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6052021291)
+and [ed13b303](https://github.com/OpenJ92/control-plane-kit/issues/1945#issuecomment-6052323892).
+No unmeasured historical timestamp is retroactively attributed. Exact isolated
+B/B+1 predicate tests remain synthetic-budget evidence; the natural fixture
+proves nearby legal inputs. Recorded transfer premises and simulated runtime
+acknowledgements do not prove a reachable writer or provider deployment.
+
+The module inventory already records the changed acceptance dependencies and
+typed transfer export. No module, read route or ownership boundary is added by
+this correction. Final acceptance uses one draft PR's hosted Core and full
+Operations suites plus the nine-stage locked backend gate, followed by whole-PR
+independent review. Locked backend coordinates do not establish adoption of
+this candidate. North retains merge ownership; B2/C remain held.
