@@ -40,7 +40,8 @@ class PostgresConfigurationTransferProducerCleanupTests(ConfigurationCleanupExec
             accepted.desired_graph_revision) for ref in self.selected_refs])
         for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
             self.assertEqual(self.connection.execute("SELECT artifact_id,protective,accepted_revision,disposition_kind "
-                "FROM " + table + " ORDER BY artifact_id").fetchall(),
+                "FROM " + table + " WHERE (run_id,activity_id,attempt)=(%s,%s,%s) ORDER BY artifact_id",
+                (identity.run_id.value, identity.activity_id, identity.attempt)).fetchall(),
                 [(ref.artifact_id, False, accepted.desired_graph_revision, "accepted-current")
                     for ref in self.selected_refs])
 
@@ -79,6 +80,14 @@ class PostgresConfigurationTransferProducerCleanupTests(ConfigurationCleanupExec
         self.assertEqual(len(proposal["accepted_transfers"]), len(self.selected_refs))
         self.assertTrue(all(row["proposed_closures"] == [] for row in proposal["candidates"]))
         self.assertTrue(self.approval.destructive)
+        def unrelated_pairs():
+            identity = self.source_identity
+            return tuple((table, self.connection.execute("SELECT * FROM " + table
+                + " WHERE (run_id,activity_id,attempt)<>(%s,%s,%s) ORDER BY run_id,activity_id,attempt,artifact_id",
+                (identity.run_id.value, identity.activity_id, identity.attempt)).fetchall())
+                for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"))
+        unrelated = unrelated_pairs()
+        self.assertTrue(all(rows for _, rows in unrelated), "the companion owns unrelated claims")
         self.admit_cleanup()
         claimed = self.ready_run("cleanup-execution")
         expected = ConfigurationCleanupOutcomeSet(tuple(ConfigurationCleanupOutcome(
@@ -112,6 +121,7 @@ class PostgresConfigurationTransferProducerCleanupTests(ConfigurationCleanupExec
         assert_reservation(EffectAttemptIdentity(request.source.run_id, request.activity_id.value, 1),
             EffectAttemptStatus.SUCCEEDED)
         self.assert_produced(self.configuration_acceptance)
+        self.assertEqual(unrelated_pairs(), unrelated)
         before = self.ceiling_truth(), self.transfer_rows()
         self.assertIs(coordinator.execute(command).status, CoordinatorStatus.COMPLETED)
         self.assertEqual(len(adapter.runtime_calls), 1)
