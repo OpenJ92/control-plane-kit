@@ -20,9 +20,12 @@ from control_plane_kit_operations.postgres.configuration_evidence import _Eviden
 
 
 class PostgresConfigurationTransferProducerTests(unittest.TestCase):
-    def configured_member(self):
+    def configured_member(self, *, node_ids=("api",), profiled_nodes=None):
         def simulated_completion(request):
             context = configuration_invocation_correlation_for_request(request)
+            if profiled_nodes is not None and context.operation.target.node_id not in profiled_nodes:
+                return RuntimeEffectResult.succeeded(request.effect_id,
+                    evidence={"adapter": "simulated-unprofiled-configuration-invocation"})
             completion = ConfigurationInvocationCompletion(context.request_fingerprint,
                 configuration_invocation_selection_fingerprint(context.selection))
             return RuntimeEffectResult.succeeded(request.effect_id, evidence={
@@ -30,6 +33,7 @@ class PostgresConfigurationTransferProducerTests(unittest.TestCase):
                 "configuration_invocation_completion": completion.descriptor()})
 
         member = membership.PostgresConfigurationAcceptanceMembershipTests()
+        member.node_ids = node_ids
         member.configuration_result_for_request = simulated_completion
         self.addCleanup(lambda: self.assertTrue(member.doCleanups(), "membership fixture cleanup failed"))
         member.setUp()
