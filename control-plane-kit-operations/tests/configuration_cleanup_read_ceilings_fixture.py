@@ -39,6 +39,7 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import (
     _encode_runtime_effect_intent, _decode_runtime_effect_intent,
 )
 from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
 from control_plane_kit_operations.products import InlineDescriptorSource
@@ -72,6 +73,7 @@ class _CeilingObservedConnection(_ObservedConnection):
 
 class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture):
     accept_receiver = ReceiverAcceptanceAdvancementTests.accept_receiver
+    cleanup_profile = PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
 
     def prepare_ceiling_premise(self, *, distinct_pins=False, recorded_cleanup=True,
                                artifact_ids=("settings",)):
@@ -140,7 +142,8 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             self.selected_ref = next(ref for ref in self.selected_refs if ref.artifact_id == "settings")
         self.assertEqual((self.selected_ref.runtime_id, self.selected_ref.node_id,
             self.selected_ref.artifact_id), ("docker", "cleanup-target", "settings"))
-        self.advance(claimed, "ceilings-install")
+        self.configuration_source = source
+        self.configuration_acceptance = self.advance(claimed, "ceilings-install")
 
         self.assert_registration_unchanged()
         # A real full teardown avoids unsupported managed UpdateDeployment.
@@ -176,7 +179,8 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
             self.assertEqual(uow.stores.runtime_authorities.get("workspace-a", self.registration.authority_ref),
                 self.registration)
 
-    def _publish_cleanup(self, runtime, *, distinct_pins, recorded_cleanup):
+    def _publish_cleanup(self, runtime, *, distinct_pins, recorded_cleanup,
+                         suffix="ceilings", refs=None):
         with self.unit_of_work() as uow:
             workspace = uow.stores.workspaces.get("workspace-a")
         pins = ConfigurationCleanupExpectedContext(workspace.current_graph_id,
@@ -187,21 +191,21 @@ class ConfigurationCleanupReadCeilingsFixture(ReceiverCanonicalAcceptanceFixture
         compare(pins.base_realized_projection_id, pins.desired_realized_projection_id)
         query = InspectConfigurationCleanup("session-a", "workspace-a", pins,
             tuple(ConfigurationCleanupSourceSelector(self.source_identity, ref.artifact_id, ref)
-                for ref in self.selected_refs))
+                for ref in (self.selected_refs if refs is None else refs)), profile=self.cleanup_profile)
         self.cleanup_query = query
         service = ConfigurationCleanupPlanningService(self.unit_of_work, clock=self.now,
-            id_factory=GeneratedIds("ceilings-cleanup"))
+            id_factory=GeneratedIds(suffix + "-cleanup"))
         inspected = service.inspect(query, context=command_context())
         self.assertEqual(inspected.state, "complete")
         self.plan = service.request_plan(RequestConfigurationCleanupPlan("session-a", "workspace-a",
-            IdempotencyKey("ceilings-cleanup"), pins, query.selectors,
-            inspected.inspection.evidence_digest), context=command_context()).plan_record
+            IdempotencyKey(suffix + "-cleanup"), pins, query.selectors,
+            inspected.inspection.evidence_digest, profile=query.profile), context=command_context()).plan_record
         approvals = ApprovalCommandService(self.unit_of_work, clock=self.now,
-            id_factory=GeneratedIds("ceilings-approval"))
+            id_factory=GeneratedIds(suffix + "-approval"))
         self.approval = approvals.execute(RequestApproval("session-a", self.plan.plan_id, "operator-a",
-            tuple(PolicyScope), IdempotencyKey("ceilings-ask"))).request
+            tuple(PolicyScope), IdempotencyKey(suffix + "-ask"))).request
         self.decision = approvals.execute(DecideApproval("session-a", self.approval.request_id, "manager-a",
-            tuple(PolicyScope), ApprovalDecisionKind.APPROVED, IdempotencyKey("ceilings-decide"))).decision
+            tuple(PolicyScope), ApprovalDecisionKind.APPROVED, IdempotencyKey(suffix + "-decide"))).decision
         if not recorded_cleanup:
             return
         activity = self.plan.plan.activities[0]

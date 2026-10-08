@@ -66,7 +66,8 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
             reservation = uow.stores.configuration_cleanup_ownership.get(identity)
             self.assertIs(reservation.status, EffectAttemptStatus.SUCCEEDED)
             self.assertIsNone(reservation.outcomes)
-            self.assertEqual((len(reservation.members), len(reservation.completions), len(reservation.claims)), (1, 1, 1))
+            self.assertEqual((len(reservation.members), len(reservation.completions), len(reservation.claims)),
+                getattr(self, "expected_cleanup_counts", (1, 1, 1)))
         self.assertEqual(self.connection.execute(
             "SELECT count(*) FROM cpk_configuration_cleanup_member_outcomes").fetchone(), (0,))
         before = self.ceiling_truth()

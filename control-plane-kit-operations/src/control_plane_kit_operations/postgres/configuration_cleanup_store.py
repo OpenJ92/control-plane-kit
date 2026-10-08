@@ -1,6 +1,7 @@
 """Bounded composition of retained source, claims, outcome and current owners."""
 from dataclasses import asdict
 from contextlib import contextmanager
+from hashlib import sha256
 import rfc8785
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec, ConfigurationInstanceSelection
@@ -17,13 +18,15 @@ from control_plane_kit_core.runtime_effects import (
 from control_plane_kit_operations.configuration_cleanup import (
     ConfigurationCleanupInspectionCodec, ConfigurationCleanupInspectionResult,
     ConfigurationCleanupProposalCodec, MAX_CANONICAL_REVISION,
+    ConfigurationCleanupInspectionV2Codec, ConfigurationCleanupProposalV2Codec,
     MAX_CLEANUP_DOCUMENT_BYTES,
     ConfigurationCleanupContractError,
 )
 from control_plane_kit_operations.records import OperationSessionStatus
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from .configuration_evidence import _Capacity, _Unavailable, _composed_read
 from .configuration_source import read_original_selection
-from .configuration_preparation_store import _decode_ref, _require_unreserved
+from .configuration_preparation_store import _decode, _decode_ref, _paired_disposition, _require_unreserved
 from .effect_attempt_store import _COLUMN_NAMES, _record_from_events
 from .effect_outcome_store import _configuration_event
 from .graph_store import _read_workspace_initialization
@@ -107,6 +110,9 @@ def _invocation(stores, source, selected, read):
 
 
 def _inspect(stores, command, read):
+    if command.profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+            PlanDerivationProfile.CONFIGURATION_CLEANUP_V2):
+        raise _Unavailable
     session = stores.activity_history.get_session(command.session_id)
     if session.workspace_id != command.workspace_id or session.status is not OperationSessionStatus.OPEN:
         raise _Unavailable
@@ -143,6 +149,8 @@ def _inspect(stores, command, read):
         if ref in selected:
             stores.configuration_acceptance._prove_use(read, row, *receipt[4:])
             current_refs.add(ref)
+    if command.profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V2:
+        return _inspect_v2(stores, command, read, context, selected, current_refs)
     candidates, proposals, count = [], [], 0
     for selector in sorted(command.selectors, key=lambda item: item.expected_ref.allocation_id):
         ref = selector.expected_ref
@@ -188,6 +196,125 @@ def _inspect(stores, command, read):
         if len(rfc8785.dumps(document)) > MAX_CLEANUP_DOCUMENT_BYTES:
             raise _Capacity
         proposal = ConfigurationCleanupProposalCodec().decode(document)
+    return ConfigurationCleanupInspectionResult("complete", inspection), proposal
+
+
+def _member(ref):
+    return dict(artifact_id=ref.artifact_id, allocation_id=ref.allocation_id,
+        ref_fingerprint=sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest())
+
+
+def _claim_key(identity, ref):
+    return identity.run_id.value, identity.activity_id, identity.attempt, ref.artifact_id
+
+
+def _inspect_v2(stores, command, read, context, selected, current_refs):
+    """Compose positive roots and the exact outstanding/transfer partition."""
+    preparation, acceptance = stores.configuration_preparation, stores.configuration_acceptance
+    allocations, outstanding, transfers = [], {}, {}
+
+    def transfer(key, ref, disposition):
+        if disposition.kind != "accepted-current":
+            raise _Unavailable
+        proof = acceptance._accepted_transfer(read, key, ref, disposition.acceptance_revision)
+        return dict(source_identity=_identity(proof.identity), **_member(proof.ref),
+            acceptance_revision=proof.acceptance_revision)
+
+    # Enumerate both independent active drivers before applying whole-selection
+    # laws. Zero rows grant nothing: seed and birth are proved separately below.
+    for selector in command.selectors:
+        ref = selector.expected_ref
+        _require_unreserved(read, ref)
+        allocation = preparation._protective_allocation_evidence(ref, read)
+        for claim in allocation.claims:
+            key = _claim_key(claim.identity, claim.ref)
+            if key in outstanding:
+                raise _Unavailable
+            outstanding[key] = claim
+        if len(outstanding) > 256:
+            raise _Capacity
+        seed = _decode(acceptance._ref(read, _claim_key(selector.source_identity, ref)), read)
+        if seed.ref != ref or seed.ref.artifact_id != selector.artifact_id:
+            raise _Unavailable
+        preparation._require_direct_root(seed, allocation.birth)
+        allocations.append((selector, allocation, seed))
+
+    for selector, allocation, seed in allocations:
+        for root in (seed, allocation.birth):
+            key = _claim_key(root.identity, root.ref)
+            disposition = _paired_disposition(read, key, root.ref)
+            if disposition.kind == "outstanding":
+                if key not in outstanding or outstanding[key].ref != root.ref:
+                    raise _Unavailable
+            else:
+                transfers[key] = transfer(key, root.ref, disposition)
+
+    invocations = {}
+    for claim in outstanding.values():
+        identity = claim.identity
+        if identity in invocations:
+            continue
+        summary, witness = _invocation(stores, claim.source, selected, read)
+        original = read_original_selection(stores.connection, identity, claim.ref, read=read)
+        members, proven_transfers, uncovered = [], {}, 0
+        for source in original:
+            ref = source.ref
+            key = _claim_key(identity, ref)
+            disposition = _paired_disposition(read, key, ref)
+            members.append(_member(ref))
+            if disposition.kind == "outstanding":
+                if key in outstanding:
+                    if outstanding[key].ref != ref:
+                        raise _Unavailable
+                elif ref in selected:
+                    raise _Unavailable
+                else:
+                    uncovered += 1
+            else:
+                proven_transfers[key] = transfer(key, ref, disposition)
+        summary = {name: value for name, value in summary.items() if name != "unselected_count"}
+        summary["uncovered_outstanding_count"] = uncovered
+        members.sort(key=lambda row: row["artifact_id"])
+        if uncovered == 0:
+            transfers.update(proven_transfers)
+        if witness is not None:
+            witness = {name: value for name, value in witness.items() if name != "selection_allocations"}
+            witness["selection_members"] = members
+        invocations[identity] = summary, witness, members
+
+    candidates, proposals = [], []
+    for selector, allocation, seed in allocations:
+        ref = selector.expected_ref
+        summaries = [invocations[claim.identity][0] for claim in allocation.claims]
+        blockers = []
+        if ref in current_refs:
+            blockers.append("current-selected-use")
+        if any(row["uncovered_outstanding_count"] for row in summaries):
+            blockers.append("incomplete-invocation-selection")
+        if any(row["kind"] != "completed" for row in summaries):
+            blockers.append("unresolved-invocation")
+        common = dict(ref=ConfigurationInstanceRefCodec().encode(ref),
+            seed=_locator(seed.identity, seed.ref.artifact_id),
+            birth=_locator(allocation.birth.identity, allocation.birth.ref.artifact_id))
+        candidates.append(dict(**common, invocations=summaries, blockers=blockers))
+        identities = [_identity(claim.identity) for claim in allocation.claims]
+        proposals.append(dict(**common, protecting_uses=identities, proposed_closures=identities))
+    ordered = sorted(invocations, key=lambda identity: (identity.run_id.value, identity.activity_id, identity.attempt))
+    accepted = [transfers[key] for key in sorted(transfers)]
+    accounting = [dict(source_identity=_identity(identity), selection_members=invocations[identity][2])
+        for identity in ordered if invocations[identity][0]["uncovered_outstanding_count"] == 0]
+    document = dict(profile="configuration-cleanup-inspection.v2", context=context, candidates=candidates,
+        accepted_transfers=accepted, invocation_accounting=accounting)
+    if len(rfc8785.dumps(document)) > MAX_CLEANUP_DOCUMENT_BYTES:
+        raise _Capacity
+    inspection = ConfigurationCleanupInspectionV2Codec().decode(document)
+    proposal = None
+    if not any(row["blockers"] for row in candidates):
+        document = dict(profile="configuration-cleanup-proposal.v2", context=context, candidates=proposals,
+            invocations=[invocations[identity][1] for identity in ordered], accepted_transfers=accepted)
+        if len(rfc8785.dumps(document)) > MAX_CLEANUP_DOCUMENT_BYTES:
+            raise _Capacity
+        proposal = ConfigurationCleanupProposalV2Codec().decode(document)
     return ConfigurationCleanupInspectionResult("complete", inspection), proposal
 
 
@@ -316,7 +443,7 @@ def validate_cleanup_rows(connection):
     while True:
         with _composed_read(connection) as read:
             rows = read.bounded_rows("cpk_activity_plans", (("plan_id", "text", 2048),),
-                "plan_id>%s AND (payload->>'derivation_profile'='configuration-cleanup-v1' "
+                "plan_id>%s AND (payload->>'derivation_profile' IN ('configuration-cleanup-v1','configuration-cleanup-v2') "
                 "OR (payload->>'schema'='control-plane-kit.operations.activity-plan-record' "
                 "AND payload->'version' IS DISTINCT FROM '1'::jsonb))",
                 (last,), maximum=4, order="plan_id")

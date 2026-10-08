@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=bb49579eaab616fb287bf0b5e2f67566b8d3f013f7eee3a0d03ff0fb5da2f603 relations=56 columns=714 constraints=631 indexes=194 foreign-keys=166 -->
+<!-- current-schema-contract: sha256=d2c0c861f495f99ea3132ac6799172af67d5000f8741fab62a4ab6c18cb0aada relations=56 columns=715 constraints=631 indexes=194 foreign-keys=166 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -893,17 +893,17 @@ deleting its retained draft history.
 
 ### `cpk_configuration_cleanup_reservations`
 
-- **Durable meaning and owner:** One original cleanup lifetime pins the request, approval, plan/proposal and runtime registration, plus bounded member/invocation/claim counts. Operations retained-cleanup owner.
-- **Identity and cardinality:** Exact composite original keys; one lifetime has 1–32 members and at most 256 invocations/claims; permanent unique workspace/allocation member.
+- **Durable meaning and owner:** One original cleanup lifetime pins the request, approval, plan/proposal, closed derivation profile and runtime registration, plus bounded member/invocation/claim counts. Operations retained-cleanup owner cross-checks the profile against the exact original approved plan.
+- **Identity and cardinality:** One lifetime has 1–32 physical members. V1 retains nonempty invocation/claim sets, claims covering members, and at most 256 invocations/claims. V2 permits both closure counts to be zero together, with invocations no greater than claims; positive birth/transfer proof remains necessary. Permanent unique workspace/allocation membership is unchanged.
 - **Outgoing foreign keys:** `cpk_cleanup_reservations_approval_fk`, `cpk_cleanup_reservations_authority_fk`, `cpk_cleanup_reservations_intent_fk`, `cpk_cleanup_reservations_plan_fk`, `cpk_cleanup_reservations_request_fk`, `cpk_cleanup_reservations_run_fk`.
 - **Inbound dependents:** `cpk_configuration_cleanup_members`, `cpk_configuration_invocation_closures`.
-- **Writers and transactions:** No production cleanup writer in #1935. Recorded-history fixtures use a caller-owned rollback/commit transaction; #1936 owns atomic admission.
+- **Writers and transactions:** The existing start owner writes v1 or explicitly selected v2 reservations, members and outstanding-claim closures in one caller-owned transaction. V1 remains the scalar default. V2 requires the exact approved proposal and positive original seed/birth/transfer proof; transferred claims receive no new closure.
 - **Readers and projections:** `configuration_cleanup_ownership.get` composes bounded source/D1/approval/result owners with one ledger; no permission token.
 - **Mutation, locks, retries, and idempotency:** Permanent evidence; no reopen, reset, retry, release or independent commit API. Ordinary permission is rechecked under L.
-- **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. No migration, pruning or cleanup execution.
+- **Lifecycle, retention, deletion, and restore:** Restrictive non-cascading keys; restore the full retained dependency graph, including reciprocal deferred pairs. This changed exact schema accepts only empty installation or exact current verification; older baselines require separately authorized data preservation/reset work. No migration, reset, backfill or pruning runs here.
 - **JSON boundary:** Scalar exact identities only; original canonical documents remain with existing owners.
 - **Sensitive material:** No credentials, provider bodies or authority endpoint payloads. Fixed errors and bounded reads.
-- **Future impact:** #1936 owns the atomic writer; E4 remains mandatory. No published/live acceptance inferred.
+- **Future impact:** B2 composes v2 publication, approval, start, fold and retained replay through existing owners. Recorded-transfer fixtures establish consumer evidence only; C owns the real transfer producer and growth acceptance. E4 remains mandatory. No published/live acceptance inferred.
 
 ### `cpk_configuration_invocation_closures`
 

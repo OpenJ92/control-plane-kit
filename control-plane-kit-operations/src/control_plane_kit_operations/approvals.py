@@ -621,7 +621,8 @@ def _validate_plan_subject(history, request, *, plan=None):
 def _cleanup_lock(uow, plan, session_id):
     from control_plane_kit_core.planning import CleanupConfigurationInstances
     from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
-    if plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+    if plan.derivation_profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+            PlanDerivationProfile.CONFIGURATION_CLEANUP_V2):
         if any(type(activity.operation) is CleanupConfigurationInstances for activity in plan.plan.activities):
             raise ApprovalStateConflict("cleanup approval requires an exact proposal")
         return None

@@ -16,6 +16,7 @@ from control_plane_kit_operations.configuration_cleanup import configuration_cle
 from control_plane_kit_operations.configuration_cleanup_ownership import ConfigurationCleanupReservationRecord
 from control_plane_kit_operations.configuration_preparation import _identity
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, ObservedEffectOutcome
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.records import OperationsRecordError, ApprovalDecisionKind
 from .configuration_evidence import _joined_read, _Capacity, _Unavailable
 from .configuration_preparation_store import _SELECT, _decode, _paired_disposition
@@ -27,7 +28,7 @@ _O = ("run_id", "activity_id", "attempt")
 _A = ("workspace_id", "allocation_id")
 _HEADER = _C + ("workspace_id", "request_id", "request_fingerprint", "original_event_id", "plan_id",
     "approval_request_id", "approval_decision_id", "proposal_fingerprint", "runtime_id", "runtime_kind",
-    "authority_ref", "registration_id", "candidate_count", "invocation_count", "claim_count")
+    "authority_ref", "registration_id", "candidate_count", "invocation_count", "claim_count", "derivation_profile")
 _MEMBERS = _C + _A + ("birth_run_id", "birth_activity_id", "birth_attempt", "birth_artifact_id", "full_ref_digest")
 _INVOCATIONS = _O + _C + ("workspace_id", "request_fingerprint", "selection_fingerprint", "outcome_fingerprint")
 _CLAIMS = _O + ("artifact_id",) + _C + _A
@@ -44,6 +45,8 @@ def _key(identity):
 
 def _columns(names):
     def cap(name):
+        if name == "derivation_profile":
+            return "text", 24
         if name.endswith("attempt") or name.endswith("_count"):
             return "int", 10
         if name in (*_C[:2], *_O[:2], "birth_run_id", "birth_activity_id"):
@@ -72,7 +75,7 @@ def _expected_rows(record):
         record.original_event_id, record.plan_id, record.approval_request_id, record.approval_decision_id,
         record.proposal_fingerprint, record.runtime_id, record.runtime_kind.value,
         record.authority_ref.reference_id, record.registration_id,
-        len(record.members), len(record.completions), len(record.claims))
+        len(record.members), len(record.completions), len(record.claims), record.derivation_profile.value)
     members = tuple((*cleanup, value.ref.workspace_id, value.ref.allocation_id, *_key(value.identity),
         value.ref.artifact_id, sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(value.ref)).hexdigest())
         for value in record.members)
@@ -100,8 +103,8 @@ class ConfigurationCleanupOwnershipStore:
 
     @contextmanager
     def _start_scope(self, unit_of_work, command, request, plan, guard, prefix):
-        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
-        if plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+        if plan.derivation_profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+                PlanDerivationProfile.CONFIGURATION_CLEANUP_V2):
             raise _Unavailable
         from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
         from control_plane_kit_operations._configuration_cleanup_ownership import (
@@ -187,7 +190,7 @@ class ConfigurationCleanupOwnershipStore:
                 "base_graph_id", "base_realized_projection_id", "desired_graph_id",
                 "desired_realized_projection_id", "desired_graph_revision")})
             result, proposal = _inspect(stores, InspectConfigurationCleanup(context["session_id"],
-                context["workspace_id"], pins, selectors), read)
+                context["workspace_id"], pins, selectors, profile=plan.derivation_profile), read)
             if (result.state != "complete" or proposal != plan.cleanup_proposal
                     or tuple(value.expected_ref for value in selectors) != prepared.intent.operation.instances
                     or prepared.identity.activity_id != prepared.intent.activity_id.value):
@@ -209,10 +212,12 @@ class ConfigurationCleanupOwnershipStore:
             completions = tuple(read.sources.get(("cleanup-admitted-completion", value)) for value in identities)
             if any(value is None for value in completions):
                 raise _Unavailable
+            transfers = self._transfer_proofs(plan, read)
             for completion in completions:
                 selected = tuple(claim for claim in claims if claim.identity == completion.identity)
                 whole = read_original_selection(self._connection, completion.identity, selected[0].ref, read=read)
-                if tuple(value.ref for value in selected) != tuple(value.ref for value in whole):
+                accounted = (*selected, *(value for value in transfers if value.identity == completion.identity))
+                if sorted((value.ref for value in accounted), key=lambda ref: ref.artifact_id) != [value.ref for value in whole]:
                     raise _Unavailable
             for value in members:
                 self._require_absent(read, "cpk_configuration_cleanup_members",
@@ -225,7 +230,7 @@ class ConfigurationCleanupOwnershipStore:
                 self._require_absent(read, "cpk_configuration_claim_closures",
                     "run_id=%s AND activity_id=%s AND attempt=%s AND artifact_id=%s", key)
                 _paired_disposition(read, key, value.ref, protective=True)
-            return registration, members, claims, completions
+            return registration, members, claims, completions, transfers
         finally:
             _COMPOSED_READ.reset(token)
 
@@ -255,9 +260,16 @@ class ConfigurationCleanupOwnershipStore:
             raise _Unavailable
         h = dict(zip(_HEADER, headers[0], strict=True))
         _phase_require(self._connection, "retained", cleanup, "plan", (h["plan_id"],))
+        if h["derivation_profile"] == PlanDerivationProfile.CONFIGURATION_CLEANUP_V1.value:
+            counts_valid = (1 <= h["invocation_count"] <= h["claim_count"] <= 256
+                and h["candidate_count"] <= h["claim_count"])
+        elif h["derivation_profile"] == PlanDerivationProfile.CONFIGURATION_CLEANUP_V2.value:
+            counts_valid = (0 <= h["invocation_count"] <= h["claim_count"] <= 256
+                and (h["invocation_count"] == 0) == (h["claim_count"] == 0))
+        else:
+            raise _Unavailable
         if (tuple(headers[0][:3]) != cleanup or any(value is None for value in headers[0])
-                or not 1 <= h["candidate_count"] <= 32 or not 1 <= h["invocation_count"] <= h["claim_count"] <= 256
-                or not h["candidate_count"] <= h["claim_count"]):
+                or not 1 <= h["candidate_count"] <= 32 or not counts_valid):
             raise _Unavailable
         children = []
         for table, names, count, order in (
@@ -299,6 +311,7 @@ class ConfigurationCleanupOwnershipStore:
                     or claim.birth_artifact_id != root.ref.artifact_id):
                 raise _Unavailable
             _paired_disposition(read, row[:4], claim.ref, expected=cleanup)
+        transfers = self._transfer_proofs(plan, read)
         completions = []
         for row in invocations:
             ordinary = EffectAttemptIdentity(RunId(row[0]), row[1], row[2])
@@ -313,10 +326,14 @@ class ConfigurationCleanupOwnershipStore:
             if not selected:
                 raise _Unavailable
             source = read_original_selection(self._connection, ordinary, selected[0].ref, read=read)
-            if tuple(claim.ref for claim in selected) != tuple(value.ref for value in source):
+            accounted = (*selected, *(value for value in transfers if value.identity == ordinary))
+            if sorted((value.ref for value in accounted), key=lambda ref: ref.artifact_id) != [value.ref for value in source]:
                 raise _Unavailable
             completions.append(completion)
-        self._proposal(plan, h, roots, claims, completions, read)
+        if plan.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V2:
+            self._proposal_v2(plan, h, roots, claims, completions, transfers, read)
+        else:
+            self._proposal(plan, h, roots, claims, completions, read)
         outcome, outcomes = self._outcome(original, attempt, h, member_outcomes, read)
         return ConfigurationCleanupReservationRecord(identity=identity, workspace_id=h["workspace_id"],
             request_id=h["request_id"], request_fingerprint=h["request_fingerprint"], original_event_id=h["original_event_id"],
@@ -324,6 +341,8 @@ class ConfigurationCleanupOwnershipStore:
             proposal_fingerprint=h["proposal_fingerprint"], runtime_id=h["runtime_id"], runtime_kind=RuntimeKind(h["runtime_kind"]),
             authority_ref=RuntimeAuthorityReference(h["authority_ref"]), registration_id=h["registration_id"],
             members=roots, claims=claims, completions=tuple(completions), status=attempt.state.status,
+            derivation_profile=plan.derivation_profile,
+            accepted_transfers=transfers,
             outcome_fingerprint=None if outcome is None else outcome.outcome_fingerprint,
             outcome_profile=None if outcome is None else outcome.profile, outcomes=outcomes)
 
@@ -339,7 +358,7 @@ class ConfigurationCleanupOwnershipStore:
                 or original.intent != prepared.intent):
             raise OperationsRecordError(_ERROR)
         request, plan = owner.prefix.request, owner.plan
-        registration, members, claims, completions = owner.fresh
+        registration, members, claims, completions, transfers = owner.fresh
         owner.record = ConfigurationCleanupReservationRecord(
             identity=original.identity, workspace_id=original.intent.source.workspace_id,
             request_id=request.identity.request_id, request_fingerprint=original.request_fingerprint,
@@ -348,7 +367,8 @@ class ConfigurationCleanupOwnershipStore:
             proposal_fingerprint=configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal),
             runtime_id=original.intent.operation.instances[0].runtime_id, runtime_kind=original.intent.runtime_kind,
             authority_ref=original.intent.authority_ref, registration_id=registration.registration_id,
-            members=members, claims=claims, completions=completions, status=EffectAttemptStatus.STARTED)
+            members=members, claims=claims, completions=completions, status=EffectAttemptStatus.STARTED,
+            derivation_profile=plan.derivation_profile, accepted_transfers=transfers)
         owner.bound = original
 
     def _insert_start(self, prepared, original):
@@ -550,7 +570,10 @@ class ConfigurationCleanupOwnershipStore:
         approval = history.get_approval_request(h["approval_request_id"])
         decision = history.approval_decision_for_request(h["approval_request_id"])
         requirement = ApprovalPolicy().requirement_for(plan.plan)
-        if (plan.cleanup_proposal is None or configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal) != h["proposal_fingerprint"]
+        if (plan.derivation_profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+                    PlanDerivationProfile.CONFIGURATION_CLEANUP_V2)
+                or plan.derivation_profile.value != h["derivation_profile"]
+                or plan.cleanup_proposal is None or configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal) != h["proposal_fingerprint"]
                 or (request.identity.workspace_id, request.identity.plan_id, request.identity.session_id,
                     request.approval_request_id, request.approval_decision_id)
                 != (h["workspace_id"], plan.plan_id, plan.session_id, approval.request_id, h["approval_decision_id"])
@@ -587,6 +610,86 @@ class ConfigurationCleanupOwnershipStore:
                 or attempt.state.request_fingerprint != original.request_fingerprint):
             raise _Unavailable
         return original, attempt, plan
+
+    def _transfer_proofs(self, plan, read):
+        if plan.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+            return ()
+        if plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V2:
+            raise _Unavailable
+        from .configuration_cleanup_phase_read_bounds import _phase_require
+        from .configuration_cleanup_store import _member
+        document = plan.cleanup_proposal.descriptor()
+        workspace = document["context"]["workspace_id"]
+        proofs = []
+        for value in document["accepted_transfers"]:
+            source = value["source_identity"]
+            key = (source["run_id"], source["activity_id"], source["attempt"], value["artifact_id"])
+            # The original plan is captured in both start and retained phases.
+            # Neither zero N nor an immutable memo permits a native fallback.
+            _phase_require(self._connection, "plan", (plan.plan_id,), "invocation-refs", key[:3])
+            _phase_require(self._connection, "plan", (plan.plan_id,), "header",
+                (workspace, value["acceptance_revision"]))
+            evidence = _ref(read, key)
+            if (evidence.ref.workspace_id != workspace or _member(evidence.ref)
+                    != {name: value[name] for name in ("artifact_id", "allocation_id", "ref_fingerprint")}):
+                raise _Unavailable
+            proofs.append(self._stores.configuration_acceptance._accepted_transfer(
+                read, key, evidence.ref, value["acceptance_revision"]))
+        return tuple(proofs)
+
+    def _proposal_v2(self, plan, h, roots, claims, completions, transfers, read):
+        from .configuration_cleanup_store import _identity as descriptor_identity, _member
+        proposal = plan.cleanup_proposal.descriptor()
+        if (proposal["context"]["workspace_id"] != h["workspace_id"]
+                or tuple(ConfigurationInstanceRefCodec().decode(row["ref"]) for row in proposal["candidates"])
+                != tuple(root.ref for root in roots)):
+            raise _Unavailable
+        outstanding = {(*_key(value.identity), value.ref.artifact_id): value for value in claims}
+        accepted = {(*_key(value.identity), value.ref.artifact_id): value for value in transfers}
+        required = set()
+        cleanup = (h["cleanup_run_id"], h["cleanup_activity_id"], h["cleanup_attempt"])
+        for candidate, root in zip(proposal["candidates"], roots, strict=True):
+            uses = [descriptor_identity(claim.identity) for claim in claims if claim.ref == root.ref]
+            if (candidate["birth"] != dict(source_identity=descriptor_identity(root.identity), artifact_id=root.ref.artifact_id)
+                    or candidate["protecting_uses"] != uses or candidate["proposed_closures"] != uses):
+                raise _Unavailable
+            for locator in (candidate["seed"], candidate["birth"]):
+                source = locator["source_identity"]
+                key = (source["run_id"], source["activity_id"], source["attempt"], locator["artifact_id"])
+                evidence = _ref(read, key)
+                self._stores.configuration_preparation._require_direct_root(evidence, root)
+                if key in outstanding:
+                    if outstanding[key].ref != root.ref:
+                        raise _Unavailable
+                    _paired_disposition(read, key, root.ref, expected=cleanup)
+                else:
+                    proof = accepted.get(key)
+                    if proof is None or proof.ref != root.ref:
+                        raise _Unavailable
+                    disposition = _paired_disposition(read, key, root.ref)
+                    if disposition.kind != "accepted-current" or disposition.acceptance_revision != proof.acceptance_revision:
+                        raise _Unavailable
+                    required.add(key)
+        witnesses = []
+        for completion in completions:
+            claim = next(value for value in claims if value.identity == completion.identity)
+            selected = read_original_selection(self._connection, claim.identity, claim.ref, read=read)
+            for value in selected:
+                key = (*_key(value.identity), value.ref.artifact_id)
+                if key not in outstanding:
+                    if key not in accepted or accepted[key].ref != value.ref:
+                        raise _Unavailable
+                    required.add(key)
+            outcome, _ = self._stores.effect_outcomes._configuration_terminal(claim.source, read)
+            witnesses.append(dict(source_identity=descriptor_identity(claim.identity), effect_kind=claim.source.kind.value,
+                operation=activity_operation_descriptor(claim.source.operation), original_event_id=completion.original_event_id,
+                original_event_ordinal=completion.original_event_ordinal, request_fingerprint=completion.request_fingerprint,
+                selection_fingerprint=completion.selection_fingerprint,
+                selection_members=[_member(value.ref) for value in selected],
+                direct_event_id=completion.direct_event_id, direct_event_ordinal=completion.direct_event_ordinal,
+                result_kind=outcome.result.kind.value, outcome_fingerprint=completion.outcome_fingerprint))
+        if required != set(accepted) or proposal["invocations"] != witnesses:
+            raise _Unavailable
 
     def _proposal(self, plan, h, roots, claims, completions, read):
         proposal = plan.cleanup_proposal.descriptor()

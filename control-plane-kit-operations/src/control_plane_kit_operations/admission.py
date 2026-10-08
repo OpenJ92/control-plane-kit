@@ -288,7 +288,8 @@ class ExecutionAdmissionCommandService:
             if cleanup:
                 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
                 from control_plane_kit_operations.configuration_cleanup import configuration_cleanup_proposal_fingerprint
-                if (plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+                if (plan.derivation_profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+                        PlanDerivationProfile.CONFIGURATION_CLEANUP_V2)
                         or plan.cleanup_proposal is None
                         or approval.subject != ActivityPlanApprovalSubject(plan.plan_id,
                             proposal_fingerprint=configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal))):

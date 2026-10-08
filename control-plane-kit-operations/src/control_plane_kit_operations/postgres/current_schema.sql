@@ -1788,7 +1788,8 @@ CREATE TABLE cpk_configuration_cleanup_reservations (
     registration_id text NOT NULL,
     candidate_count integer NOT NULL,
     invocation_count integer NOT NULL,
-    claim_count integer NOT NULL
+    claim_count integer NOT NULL,
+    derivation_profile text DEFAULT 'configuration-cleanup-v1'::text NOT NULL
 );
 ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_pkey PRIMARY KEY (cleanup_run_id, cleanup_activity_id, cleanup_attempt);
 ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_workspace_key UNIQUE (cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id);
@@ -1798,7 +1799,7 @@ ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_clean
 ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_plan_fk FOREIGN KEY (request_id, plan_id) REFERENCES cpk_execution_requests (request_id, plan_id);
 ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_approval_fk FOREIGN KEY (approval_decision_id, approval_request_id) REFERENCES cpk_approval_decisions (decision_id, request_id);
 ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_authority_fk FOREIGN KEY (registration_id, workspace_id, authority_ref, runtime_kind) REFERENCES cpk_runtime_authorities (registration_id, workspace_id, authority_ref, runtime_kind);
-ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_counts_check CHECK (((candidate_count >= 1) AND (candidate_count <= 32) AND (invocation_count >= 1) AND (invocation_count <= 256) AND (claim_count >= candidate_count) AND (claim_count <= 256) AND (claim_count >= invocation_count)));
+ALTER TABLE ONLY cpk_configuration_cleanup_reservations ADD CONSTRAINT cpk_cleanup_reservations_counts_check CHECK ((((derivation_profile = 'configuration-cleanup-v1'::text) AND ((candidate_count >= 1) AND (candidate_count <= 32) AND (invocation_count >= 1) AND (invocation_count <= 256) AND (claim_count >= candidate_count) AND (claim_count <= 256) AND (claim_count >= invocation_count))) OR ((derivation_profile = 'configuration-cleanup-v2'::text) AND (candidate_count >= 1) AND (candidate_count <= 32) AND (invocation_count >= 0) AND (invocation_count <= claim_count) AND (claim_count <= 256) AND ((invocation_count = 0) = (claim_count = 0)))));
 CREATE TABLE cpk_configuration_cleanup_members (
     cleanup_run_id text NOT NULL,
     cleanup_activity_id text NOT NULL,

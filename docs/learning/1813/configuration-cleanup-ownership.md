@@ -4594,3 +4594,193 @@ preserves log SHA256
 Earlier companion-completeness claims are
 superseded by this explicit failure and correction record. Corrected-head
 hosted checks and final review still govern B1 acceptance; B2/C remain held.
+
+## B1 accepted; B2 exact-interface planning — 2026-10-08
+
+This disposition supersedes the pending-gate status above, without erasing the
+earlier failures or their evidence. PR #1954 is merged at actual roadmap merge
+`486a03e08d5c7d8106bb51351936f806aaa79607`, with reviewed parents
+`abdb7c8583a274588eb9ffc3c2d63812535bdedd` and
+`7f8e2e3c6eb6c1cfc97d262d509c19b2e57ba161`, and tested tree
+`4ef5ce7c836e5135069e97408799d4400992d13b`.
+[Independent whole-B1 acceptance](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6057426299)
+and [final green evidence](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6057394137)
+govern. Core passed 945 package plus 21 support tests; Operations passed 2585
+tests in 7670.006 seconds, with compilation/import. The separate locked-backend
+gate passed all nine stages using its declared CPK source `f45384e7`; it is not
+candidate adoption or provider evidence. No baseline rerun is needed for B2.
+
+North closed #1945 and released #1946 exact-interface/test-context planning from
+that actual merge. The dedicated branch is
+`codex/1946-cleanup-profile-composition`, targeting
+`roadmap/1813-runtime-control`. The
+[B2 interface draft](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057689678)
+contains the governing test law cards, changed source trace, concrete public
+command and reservation shape, alternatives, and ordered target groups. Kepler
+reviews before source/test implementation or executable validation is released.
+
+The dry run found a necessary representation seam: the current reservation
+value, reader and SQL count constraint all require nonempty closure sets. North
+extended planning to the minimal reservation/schema/current-contract/atlas
+companions. The proposed closed header discriminator retains v1's database count
+rules and is checked against the exact original approved plan/proposal. Simply
+lowering shared SQL bounds would lose that v1 enforcement. V2 can then represent
+physical members with zero outstanding uses, but only with positive independent
+birth/seed and own accepted-transfer proof. No schema mutation has occurred.
+
+The proposed composition reuses B1 proof owners and A's v2 values: explicit
+keyword-only profile selection with an unchanged v1 default/fingerprint;
+bounded outstanding discovery; full original-selection coverage by newly closed
+claims and separately proved transfers; the existing approval/start/fold/replay
+owners; and their existing cumulative read/accounting framework. Physical
+deletion candidates remain distinct from provenance-only transferred siblings.
+An a-only zero-use cleanup cannot close an invocation that still protects b;
+later b cleanup can account for a's original transfer without dispatching a again.
+
+Security/data/history: planning changes no executable behavior, credentials,
+network exposure or durable runtime state. Existing scopes, destructive approval,
+v1 canonical bytes/replay, all capacity limits and no-backfill rules remain.
+Recorded transfers are defensive consumer evidence only. C #1947 retains the
+real writer, greater-than-64 accepted-use growth, race and rollback obligations;
+provider work and Servers #225 acceptance remain later boundaries.
+
+## B2 stage 1: representation and focused evidence — 2026-10-08
+
+[North released the representation slice](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057762967).
+Commands now carry closed keyword-only profiles, defaulting to the unchanged
+v1 fingerprint domain. The reservation value and SQL header distinguish v1's
+nonempty closure law from v2's symmetric zero-count representation with positive
+member coverage. Original plan/proposal binding remains explicit. These values
+do not grant cleanup authority: v2 planning and retained execution still refuse
+until the complete later proof path is implemented and reviewed.
+
+Seven reviewed targets established causal red at `c37ad505` (seven assertion
+failures, no errors) before source changes. The first implementation's focused
+run at `84c358a0` failed with three static failures and 18 installation errors.
+The exported fingerprint was stale, and the existing direct catalog comparison
+proved a separate CHECK-column ordering mismatch: PostgreSQL records first
+reference order, placing `derivation_profile` first. Correcting the contract's
+tuple and its hash companions preserved SQL, verifier strictness and every
+behavioral assertion. The original failed evidence and
+[catalog diagnosis](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058256310)
+remain part of the record; neither a guessed rebaseline nor a schema repair was
+used.
+
+After [independent correction review](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058258326),
+candidate `fb28a9c85e406f9834303ad11b9ecc0d5e540ccf`, tree
+`f006ee45b47fc6ae2e408077219a1b23cabf5169`, passed the ordinary focused
+Operations Docker suite: 37 tests in 290.116s, compilation/import and exit 0.
+[Green evidence](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058400416)
+records clean source and exact test-resource cleanup. The actual catalog,
+fingerprint, query-only reentry/drift, atlas, v1 replay, ledger/preflight and four
+existing v2 nonactivation tests pass. This is focused stage evidence, not full
+B2/package or live acceptance.
+
+The [later read/accounting refinement](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057879278)
+has [planning PASS](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6057978107).
+It names independent outstanding allocation drivers, positive transfer receipt
+closure even when outstanding claims are empty, complete original selections,
+and repeated fresh-proof costs at actual start/fold positions. Its source work
+still requires North's next release. Existing limits remain unchanged; v1's
+passing ledger is not proof that every planned v2 composition fits.
+
+Security/data/history: profiles remain bound to original approved history;
+missing or unsupported proof refuses. Transactions, no-backfill/no-repair
+policy and existing approval semantics are unchanged. No provider resources,
+credentials, tunnel, DNS or protected tokens were touched. C's producer and
+reachable growth proof remain held.
+
+## B2 stage 2: public inspection, publication and approval — 2026-10-08
+
+[North accepted stage 1 and released stage 2](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058453004).
+The existing inspection owner now branches explicitly to v2, composing native
+active allocation drivers, independent seed/birth evidence and each required
+transfer's own completion/receipt/slot proof. It retains the complete original
+selection: selected outstanding claims and proved transfers are disjoint;
+uncovered outstanding siblings remain count-only blockers. An empty active set
+alone grants no eligibility.
+
+The existing public service publishes the chosen typed profile and uses A's
+pure v2 inspection projection for immutable replay. Approval uses the original
+destructive policy, distinct approver and lifecycle-locked fresh proof. Changed
+pins or original source/outcome evidence refuse fresh commands, while exact
+original receipts remain replayable. V1 behavior remains on its existing path.
+
+Seven [reviewed targets](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058627873)
+failed at the intended missing public v2 inspection boundary at `dcc2f445`:
+seven failures, no errors, 37.931s. After
+[source review](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058768984),
+candidate `f29648a417731c3dfda1257bbe0ceea103574006`, tree
+`18a6929dbb86a9fd0dd1712368a3cc9ff7fae020`, passed 23 focused Operations
+Docker tests in 281.675s, compilation/import and exit 0.
+[Green evidence](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058907648)
+records unchanged targets, clean source and exact test-resource cleanup.
+
+The recorded-transfer cases are explicitly defensive consumer evidence. An
+a-only zero-use proposal creates no invocation closure; b-only accounting keeps
+a's required transfer provenance under a rollback-only member exclusion. This
+is not a committed a-retirement-to-b execution or a reachable transfer writer.
+Those proofs remain with stage 3 and C respectively.
+
+The temporary blanket v2 planning/approval refusals are superseded by exact
+profile behavior and stale/corrupt negatives. All four remaining admission,
+native-start and coordinator denial/replay guards passed and remain closed.
+Stage-3 issued start/fold/retained transport has not been implemented. Security,
+history and fixed limits remain with existing owners; no schema policy,
+credential or provider resources changed. This is focused stage evidence,
+not full B2/package or live acceptance.
+
+## B2 stage 3: execution and retained transfer composition — 2026-10-08
+
+[North released stage 3](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6058942111)
+through the existing public admission, native/coordinator start, reservation,
+fold and retained owners. Sixteen reviewed targets reached the intended
+v1-only admission obstruction at `77836ba8`: 16 assertion failures, no errors,
+434.643s. The [causal-red record](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6059534685)
+does not claim the later unreachable assertions were already exercised.
+
+The implementation consumes two independent captured active allocation drivers,
+preserves full original selections for outstanding and transferred invocations,
+and captures each required transfer's original receipt parents even with zero
+outstanding claims. Physical candidates remain reserved; only outstanding
+claims and their invocations receive new closures. Retained proof reconstructs
+the exact original seed/birth/selection-required transfer set, approval, profile
+and results without rereading current eligibility or granting new dispatch.
+
+Review found that the first cold transfer traversal preceded the later explicit
+dependency check. The corrected cleanup-only hook now requires captured
+invocation and receipt-header dependencies before that first traversal. The
+fault tests target the original transfer identity, preserving the unrelated
+current-manifest header and unchanged forecast inputs. A separate correction
+permits a distinct candidate-local seed transfer at the nonauthorizing value
+boundary; the retained owner still rejects any unrelated extra transfer.
+
+After [source and exact entrance PASS](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6059979426),
+candidate `92f1c19c50bc5ead75635ac6b9d060931a5b81f1`, tree
+`aa297ca873c71912b33e9b3cebab0f538b10cb51`, passed 24 focused Operations
+Docker tests in 1064.913s, compilation/import and exit 0. The
+[completed evidence](https://github.com/OpenJ92/control-plane-kit/issues/1946#issuecomment-6060376592)
+records clean source and exact test-resource cleanup. Public v2 lifecycle,
+atomic rollback, original-history replay, before-ID refusal and result
+conservation pass alongside selected v1 regressions and invalid-profile denial.
+
+The recorded-transfer cases now execute A-only and then B cleanup, retaining
+full original selection and A's provenance without dispatching A again. Zero
+claim start/fold/replay, missing-proof refusal, generic observation without
+invented member deletion, uncertain-result exclusion and current-schema reentry
+also pass. These remain defensive consumer premises; C still owns the real
+same-transaction transfer producer and reachable growth acceptance.
+
+Repeated paired checks are charged inside every fresh pass, including memo
+hits, all three issued checks and final retained verification. The physical
+observer measured 2753 records / 2,977,968 accounted bytes for outstanding v2
+K1 and 3106 records / 3,174,444 bytes for transferred zero-claim K1. Their maximum
+query reservations were 3,829,004 and 4,025,480 bytes. Declared tails bounded
+all observed peaks under unchanged 4096-record / 16-MiB limits; this is selected
+composition evidence, not a maximal-topology capacity guarantee.
+
+Security/data/history stay with the existing approval and transaction owners.
+No provider call was introduced under database locks, no uncertainty releases
+exclusion, and no credential, tunnel, DNS, token, image or schema reset/backfill
+was touched. Focused stage 3 evidence does not replace independent acceptance,
+the whole-B2 PR and full package/composition gates, or C's producer proof.

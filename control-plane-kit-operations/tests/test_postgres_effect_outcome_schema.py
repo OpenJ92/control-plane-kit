@@ -130,7 +130,7 @@ class PostgresEffectOutcomeSchemaTests(
             columns.setdefault(value.relation, []).append(value.name)
         self.assertEqual(tuple(columns[OUTCOME]), OUTCOME_COLUMNS)
         self.assertEqual(tuple(columns[MEMBERSHIP]), MEMBERSHIP_COLUMNS)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns), 714)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns), 715)
         self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints), 631)
         self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes), 194)
 

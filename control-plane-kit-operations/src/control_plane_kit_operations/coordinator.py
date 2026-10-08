@@ -1791,9 +1791,11 @@ class ExecutionCoordinator:
         if context.run.status is not ActivityRunStatus.RUNNING:
             return None
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
-        unsupported_cleanup = (context.plan_record.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+        unsupported_cleanup = (context.plan_record.derivation_profile not in (
+            PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, PlanDerivationProfile.CONFIGURATION_CLEANUP_V2)
             and any(type(activity.operation) is CleanupConfigurationInstances for activity in context.plan.activities))
-        if (context.plan_record.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V1
+        if (context.plan_record.derivation_profile in (
+                PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, PlanDerivationProfile.CONFIGURATION_CLEANUP_V2)
                 and context.plan_record.cleanup_proposal is not None
                 and len(context.plan.activities) == 1
                 and type(context.plan.activities[0].operation) is CleanupConfigurationInstances):

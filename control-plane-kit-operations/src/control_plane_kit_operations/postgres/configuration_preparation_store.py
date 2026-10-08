@@ -556,7 +556,8 @@ class ConfigurationPreparationStore:
                       AND jsonb_typeof(payload->'version')='number'
                       AND ((payload->>'version'='1' AND payload->>'derivation_profile'
                             IN ('structural-v1','management-graph-pair-v1'))
-                        OR (payload->>'version'='2' AND payload->>'derivation_profile'='configuration-cleanup-v1'))
+                        OR (payload->>'version'='2' AND payload->>'derivation_profile'
+                            IN ('configuration-cleanup-v1','configuration-cleanup-v2')))
                     THEN payload->'plan'
                     ELSE NULL END AS plan
                   FROM pinned
@@ -564,7 +565,7 @@ class ConfigurationPreparationStore:
                 SELECT jsonb_path_exists(base, '$.nodes.*.configuration_artifacts[*]')
                     OR jsonb_path_exists(desired, '$.nodes.*.configuration_artifacts[*]'),
                     base IS NOT NULL AND desired IS NOT NULL,
-                    coalesce(payload->>'derivation_profile'='configuration-cleanup-v1', false)
+                    coalesce(payload->>'derivation_profile' IN ('configuration-cleanup-v1','configuration-cleanup-v2'), false)
                     OR payload ? 'cleanup_proposal' OR payload ? 'cleanup_proposal_fingerprint'
                     OR (payload->>'schema'='control-plane-kit.operations.activity-plan-record'
                         AND payload->'version'='2'::jsonb)
@@ -611,7 +612,7 @@ class ConfigurationPreparationStore:
             SELECT jsonb_path_exists(base, '$.nodes.*.configuration_artifacts[*]')
                 OR jsonb_path_exists(desired, '$.nodes.*.configuration_artifacts[*]'),
                 base IS NOT NULL AND desired IS NOT NULL,
-                coalesce(payload->>'derivation_profile'='configuration-cleanup-v1', false)
+                coalesce(payload->>'derivation_profile' IN ('configuration-cleanup-v1','configuration-cleanup-v2'), false)
                 OR payload ? 'cleanup_proposal' OR payload ? 'cleanup_proposal_fingerprint'
                 OR jsonb_path_exists(payload,
                     '$.**.operation ? (@.kind == "cleanup-configuration-instances")')
@@ -798,8 +799,7 @@ class ConfigurationPreparationStore:
         try:
             _ref(exact_ref)
             birth = self._protective_root(exact_ref, read)
-            candidates = self._protective_candidates(read, "workspace_id=%s AND allocation_id=%s",
-                (exact_ref.workspace_id, exact_ref.allocation_id), maximum=64)
+            candidates = self._protective_allocation_candidates(exact_ref, read)
             claims = tuple(self._paired_protective_ref(read, row) for row in candidates)
             for claim in claims:
                 self._require_direct_root(claim, birth)
@@ -808,6 +808,22 @@ class ConfigurationPreparationStore:
             raise
         except (ValueError, TypeError, KeyError, AttributeError):
             raise _Unavailable from None
+
+    def _protective_allocation_candidates(self, ref, read):
+        from control_plane_kit_operations._configuration_cleanup_phase_read_bounds import _CleanupPhaseReadBounds
+        from .configuration_cleanup_phase_read_bounds import _phase_context, _phase_rows
+        key = (ref.workspace_id, ref.allocation_id)
+        if type(_phase_context(self._connection, read=read)) is not _CleanupPhaseReadBounds:
+            return self._protective_candidates(read, "workspace_id=%s AND allocation_id=%s", key, maximum=64)
+        sides = tuple(_phase_rows(read, role, key, maximum=64) for role in (
+            "outstanding-allocation-refs", "outstanding-allocation-claims"))
+        if any(rows is None for rows in sides):
+            raise _Unavailable
+        if any(len(rows) > 64 for rows in sides) or len({row[:4] for rows in sides for row in rows}) > 64:
+            raise _Capacity
+        if sides[0] != sides[1] or any(any(value is None for value in row) for rows in sides for row in rows):
+            raise _Unavailable
+        return sides[0]
 
     def _historical_protection(self, stores, refs, read):
         """Every historical allocation retains its own material and protection."""

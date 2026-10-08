@@ -218,6 +218,8 @@ class ConfigurationAcceptanceStore:
         identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
         if key[3] != ref.artifact_id:
             raise _Unavailable
+        from .configuration_cleanup_phase_read_bounds import _cleanup_transfer_dependencies
+        _cleanup_transfer_dependencies(read, key, ref, revision)
         paired = _paired_disposition(read, key, ref)
         if paired.kind != "accepted-current" or paired.acceptance_revision != revision:
             raise _Unavailable
