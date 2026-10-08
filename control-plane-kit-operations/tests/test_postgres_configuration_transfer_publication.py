@@ -66,7 +66,7 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
 
     def measure_fit(self, *, reused):
         command = self.reuse.execute_reuse()[0] if reused else self.carry_command()
-        before, observed, state = self.transfer_snapshot(), observation(), {}
+        before, observed, state = self.transfer_snapshot(), observation(), {"phases": {}}
         preflight, commit, current = (ConfigurationAcceptanceStore._preflight,
             PostgresUnitOfWork.commit, ConfigurationAcceptanceStore._require_current)
         checks = []
@@ -85,6 +85,9 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
             self.assertEqual((len(keys), sum(map(len, keys)), sum(key in transferred for slot in keys for key in slot)),
                 (4, 6 if reused else 4, 2))
             observed["accounting"] = _ACCOUNTING.get()
+            phase = "pre_id" if prepared.event is None else "bound"
+            self.assertNotIn(phase, state["phases"])
+            state["phases"][phase] = (prior, snapshot, future, publication, len(observed["queries"]))
             state.update(prior=prior, snapshot=snapshot, future=future, publication=publication)
             return result
 
@@ -102,14 +105,19 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
                 mock.patch.object(ConfigurationAcceptanceStore, "_require_current", check), \
                 mock.patch.object(PostgresUnitOfWork, "commit", committed):
             accepted = self.advance(command, factory)
-        self.assertEqual(checks, [command.plan_id] * 4)
+        # The transfer phase also rechecks current selected membership.
+        self.assertEqual(checks, [command.plan_id] * 5)
         self.assertFalse(accepted.replayed)
         self.assertEqual(self.transfer_snapshot(), before)
-        used = difference(state["end"], state["prior"])
-        within(self, used, state["publication"].settled)
-        for entry in observed["queries"]:
-            within(self, difference(Footprint(*entry["peak"]), state["prior"]), state["publication"].peak)
-        reconciles(self, used, observed)
+        self.assertEqual(tuple(state["phases"]), ("pre_id", "bound"))
+        for phase, (prior, _, _, publication, offset) in state["phases"].items():
+            with self.subTest(phase=phase):
+                used = difference(state["end"], prior)
+                within(self, used, publication.settled)
+                selected = observed["queries"][offset:]
+                for entry in selected:
+                    within(self, difference(Footprint(*entry["peak"]), prior), publication.peak)
+                reconciles(self, used, {"queries": selected})
 
         cold, snapshots = observation(), []
         manifest = ConfigurationAcceptanceStore._receipt_manifest
@@ -134,11 +142,13 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
             self.assertEqual(binding.source.identity,
                 self.reuse.identity if reused and binding.ref.node_id == "api" else original.identity)
         self.assertEqual(len(snapshots), 1)
-        within(self, snapshots[0], state["snapshot"])
+        for _, snapshot, _, _, _ in state["phases"].values():
+            within(self, snapshots[0], snapshot)
         self.assertLessEqual(snapshots[0].accounted_bytes, 3 * 1024 * 1024)
-        within(self, cold["accounting"].used, state["future"].settled)
-        for entry in cold["queries"]:
-            within(self, Footprint(*entry["peak"]), state["future"].peak)
+        for _, _, future, _, _ in state["phases"].values():
+            within(self, cold["accounting"].used, future.settled)
+            for entry in cold["queries"]:
+                within(self, Footprint(*entry["peak"]), future.peak)
         reconciles(self, cold["accounting"].used, cold)
         after = self.proof_snapshot()
         self.assertTrue(self.advance(command).replayed)
@@ -196,7 +206,7 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
                     self.assertNotIn(key, cache)
                 finally:
                     cache[key] = saved
-                visited.append(key)
+                visited.append(("pre_id" if prepared.event is None else "bound", key))
             copied = _EvidenceRead(read.connection)
             copied.refs.update(read.refs)
             copied.sources.update(read.sources)
@@ -209,7 +219,8 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
             return result
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             self.advance(command)
-        self.assertEqual(len(visited), 8)
+        self.assertEqual([phase for phase, _ in visited], ["pre_id"] * 8 + ["bound"] * 8)
+        self.assertEqual([key for _, key in visited[:8]], [key for _, key in visited[8:]])
         self.assertEqual(self.transfer_snapshot(), before)
 
     def fetch_failure_snapshot(self):
@@ -233,7 +244,7 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
         from control_plane_kit_operations.records import OperationsRecordError
 
         command = self.reuse.execute_reuse()[0] if reused else self.carry_command()
-        before, observed, state = self.fetch_failure_snapshot(), observation(), {}
+        before, observed, state = self.fetch_failure_snapshot(), observation(), {"phases": {}}
         armed, faults, after_failure, finished, commits = [], [], [], [], []
         root, reservation = self.key(self.refs[0]), Footprint(2, 855, 11, 1)
         error = psycopg.DataError("injected transferred-disposition fetch failure")
@@ -253,6 +264,9 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
             self.assertEqual(prepared.evidence_read.used, prior)
             observed["accounting"] = _ACCOUNTING.get()
             self.assertIs(prepared.evidence_read.accounting, observed["accounting"])
+            phase = "pre_id" if prepared.event is None else "bound"
+            self.assertNotIn(phase, state["phases"])
+            state["phases"][phase] = (prior, snapshot, future, publication, len(observed["queries"]))
             state.update(owner=store, prepared=prepared, prior=prior,
                 snapshot=snapshot, future=future, publication=publication)
             return result
@@ -359,12 +373,16 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
         self.assertGreater(close.value_octets, 0)
         self.assertLessEqual(close.value_octets, 20)
         self.assertEqual(state["failed_entry"]["widths"], [])
-        successful = dict(observed, queries=[entry for entry in observed["queries"] if entry is not state["failed_entry"]])
-        self.assertEqual(len(successful["queries"]), len(observed["queries"]) - 1)
-        reconciles(self, difference(difference(end, state["prior"]), reservation), successful)
-        for entry in observed["queries"]:
-            within(self, difference(Footprint(*entry["peak"]), state["prior"]), state["publication"].peak)
-        within(self, difference(end, state["prior"]), state["publication"].peak)
+        self.assertEqual(tuple(state["phases"]), ("pre_id", "bound"))
+        for phase, (prior, _, _, publication, offset) in state["phases"].items():
+            with self.subTest(phase=phase):
+                selected = observed["queries"][offset:]
+                successful = {"queries": [entry for entry in selected if entry is not state["failed_entry"]]}
+                self.assertEqual(len(successful["queries"]), len(selected) - 1)
+                reconciles(self, difference(difference(end, prior), reservation), successful)
+                for entry in selected:
+                    within(self, difference(Footprint(*entry["peak"]), prior), publication.peak)
+                within(self, difference(end, prior), publication.peak)
         with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("spent owner reached SQL")), \
                 self.assertRaises(OperationsRecordError):
             state["owner"]._require_issued(state["prepared"])
