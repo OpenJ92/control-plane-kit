@@ -334,6 +334,30 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
                 self.assertFalse(any(getattr(value.operation, "stage", None) == "gateway-ingress-ready" for value in plan.activities))
                 self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
 
+    def test_lifecycle_suppressed_node_start_does_not_qualify_as_fresh(self):
+        for node_id in ("gateway", "connector"):
+            for lifecycle in (ResourceLifecycle.external(), ResourceLifecycle.attached()):
+                with self.subTest(node=node_id, lifecycle=lifecycle):
+                    desired = graph()
+                    desired = replace(desired, nodes={
+                        **desired.nodes, node_id: replace(desired.nodes[node_id], lifecycle=lifecycle),
+                    })
+                    plan = self.compile(empty(), desired)
+                    structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
+                    self.find(structural, StartRuntime, runtime="runtime")
+                    self.find(structural, StartNode, node="connector" if node_id == "gateway" else "gateway")
+                    self.find(structural, AllocatePublicIngress)
+                    for result in (structural, plan):
+                        self.assertFalse(any(isinstance(value.operation, (StartNode, WaitForHealthy))
+                                             and value.operation.target.node_id == node_id
+                                             for value in result.activities))
+                    bootstrap = self.api("ObserveManagementBootstrap")
+                    self.assertFalse(any(isinstance(value.operation, bootstrap)
+                                         and value.operation.stage.value == "gateway-ingress-ready"
+                                         for value in plan.activities))
+                    self.find(plan, bootstrap, stage="gateway-local-ready")
+                    self.find(plan, bootstrap, stage="authenticated-management-path")
+
     def test_adding_management_to_existing_runtime_preserves_whole_structural_review(self):
         desired = graph()
         current = replace(desired, runtimes={"runtime": replace(desired.runtimes["runtime"], management=None)})
