@@ -18,18 +18,24 @@ from control_plane_kit_core.products import ProductInstanceConfiguration, instan
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
-from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService
+from control_plane_kit_operations import advancement as advancement_module
+from control_plane_kit_operations import configuration_preparation as capacity_values
+from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService, CurrentGraphAdvancementConflict
 from control_plane_kit_operations.configuration_preparation import (
     ConfigurationCapacityDecision, configuration_evidence_capacity,
 )
 from control_plane_kit_operations.coordinator import CoordinatorStatus
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
+from control_plane_kit_operations.postgres.activity_history import PostgresActivityHistoryStore
+from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.postgres.graph_store import PostgresWorkspaceStore
 from control_plane_kit_operations.records import GraphVersionRecord
 from tests.configuration_transfer_fixture import ConfigurationTransferFixture, profiled_configuration_result
 from tests import test_execution_coordinator as coordinator_fixture
 from tests import test_postgres_configuration_acceptance as acceptance_fixture
 from tests import test_postgres_configuration_carry as carry_fixture
+from tests import test_postgres_configuration_transfer_publication as publication_fixture
 from tests.test_postgres_configuration_transfer_capacity import Footprint, difference
 from tests.test_postgres_configuration_transfer_publication import PublicationWire, observation, reconciles, within
 from tests.test_runtime_effect_translation import _configuration_product
@@ -53,27 +59,70 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
         self.assertEqual(adapter.calls, [command.run_id.replace("run-", "activity-", 1)])
         self.assertEqual(adapter.active_during_calls, [0])
 
-    def measure_final(self, command, originals, refs):
+    def measure_final(self, command, originals, refs, *, refuses=False):
         observed, state = observation(), {}
+        decisions, checking = [], False
         preflight, commit = ConfigurationAcceptanceStore._preflight, PostgresUnitOfWork.commit
+        def capacity(value):
+            result = configuration_evidence_capacity(value)
+            if checking:
+                decisions.append((value, result))
+            return result
         def admitted(store, prepared):
+            nonlocal checking
             state["prior"] = prepared.evidence_read.used
             state["snapshot"], state["future"], state["publication"] = store._publication_budgets(prepared)
-            result = preflight(store, prepared)
+            checking = True
+            try:
+                result = preflight(store, prepared)
+            finally:
+                checking = False
             self.assertEqual(prepared.evidence_read.used, state["prior"])
             observed["accounting"] = _ACCOUNTING.get()
             return result
         def committed(uow):
+            self.assertFalse(refuses, "capacity refusal requested commit")
             if observed["accounting"] is not None and _ACCOUNTING.get() is observed["accounting"]:
                 state["end"] = observed["accounting"].used
             return commit(uow)
         factory = lambda: PostgresUnitOfWork(lambda: PublicationWire(
             psycopg.connect(self.base.database_url), observed))
-        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admitted), \
-                mock.patch.object(PostgresUnitOfWork, "commit", committed):
-            accepted = CurrentGraphAdvancementCommandService(factory,
+        def advance():
+            return CurrentGraphAdvancementCommandService(factory,
                 clock=lambda: "2026-07-22T13:05:00Z",
                 id_factory=iter(("event-final", "action-final")).__next__).execute(command)
+        durable_snapshot = lambda: publication_fixture.PostgresConfigurationTransferPublicationTests.fetch_failure_snapshot(self)
+        before = durable_snapshot() if refuses else None
+        with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", admitted), \
+                mock.patch.object(capacity_values, "configuration_evidence_capacity", capacity), \
+                mock.patch.object(PostgresUnitOfWork, "commit", committed):
+            if refuses:
+                with mock.patch.object(PostgresWorkspaceStore, "_compare_and_set_current_graph", side_effect=AssertionError(
+                        "capacity refusal reached current-graph mutation")), \
+                        mock.patch.object(ConfigurationAcceptanceStore, "_insert", side_effect=AssertionError(
+                        "capacity refusal reached receipt insertion")), \
+                        mock.patch.object(PostgresExecutionStore, "_add_advancement_event", side_effect=AssertionError(
+                            "capacity refusal reached advancement event insertion")), \
+                        mock.patch.object(PostgresActivityHistoryStore, "_add_advancement_action", side_effect=AssertionError(
+                            "capacity refusal reached advancement action insertion")), \
+                        mock.patch.object(advancement_module, "_finish_receiver_advancement", side_effect=AssertionError(
+                            "capacity refusal reached receiver finish")), \
+                        self.assertRaises(CurrentGraphAdvancementConflict) as caught:
+                    advance()
+                self.assertIs(type(caught.exception), CurrentGraphAdvancementConflict)
+            else:
+                accepted = advance()
+        self.assertEqual([value for value, _ in decisions], [state["future"].settled,
+            state["future"].peak, state["prior"].plus(state["publication"].settled),
+            state["prior"].plus(state["publication"].peak)])
+        self.assertEqual([result for _, result in decisions],
+            [ConfigurationCapacityDecision.WITHIN_LIMITS] * 3 +
+            [ConfigurationCapacityDecision.BYTE_LIMIT if refuses else ConfigurationCapacityDecision.WITHIN_LIMITS])
+        if refuses:
+            self.assertLessEqual(state["snapshot"].accounted_bytes, 3 * 1024 * 1024)
+            self.assertLessEqual(decisions[-1][0].records, 4096)
+            self.assertEqual(durable_snapshot(), before)
+            return state
         self.assertFalse(accepted.replayed)
         used = difference(state["end"], state["prior"])
         within(self, used, state["publication"].settled)
@@ -122,7 +171,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             provenance=difference(cold["accounting"].used, snapshots[0]), graph_widths=graph_widths)
         return state
 
-    def construct(self, padding):
+    def construct(self, padding, *, final_metadata_width=None, outstanding_tail=False, refuses=False):
         self.base = acceptance_fixture.PostgresConfigurationAcceptanceTests()
         try:
             self.base.setUp()
@@ -168,7 +217,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
                 self.original, self.completion = original, completions[node]
                 self.refs = original.intent.configuration_instances.instances
                 self.revision = acceptances[node].desired_graph_revision
-                self.record_transfer()
+                self.record_transfer(self.refs[:-1] if outstanding_tail and node == "n8" else self.refs)
             refs = tuple(ref for original in originals.values()
                 for ref in original.intent.configuration_instances.instances)
             self.assertEqual(len(refs), 16)
@@ -178,20 +227,24 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             with self.base.unit_of_work() as uow:
                 uow.stores.graphs.save(GraphVersionRecord.from_graph(graph_id="graph-final",
                     workspace_id="workspace-a", version=11, graph=final_graph,
-                    created_by="operator-a", created_at="2026-07-22T12:00:30Z"))
+                    created_by="operator-a", created_at="2026-07-22T12:00:30Z",
+                    metadata={} if final_metadata_width is None else
+                        {"padding": "a" * (final_metadata_width - 15)}))
                 uow.commit()
             command = carry.admit("final", "graph-final", StartRuntime(RuntimeTarget("runtime-b")))
             self.execute_admitted(command, configuration=False)
-            measured = self.measure_final(command, originals, refs)
+            measured = self.measure_final(command, originals, refs, refuses=refuses)
             self.assertEqual(self.transfer_snapshot(), before)
             # Independent diagnostic SQL is outside the command/read accounting.
             widths = self.connection.execute("SELECT graph_id,octet_length(metadata::text) "
                 "FROM cpk_graph_versions WHERE graph_id LIKE 'graph-n%' ORDER BY graph_id").fetchall()
             self.assertEqual(widths, [("graph-n" + str(i), padding + 15) for i in range(1, 9)])
-            for graph_id, width in widths:
-                self.assertEqual(measured["graph_widths"][graph_id], {width})
+            if not refuses:
+                for graph_id, width in widths:
+                    self.assertEqual(measured["graph_widths"][graph_id], {width})
             self.assertEqual(self.connection.execute("SELECT octet_length(metadata::text) "
-                "FROM cpk_graph_versions WHERE graph_id='graph-final'").fetchone(), (2,))
+                "FROM cpk_graph_versions WHERE graph_id='graph-final'").fetchone(),
+                (2 if final_metadata_width is None else final_metadata_width,))
             measured.update(ref_bytes=tuple(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref) for ref in refs),
                 graph=DEFAULT_GRAPH_CODEC.encode(final_graph), metadata_octets=sum(width for _, width in widths))
             return measured
@@ -224,3 +277,42 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             "publication_peak": footprint(case["publication"].peak),
             "metadata_octets": case["metadata_octets"],
         } for label, case in (("baseline", small), ("large", large))}, sort_keys=True))
+
+    def test_adjacent_legal_metadata_widths_fit_settled_but_refuse_publication_peak(self):
+        # Exact accounted B/B+1 predicate laws live in the isolated preflight
+        # tests. Here one legal input byte is transported at six real positions.
+        limit, calibration_width = 16 * 1024 * 1024, 1000000
+        def build(width, *, refuses=False):
+            self.assertGreaterEqual(width, 1000000)
+            self.assertLessEqual(width, 1048576)
+            return self.construct(409585, final_metadata_width=width,
+                outstanding_tail=True, refuses=refuses)
+        calibration = build(calibration_width)
+        def total(case, phase):
+            return case["prior"].plus(getattr(case["publication"], phase))
+        self.assertGreater(total(calibration, "peak").accounted_bytes,
+            total(calibration, "settled").accounted_bytes)
+        fit_width = calibration_width + (limit - total(calibration, "peak").accounted_bytes) // 6
+        self.assertGreater(fit_width, calibration_width)
+        fits = build(fit_width)
+        refuses = build(fit_width + 1, refuses=True)
+        for case, width in ((fits, fit_width), (refuses, fit_width + 1)):
+            delta = width - calibration_width
+            self.assertEqual(case["ref_bytes"], calibration["ref_bytes"])
+            self.assertEqual(case["graph"], calibration["graph"])
+            self.assertEqual(difference(case["prior"], calibration["prior"]), Footprint(0, 5 * delta, 0, 0))
+            for phase in ("settled", "peak"):
+                self.assertEqual(difference(getattr(case["publication"], phase),
+                    getattr(calibration["publication"], phase)), Footprint(0, delta, 0, 0))
+        self.assertLessEqual(total(fits, "peak").accounted_bytes, limit)
+        self.assertGreater(total(refuses, "peak").accounted_bytes, limit)
+        self.assertLessEqual(total(refuses, "settled").accounted_bytes, limit)
+        self.assertEqual(total(refuses, "peak").accounted_bytes - total(fits, "peak").accounted_bytes, 6)
+        print("natural-publication-threshold " + json.dumps({label: {
+            "final_metadata_width": width,
+            "prior_bytes": case["prior"].accounted_bytes,
+            "prior_plus_settled_bytes": total(case, "settled").accounted_bytes,
+            "prior_plus_peak_bytes": total(case, "peak").accounted_bytes,
+            "prior_plus_peak_records": total(case, "peak").records,
+        } for label, case, width in (("calibration", calibration, calibration_width),
+            ("fits", fits, fit_width), ("refuses", refuses, fit_width + 1))}, sort_keys=True))

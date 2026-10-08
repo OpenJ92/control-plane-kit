@@ -4314,3 +4314,44 @@ Target draft SHA-256
 `6a36e1bba9d1bed53142dd689578dc42b67ff26c3d5d970af0d2243eea14aa63`
 received independent target-interface PASS `6049253790` before installation.
 Application source is unchanged; focused target-red is the next evidence gate.
+
+### B1 capacity law/evidence mapping after large-provenance acceptance
+
+The bounded large-history obligation is closed at `9b0be9f2600cc1da5256d550618971eaa1e7b244`:
+one owning test passed in 138.647s, followed by compilation/import and cleanup;
+independent evidence review is #1945 comment `6051737632`. The same current
+material is 82302 accounted bytes in both cases, while the large historical
+proof alone contains 3498549 value bytes. No further K8 provenance variants
+are required by that accepted result.
+
+Boundary evidence is deliberately split by the law it proves:
+
+| Law | Owning test | Evidence class |
+| --- | --- | --- |
+| Material exactly 3 MiB and one byte over | `ConfigurationAcceptancePreflightTests.test_snapshot_exact_three_mib_then_one_byte_over` | Isolated actual preflight predicate; synthetic input budgets, not real publication |
+| Native consumer exactly B and B+1, records and bytes | `ConfigurationAcceptancePreflightTests.test_cold_consumer_record_and_byte_edges_use_actual_envelope` | Isolated actual preflight/capacity predicates; preserves native ordering and exact arithmetic |
+| Prior-inclusive publication peak exactly B and B+1, records and bytes | `ConfigurationAcceptancePreflightTests.test_publication_record_and_byte_edges_include_prior_command_work` | Isolated actual preflight/capacity predicates with synthetic prior and forecasts; preserves prior inclusion and ordering |
+| Small current material with real proof above 3 MiB | `PostgresConfigurationTransferLargeProvenanceTests.test_large_historical_provenance_keeps_current_material_small` | Accepted real-owner package evidence; profiled simulated effects and recorded defensive transfers |
+| Adjacent legal inputs cross publication H while S still fits | `PostgresConfigurationTransferLargeProvenanceTests.test_adjacent_legal_metadata_widths_fit_settled_but_refuse_publication_peak` | Draft, unexecuted real-owner package target; actual measurement, successful publication/cold read versus exact preflight refusal and rollback |
+
+The new boundary target holds historical graphs and configuration refs fixed,
+leaves the last artifact outstanding, and changes metadata only when creating
+the new final desired graph. One real calibration selects adjacent legal widths
+in the same decimal-width band. Their reachable increment is **+6 accounted
+bytes**: five actual command-prior value reads plus one publication value read.
+The draft asserts the actual increments, stable other dimensions, S-fit/H-refusal,
+earlier material/native gates, no current-graph/receipt/receiver-finish writes or
+commit on refusal, and full durable rollback. It neither injects ledger cost nor
+replaces source forecasts, lowers limits, or rewrites accepted history.
+
+These are adjacent input widths, not a claim of natural accounted B/B+1. The
+isolated exact arithmetic tests remain necessary and retain their explicit
+synthetic-budget label. Natural reader/publication success and refusal add
+execution evidence; they do not replace exact native predicate coverage.
+
+Handoff: retain earlier immutable evidence. After this remaining boundary passes
+and is independently reviewed, proceed to the issue-required final regression,
+package/composition and review gates. No broader framework or production scope;
+B1 remains incomplete until those gates pass, and B2/C remain held. Security and
+data scope stays within the owning suite's disposable database, with no new
+authority, provider effects, secrets, network surface or transfer writer.
