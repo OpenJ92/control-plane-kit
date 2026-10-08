@@ -4500,3 +4500,37 @@ this correction. Final acceptance uses one draft PR's hosted Core and full
 Operations suites plus the nine-stage locked backend gate, followed by whole-PR
 independent review. Locked backend coordinates do not establish adoption of
 this candidate. North retains merge ownership; B2/C remain held.
+
+### Whole-PR review: existing v1 cleanup pair companion
+
+[Independent review](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6052722077)
+found that B1 widened the reciprocal disposition query to reserve
+`F(2,855,11,1)`, while the existing v1 cleanup `_PAIR` still forecast
+`F(2,823,9,1)`. The deficit is 32 value bytes plus two scalar markers, or 64
+accounted bytes per pair. Fresh and retained cleanup, then start/fold
+preflights, inherit this component. Other conservative terms can mask it;
+review did not establish aggregate overflow or committed corruption.
+
+The [bounded correction plan](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6052779943)
+strengthens the existing public K1 transport test. It forwards the real query,
+subtracts the pre-query ledger from the existing connection observer's
+pre-fetch peak, and compares all four components to the cleanup pair term.
+Both outstanding and cleanup-closed cases must occur. Actual reservation is
+not copied from kwargs or constants; all original public completion,
+single-ledger, per-UoW suffix and physical transport assertions remain.
+
+At test-only checkpoint `4ccdc555c15295ea2958a0536f3dabc2ad4c5c8a`, the ordinary
+focused Docker gate ran one test in 36.940s and exited 1 with four expected
+subtest failures: 855 > 823 and 11 > 9 for each disposition. Existing aggregate
+assertions passed; compile/import were not reached. Exact disposable Docker
+resources were absent afterward. Log SHA256
+`aa09fff8c8b407fd8963d68c65343400cf5f7d607a89eb81ce79e2e9a3a09c05`.
+
+The application correction changes only `_PAIR` to `_q(1,855,11,2)`.
+`_CLOSED_PAIR` retains its unchanged three-identity closure anchor. No limit,
+record weighting, v1 meaning, approval, ledger, transaction or history changes.
+The strengthened K1 method and existing start/fold preflight-before-ID method
+are the focused green gate; their result and narrow review remain pending.
+Existing hosted results belong to the old frozen head a419906b and cannot
+validate this correction. B1 remains held pending corrected hosted gates and
+independent acceptance; B2/C remain held.

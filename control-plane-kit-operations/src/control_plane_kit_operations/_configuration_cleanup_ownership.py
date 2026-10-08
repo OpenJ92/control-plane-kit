@@ -129,7 +129,7 @@ _APPROVALS = _sum(_b(15, 245760), _b(9, 147456))
 _ATTEMPT = _sum(_b(21, 43008), _times(_EVENT, 2))
 _REF = _q(1, 32768, 19, 2)
 _SOURCE = _sum(_q(1, 80032, 17, 3), _Footprint(0, 0, 0, 2))
-_PAIR = _q(1, 823, 9, 2)
+_PAIR = _q(1, 855, 11, 2)
 _CLOSED_PAIR = _sum(_PAIR, _q(1, 1, 1, 3))
 _TERMINAL = _sum(_b(22, 51200), _times(_COMPACT_EVENT, 2))
 
