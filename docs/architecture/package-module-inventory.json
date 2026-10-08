@@ -22,6 +22,7 @@
       "internal_dependencies": [
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_operations.records",
+        "control_plane_kit_operations.plan_derivation",
         "control_plane_kit_operations.configuration_preparation",
         "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
         "control_plane_kit_operations.postgres.configuration_cleanup_ownership_store",
@@ -85,6 +86,7 @@
         "control_plane_kit_operations.configuration_cleanup",
         "control_plane_kit_operations.configuration_cleanup_planning",
         "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.plan_derivation",
         "control_plane_kit_operations.receiver_lifecycle",
         "control_plane_kit_operations.postgres.configuration_cleanup_read_ceilings",
         "control_plane_kit_operations.postgres.configuration_evidence",
@@ -281,6 +283,7 @@
         "control_plane_kit_operations.postgres.configuration_preparation_store",
         "control_plane_kit_operations.postgres.configuration_source",
         "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.configuration_cleanup_store",
         "control_plane_kit_operations.records"
       ],
       "known_package_consumers": [
@@ -723,6 +726,7 @@
         "control_plane_kit_operations.postgres.receiver_execution_scopes",
         "control_plane_kit_operations.runtime_effects",
         "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations._configuration_cleanup_phase_read_bounds",
         "control_plane_kit_operations._configuration_protection"
       ],
       "known_package_consumers": [

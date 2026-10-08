@@ -108,7 +108,7 @@ class ConfigurationCleanupReservationRecord:
                 and all((value.ref.workspace_id, value.ref.runtime_id, value.ref.node_id)
                     == (self.workspace_id, self.runtime_id, self.members[0].ref.node_id)
                     and (value.ref.allocation_id not in members or members[value.ref.allocation_id].ref == value.ref)
-                    and (key in roots or value.identity in completions)
+                    and (value.ref.allocation_id in members or value.identity in completions)
                     and (value.identity not in completions or (
                         value.request_fingerprint, value.selection_fingerprint, value.outcome_fingerprint) == (
                         completions[value.identity].request_fingerprint, completions[value.identity].selection_fingerprint,

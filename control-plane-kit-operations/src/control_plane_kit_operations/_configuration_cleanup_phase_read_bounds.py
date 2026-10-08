@@ -47,6 +47,8 @@ class _CleanupPhaseReadBounds:
     allocation_refs: tuple[_PhaseCollection, ...]
     allocation_claims: tuple[_PhaseCollection, ...]
     invocation_refs: tuple[_PhaseCollection, ...]
+    outstanding_allocation_refs: tuple[_PhaseCollection, ...] = ()
+    outstanding_allocation_claims: tuple[_PhaseCollection, ...] = ()
 
 
 _BOUND_CLEANUP_PHASE = ContextVar("cpk_cleanup_phase_read_bounds", default=None)

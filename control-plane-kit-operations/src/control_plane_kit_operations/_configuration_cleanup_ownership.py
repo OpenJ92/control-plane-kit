@@ -131,6 +131,7 @@ _REF = _q(1, 32768, 19, 2)
 _SOURCE = _sum(_q(1, 80032, 17, 3), _Footprint(0, 0, 0, 2))
 _PAIR = _q(1, 855, 11, 2)
 _CLOSED_PAIR = _sum(_PAIR, _q(1, 1, 1, 3))
+_DISPOSED_PAIR = _sum(_PAIR, _q(1, 1, 1, 4))
 _TERMINAL = _sum(_b(22, 51200), _times(_COMPACT_EVENT, 2))
 
 
@@ -141,10 +142,17 @@ class _CleanupTail:
         self.phase = owner.phase_bounds
         self.originals = owner.original_bounds.originals
         if type(owner.issued) is _PreparedCleanupStart:
-            _, members, claims, completions = owner.fresh
+            _, members, claims, completions, transfers = owner.fresh
         else:
             members, claims, completions = owner.record.members, owner.record.claims, owner.record.completions
+            transfers = owner.record.accepted_transfers
         self.k, self.d, self.u = len(members), len(claims), len(completions)
+        self.t = len(transfers)
+        self.invocations = {(value.identity.run_id.value, value.identity.activity_id, value.identity.attempt)
+            for value in completions}
+        self.s = sum(len(entry.keys) for entry in self.phase.invocation_refs if entry.identity in self.invocations)
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        self.v2 = owner.plan.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V2
 
     def points(self, role):
         from control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds import _entries, _shape
@@ -164,11 +172,11 @@ class _CleanupTail:
         return _sum(*(_sum(_T, _b(len(entry.widths), sum(entry.widths), _shape(role)[6]))
             for entry in _entries(self.phase, role)))
 
-    def collections(self, role):
+    def collections(self, role, identities=None):
         from control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds import _entries, _shape
-        identities = _shape(role)[6]
-        return _sum(*(_sum(_T, _v(len(entry.widths), sum(entry.widths), len(entry.keys), identities))
-            for entry in _entries(self.phase, role)))
+        weight = _shape(role)[6]
+        return _sum(*(_sum(_T, _v(len(entry.widths), sum(entry.widths), len(entry.keys), weight))
+            for entry in _entries(self.phase, role) if identities is None or entry.identity in identities))
 
     def largest_collection(self, role):
         from control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds import _entries, _shape
@@ -206,6 +214,19 @@ class _CleanupTail:
         # source/terminal sharing within F is the existing read owner contract.
         original_invocations = _times(_sum(_SOURCE, _b(21, 43008),
             _times(_COMPACT_EVENT, 2), _TERMINAL), self.u)
+        if self.v2:
+            return _sum(_T, self.prefix(), _REQUEST, self.points("plan"), _APPROVALS,
+                _ACK, _b(9, 90304), _SESSION, _WORKSPACE, self.manifest(),
+                self.collections("outstanding-allocation-claims"), self.collections("outstanding-allocation-refs"),
+                _times(_q(2, 65536, 19, 2), self.k), _times(_REF, self.k + self.d + self.t),
+                original_invocations, _times(_b(7, 730), self.u),
+                self.collections("invocation-refs", self.invocations),
+                # Birth + both seed/birth visits, active/final N, D1 and
+                # coverage S, every transfer entrance (even memo hits), then
+                # the explicit transfer projection in _fresh_start. Cold T's
+                # own D1/S is additional below. No cross-pass discount.
+                _times(_DISPOSED_PAIR, 5 * self.k + 2 * self.d + 3 * self.s + self.t),
+                _times(self.cold_transfer(), self.t), _times(_ACK, 2 * self.k + self.u + self.d))
         d1 = _sum(_times(_b(7, 730), self.u), self.collections("invocation-refs"),
             _times(_PAIR, self.d))
         return _sum(_T, self.prefix(), _REQUEST, self.points("plan"), _APPROVALS,
@@ -213,6 +234,14 @@ class _CleanupTail:
             self.collections("allocation-claims"), self.collections("allocation-refs"),
             original_invocations, _times(_PAIR, self.d), d1,
             _times(_ACK, 2 * self.k + self.u + self.d), _times(_PAIR, self.d))
+
+    def cold_transfer(self):
+        """One cold T body; entry pair checks are counted at every call site."""
+        largest_selection = max((len(entry.keys) for entry in self.phase.invocation_refs), default=0)
+        return _sum(_b(13, 1257), _b(7, 730), self.largest_collection("invocation-refs"),
+            _SOURCE, _times(_DISPOSED_PAIR, largest_selection), _TERMINAL, _REF,
+            *(self.points(role) for role in ("header", "receipt-action", "receipt-event", "run", "request",
+                "plan", "session", "graph", "projection")), _b(12, 24576))
 
     def permission(self):
         graph_pair = _sum(self.points("graph"), self.points("projection"))
@@ -248,9 +277,12 @@ class _CleanupTail:
         value = _sum(self.pending(), self.intent(), _ATTEMPT, _REQUEST, _RUN,
             self.points("plan"), _APPROVALS, _SESSION,
             _times(_sum(self.points("graph"), self.points("projection")), 2), _ACK,
-            _times(_REF, self.k + self.d), _times(_SOURCE, self.u),
-            _times(_CLOSED_PAIR, 2 * self.d), _times(_b(7, 730), self.u),
-            self.collections("invocation-refs"), _times(_TERMINAL, self.u), _b(1, 2048))
+            _times(_REF, (3 * self.k + self.d + self.t) if self.v2 else self.k + self.d), _times(_SOURCE, self.u),
+            _times(_DISPOSED_PAIR, 2 * self.k + self.d + self.s + self.t) if self.v2 else _times(_CLOSED_PAIR, 2 * self.d),
+            _times(_b(7, 730), self.u), self.collections("invocation-refs", self.invocations),
+            _times(_TERMINAL, self.u), _b(1, 2048))
+        if self.v2:
+            value = _sum(value, _times(self.cold_transfer(), self.t))
         if folded:
             count = len(self.owner.issued.outcome.endpoint_observations)
             value = _sum(value, _b(22, 51200), _v(13, 11 * 8192 + 64, count, 2),

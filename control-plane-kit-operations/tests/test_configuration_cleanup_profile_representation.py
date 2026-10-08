@@ -152,6 +152,29 @@ class ConfigurationCleanupReservationProfileTests(ConfigurationCleanupHistoryFix
         with self.assertRaises(OperationsRecordError):
             replace(record, claims=remaining)
 
+    def test_v2_candidate_local_nonbirth_seed_value_preserves_positive_birth_and_exact_ref(self):
+        record = self.retained()
+        births = self.represented_transfers(record)
+        # A pure provenance value for a distinct seed invocation. Construction
+        # grants no store authority: the retained owner must match the original
+        # approved proposal's exact seed/birth/selection-required transfer set.
+        seed = replace(births[0], identity=EffectAttemptIdentity(RunId("seed-run"), "seed-activity", 1))
+        def ordered(values):
+            return tuple(sorted(values, key=lambda value: (value.identity.run_id.value,
+                value.identity.activity_id, value.identity.attempt, value.ref.artifact_id)))
+        zero = replace(record, derivation_profile=Profile.CONFIGURATION_CLEANUP_V2,
+            claims=(), completions=(), accepted_transfers=ordered((*births, seed)))
+        self.assertIn(seed, zero.accepted_transfers)
+        self.assertEqual(zero.members, record.members)
+        for invalid in (
+            ordered((*births[1:], seed)),
+            ordered((*births, replace(seed, ref=replace(seed.ref, allocation_id="foreign-allocation")))),
+            ordered((*births, replace(seed, ref=replace(seed.ref, target_path="/foreign")))),
+            ordered((*births, seed, seed)),
+        ):
+            with self.subTest(transfers=invalid), self.assertRaises(OperationsRecordError):
+                replace(zero, accepted_transfers=invalid)
+
     def require_profile_column(self):
         self.assertEqual(self.connection.execute("SELECT data_type,is_nullable,column_default "
             "FROM information_schema.columns WHERE table_schema=current_schema() "

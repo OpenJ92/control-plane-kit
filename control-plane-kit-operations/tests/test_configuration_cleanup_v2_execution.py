@@ -1,5 +1,6 @@
 """B2 execution laws; recorded transfers do not establish a reachable producer."""
 import unittest
+from dataclasses import replace
 from unittest import mock
 
 from control_plane_kit_core.configuration_instances import (
@@ -14,6 +15,7 @@ from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectA
 from control_plane_kit_operations.effect_attempt_start import ExistingAttempt, NewlyStarted, EffectAttemptStartConflict
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile as Profile
+from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.records import OperationsRecordError
 from tests.configuration_cleanup_execution_fixture import ConfigurationCleanupExecutionFixture
 from tests.configuration_cleanup_postgres_fixture import command_context
@@ -224,6 +226,18 @@ class ConfigurationCleanupV2RecordedTransferExecutionTests(_V2ExecutionFixture, 
             with self.assertRaises(OperationsRecordError):
                 uow.stores.configuration_cleanup_ownership.get(identity)
         self.assertEqual((self.ceiling_truth(), self.transfer_snapshot()), before)
+        # A candidate-local transfer value is not itself authorization. Even
+        # if a lower reader supplies an extra such value, the retained owner
+        # must require exactly the approved seed/birth/S proof set.
+        actual_transfers = ConfigurationCleanupOwnershipStore._transfer_proofs
+        extra = replace(record.accepted_transfers[0],
+            identity=EffectAttemptIdentity(RunId("unrelated-seed"), "unrelated-activity", 1))
+        def unrelated(store, plan, read):
+            return (*actual_transfers(store, plan, read), extra)
+        with mock.patch.object(ConfigurationCleanupOwnershipStore, "_transfer_proofs", unrelated):
+            with self.unit_of_work() as uow, self.assertRaises(OperationsRecordError):
+                uow.stores.configuration_cleanup_ownership.get(identity)
+        self.assertEqual((self.ceiling_truth(), self.transfer_snapshot()), before)
         self.connection.execute("UPDATE cpk_runtime_authorities SET status='revoked' WHERE registration_id=%s",
             (self.registration.registration_id,))
         fold = self.removed_fold(command, started)
@@ -240,6 +254,7 @@ class ConfigurationCleanupV2RecordedTransferExecutionTests(_V2ExecutionFixture, 
 
     def test_active_zero_row_consumers_and_transfer_parents_cannot_fall_back_when_missing(self):
         from control_plane_kit_operations.postgres import configuration_cleanup_phase_read_bounds as bounds
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
         self.prepare_transfers()
         self.admit_cleanup()
         claimed = self.ready_run("cleanup-execution")
@@ -247,44 +262,64 @@ class ConfigurationCleanupV2RecordedTransferExecutionTests(_V2ExecutionFixture, 
         actual_entries = bounds._entries
         actual_bound = bounds._bound
         actual_require = bounds._phase_require
+        actual_query = _EvidenceRead.query
+        original = self.original.identity
+        identities = {
+            "outstanding-allocation-refs": (self.selected_ref.workspace_id, self.selected_ref.allocation_id),
+            "outstanding-allocation-claims": (self.selected_ref.workspace_id, self.selected_ref.allocation_id),
+            "invocation-refs": (original.run_id.value, original.activity_id, original.attempt),
+            "header": (self.selected_ref.workspace_id, self.revision),
+            "receipt-action": (self.configuration_acceptance.action.action_id,),
+            "receipt-event": (self.configuration_acceptance.event.event_id,),
+        }
 
         def missing(role, invoke, conflict):
-            touched, consumer = [], []
+            touched, consumer, native_reads = [], [], []
             before = self.ceiling_truth(), self.transfer_snapshot()
+            table = bounds._shape(role)[0].split()[0]
+            target = identities[role]
 
             def entries(issued, requested):
                 original = actual_entries(issued, requested)
-                if consumer and requested == role:
-                    self.assertTrue(original, "fault must remove an actually captured dependency")
-                    touched.append((issued.retained_identity, original))
-                    return ()
+                if consumer and consumer[-1] == (role, target) and requested == role:
+                    matched = tuple(entry for entry in original if entry.identity == target)
+                    self.assertEqual(len(matched), 1, "fault must remove the exact captured T dependency")
+                    touched.append((issued.retained_identity, matched))
+                    return tuple(entry for entry in original if entry.identity != target)
                 return original
 
             def bound(connection, requested, identity):
-                consumer.append(True)
+                consumer.append((requested, identity))
                 try:
                     return actual_bound(connection, requested, identity)
                 finally:
                     consumer.pop()
 
             def require(connection, parent_role, parent_identity, child_role, child_identity):
-                consumer.append(True)
+                consumer.append((child_role, child_identity))
                 try:
                     return actual_require(connection, parent_role, parent_identity, child_role, child_identity)
                 finally:
                     consumer.pop()
+
+            def query(reader, sql, params, **kwargs):
+                if touched and table in str(sql):
+                    native_reads.append(str(sql))
+                return actual_query(reader, sql, params, **kwargs)
 
             # Forecast construction sees the intact captured roles. Remove a
             # dependency only while an actual bounded read or child traversal
             # consumes it, so capacity inflation cannot masquerade as refusal.
             with mock.patch.object(bounds, "_entries", entries), \
                     mock.patch.object(bounds, "_bound", bound), \
-                    mock.patch.object(bounds, "_phase_require", require), self.assertRaises(conflict):
+                    mock.patch.object(bounds, "_phase_require", require), \
+                    mock.patch.object(_EvidenceRead, "query", query), self.assertRaises(conflict):
                 invoke()
             self.assertTrue(touched, "the actual consumer must request the missing role")
+            self.assertEqual(native_reads, [], "missing captured dependencies must refuse before native reads")
             self.assertEqual((self.ceiling_truth(), self.transfer_snapshot()), before)
 
-        for role in ("outstanding-allocation-refs", "outstanding-allocation-claims"):
+        for role in ("outstanding-allocation-refs", "outstanding-allocation-claims", "invocation-refs", "header"):
             with self.subTest(role=role):
                 missing(role, lambda: EffectAttemptStartService(self.unit_of_work,
                     id_factory=self.assert_no_ids).execute(command), EffectAttemptStartConflict)
@@ -321,6 +356,9 @@ class ConfigurationCleanupV2RecordedTransferExecutionTests(_V2ExecutionFixture, 
         for table, expected in (("cpk_configuration_cleanup_members", 2),
                 ("cpk_configuration_invocation_closures", 1), ("cpk_configuration_claim_closures", 1)):
             self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {table}").fetchone(), (expected,))
+        before = self.ceiling_truth(), self.transfer_snapshot()
+        install_schema(self.connection)
+        self.assertEqual((self.ceiling_truth(), self.transfer_snapshot()), before)
 
     def test_zero_claim_ambiguous_dispatch_keeps_exclusion_and_never_redispatches(self):
         self.prepare_transfers()

@@ -57,6 +57,8 @@ def _entries(value, role):
         case "allocation-refs": return value.allocation_refs
         case "allocation-claims": return value.allocation_claims
         case "invocation-refs": return value.invocation_refs
+        case "outstanding-allocation-refs": return value.outstanding_allocation_refs
+        case "outstanding-allocation-claims": return value.outstanding_allocation_claims
     raise _Unavailable
 
 
@@ -152,6 +154,16 @@ def _phase_columns(connection, role, identity, columns):
         for (name, kind, cap), width in zip(columns, bound.widths, strict=True))
 
 
+def _cleanup_transfer_dependencies(read, key, ref, revision):
+    """Require cleanup's captured T parents before its first cold traversal."""
+    issued = _BOUND_CLEANUP_PHASE.get()
+    if issued is None:
+        return
+    _phase_context(read.connection, read=read)
+    _phase_require(read.connection, "plan", (issued.original_plan,), "invocation-refs", key[:3])
+    _phase_require(read.connection, "plan", (issued.original_plan,), "header", (ref.workspace_id, revision))
+
+
 def _phase_rows(read, role, identity, *, maximum=None, text=False):
     _phase_context(read.connection, read=read)
     bound = _bound(read.connection, role, identity)
@@ -185,6 +197,13 @@ def _shape(role):
             document_cap if name in documents else 2048) for name in names)
 
     match role:
+        case "outstanding-allocation-refs" | "outstanding-allocation-claims":
+            names = ("run_id", "activity_id", "attempt", "artifact_id", "allocation_id",
+                "workspace_id", "runtime_id", "node_id")
+            declared = tuple((name, "int" if name == "attempt" else "text", cap)
+                for name, cap in zip(names, (2048, 2048, 12, 63, 128, 128, 128, 128), strict=True))
+            table = "cpk_effect_configuration_refs" if role.endswith("-refs") else "cpk_configuration_claims"
+            return table, declared, "protective AND workspace_id=%s AND allocation_id=%s", "run_id,activity_id,attempt,artifact_id", 64, (0, 1, 2, 3), 1
         case "plan":
             return "cpk_activity_plans", columns(_PLAN, ("payload",), document_cap=1048576), "plan_id=%s", "", 1, (), 1
         case "graph" | "raw-graph":
@@ -377,7 +396,7 @@ class _CleanupPhaseReadBoundsOwner:
         from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
         from control_plane_kit_core.planning import CleanupConfigurationInstances
         from control_plane_kit_operations.configuration_cleanup import (
-            ConfigurationCleanupProposalCodec, ConfigurationCleanupSourceSelector, ConfigurationCleanupExpectedContext,
+            ConfigurationCleanupSourceSelector, ConfigurationCleanupExpectedContext,
         )
         from control_plane_kit_operations.configuration_cleanup_planning import InspectConfigurationCleanup
         from control_plane_kit_operations.effect_attempt_start_interpreter import _require_fresh_effect_receiver_permission
@@ -409,7 +428,7 @@ class _CleanupPhaseReadBoundsOwner:
             and plan.plan.activity(prospective_intent.activity_id).operation == prospective_intent.operation)
         _require_fresh_effect_receiver_permission(stores, request, guard, prospective_intent, compensation=False)
 
-        document = ConfigurationCleanupProposalCodec().encode(plan.cleanup_proposal)
+        document = plan.cleanup_proposal.descriptor()
         context = document["context"]
         pins = ConfigurationCleanupExpectedContext(**{name: context[name] for name in (
             "base_graph_id", "base_realized_projection_id", "desired_graph_id", "desired_realized_projection_id", "desired_graph_revision")})
@@ -418,7 +437,8 @@ class _CleanupPhaseReadBoundsOwner:
         selectors = tuple(ConfigurationCleanupSourceSelector(identity(row["seed"]["source_identity"]),
             row["seed"]["artifact_id"], ConfigurationInstanceRefCodec().decode(row["ref"])) for row in document["candidates"])
         fresh = _EvidenceRead(self._connection)
-        result, proposal = _inspect(stores, InspectConfigurationCleanup(context["session_id"], context["workspace_id"], pins, selectors), fresh)
+        result, proposal = _inspect(stores, InspectConfigurationCleanup(context["session_id"], context["workspace_id"],
+            pins, selectors, profile=plan.derivation_profile), fresh)
         _require(result.state == "complete" and proposal == plan.cleanup_proposal)
 
         # Collect only identities and complete keysets from cold owner proofs.
@@ -470,11 +490,16 @@ class _CleanupPhaseReadBoundsOwner:
                 history_plans[historical_plan.plan_id] = (historical_plan,
                     stores.realized_graphs.get(historical_plan.base_realized_projection_id),
                     stores.realized_graphs.get(historical_plan.desired_realized_projection_id))
-        allocation_sets, invocation_sets = {}, {}
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        v2 = plan.derivation_profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V2
+        allocation_sets, active_sets, invocation_sets = {}, {}, {}
         for selector in selectors:
-            allocation = stores.configuration_preparation._allocation_evidence(selector.expected_ref, fresh)
-            _require(allocation.state == "complete")
-            allocation_sets[(workspace, selector.expected_ref.allocation_id)] = tuple(
+            if v2:
+                allocation = stores.configuration_preparation._protective_allocation_evidence(selector.expected_ref, fresh)
+            else:
+                allocation = stores.configuration_preparation._allocation_evidence(selector.expected_ref, fresh)
+                _require(allocation.state == "complete")
+            (active_sets if v2 else allocation_sets)[(workspace, selector.expected_ref.allocation_id)] = tuple(
                 (claim.identity.run_id.value, claim.identity.activity_id, str(claim.identity.attempt), claim.ref.artifact_id)
                 for claim in allocation.claims)
             for claim in allocation.claims:
@@ -484,6 +509,16 @@ class _CleanupPhaseReadBoundsOwner:
                     from .configuration_source import read_original_selection
                     selection = read_original_selection(self._connection, claim.identity, claim.ref, read=fresh)
                     invocation_sets[key] = tuple((value.ref.artifact_id,) for value in selection)
+        if v2:
+            from .configuration_preparation_store import _decode
+            from .configuration_source import read_original_selection
+            for value in document["accepted_transfers"]:
+                source = identity(value["source_identity"])
+                key = (source.run_id.value, source.activity_id, source.attempt)
+                if key not in invocation_sets:
+                    evidence = _decode(stores.configuration_acceptance._ref(fresh, (*key, value["artifact_id"])), fresh)
+                    selection = read_original_selection(self._connection, source, evidence.ref, read=fresh)
+                    invocation_sets[key] = tuple((member.ref.artifact_id,) for member in selection)
 
         # Capture after every semantic prerequisite. All work shares read.accounting.
         def points(role, keys):
@@ -520,7 +555,8 @@ class _CleanupPhaseReadBoundsOwner:
             collections("events", {(key,): value for key, value in event_sets.items()}),
             collections("advancement-actions", action_sets), collections("bindings", binding_sets),
             collections("slots", slots), collections("allocation-refs", allocation_sets),
-            collections("allocation-claims", allocation_sets), collections("invocation-refs", invocation_sets))
+            collections("allocation-claims", allocation_sets), collections("invocation-refs", invocation_sets),
+            collections("outstanding-allocation-refs", active_sets), collections("outstanding-allocation-claims", active_sets))
         self._issued = issued
         self._require(issued, self._connection)
         return issued
@@ -529,8 +565,8 @@ class _CleanupPhaseReadBoundsOwner:
         """Bound a retained STARTED proof without re-authorizing fresh work.
 
         B owns the original, approval, registration identity, closed claims and
-        whole invocation correspondence. Only its complete invocation-ref
-        reader needs C bounds; no current selection or live permission is read.
+        whole invocation correspondence. Complete original selections and T's
+        original receipt parents need bounds; no current permission is read.
         The later fold owner still owns all fencing, result checks and writes.
         """
         from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptStatus
@@ -559,21 +595,51 @@ class _CleanupPhaseReadBoundsOwner:
             and original.intent.source.workspace_id == retained.workspace_id == guard.workspace_id
             and original.request_fingerprint == retained.request_fingerprint
             and original.original_start_event.event_id == retained.original_event_id)
-        invocations = []
-        for completion in retained.completions:
-            identity = completion.identity
+        from .configuration_source import read_original_selection
+        invocations, seen = [], set()
+        for evidence in (*retained.claims, *retained.accepted_transfers):
+            identity = evidence.identity
             key = (identity.run_id.value, identity.activity_id, identity.attempt)
-            expected = tuple((claim.ref.artifact_id,) for claim in retained.claims if claim.identity == identity)
+            if key in seen:
+                continue
+            seen.add(key)
+            selection = read_original_selection(self._connection, identity, evidence.ref, read=fresh)
+            expected = tuple((value.ref.artifact_id,) for value in selection)
             _require(bool(expected))
             invocations.append(_capture_collection(read, "invocation-refs", key, expected))
+        parents = _retained_receipt_bounds(read, fresh, plan)
         issued = _CleanupPhaseReadBounds(owner=self, transaction_id=transaction,
             original_plan=plan.plan_id, original_graphs=tuple(sorted({plan.base_graph_id, plan.desired_graph_id})),
             original_projections=tuple(sorted({plan.base_realized_projection_id, plan.desired_realized_projection_id})),
             retained_identity=(original_identity.run_id.value, original_identity.activity_id, original_identity.attempt),
-            plans=(), graphs=(), projections=(), raw_graphs=(), raw_projections=(), introductions=(),
-            origin_actions=(), acceptance_actions=(), receipt_actions=(), receipt_events=(), requests=(), runs=(),
-            sessions=(), headers=(), scopes=(), run_histories=(), event_histories=(), advancement_actions=(),
-            bindings=(), slots=(), allocation_refs=(), allocation_claims=(), invocation_refs=tuple(invocations))
+            raw_graphs=(), raw_projections=(), introductions=(), origin_actions=(), acceptance_actions=(),
+            scopes=(), run_histories=(), event_histories=(), advancement_actions=(), bindings=(), slots=(),
+            allocation_refs=(), allocation_claims=(),
+            invocation_refs=tuple(sorted(invocations, key=lambda entry: entry.identity)), **parents)
         self._issued = issued
         self._require(issued, self._connection)
         return issued
+
+
+def _retained_receipt_bounds(read, fresh, plan):
+    """Capture only the original parents already proved by retained T reads."""
+    contexts = [value for key, value in fresh.sources.items() if key[0] == "configuration-receipt-context"]
+    keys = {role: set() for role in ("plan", "graph", "projection", "receipt-action", "receipt-event",
+        "request", "run", "session", "header")}
+    for header, action, event, original, request, run, material in contexts:
+        keys["header"].add((header["workspace_id"], header["pinned_revision"]))
+        for role, value in (("plan", original.plan_id), ("receipt-action", action.action_id),
+                ("receipt-event", event.event_id), ("request", request.identity.request_id),
+                ("run", run.run_id), ("session", original.session_id)):
+            keys[role].add((value,))
+        for side in ("base", "desired"):
+            keys["graph"].add((getattr(original, side + "_graph_id"),))
+            keys["projection"].add((getattr(original, side + "_realized_projection_id"),))
+    keys["plan"].discard((plan.plan_id,))
+    for side in ("base", "desired"):
+        keys["graph"].discard((getattr(plan, side + "_graph_id"),))
+        keys["projection"].discard((getattr(plan, side + "_realized_projection_id"),))
+    return {field: tuple(_capture_point(read, role, key) for key in sorted(keys[role]))
+        for field, role in (("plans", "plan"), ("graphs", "graph"), ("projections", "projection"),
+            ("receipt_actions", "receipt-action"), ("receipt_events", "receipt-event"),
+            ("requests", "request"), ("runs", "run"), ("sessions", "session"), ("headers", "header"))}
