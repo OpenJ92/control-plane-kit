@@ -4529,8 +4529,14 @@ resources were absent afterward. Log SHA256
 The application correction changes only `_PAIR` to `_q(1,855,11,2)`.
 `_CLOSED_PAIR` retains its unchanged three-identity closure anchor. No limit,
 record weighting, v1 meaning, approval, ledger, transaction or history changes.
-The strengthened K1 method and existing start/fold preflight-before-ID method
-are the focused green gate; their result and narrow review remain pending.
+At corrected checkpoint `cd57f4db84fe5e466133922d88d082c819092acb`, the
+strengthened K1 method and existing start/fold preflight-before-ID method
+passed: 2 tests in 77.400s, compile/import success and observed exit 0, also
+retained in a separate exit file. Exact disposable Docker resources were
+absent. [Focused green evidence](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6052872419)
+preserves log SHA256
+`fce4627912fadf7958f8353c38157ee3f3fa8f5fea59016a47c47b16094b7100`.
+[Independent narrow review passed and closed the finding](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6052882942).
 Existing hosted results belong to the old frozen head a419906b and cannot
 validate this correction. B1 remains held pending corrected hosted gates and
 independent acceptance; B2/C remain held.
