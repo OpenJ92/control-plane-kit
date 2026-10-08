@@ -4540,3 +4540,50 @@ preserves log SHA256
 Existing hosted results belong to the old frozen head a419906b and cannot
 validate this correction. B1 remains held pending corrected hosted gates and
 independent acceptance; B2/C remain held.
+
+### First corrected full-suite result: omitted schema companions and fixture
+
+The full hosted Operations gate at `de28b27a095999bcd8d49ed135c44d460d7ce921`
+(actual merge checkout `b30edc7dd3af6697ab515aa33e000bc1b3296377`, tree
+`e7d0bdf3a6940e1b5e7432294511d4274445351f`) failed: 2,585 tests in 7,853.904s,
+nine failures and one error, runner exit 1, no compile/import credit.
+[Failure evidence](https://github.com/OpenJ92/control-plane-kit/pull/1954#issuecomment-6055010263)
+preserves log SHA256
+`041dde4fcf0a2c4c726e13cc64f5dcd04f44061e24c882f6c38f3243d7cf563c`.
+Core and locked backend passed separately; this is not whole-B1 acceptance.
+
+Nine failures expose omitted companions for the reviewed transfer schema:
+the table atlas hash, table sections, FK ledger and graph/SCC, its node-control
+pin, and four tests' exact current object totals. The canonical contract is
+56 relations, 714 columns, 631 constraints, 194 indexes and 166 foreign keys;
+its hash is `bb49579eaab616fb287bf0b5e2f67566b8d3f013f7eee3a0d03ff0fb5da2f603`.
+SQL remains unchanged at SHA256
+`65de0340ed6b063e2883faf2fd7d2d3640f31849b446623f7eb5a6a1acbb496c`.
+The authoritative current installation/catalog/drift laws passed in this run.
+
+The atlas correction retains exact tests and supplies the new transfer table's
+meaning, seven outgoing relationships, reciprocal ref/claim dependents and
+defensive-reader-only scope. Nine new FKs and two protective-to-disposition
+replacements are represented exactly. The configuration SCC has six members:
+accepted slots, claim closures, claim transfers, claims, cleanup members and
+original refs; acceptance headers and completion links remain outgoing parents.
+There are still four multi-table SCCs. Completion inbound prose retains both
+existing invocation closures and the new transfer proof. Restore ordering is
+documentary and does not authorize a writer, migration or historical rewrite.
+
+The error occurred before the existing 257-slot test reached its intended
+boundary: copying artifact labels violated the new source/artifact equality
+check. The correction varies only node labels, retaining original artifact,
+source/birth/outcome FK material and all constraints. It remains deliberately
+invalid-history defensive evidence with the genuine header/count/digest,
+exact 257-row count, bounded-read sentinel, before-clock/ID/CAS refusal and
+unchanged durable-state/protective-claim checks. It earns no producer credit.
+
+This companion/fixture correction changes no application or schema code and
+weakens no assertion. Independent diff review verified the exact ledger,
+graph, sections and fixture shape, with one existing completion-dependent
+prose omission corrected before validation. The focused ordinary Docker gate
+covers all failed methods plus directly affected atlas and intent-atlas laws;
+its result remains pending. Earlier companion-completeness claims are
+superseded by this explicit failure and correction record. Corrected-head
+hosted checks and final review still govern B1 acceptance; B2/C remain held.
