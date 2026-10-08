@@ -1219,13 +1219,34 @@ class ConfigurationAcceptanceStore:
                 outcome_memo.add(source.identity)
         future = chain(workspace_read, q(2, 20520, 6), q(2, 20520, 6), future)
 
-        current_slots = chain(*(chain(q(1, 1, 1, settled=F(0, 0, 0, 1)), q(1, 823, 9, 2))
-            for _ in prepared.slots))
+        transferred_keys = {memo[1:5] for memo, _, _ in bounds.transfer_dependencies}
+
+        def publication_disposition(key):
+            paired = q(1, 855, 11, 2)
+            accepted = paired.then(q(1, 1, 1, 4))
+            closed = paired.then(q(1, 1, 1, 3))
+            transferred = key in transferred_keys
+            success = accepted.then(accepted) if transferred else paired
+            # A fresh closure refuses at either disposition position. An
+            # outstanding key changed to accepted reaches both pair/anchor
+            # checks before the unknown frozen transfer memo refuses.
+            alternatives = (closed, accepted.then(closed) if transferred else accepted.then(accepted))
+            peak = F(*(max(getattr(value.peak, field) for value in (success, *alternatives))
+                for field in ("records", "value_octets", "scalar_markers", "statements")))
+            return Budget(success.settled, peak)
+
+        def publication_slot(slot):
+            return chain(*(publication_disposition(key)
+                for key in dict.fromkeys((tuple(slot[3:7]), tuple(slot[7:11])))))
+
+        current_slots = chain(*(chain(q(1, 1, 1, settled=F(0, 0, 0, 1)), publication_slot(slot))
+            for slot in prepared.slots))
+        readback = chain(*(publication_slot(slot) for slot in prepared.slots))
         prepared_guard = chain(guard, workspace_read, point("request", (request_id,)), point("run", (run_id,)), current_slots)
         body = chain(prepared_guard, *(native((2048,)) for _ in range(3)), unit, workspace_read,
             prepared_guard, unit, prepared_guard, unit, prepared_guard, unit,
             *(unit for _ in prepared.slots), context(own_header, prepared.plan, captured=True),
-            collection("slots", (workspace, revision)))
+            collection("slots", (workspace, revision)), readback)
         if prepared.receiver_truth is not None:
             before, after, origins, scopes, original, _, evidence = prepared.receiver_truth
 
