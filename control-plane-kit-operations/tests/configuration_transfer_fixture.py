@@ -1,7 +1,8 @@
-"""Genuine simulated D1/acceptance prefix; recorded B1 reader-defense suffix."""
+"""Genuine producer output and explicitly isolated historical reader premises."""
 from dataclasses import replace
 from hashlib import sha256
 from contextlib import contextmanager
+from unittest import mock
 
 from psycopg.types.json import Jsonb
 
@@ -20,12 +21,36 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     ExecutionEffectOutcome, effect_outcome_failure, effect_outcome_transition,
 )
 from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
+from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
 from control_plane_kit_operations.postgres.effect_outcome_store import _encode_preimage
 from control_plane_kit_operations.records import BoundedEvidence
 from tests import test_postgres_configuration_acceptance_membership as membership
 
 
 TRANSFER_TABLE = "cpk_configuration_claim_transfers"
+
+
+@contextmanager
+def historical_transfer_prefix(case, *, expected_publications=1):
+    """Retain pre-C history only for separately labeled defensive reader laws.
+
+    Suppress the new private transfer phase for this bounded setup, then restore
+    it. Real D1/receipt creation still runs; no producer/growth/race credit follows.
+    Empty transfer phases pass through to their normal owner unchanged.
+    """
+    original, suppressed = ConfigurationAcceptanceStore._insert_transfers, []
+    def retain_old_dispositions(store, prepared):
+        if prepared.transfers:
+            suppressed.append(tuple(item.row[:4] for item in prepared.transfers))
+            return None
+        return original(store, prepared)
+    with mock.patch.object(ConfigurationAcceptanceStore, "_insert_transfers", autospec=True,
+            side_effect=retain_old_dispositions) as interception:
+        yield
+        case.assertEqual(len(suppressed), expected_publications)
+        case.assertGreaterEqual(interception.call_count, expected_publications)
+        case.assertTrue(all(keys for keys in suppressed))
+    case.assertIs(ConfigurationAcceptanceStore._insert_transfers, original)
 
 
 def profiled_configuration_result(request):
@@ -50,7 +75,7 @@ class ConfigurationTransferFixture:
         self.refs = self.original.intent.configuration_instances.instances
         with self.base.unit_of_work() as uow:
             self.completion = uow.stores.configuration_completions.get(self.original.identity)
-            self.assertIsNotNone(self.completion, "genuine original fold must admit D1 before recording a transfer")
+            self.assertIsNotNone(self.completion, "genuine original fold must admit D1 before producing a transfer")
         self.acceptance = self.membership.advance()
         self.revision = self.acceptance.desired_graph_revision
 
@@ -66,7 +91,7 @@ class ConfigurationTransferFixture:
         return identity.run_id.value, identity.activity_id, identity.attempt, ref.artifact_id
 
     def record_transfer(self, refs=None, *, unit_of_work=None):
-        """Below-owner recorded premise only. B1 exposes no transfer writer."""
+        """Historical below-owner premise only; never a C producer substitute."""
         self.require_transfer_schema()
         with (self.base.unit_of_work if unit_of_work is None else unit_of_work)() as uow:
             for ref in self.refs if refs is None else refs:
@@ -91,6 +116,24 @@ class ConfigurationTransferFixture:
                         (self.revision, *key))
                     self.assertEqual(changed.rowcount, 1)
             uow.commit()
+
+    def assert_produced_transfers(self, refs=None):
+        """Verify actual producer output; never insert or repair a fixture row."""
+        refs = self.refs if refs is None else refs
+        for ref in refs:
+            key = self.key(ref)
+            digest = sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(ref)).hexdigest()
+            self.assertEqual(self.connection.execute("SELECT run_id,activity_id,attempt,artifact_id,workspace_id,"
+                "allocation_id,runtime_id,node_id,ref_digest,request_fingerprint,selection_fingerprint,"
+                "outcome_fingerprint,acceptance_revision FROM " + TRANSFER_TABLE
+                + " WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key).fetchone(),
+                (*key, ref.workspace_id, ref.allocation_id, ref.runtime_id, ref.node_id, digest,
+                    self.completion.request_fingerprint, self.completion.selection_fingerprint,
+                    self.completion.outcome_fingerprint, self.revision))
+            for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+                self.assertEqual(self.connection.execute("SELECT protective,accepted_revision,disposition_kind FROM "
+                    + table + " WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)", key).fetchone(),
+                    (False, self.revision, "accepted-current"))
 
     def prove_transfer(self, uow, ref=None):
         ref = ref or self.refs[0]
@@ -172,7 +215,8 @@ class ConfigurationTransferredConsumerFixture(ConfigurationTransferFixture):
         self.reuse = reuse.PostgresConfigurationReuseTests()
         self.reuse.configuration_result_for_request = profiled_configuration_result
         self.addCleanup(self.cleanup_reuse)
-        self.reuse.setUp()
+        with historical_transfer_prefix(self):
+            self.reuse.setUp()
         self.carry, self.membership, self.base = self.reuse.carry, self.reuse.fixture, self.reuse.base
         self.connection, self.original = self.base.connection, self.membership.original
         self.refs = self.original.intent.configuration_instances.instances

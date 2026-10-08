@@ -1,4 +1,4 @@
-"""B1 typed transfer schema and point proofs; no lawful transfer producer."""
+"""Typed transfer schema and defensive point proofs over genuine C output."""
 import unittest
 
 import psycopg
@@ -14,7 +14,7 @@ from tests.configuration_transfer_fixture import ConfigurationTransferFixture, T
 
 class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.TestCase):
     def test_structural_pair_keeps_original_correlation_without_issuing_permission(self):
-        self.record_transfer()
+        self.assert_produced_transfers()
         with self.base.unit_of_work() as uow, _joined_read(uow.stores.connection) as read:
             ref = self.refs[0]
             paired = _paired_disposition(read, self.key(ref), ref)
@@ -24,16 +24,19 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
             with self.assertRaises(_Unavailable):
                 _paired_disposition(read, self.key(ref), ref, protective=True)
 
-    def test_genuine_completion_and_acceptance_do_not_produce_transfers(self):
+    def test_genuine_completion_and_acceptance_produce_exactly_once_on_original_replay(self):
         self.require_transfer_schema()
-        self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {TRANSFER_TABLE}").fetchone(), (0,))
-        self.assertEqual(self.membership.protective_claims(), self.membership.claims)
+        self.assert_produced_transfers()
+        self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {TRANSFER_TABLE}").fetchone(), (len(self.refs),))
+        self.assertEqual(self.membership.protective_claims(), [])
+        before = self.proof_snapshot()
         replay = self.membership.advance()
         self.assertTrue(replay.replayed)
-        self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {TRANSFER_TABLE}").fetchone(), (0,))
+        self.assertEqual(self.proof_snapshot(), before)
+        self.assert_produced_transfers()
 
-    def test_recorded_transfer_point_proves_own_completion_and_original_receipt(self):
-        self.record_transfer()
+    def test_produced_transfer_point_proves_own_completion_and_original_receipt(self):
+        self.assert_produced_transfers()
         before = self.transfer_snapshot()
         with self.base.unit_of_work() as uow:
             for ref in self.refs:
@@ -47,7 +50,7 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
             self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {table} WHERE protective").fetchone(), (0,))
 
     def test_one_sided_locator_or_orphan_transfer_cannot_commit(self):
-        self.record_transfer()
+        self.assert_produced_transfers()
         before = self.transfer_snapshot()
         ref = self.refs[0]
         statements = (
@@ -65,7 +68,7 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
             self.assertEqual(self.transfer_snapshot(), before)
 
     def test_wrong_commitments_material_scope_and_revision_cannot_commit(self):
-        self.record_transfer()
+        self.assert_produced_transfers()
         before = self.transfer_snapshot()
         for column, invalid in (("request_fingerprint", "f" * 64), ("selection_fingerprint", "f" * 64),
                 ("outcome_fingerprint", "f" * 64), ("ref_digest", "f" * 64),
@@ -79,7 +82,7 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
             self.assertEqual(self.transfer_snapshot(), before)
 
     def test_changed_original_acceptance_payload_refuses_fresh_full_proof(self):
-        self.record_transfer()
+        self.assert_produced_transfers()
         with self.base.unit_of_work() as uow:
             self.prove_transfer(uow)
         before = self.base.retained_snapshot(), self.transfer_snapshot()
@@ -92,14 +95,14 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
                 # Deliberate corruption rolls back; never becomes a new baseline.
             self.assertEqual((self.base.retained_snapshot(), self.transfer_snapshot()), before)
 
-    def test_exact_current_schema_reentry_preserves_recorded_transfer(self):
-        self.record_transfer()
+    def test_exact_current_schema_reentry_preserves_produced_transfer(self):
+        self.assert_produced_transfers()
         before = self.base.retained_snapshot(), self.transfer_snapshot()
         install_schema(self.connection)
         self.assertEqual((self.base.retained_snapshot(), self.transfer_snapshot()), before)
 
     def test_absent_own_admission_refuses_without_repair(self):
-        self.record_transfer()
+        self.assert_produced_transfers()
         with self.base.unit_of_work() as uow:
             self.prove_transfer(uow)
         before = self.proof_snapshot()
@@ -123,7 +126,7 @@ class PostgresConfigurationTransferTests(ConfigurationTransferFixture, unittest.
         self.assert_recorded_terminal_refuses(failed=False)
 
     def assert_recorded_terminal_refuses(self, *, failed):
-        self.record_transfer()
+        self.assert_produced_transfers()
         with self.base.unit_of_work() as uow:
             self.prove_transfer(uow)
         before = self.proof_snapshot()
@@ -156,7 +159,7 @@ class PostgresConfigurationTransferNeighborTests(ConfigurationTransferFixture, u
     transfer_node_ids = ("api", "worker")
 
     def test_real_same_run_neighbor_completion_cannot_replace_own_commitments(self):
-        self.record_transfer()
+        self.assert_produced_transfers()
         with self.base.unit_of_work() as uow:
             self.prove_transfer(uow)
             neighbor = uow.stores.configuration_completions.get(self.membership.originals["worker"].identity)
