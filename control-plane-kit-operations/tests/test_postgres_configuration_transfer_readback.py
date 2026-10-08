@@ -123,7 +123,10 @@ class PostgresConfigurationTransferReadbackTests(ConfigurationTransferredConsume
 
         def prepared(store, value):
             result = preflight(store, value)
-            prepared_values.append(value)
+            # Late readback requires the actual bound action/event; the real
+            # pre-ID admission still runs and cannot authorize a late witness.
+            if value.event is not None:
+                prepared_values.append(value)
             return result
 
         def readback(store, workspace, revision, *, read=None):
@@ -205,7 +208,7 @@ class PostgresConfigurationTransferReadbackTests(ConfigurationTransferredConsume
         before = self.snapshot()
         actual = ConfigurationAcceptanceStore._require_current
         finish = advancement_module._finish_receiver_advancement
-        for selected in range(1, 5):
+        for selected in range(1, 6):
             for fault in ("pair", "exclusion"):
                 with self.subTest(entrance=selected, fault=fault, distinct_birth=reused):
                     calls, injected, refused, finished = [], [], [], []
@@ -216,7 +219,7 @@ class PostgresConfigurationTransferReadbackTests(ConfigurationTransferredConsume
                         if entrance != selected:
                             return actual(store, value)
                         self.assertIsNotNone(value.read_bounds)
-                        self.assertFalse(store._publication_published)
+                        self.assertEqual(store._publication_published, entrance == 5)
                         slot = next(row for row in value.slots if row[7:11] == self.key(self.refs[0]))
                         self.assertEqual(slot[3:7] != slot[7:11], reused)
                         connection = store._connection
@@ -229,10 +232,15 @@ class PostgresConfigurationTransferReadbackTests(ConfigurationTransferredConsume
                             (value.event.event_id,)).fetchone(), (int(entrance >= 3),))
                         self.assertEqual(connection.execute("SELECT count(*) FROM cpk_operation_actions WHERE action_id=%s",
                             (value.action.action_id,)).fetchone(), (int(entrance >= 4),))
-                        for table in ("cpk_configuration_acceptances", "cpk_configuration_accepted_slots"):
+                        # The fifth guard enters the transfer phase after the
+                        # real receipt/slot readback. Earlier guards remain
+                        # before publication; every fault must undo all writes.
+                        for table, count in (("cpk_configuration_acceptances", 1),
+                                ("cpk_configuration_accepted_slots", len(value.slots))):
                             self.assertEqual(connection.execute(f"SELECT count(*) FROM {table} "
                                 "WHERE workspace_id=%s AND pinned_revision=%s",
-                                (value.workspace.workspace_id, value.plan.desired_graph_revision)).fetchone(), (0,))
+                                (value.workspace.workspace_id, value.plan.desired_graph_revision)).fetchone(),
+                                (count if entrance == 5 else 0,))
                         injected.append(entrance)
                         try:
                             if fault == "exclusion":

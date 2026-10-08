@@ -30,6 +30,7 @@ from control_plane_kit_operations.effect_attempt_start import StartEffectAttempt
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from tests import test_execution_coordinator as coordinator_fixture
 from tests.configuration_cleanup_history_fixture import ConfigurationCleanupHistoryFixture, TABLES, key, insert
+from tests.configuration_transfer_fixture import historical_transfer_prefix
 
 
 class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixture, unittest.TestCase):
@@ -235,10 +236,14 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
     def test_whole_invocation_cannot_lose_one_claim_even_with_consistent_counts(self):
         with self.unit_of_work() as uow:
             self.ownership(uow.stores)
-        self.member.advance()
+        # This retained v1 closure law needs historical outstanding claims,
+        # not C-produced accepted-current dispositions.
+        with historical_transfer_prefix(self):
+            self.member.advance()
         command, _ = self.later_use("second-completed-use")
         operator = self.carry_operator()
-        operator.advance(command)
+        with historical_transfer_prefix(self):
+            operator.advance(command)
         from control_plane_kit_core.planning import RemoveNodeResource
         runtime = replace(operator.graph.runtimes["runtime-a"], children=())
         departed = replace(operator.graph, nodes={}, runtimes={"runtime-a": runtime})
@@ -291,7 +296,8 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
 
     def test_reserved_carried_slots_refuse_real_advancement_before_ids(self):
         self.prepare_recorded_cleanup()
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         operator = self.carry_operator()
         from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
         from control_plane_kit_core.topology import compile_topology
@@ -310,7 +316,8 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
 
     def test_zero_protectors_never_allow_real_ordinary_reuse(self):
         self.prepare_recorded_cleanup()
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         operator = self.carry_operator()
         command = operator.admit("excluded-reuse", "graph-excluded-reuse", ReconcileNode(NodeTarget("api")),
             graph=operator.graph)
@@ -364,7 +371,8 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
 
     def test_same_uow_reservation_invalidates_issued_ordinary_start(self):
         self.prepare_recorded_cleanup()
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         operator = self.carry_operator()
         command = operator.admit("stale-start", "graph-stale-start", ReconcileNode(NodeTarget("api")),
             graph=operator.graph)
