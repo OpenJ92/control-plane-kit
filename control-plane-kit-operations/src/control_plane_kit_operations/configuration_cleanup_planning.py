@@ -1,5 +1,5 @@
 """Authenticated exact cleanup inspection and atomic publication; no execution."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from hashlib import sha256
 
@@ -79,8 +79,10 @@ class InspectConfigurationCleanup:
     workspace_id: str
     expected_context: ConfigurationCleanupExpectedContext
     selectors: tuple[ConfigurationCleanupSourceSelector, ...]
+    profile: PlanDerivationProfile = field(default=PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, kw_only=True)
 
     def __post_init__(self):
+        _cleanup_profile(self.profile)
         object.__setattr__(self, "selectors", _selectors(self.session_id, self.workspace_id,
             self.expected_context, self.selectors))
 
@@ -93,13 +95,27 @@ class RequestConfigurationCleanupPlan:
     expected_context: ConfigurationCleanupExpectedContext
     selectors: tuple[ConfigurationCleanupSourceSelector, ...]
     expected_inspection_fingerprint: str
+    profile: PlanDerivationProfile = field(default=PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, kw_only=True)
 
     def __post_init__(self):
+        _cleanup_profile(self.profile)
         object.__setattr__(self, "selectors", _selectors(self.session_id, self.workspace_id,
             self.expected_context, self.selectors))
         _require(type(self.idempotency_key) is IdempotencyKey)
         self.idempotency_key.__post_init__()
         _digest(self.expected_inspection_fingerprint)
+
+
+def _cleanup_profile(profile):
+    _require(type(profile) is PlanDerivationProfile and profile in (
+        PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, PlanDerivationProfile.CONFIGURATION_CLEANUP_V2))
+
+
+def _require_planning_profile(command):
+    # B2's representation cannot silently select the still-v1 reader/writer.
+    # The complete v2 inspection/publication owner replaces this stage-1 guard.
+    if command.profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+        raise ConfigurationCleanupCommandError("configuration cleanup profile is unavailable")
 
 
 def _authorize(command, context, *, publish):
@@ -127,11 +143,14 @@ def _authorize(command, context, *, publish):
 
 
 def _fingerprint(command, actor):
+    _cleanup_profile(command.profile)
     value = dict(profile="configuration-cleanup-command.v1", session_id=command.session_id,
         workspace_id=command.workspace_id, actor_id=actor, idempotency_key=command.idempotency_key.value,
         expected_context=command.expected_context.descriptor(),
         selectors=[value.descriptor() for value in command.selectors],
         expected_inspection_fingerprint=command.expected_inspection_fingerprint)
+    if command.profile is PlanDerivationProfile.CONFIGURATION_CLEANUP_V2:
+        value["profile"] = "configuration-cleanup-command.v2"
     encoded = None
     try:
         encoded = rfc8785.dumps(value)
@@ -209,12 +228,14 @@ class ConfigurationCleanupPlanningService:
 
     def inspect(self, command, *, context):
         _authorize(command, context, publish=False)
+        _require_planning_profile(command)
         with self._unit_of_work_factory().configuration_cleanup_snapshot() as snapshot:
             return snapshot.inspect(command)
 
     @_command_domain_errors
     def request_plan(self, command, *, context):
         _authorize(command, context, publish=True)
+        _require_planning_profile(command)
         fingerprint = _fingerprint(command, context.actor_id)
         with (self._unit_of_work_factory() as uow,
               uow.stores.configuration_cleanup.evidence()):

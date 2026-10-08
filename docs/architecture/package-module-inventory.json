@@ -233,6 +233,7 @@
         "control_plane_kit_operations.configuration_completion",
         "control_plane_kit_operations.configuration_preparation",
         "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.plan_derivation",
         "control_plane_kit_operations.records"
       ],
       "known_package_consumers": [

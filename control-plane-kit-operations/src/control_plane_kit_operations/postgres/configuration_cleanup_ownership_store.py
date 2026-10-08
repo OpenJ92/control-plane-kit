@@ -16,6 +16,7 @@ from control_plane_kit_operations.configuration_cleanup import configuration_cle
 from control_plane_kit_operations.configuration_cleanup_ownership import ConfigurationCleanupReservationRecord
 from control_plane_kit_operations.configuration_preparation import _identity
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, ObservedEffectOutcome
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.records import OperationsRecordError, ApprovalDecisionKind
 from .configuration_evidence import _joined_read, _Capacity, _Unavailable
 from .configuration_preparation_store import _SELECT, _decode, _paired_disposition
@@ -27,7 +28,7 @@ _O = ("run_id", "activity_id", "attempt")
 _A = ("workspace_id", "allocation_id")
 _HEADER = _C + ("workspace_id", "request_id", "request_fingerprint", "original_event_id", "plan_id",
     "approval_request_id", "approval_decision_id", "proposal_fingerprint", "runtime_id", "runtime_kind",
-    "authority_ref", "registration_id", "candidate_count", "invocation_count", "claim_count")
+    "authority_ref", "registration_id", "candidate_count", "invocation_count", "claim_count", "derivation_profile")
 _MEMBERS = _C + _A + ("birth_run_id", "birth_activity_id", "birth_attempt", "birth_artifact_id", "full_ref_digest")
 _INVOCATIONS = _O + _C + ("workspace_id", "request_fingerprint", "selection_fingerprint", "outcome_fingerprint")
 _CLAIMS = _O + ("artifact_id",) + _C + _A
@@ -44,6 +45,8 @@ def _key(identity):
 
 def _columns(names):
     def cap(name):
+        if name == "derivation_profile":
+            return "text", 24
         if name.endswith("attempt") or name.endswith("_count"):
             return "int", 10
         if name in (*_C[:2], *_O[:2], "birth_run_id", "birth_activity_id"):
@@ -72,7 +75,7 @@ def _expected_rows(record):
         record.original_event_id, record.plan_id, record.approval_request_id, record.approval_decision_id,
         record.proposal_fingerprint, record.runtime_id, record.runtime_kind.value,
         record.authority_ref.reference_id, record.registration_id,
-        len(record.members), len(record.completions), len(record.claims))
+        len(record.members), len(record.completions), len(record.claims), record.derivation_profile.value)
     members = tuple((*cleanup, value.ref.workspace_id, value.ref.allocation_id, *_key(value.identity),
         value.ref.artifact_id, sha256(ConfigurationInstanceRefCodec().encode_canonical_bytes(value.ref)).hexdigest())
         for value in record.members)
@@ -100,7 +103,6 @@ class ConfigurationCleanupOwnershipStore:
 
     @contextmanager
     def _start_scope(self, unit_of_work, command, request, plan, guard, prefix):
-        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
         if plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
             raise _Unavailable
         from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
@@ -255,9 +257,16 @@ class ConfigurationCleanupOwnershipStore:
             raise _Unavailable
         h = dict(zip(_HEADER, headers[0], strict=True))
         _phase_require(self._connection, "retained", cleanup, "plan", (h["plan_id"],))
+        if h["derivation_profile"] == PlanDerivationProfile.CONFIGURATION_CLEANUP_V1.value:
+            counts_valid = (1 <= h["invocation_count"] <= h["claim_count"] <= 256
+                and h["candidate_count"] <= h["claim_count"])
+        elif h["derivation_profile"] == PlanDerivationProfile.CONFIGURATION_CLEANUP_V2.value:
+            counts_valid = (0 <= h["invocation_count"] <= h["claim_count"] <= 256
+                and (h["invocation_count"] == 0) == (h["claim_count"] == 0))
+        else:
+            raise _Unavailable
         if (tuple(headers[0][:3]) != cleanup or any(value is None for value in headers[0])
-                or not 1 <= h["candidate_count"] <= 32 or not 1 <= h["invocation_count"] <= h["claim_count"] <= 256
-                or not h["candidate_count"] <= h["claim_count"]):
+                or not 1 <= h["candidate_count"] <= 32 or not counts_valid):
             raise _Unavailable
         children = []
         for table, names, count, order in (
@@ -283,6 +292,10 @@ class ConfigurationCleanupOwnershipStore:
         from .configuration_cleanup_phase_read_bounds import _phase_require
         members, invocations, closures, member_outcomes = children
         original, attempt, plan = self._original(identity, h, read)
+        # Stage 1 stores the closed representation but has no v2 retained
+        # N/T proof yet. Never interpret a future row through the v1 reader.
+        if plan.derivation_profile is not PlanDerivationProfile.CONFIGURATION_CLEANUP_V1:
+            raise _Unavailable
         roots = tuple(_ref(read, row[5:9]) for row in members)
         for row, root in zip(members, roots, strict=True):
             if (row[:5] != (*cleanup, root.ref.workspace_id, root.ref.allocation_id)
@@ -324,6 +337,7 @@ class ConfigurationCleanupOwnershipStore:
             proposal_fingerprint=h["proposal_fingerprint"], runtime_id=h["runtime_id"], runtime_kind=RuntimeKind(h["runtime_kind"]),
             authority_ref=RuntimeAuthorityReference(h["authority_ref"]), registration_id=h["registration_id"],
             members=roots, claims=claims, completions=tuple(completions), status=attempt.state.status,
+            derivation_profile=plan.derivation_profile,
             outcome_fingerprint=None if outcome is None else outcome.outcome_fingerprint,
             outcome_profile=None if outcome is None else outcome.profile, outcomes=outcomes)
 
@@ -348,7 +362,8 @@ class ConfigurationCleanupOwnershipStore:
             proposal_fingerprint=configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal),
             runtime_id=original.intent.operation.instances[0].runtime_id, runtime_kind=original.intent.runtime_kind,
             authority_ref=original.intent.authority_ref, registration_id=registration.registration_id,
-            members=members, claims=claims, completions=completions, status=EffectAttemptStatus.STARTED)
+            members=members, claims=claims, completions=completions, status=EffectAttemptStatus.STARTED,
+            derivation_profile=plan.derivation_profile)
         owner.bound = original
 
     def _insert_start(self, prepared, original):
@@ -550,7 +565,10 @@ class ConfigurationCleanupOwnershipStore:
         approval = history.get_approval_request(h["approval_request_id"])
         decision = history.approval_decision_for_request(h["approval_request_id"])
         requirement = ApprovalPolicy().requirement_for(plan.plan)
-        if (plan.cleanup_proposal is None or configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal) != h["proposal_fingerprint"]
+        if (plan.derivation_profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+                    PlanDerivationProfile.CONFIGURATION_CLEANUP_V2)
+                or plan.derivation_profile.value != h["derivation_profile"]
+                or plan.cleanup_proposal is None or configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal) != h["proposal_fingerprint"]
                 or (request.identity.workspace_id, request.identity.plan_id, request.identity.session_id,
                     request.approval_request_id, request.approval_decision_id)
                 != (h["workspace_id"], plan.plan_id, plan.session_id, approval.request_id, h["approval_decision_id"])
