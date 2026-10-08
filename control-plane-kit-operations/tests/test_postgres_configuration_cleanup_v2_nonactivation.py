@@ -1,4 +1,4 @@
-"""#1944 recorded v2 values must not acquire fresh pre-B2 authority."""
+"""Recorded v2 values remain non-executable until the B2 execution release."""
 from dataclasses import replace
 import unittest
 from unittest import mock
@@ -10,7 +10,6 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations import configuration_cleanup as values
 from control_plane_kit_operations import plan_derivation as plans
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, ExecutionAdmissionConflict
-from control_plane_kit_operations.approvals import ApprovalCommandService, ApprovalWorkflowError, RequestApproval
 from control_plane_kit_operations.coordinator import CoordinatorStatus
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartConflict
@@ -18,7 +17,6 @@ from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
 from control_plane_kit_operations.receiver_execution_scopes import derive_execution_receiver_scopes
 from control_plane_kit_operations.records import ExecutionRequestIdentity
-from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.configuration_cleanup_execution_fixture import ConfigurationCleanupExecutionFixture
 from tests.configuration_cleanup_v2_fixture import v2_wire
 from tests.postgres_effect_attempt_coordinator_fixture import RecordingRuntimeAdapter
@@ -76,15 +74,12 @@ class PostgresConfigurationCleanupV2NonactivationTests(ConfigurationCleanupExecu
     def forbidden(self):
         self.fail("pre-B2 v2 refusal sampled mutation clock/identity")
 
-    def test_recorded_v2_fresh_approval_and_admission_refuse_without_authority_writes(self):
+    def test_recorded_v2_fresh_admission_refuses_without_authority_writes(self):
         self.prepare_cleanup_execution()
         record = self.record_v2()
         before = self.ceiling_truth()
-        with self.assertRaisesRegex(ApprovalWorkflowError, "cleanup approval requires an exact proposal"):
-            ApprovalCommandService(self.unit_of_work, clock=self.forbidden, id_factory=self.forbidden).execute(
-                RequestApproval("session-a", record.plan_id, "operator-a", (PolicyScope.PLAN_REQUEST,),
-                    IdempotencyKey("v2-new-approval")))
-        self.assertEqual(self.ceiling_truth(), before)
+        # B2 stage 2 owns lawful fresh approval and its stale/corrupt negatives.
+        # Admission remains independently closed until stage 3 is coherent.
         with self.assertRaisesRegex(ExecutionAdmissionConflict, "cleanup requires its exact approved proposal"):
             ExecutionAdmissionCommandService(self.unit_of_work, clock=self.forbidden, id_factory=self.forbidden).execute(
                 self.command(plan_id=record.plan_id, approval_request_id=self.approval.request_id,

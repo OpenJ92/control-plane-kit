@@ -75,17 +75,19 @@ class ConfigurationCleanupCommandProfileTests(unittest.TestCase):
 
 
 class ConfigurationCleanupReservationProfileTests(ConfigurationCleanupHistoryFixture, unittest.TestCase):
-    def test_stage1_v2_commands_cannot_silently_inspect_or_publish_v1(self):
+    def test_v2_commands_cannot_silently_inspect_or_publish_v1(self):
         query = self.query()
         self.assertEqual(self.inspect(query).state, "complete")
         command = self.request(query=query, key="stage1-explicit-v2")
         self.assertTrue(hasattr(query, "profile"), "B2 command profile selection is missing")
         before = self.truth()
         self.sampled.clear()
-        # Fresh otherwise-valid v1 evidence cannot be republished under v2
-        # intent. Stage 2 replaces this temporary refusal with its real path.
-        with self.assertRaises(self.commands.ConfigurationCleanupCommandError):
-            self.inspect(replace(query, profile=Profile.CONFIGURATION_CLEANUP_V2))
+        # Stage 2 supersedes unconditional v2 refusal, preserving the law that
+        # v1 review evidence cannot silently become v2 publication authority.
+        result = self.inspect(replace(query, profile=Profile.CONFIGURATION_CLEANUP_V2))
+        self.assertEqual(result.state, "complete")
+        self.assertIs(type(result.inspection), self.values.ConfigurationCleanupInspectionV2)
+        self.assertNotEqual(result.inspection.evidence_digest, command.expected_inspection_fingerprint)
         with self.assertRaises(self.commands.ConfigurationCleanupCommandError):
             self.publish(replace(command, profile=Profile.CONFIGURATION_CLEANUP_V2))
         self.assertEqual(self.sampled, [])
