@@ -92,6 +92,12 @@ class PostgresConfigurationTransferReadbackTests(ConfigurationTransferredConsume
             "workspace_id,allocation_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (*key, *cleanup, ref.workspace_id, ref.allocation_id))
         self.assertEqual(inserted.rowcount, 1)
+        # A closed premise cannot retain an accepted-current assertion at the
+        # old revision: both reverse transfer FKs remain enforced at commit.
+        removed = connection.execute("DELETE FROM cpk_configuration_claim_transfers WHERE "
+            "(run_id,activity_id,attempt,artifact_id,workspace_id,allocation_id,acceptance_revision)="
+            "(%s,%s,%s,%s,%s,%s,%s)", (*key, ref.workspace_id, ref.allocation_id, self.revision))
+        self.assertEqual(removed.rowcount, 1)
         for table in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
             changed = connection.execute(f"UPDATE {table} SET accepted_revision=NULL,cleanup_run_id=%s,"
                 "cleanup_activity_id=%s,cleanup_attempt=%s "
