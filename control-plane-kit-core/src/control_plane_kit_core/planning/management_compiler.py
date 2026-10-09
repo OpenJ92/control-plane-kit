@@ -6,11 +6,12 @@ readiness, successful transport, or freshness of an execution attempt.
 from dataclasses import dataclass, replace
 import hashlib
 
+from control_plane_kit_core.lifecycle import ResourceOwnership, ResourcePersistence
 from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor
 from control_plane_kit_core.planning.activity_plan import (
     ActivityDependency, ActivityId, ActivityPlan, AllocatePublicIngress,
-    ChangeTarget, PlannedActivity, ReconcileNode, ReviewChange, ReviewReason,
-    RiskLevel, StartNode, StartRuntime, StopNode, WaitForHealthy,
+    ChangeTarget, PlannedActivity, ReconcileNode, RemoveNodeResource, ReviewChange,
+    ReviewReason, RiskLevel, StartNode, StartRuntime, StopNode, WaitForHealthy,
 )
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
 from control_plane_kit_core.planning.compiler import compile_activity_plan
@@ -214,7 +215,10 @@ def _managed_update_shape(current, desired, diff):
         return None
     changed_surface, _ = _selected_surface(changed)
     gateway_surface, _ = _selected_surface(desired_gateway, gateway=True)
-    if changed_surface is None or gateway_surface is None:
+    if (changed_surface is None or gateway_surface is None
+            or NodeHealthReadKind.READINESS not in changed_surface.health_reads
+            or changed.lifecycle.ownership is not ResourceOwnership.OWNED
+            or changed.lifecycle.compute is not ResourcePersistence.EPHEMERAL):
         return None
     current_nodes = {key for key, value in current.graph.nodes.items() if value.runtime_id == runtime_id}
     desired_nodes = {key for key, value in desired.graph.nodes.items() if value.runtime_id == runtime_id}
@@ -225,6 +229,7 @@ def _managed_update_shape(current, desired, diff):
     retained_node = desired.graph.nodes[retained_id]
     retained_surface, _ = _selected_surface(retained_node)
     if (_independent_verification(retained_node) or retained_surface is None
+            or NodeHealthReadKind.READINESS not in retained_surface.health_reads
             or current.graph.nodes[retained_id] != retained_node):
         return None
     if mode == "add":
@@ -232,10 +237,20 @@ def _managed_update_shape(current, desired, diff):
             return None
         if desired_nodes != current_nodes | {changed_node_id}:
             return None
+        if (changed_node_id in current_runtime.children
+                or desired_runtime.children.count(changed_node_id) != 1
+                or tuple(value for value in desired_runtime.children if value != changed_node_id)
+                != current_runtime.children):
+            return None
     else:
         if desired_nodes != {gateway_id, connector_id, retained_id}:
             return None
         if current_nodes != desired_nodes | {changed_node_id}:
+            return None
+        if (changed_node_id in desired_runtime.children
+                or current_runtime.children.count(changed_node_id) != 1
+                or tuple(value for value in current_runtime.children if value != changed_node_id)
+                != desired_runtime.children):
             return None
     return _ManagedUpdateShape(
         mode, runtime_id, gateway_id, connector_id, retained_id, changed_node_id,
@@ -312,7 +327,11 @@ def compile_managed_update_activity_plan(current: ValidatedGraph, desired: Valid
                 base, StopNode,
                 lambda value: value.target.node_id == shape.changed_node_id,
             )
-            if stop is None:
+            remove = _matching_activity(
+                base, RemoveNodeResource,
+                lambda value: value.target.node_id == shape.changed_node_id,
+            )
+            if stop is None or remove is None:
                 return _review_blocked(base, diff)
             connected = _observation_activity(
                 ObserveManagementBootstrap(target, ManagementBootstrapStage.CONNECTOR_CONNECTED),

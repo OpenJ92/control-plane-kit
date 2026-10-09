@@ -12,7 +12,9 @@ from control_plane_kit_core.algebra import (
 )
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
-from control_plane_kit_core.lifecycle import ResourceLifecycle
+from control_plane_kit_core.lifecycle import (
+    ResourceLifecycle, ResourceOwnership, ResourcePersistence,
+)
 from control_plane_kit_core.node_control import (
     NodeControlGraphReference, NodeControlGraphReferenceRole, NodeHealthReadKind,
     WorkloadNodeControlSurfaceDescriptor,
@@ -322,23 +324,43 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertTrue(plan.ready_for_execution)
 
     def test_managed_update_refuses_material_outside_closed_generic_shape(self):
-        graph_a, graph_b, _ = managed_update_graphs()
+        graph_a, graph_b, graph_c = managed_update_graphs()
+        liveness_a = replace(
+            graph_a,
+            nodes={**graph_a.nodes, "workload": replace(
+                graph_a.node("workload"),
+                block_spec=replace(
+                    graph_a.node("workload").block_spec,
+                    control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),),
+                ),
+            )},
+        )
+        liveness_b = replace(
+            graph_b,
+            nodes={**graph_b.nodes, "workload": replace(
+                graph_b.node("workload"),
+                block_spec=replace(
+                    graph_b.node("workload").block_spec,
+                    control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),),
+                ),
+            )},
+        )
         cases = {
-            "retained-workload-material": replace(
+            "retained-workload-material": (graph_a, replace(
                 graph_b,
                 nodes={**graph_b.nodes, "workload": replace(
                     graph_b.node("workload"),
                     metadata={"unrelated-selected-material": "changed"},
                 )},
-            ),
-            "unpaired-gateway-material": replace(
+            )),
+            "unpaired-gateway-material": (graph_a, replace(
                 graph_b,
                 nodes={**graph_b.nodes, "gateway": replace(
                     graph_b.node("gateway"),
                     configuration_artifacts=graph_a.node("gateway").configuration_artifacts,
                 )},
-            ),
-            "independent-new-workload-verification": replace(
+            )),
+            "independent-new-workload-verification": (graph_a, replace(
                 graph_b,
                 nodes={**graph_b.nodes, "added-workload": replace(
                     graph_b.node("added-workload"),
@@ -349,11 +371,38 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
                         ),)),
                     ),
                 )},
-            ),
+            )),
+            "liveness-only-new-workload": (graph_a, replace(
+                graph_b,
+                nodes={**graph_b.nodes, "added-workload": replace(
+                    graph_b.node("added-workload"),
+                    block_spec=replace(
+                        graph_b.node("added-workload").block_spec,
+                        control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),),
+                    ),
+                )},
+            )),
+            "liveness-only-retained-workload": (liveness_a, liveness_b),
+            "retained-child-reordering": (graph_a, replace(
+                graph_b,
+                runtimes={"runtime": replace(
+                    graph_b.runtimes["runtime"],
+                    children=("connector", "gateway", "workload", "added-workload"),
+                )},
+            )),
+            "retained-compute-removal": (replace(
+                graph_b,
+                nodes={**graph_b.nodes, "added-workload": replace(
+                    graph_b.node("added-workload"),
+                    lifecycle=ResourceLifecycle(
+                        ResourceOwnership.OWNED, ResourcePersistence.RETAINED,
+                    ),
+                )},
+            ), graph_c),
         }
-        for name, desired in cases.items():
+        for name, (current, desired) in cases.items():
             with self.subTest(name=name):
-                plan = self.compile_update(graph_a, desired)
+                plan = self.compile_update(current, desired)
                 self.assertFalse(plan.ready_for_execution)
                 self.assertTrue(any(isinstance(value.operation, ReviewChange) for value in plan.activities))
 
