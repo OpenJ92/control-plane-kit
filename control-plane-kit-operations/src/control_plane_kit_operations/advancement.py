@@ -366,6 +366,7 @@ class CurrentGraphAdvancementCommandService:
                 receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard)
                 prepared = stores.configuration_acceptance._prepare(stores, workspace, request, run, plan, guard,
                     current_projection, desired_projection, receiver_truth=receiver_truth)
+                stores.configuration_acceptance._preflight(prepared)
 
                 occurred_at = self._clock()
                 evidence = BoundedEvidence.from_mapping(
@@ -438,6 +439,7 @@ class CurrentGraphAdvancementCommandService:
                 event = stores.execution._add_advancement_event(event, prepared)
                 action = history._add_advancement_action(action, prepared)
                 stores.configuration_acceptance._insert(prepared)
+                stores.configuration_acceptance._insert_transfers(prepared)
                 _finish_receiver_advancement(stores, request, run, guard, receiver_truth, action, advanced)
             unit_of_work.commit()
             return _result(event, action)

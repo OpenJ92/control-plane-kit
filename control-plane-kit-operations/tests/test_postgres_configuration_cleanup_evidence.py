@@ -21,6 +21,7 @@ from tests.configuration_cleanup_postgres_fixture import (
 )
 from tests.receiver_authoring_context_fixture import ContextObserver
 from tests.test_postgres_configuration_evidence import _ObservedConnection
+from tests.configuration_transfer_fixture import historical_transfer_prefix
 
 
 class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixture, unittest.TestCase):
@@ -91,7 +92,8 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
                             store._configuration_success(source.source, read)
 
     def test_active_requires_verified_started_and_proven_outcome_absence(self):
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         entered, release = threading.Event(), threading.Event()
 
         def paused(request):
@@ -172,7 +174,8 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
         # A fresh fixture isolates the archived no-link corruption above. This
         # law requires a complete admitted D1 premise before profile corruption.
         self.descriptors(self.inspect())
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         command, _ = self.later_use("invalid-profile", producer=lambda request:
             replace(completion_result(request), observations=()))
         self.descriptors(self.inspect())
@@ -184,7 +187,8 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
         self.assertEqual(self.truth(), before)
 
     def test_all_current_and_old_claims_protect_without_desired_digest_inference(self):
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         self.later_use("unprofiled", producer=lambda request: RuntimeEffectResult.succeeded(request.effect_id))
         with self.unit_of_work() as uow:
             uow.stores.workspaces.set_desired_graph("workspace-a", "graph-current")
@@ -208,7 +212,8 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
         self.assertTrue(all(not row["blockers"] for row in self.descriptors(self.inspect())))
 
     def test_shared_completed_invocations_require_every_explicit_full_selection(self):
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         self.later_use("second")
         for row in self.descriptors(self.inspect()):
             self.assertEqual(row["blockers"], ["current-selected-use"])
@@ -219,7 +224,8 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
             self.assertTrue(all(item["unselected_count"] == len(self.refs) - 1 for item in row["invocations"]))
 
     def test_same_material_historical_incarnations_remain_distinct(self):
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         operator = self.carry_operator()
         empty = replace(operator.graph, nodes={}, runtimes={"runtime-a": replace(
             operator.graph.runtimes["runtime-a"], children=())})
@@ -311,7 +317,10 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
             future = pool.submit(self.inspect, query, factory=factory)
             try:
                 self.assertTrue(entered.wait(10))
-                pool.submit(self.member.advance).result(timeout=10)
+                # Keep this v1 snapshot law on an explicit pre-C disposition;
+                # the real acceptance still changes the committed occurrence.
+                with historical_transfer_prefix(self):
+                    pool.submit(self.member.advance).result(timeout=10)
             finally:
                 release.set()
             self.assertEqual(future.result(timeout=15), original)
@@ -367,12 +376,16 @@ class PostgresConfigurationCleanupCapacityTests(ConfigurationCleanupPostgresFixt
 
     def test_64_claim_owner_history_is_complete_and_65th_claim_is_capacity(self):
         self.assertEqual(len(self.refs), 1)
-        self.member.advance()
+        # Historical completed claims remain a required defensive reader law;
+        # C's real accepted-growth law lives in the separate producer test.
+        with historical_transfer_prefix(self):
+            self.member.advance()
         for number in range(1, 64):
             command, _ = self.later_use(f"bounded-{number:02d}")
             # B requires each previous use's genuine original acceptance before
             # admitting another reuse. Completion alone is not that receipt.
-            self.carry_operator().advance(command)
+            with historical_transfer_prefix(self):
+                self.carry_operator().advance(command)
         self.assertEqual(len(self.member.protective_claims()), 64)
         before = self.truth()
         result = self.inspect()

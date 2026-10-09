@@ -23,6 +23,20 @@ class _PublicationReadBounds:
     receiver_receipts: tuple = ()
     transfer_dependencies: tuple = ()
     invocation_members: tuple = ()
+    generated_widths: tuple = ()
+
+
+@dataclass(frozen=True, repr=False)
+class _ProspectiveConfigurationTransfer:
+    """Expected own transfer and proof closure; never a proved transfer memo."""
+    identity: object
+    ref: object
+    completion: object
+    slot: tuple
+    row: tuple
+    memo: tuple
+    refs: tuple
+    sources: tuple
 
 
 def _require_publication_proof(read, family, key):
@@ -68,6 +82,7 @@ class _PreparedAdvancementReceipt:
     proof_footprint: object = None
     read_bounds: object = None
     receiver_truth: object = None
+    transfers: tuple = ()
 
     def with_records(self, event, action):
         return self.stores.configuration_acceptance._bind_records(self, event, action)

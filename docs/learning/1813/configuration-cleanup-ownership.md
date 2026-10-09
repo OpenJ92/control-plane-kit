@@ -4784,3 +4784,128 @@ No provider call was introduced under database locks, no uncertainty releases
 exclusion, and no credential, tunnel, DNS, token, image or schema reset/backfill
 was touched. Focused stage 3 evidence does not replace independent acceptance,
 the whole-B2 PR and full package/composition gates, or C's producer proof.
+
+## E4.C: genuine accepted-current producer — 2026-10-08
+
+[Issue #1947](https://github.com/OpenJ92/control-plane-kit/issues/1947) activates
+qualified transfers in the existing advancement transaction. The causal-red
+writer target and ordered accounting worksheet preceded source implementation.
+The implementation is confined to advancement, its private prepared value and
+the acceptance store; package ownership and the exhaustive module inventory do
+not change. The three source companions describe the current computation.
+
+Own admitted successful completion plus exact fresh accepted membership makes a
+claim eligible. Preparation freezes all eligible claims and the existing proof
+closure before IDs. The first pure forecast admits generated caps and the whole
+remaining command; binding validates actual generated widths and admits the
+bound suffix again. Current CAS, event/action, real header/slot readback,
+reciprocal transfer writes and receiver FINISH share one commit. Exact original
+replay is observational and cannot backfill earlier accepted claims.
+
+Focused evidence remains separated by coordinate and law:
+
+- The corrected producer physical gate proves measured pre-ID and bound tails,
+  cold current read and material size under unchanged declarations. An omitted
+  own-header guard was corrected before that gate passed.
+- Twelve actual post-write faults, a real deferred-FK commit failure, lost
+  acknowledgement and exact replay protect compound transaction behavior.
+  The initial rollback observer missed multiline SQL; its corrected rerun
+  proves rollback, while the earlier failing run does not.
+- [Genuine growth](https://github.com/OpenJ92/control-plane-kit/issues/1947#issuecomment-6065579942)
+  completes 65 successful profiled uses over the same two allocations, writes
+  130 transfers, and preserves the birth refs. Active claims are one before and
+  zero after each acceptance. Samples3 and65 have identical measured suffix and
+  cold-reader structural counts; value widths vary and fit their own bounds.
+  Approved plan/graph premises are store-authored, adapter results simulated.
+- The complementary unprofiled boundary remains
+  `PostgresConfigurationCapacityBoundaryTests.test_compact_accepted_uses_reach_a_measured_owner_boundary_without_partial_publication`.
+  Its birth and coordinator callbacks return ordinary success without admitted
+  configuration observations. It requires 64 accepted uses, retained protective
+  pairs, next-use capacity refusal without partial publication or another
+  dispatch, complete cold history and ID-free original start replay. This is
+  distinct from the historical profiled64 fixture with transfer suppression;
+  final-candidate green remains a full-suite obligation.
+- [Receiver atomicity](https://github.com/OpenJ92/control-plane-kit/issues/1947#issuecomment-6065949721)
+  observes real own transfers and receiver origins, faults after complete
+  FINISH, proves whole rollback, then succeeds and replays without new IDs or
+  dispatch. It is not an exhaustive internal FINISH-write matrix.
+- [Explicit cleanup-v2 race and concurrent-use evidence](https://github.com/OpenJ92/control-plane-kit/issues/1947#issuecomment-6066288435)
+  proves both cleanup/advancement winner orders with PostgreSQL blocking and
+  distinct-use protection/refusal. This is separate from the earlier v1 race
+  evidence and from duplicate replay.
+- [Cleanup fixture compatibility](https://github.com/OpenJ92/control-plane-kit/issues/1947#issuecomment-6066425396)
+  preserves historical reader/execution premises alongside the genuine C
+  current-protection/departure/zero-use cleanup test. The latter uses actual
+  target completion and transfer, with a recorded companion receiver premise.
+
+Three reachability decisions prevent misleading fixtures. Fresh acceptance
+currently installs complete product artifact sets; historical partial-S reader
+fixtures remain explicit historical premises and earn no C writer credit.
+Unknown protection prevents the next fresh same-allocation start: tests first
+establish accepted unprofiled and qualified uses, then create uncertainty and
+prove refusal without erasing it. Simultaneously valid fresh reuse and cleanup
+for the same allocation are mutually exclusive: reuse requires exact current
+membership, which blocks cleanup. Departure changes the premise; a stale intent
+must fail current/base/claim proof instead of being manufactured as a valid race.
+
+Old tests assumed one bound preflight and four current-membership guards. The C
+path has pre-ID and bound gates and a fifth guard after actual receipt readback.
+Observer conversion keeps separate actual priors, wire offsets and every query
+reservation peak; missing-dependency tests retain no-fallback assertions, and
+both immutable prepared credentials must be spent. The fifth guard joins the
+existing pair/exclusion rollback matrix with actual tentative receipt facts.
+The [focused observer gate](https://github.com/OpenJ92/control-plane-kit/issues/1947#issuecomment-6066771690)
+passed 39 tests in 722.937s, compilation/import and exit0 at `8ce90eb3`.
+Its natural pre-ID threshold case has settled16775079 bytes within16MiB but
+peak16778192 bytes over the limit and refuses before clock/IDs or mutation.
+These are concrete measured fixtures, not universal capacity guarantees.
+
+Four retained v1 ownership tests additionally keep five individual historical
+acceptances before recorded closure insertion. Their whole-invocation,
+carried-slot, ordinary-reuse and issued-start exclusion assertions are unchanged;
+the shared history fixture still rejects inconsistent locators. This reviewed
+compatibility correction earns runtime evidence only when the final Operations
+suite passes, not from the earlier focused cleanup or observer runs.
+
+Security, data and history remain with the existing authenticated command,
+approval, lock and UoW owners. No provider call occurs under database locks;
+no credentials, topology exposure, schema, limits or cleanup approval change.
+Transfer rows retain exact original completion fingerprints and acceptance
+revision so the later cleanup reader can explain each disposition. Failed or
+uncertain neighbors stay protective; retries follow original idempotency.
+External administrators remain outside CPK's fence. Full candidate package and
+locked-backend acceptance, independent whole-PR review and North's merge/D1921
+handoff remain required; focused evidence alone releases no live deployment.
+
+#### First full C validation and historical reader correction
+
+The first automatic full Operations gate at candidate `bbfafcd8` (tested merge
+`91cb34fd`) ran 2631 tests in 6627.013s and ended with one failure and one error.
+The [terminal record](https://github.com/OpenJ92/control-plane-kit/pull/1956#issuecomment-6068757605)
+preserves the exact failures and source coordinates. The genuine unprofiled64
+boundary, all four historical ownership methods above, genuine C65 growth and
+producer/departure cleanup passed individually. This supersedes their pending
+runtime status above without claiming whole-suite or compilation/import success.
+
+Both failures came from v1 historical premises: the snapshot-coherence test's
+concurrent profiled acceptance now transfers its claims, so a fresh v1 cleanup
+inspection cannot return its old digest-shaped result; retained-growth setup
+likewise transfers before the first recorded v1 cleanup. Kepler's
+[independent review](https://github.com/OpenJ92/control-plane-kit/pull/1956#issuecomment-6068754986)
+confirmed that the intended laws require explicit pre-C outstanding claims.
+The correction uses the existing counted/restored historical prefix only around
+the concurrent snapshot acceptance, initial growth acceptance and each later
+profiled growth acceptance. Real acceptance/receipt and snapshot owners still
+run. Departure, strict recorded closure, all rollback/reentry assertions,
+264 closed plus 8 active claims, new incarnations and indexed discovery remain
+unchanged. Production, shared fixtures and limits are unchanged.
+
+This is historical reader/discovery evidence, not current producer growth or
+provider deletion. The [focused owning two-method gate](https://github.com/OpenJ92/control-plane-kit/pull/1956#issuecomment-6068912280)
+at `2138551a` passed
+2 tests in 365.069s, package integrity, compilation/import and exit0. Named
+test resources were verified absent. Retained growth observed 264 closed and
+8 active claims, both active-slot indexes and constant empty discovery cost.
+The subsequent automatic full gates remain required before C acceptance.
+There is no new security surface, credential handling, provider call or durable
+production mutation in this correction.

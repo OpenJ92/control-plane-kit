@@ -1,6 +1,11 @@
 Source: [configuration_acceptance_store.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_acceptance_store.py).
 Maintain this companion alongside its source.
 
+Current source includes E4.C qualified accepted-current transfers; see the final
+section below. Earlier B2 stage status, fixed-tail descriptions and use65 refusal
+refer to their recorded historical or unprofiled workloads. They do not describe
+the current profiled producer's growth limit or the current review status.
+
 Owns original acceptance evidence inside the existing advancement UoW. Independent
 workspace-wide original action/event selectors use typed numeric revision ordering
 and two candidates before any source join. Bounded point reads validate the complete
@@ -101,3 +106,43 @@ admitted completion linkage, dispositions, reservation/retirement and guarded
 cleanup. I177 owns terminal producer/fresh non-use proof and provider activation.
 No closed read absence, accepted membership or ambiguous provider observation
 crosses those authority boundaries.
+
+## E4.C: qualified accepted-current producer
+
+The earlier stage descriptions are historical. Issue #1947 activates the typed
+transfer schema from E4.A within this existing acceptance owner. Preparation
+selects only claims belonging to this fresh advancing run, requiring each claim's
+own admitted successful completion, exact accepted slot and full ref. It freezes
+all eligible claims before IDs. Carried history, unrelated successful uses,
+unprofiled/failed/unknown outcomes and replay do not create eligibility. Current
+StartNode/ReconcileNode acceptance installs complete desired artifact sets, so
+the within-invocation proper-subset positive remains unreachable; the writer
+still uses per-claim eligibility rather than imposing an all-or-none rule.
+
+The existing source/read-shape closure is captured before IDs, including full
+original-invocation sibling widths. Forecast composition performs no SQL. The
+first declaration covers ordinal allocation, bound-parent rereads, generated
+PostgreSQL size probes, every publication write/readback and receiver FINISH.
+Binding verifies actual generated widths against their caps and the second
+preflight checks its own actual prior plus settled/peak suffix. Each gate also
+admits the fresh native consumer and material snapshot independently; neither
+subtracts estimated discovery work nor replenishes the command ledger.
+
+After actual header/slot readback, `_insert_transfers` rechecks issuance,
+transaction/current truth, every eligible reciprocal protective pair, absence
+of cleanup reservations and transfer absence. It inserts the exact transfer row
+and updates each claim/ref pair with one-row returns, then proves all written
+transfers through the ordinary reader. No warm memo is fabricated. Only the
+frozen eligible set permits its first proof after real writes, and every cached
+proof retains exact live dependencies. The caller owns commit and rollback.
+
+Real repeated profiled acceptance can therefore retain historical provenance
+without accumulating active protection for those accepted uses. Unprofiled,
+failed and uncertain uses remain protective and consume the same unchanged
+64-active-use/256-claim limits. Current membership independently blocks cleanup;
+a departed allocation requires the existing approved cleanup protocol and fresh
+non-use proof. No schema, Core, provider, credential, migration or backfill
+surface is added. The 4096-record/16-MiB shared budget, 3-MiB snapshot and other
+existing limits are unchanged; selected examples do not establish maximal
+combination capacity. Source-level proof and simulated adapters do not establish
+provider terminality or release live deployment.

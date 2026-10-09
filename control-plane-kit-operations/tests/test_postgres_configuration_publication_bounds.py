@@ -92,6 +92,7 @@ def _trace():
 @contextmanager
 def _publication_budget_observation(case, database_url):
     trace = _trace()
+    trace["phases"] = {}
     preflight, commit = ConfigurationAcceptanceStore._preflight, PostgresUnitOfWork.commit
 
     def admit(store, prepared):
@@ -103,6 +104,11 @@ def _publication_budget_observation(case, database_url):
         case.assertEqual(_ACCOUNTING.get().used, prior)
         preflight(store, prepared)
         case.assertEqual(_ACCOUNTING.get().used, prior, "binding work was hidden after admission")
+        phase = "pre_id" if prepared.event is None else "bound"
+        case.assertNotIn(phase, trace["phases"])
+        trace["phases"][phase] = dict(snapshot=snapshot, future=future,
+            publication=publication, prior=prior, wire=dict(trace["wire"]),
+            peak_offset=len(trace["peaks"]))
         trace.update(snapshot=snapshot, future=future, publication=publication,
             prior=prior, accounting=_ACCOUNTING.get(), owner=store, prepared=prepared)
 
@@ -120,16 +126,20 @@ def _publication_budget_observation(case, database_url):
 
 def _assert_publication_and_cold_fit(case, trace, database_url):
     case.assertIn("final", trace)
-    used = _difference(trace["final"], trace["prior"])
-    _within(case, used, trace["publication"].settled)
-    for peak in trace["peaks"]:
-        _within(case, _difference(peak, trace["prior"]), trace["publication"].peak)
-    case.assertEqual(used.statements, trace["wire"]["statements"])
-    case.assertEqual(used.value_octets, trace["wire"]["value_octets"])
-    case.assertEqual(used.scalar_markers, trace["wire"]["scalar_cells"])
-    # Ledger records additionally weight joined identities; physical rows do not.
-    case.assertGreaterEqual(used.records, trace["wire"]["rows"])
-    case.assertGreaterEqual(used.accounted_bytes, trace["wire"]["bytes"])
+    case.assertEqual(tuple(trace["phases"]), ("pre_id", "bound"))
+    for phase, current in trace["phases"].items():
+        with case.subTest(phase=phase):
+            used = _difference(trace["final"], current["prior"])
+            _within(case, used, current["publication"].settled)
+            for peak in trace["peaks"][current["peak_offset"]:]:
+                _within(case, _difference(peak, current["prior"]), current["publication"].peak)
+            wire = {key: value - current["wire"][key] for key, value in trace["wire"].items()}
+            case.assertEqual(used.statements, wire["statements"])
+            case.assertEqual(used.value_octets, wire["value_octets"])
+            case.assertEqual(used.scalar_markers, wire["scalar_cells"])
+            # Ledger records additionally weight joined identities; physical rows do not.
+            case.assertGreaterEqual(used.records, wire["rows"])
+            case.assertGreaterEqual(used.accounted_bytes, wire["bytes"])
     cold = _trace()
     snapshots = []
     manifest = ConfigurationAcceptanceStore._receipt_manifest
@@ -146,11 +156,13 @@ def _assert_publication_and_cold_fit(case, trace, database_url):
             observed = uow.stores.configuration_acceptance.read_current_configuration("workspace-a")
     case.assertEqual(observed.state, "complete")
     case.assertEqual(len(snapshots), 1)
-    _within(case, snapshots[0], trace["snapshot"])
+    for current in trace["phases"].values():
+        _within(case, snapshots[0], current["snapshot"])
     case.assertLessEqual(snapshots[0].accounted_bytes, 3 * 1024 * 1024)
-    _within(case, cold["accounting"].used, trace["future"].settled)
-    for peak in cold["peaks"]:
-        _within(case, peak, trace["future"].peak)
+    for current in trace["phases"].values():
+        _within(case, cold["accounting"].used, current["future"].settled)
+        for peak in cold["peaks"]:
+            _within(case, peak, current["future"].peak)
     case.assertEqual(cold["accounting"].used.statements, cold["wire"]["statements"])
     case.assertEqual(cold["accounting"].used.value_octets, cold["wire"]["value_octets"])
     case.assertEqual(cold["accounting"].used.scalar_markers, cold["wire"]["scalar_cells"])
@@ -175,7 +187,8 @@ def _assert_publication_and_cold_fit(case, trace, database_url):
         forecast_future_peak=footprint(trace["future"].peak),
         forecast_publication_settled=footprint(trace["publication"].settled),
         forecast_publication_peak=footprint(trace["publication"].peak),
-        observed_publication_peak=maxima(_difference(value, trace["prior"]) for value in trace["peaks"]),
+        observed_publication_peak=maxima(_difference(value, trace["prior"])
+            for value in trace["peaks"][trace["phases"]["bound"]["peak_offset"]:]),
         observed_future_peak=maxima(cold["peaks"]))))
 
 
@@ -293,12 +306,12 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
             finally:
                 store._connection.execute("DELETE FROM cpk_execution_receiver_scopes WHERE request_id=%s "
                     "AND scope_ordinal=%s", (prepared.request.identity.request_id, row[0]))
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             accepted = self.advance(claimed, "multiset")
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
         self.assertEqual(self.receiver_origin().first_accepted_action_id, accepted.action.action_id)
 
     def test_second_history_failure_rolls_back_actual_witness_within_peak(self):
@@ -312,7 +325,7 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
                 for table in ("cpk_configuration_acceptances", "cpk_configuration_accepted_slots"))
         receipts_before = receipts()
         trace = _trace()
-        trace.update(finishing=False, histories=0, late=False)
+        trace.update(finishing=False, histories=0, late=False, phases={})
         failed, inspected, after_failure = [], [], []
         preflight = ConfigurationAcceptanceStore._preflight
         finish, history = advancement_module._finish_receiver_advancement, _ExecutionScopeStorage.evidence
@@ -324,6 +337,10 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
             forecast = getattr(store, "_publication_budgets", None)
             publication = forecast(prepared)[2] if callable(forecast) else None
             result = preflight(store, prepared)
+            phase = "pre_id" if prepared.event is None else "bound"
+            self.assertNotIn(phase, trace["phases"])
+            trace["phases"][phase] = dict(publication=publication,
+                prior=_ACCOUNTING.get().used, peak_offset=len(trace["peaks"]))
             trace.update(publication=publication, accounting=_ACCOUNTING.get(),
                 prior=_ACCOUNTING.get().used, owner=store, prepared=prepared)
             return result
@@ -386,12 +403,14 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
         self.assertEqual(receipts(), receipts_before)
         self.assertEqual(after_failure, ["SELECT txid_current()"])
         self.assertIsNotNone(trace["publication"], "late publication lacks its source-derived failure peak")
-        for peak in trace["peaks"]:
-            _within(self, _difference(peak, trace["prior"]), trace["publication"].peak)
+        self.assertEqual(tuple(trace["phases"]), ("pre_id", "bound"))
+        for current in trace["phases"].values():
+            for peak in trace["peaks"][current["peak_offset"]:]:
+                _within(self, _difference(peak, current["prior"]), current["publication"].peak)
+            _within(self, _difference(trace["accounting"].used, current["prior"]), current["publication"].peak)
         retained = _difference(trace["accounting"].used, failed[0])
         self.assertEqual((retained.records, retained.scalar_markers, retained.statements), (1, 1, 1))
         self.assertGreater(retained.value_octets, 0)
-        _within(self, _difference(trace["accounting"].used, trace["prior"]), trace["publication"].peak)
         with self.assertRaises((OperationsRecordError, _Unavailable)):
             trace["owner"]._require_issued(trace["prepared"])
 
@@ -437,7 +456,7 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
                 store._connection.execute("DELETE FROM cpk_failed_run_compensations WHERE program_id='late-program'")
             self.assertLess(observed["largest_cell"], 65000,
                 "an originally absent compensation transported its new preimage")
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         ids = iter(("event-advance-optional", "action-advance-optional"))
@@ -445,7 +464,7 @@ class PostgresConfigurationPublicationReceiverTests(ReceiverCanonicalAcceptanceF
             accepted = CurrentGraphAdvancementCommandService(lambda: PostgresUnitOfWork(
                 lambda: CompensationObservation(psycopg.connect(self.database_url), observed)),
                 clock=self.now, id_factory=lambda: next(ids)).execute(command)
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
         self.assertEqual(self.receiver_origin().first_accepted_action_id, accepted.action.action_id)
 
 
@@ -470,13 +489,15 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
             return result
 
         def request_commit(uow):
-            self.assertEqual(len(prepared_values), 1)
-            store, prepared, accounting = prepared_values[0]
+            self.assertEqual(len(prepared_values), 2)
+            self.assertIsNone(prepared_values[0][1].event)
+            self.assertIsNotNone(prepared_values[1][1].event)
             self.assertFalse(uow._commit_requested)
-            self.assertIs(_ACCOUNTING.get(), accounting)
-            self.assertTrue(accounting.active)
-            with self.assertRaises((OperationsRecordError, _Unavailable)):
-                store._require_issued(prepared)
+            for store, prepared, accounting in prepared_values:
+                self.assertIs(_ACCOUNTING.get(), accounting)
+                self.assertTrue(accounting.active)
+                with self.assertRaises((OperationsRecordError, _Unavailable)):
+                    store._require_issued(prepared)
             requested.append(True)
             return original_commit(uow)
 
@@ -488,10 +509,10 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
                 return getattr(self.connection, name)
 
             def commit(self):
-                case.assertEqual(len(prepared_values), 1)
-                store, prepared, _ = prepared_values[0]
-                with case.assertRaises((OperationsRecordError, _Unavailable)):
-                    store._require_issued(prepared)
+                case.assertEqual(len(prepared_values), 2)
+                for store, prepared, _ in prepared_values:
+                    with case.assertRaises((OperationsRecordError, _Unavailable)):
+                        store._require_issued(prepared)
                 committed.append(True)
                 self.connection.commit()
 
@@ -502,9 +523,9 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
         self.assertFalse(accepted.replayed)
         self.assertEqual(requested, [True])
         self.assertEqual(committed, [True])
-        store, prepared, _ = prepared_values[0]
-        with self.assertRaises((OperationsRecordError, _Unavailable)):
-            store._require_issued(prepared)
+        for store, prepared, _ in prepared_values:
+            with self.assertRaises((OperationsRecordError, _Unavailable)):
+                store._require_issued(prepared)
 
     def test_pending_commit_invalidates_prepared_and_rolls_back(self):
         before, active, checked = self.base.retained_snapshot(), [], []
@@ -560,11 +581,13 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
             self.base.advance()
         self.assertEqual(injected, [True])
         self.assertEqual(self.base.retained_snapshot(), before)
-        self.assertEqual(len(prepared_values), 1)
-        store, prepared = prepared_values[0]
-        with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("spent owner queried SQL")), \
-                self.assertRaises((OperationsRecordError, _Unavailable)):
-            store._require_issued(prepared)
+        self.assertEqual(len(prepared_values), 2)
+        self.assertIsNone(prepared_values[0][1].event)
+        self.assertIsNotNone(prepared_values[1][1].event)
+        for store, prepared in prepared_values:
+            with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("spent owner queried SQL")), \
+                    self.assertRaises((OperationsRecordError, _Unavailable)):
+                store._require_issued(prepared)
 
     def test_current_schema_and_plan_owner_refuse_null_original_projection_pins(self):
         with self.base.unit_of_work() as uow:
@@ -599,13 +622,13 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
                 transport.read("cpk_execution_requests", _columns(_REQUEST),
                     "request_id=%s", params,
                     point=True, phase=actual_phase)
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             accepted = self.base.advance()
         self.assertFalse(accepted.replayed)
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
 
     def test_unannotated_receiver_read_refuses_before_sql(self):
         self.reject_unclosed_read(phase=None)
@@ -624,12 +647,12 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
                     "prospective own receipt reached SQL before publication")), self.assertRaises(_Unavailable):
                 store._receipt(prepared.workspace.workspace_id, prepared.plan.desired_graph_revision,
                     read=prepared.evidence_read)
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             self.assertFalse(self.base.advance().replayed)
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
 
     def test_unselected_candidate_prefix_refuses_before_sql(self):
         original, checked = ConfigurationAcceptanceStore._preflight, []
@@ -640,12 +663,12 @@ class PostgresConfigurationPublicationLifetimeTests(unittest.TestCase):
                     "uncaptured candidate prefix reached SQL")), self.assertRaises(_Unavailable):
                 reader.candidates(prepared.workspace.workspace_id,
                     (ExecutionReceiverScope("not-in-publication-closure", None),))
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             self.assertFalse(self.base.advance().replayed)
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
 
     def test_plan_growth_after_admission_refuses_before_large_cell_transport(self):
         before = self.base.retained_snapshot()
@@ -701,12 +724,12 @@ class PostgresConfigurationPublicationCarryTests(unittest.TestCase):
                     store._ref(read, source_key)
             finally:
                 read.refs[cache_key] = removed
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             accepted = self.carry.add_runtime()
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
         self.carry.assert_membership(accepted, self.carry.fixture.refs)
 
     def test_missing_prepared_source_caches_refuse_before_each_cold_fallback(self):
@@ -749,12 +772,12 @@ class PostgresConfigurationPublicationCarryTests(unittest.TestCase):
                                     call()
                     finally:
                         read.sources[key] = value
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             accepted = self.carry.add_runtime()
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
         self.carry.assert_membership(accepted, self.carry.fixture.refs)
 
     def test_foreign_reader_with_copied_proof_caches_refuses_before_cache_hit(self):
@@ -768,12 +791,12 @@ class PostgresConfigurationPublicationCarryTests(unittest.TestCase):
                     mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("foreign proof reader queried SQL")), \
                     self.assertRaises(_Unavailable):
                 store._ref(foreign, prepared.slots[0][3:7])
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             accepted = self.carry.add_runtime()
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
         self.carry.assert_membership(accepted, self.carry.fixture.refs)
 
     def test_carry_actual_publication_and_native_cold_reader_fit(self):
@@ -796,7 +819,9 @@ class PostgresConfigurationPublicationCarryTests(unittest.TestCase):
 
         def prepared(store, value):
             result = preflight(store, value)
-            prepared_values.append(value)
+            # Actual readback is witnessed by the bound action/event value.
+            if value.event is not None:
+                prepared_values.append(value)
             return result
 
         def readback(store, workspace, revision, *, read=None):
@@ -874,12 +899,14 @@ class PostgresConfigurationPublicationBudgetTests(unittest.TestCase):
                     psycopg.connect(self.base.database_url), trace)))
         self.assertEqual(len(failed), 1)
         self.assertEqual(after_failure, ["SELECT txid_current()"])
-        for peak in trace["peaks"]:
-            _within(self, _difference(peak, trace["prior"]), trace["publication"].peak)
+        self.assertEqual(tuple(trace["phases"]), ("pre_id", "bound"))
+        for current in trace["phases"].values():
+            for peak in trace["peaks"][current["peak_offset"]:]:
+                _within(self, _difference(peak, current["prior"]), current["publication"].peak)
+            _within(self, _difference(trace["accounting"].used, current["prior"]), current["publication"].peak)
         retained = _difference(trace["accounting"].used, failed[0])
         self.assertEqual((retained.records, retained.scalar_markers, retained.statements), (1, 1, 1))
         self.assertGreater(retained.value_octets, 0)
-        _within(self, _difference(trace["accounting"].used, trace["prior"]), trace["publication"].peak)
         with mock.patch.object(_EvidenceRead, "query", side_effect=AssertionError("spent publication reached SQL")), \
                 self.assertRaises((OperationsRecordError, _Unavailable)):
             trace["owner"]._require_issued(trace["prepared"])
@@ -898,12 +925,12 @@ class PostgresConfigurationPublicationBudgetTests(unittest.TestCase):
                 exercise(store, prepared, original, values, prior)
             finally:
                 _ACCOUNTING.get().used = prior
-            checked.append(True)
+            checked.append("pre_id" if prepared.event is None else "bound")
             return original(store, prepared)
 
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             self.assertFalse(self.base.advance().replayed)
-        self.assertEqual(checked, [True])
+        self.assertEqual(checked, ["pre_id", "bound"])
 
     def test_snapshot_three_mib_gate_precedes_global_decisions(self):
         from control_plane_kit_operations import configuration_preparation as values

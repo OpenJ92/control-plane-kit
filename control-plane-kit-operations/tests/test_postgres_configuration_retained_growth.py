@@ -1,4 +1,4 @@
-"""Real incarnation growth with recorded closure history, never provider deletion."""
+"""Historical outstanding-claim growth with recorded closure, not C producer evidence."""
 from dataclasses import asdict, replace
 import json
 import unittest
@@ -9,6 +9,7 @@ from control_plane_kit_core.products import ProductDescriptorCodec
 from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
 from control_plane_kit_operations.products import RegisteredProduct
 from tests.configuration_cleanup_history_fixture import ConfigurationCleanupHistoryFixture
+from tests.configuration_transfer_fixture import historical_transfer_prefix
 from tests.test_postgres_configuration_capacity_boundary import observe_queries
 from tests.test_receiver_execution_scope_queries import plan_paths
 from tests.test_runtime_effect_translation import _configuration_product
@@ -28,7 +29,8 @@ class PostgresConfigurationRetainedGrowthTests(ConfigurationCleanupHistoryFixtur
             imported_by=registered.imported_by, imported_at=registered.imported_at)
         super().setUp()
         self.assertEqual(len(self.refs), 8)
-        self.member.advance()
+        with historical_transfer_prefix(self):
+            self.member.advance()
         self.operator = self.carry_operator()
 
     def discover(self, ref):
@@ -80,7 +82,10 @@ class PostgresConfigurationRetainedGrowthTests(ConfigurationCleanupHistoryFixtur
             label = f"growth-start-{number + 1:02}"
             command = self.operator.admit(label, "graph-configured", StartNode(NodeTarget("api")))
             self.execute_later(command, label)
-            self.operator.advance(command)
+            # Retain the pre-C outstanding premise for this v1 history reader.
+            # Departure, recorded closure and discovery assertions stay real.
+            with historical_transfer_prefix(self):
+                self.operator.advance(command)
             identity = EffectAttemptIdentity(RunId(command.run_id), "activity-" + label, 1)
             with self.unit_of_work() as uow:
                 self.original = uow.stores.effect_attempt_intents.get(identity)
