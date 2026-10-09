@@ -540,8 +540,8 @@ class EffectAttemptReconciliationContractTests(
         self.assertEqual(
             {str(error) for error in errors},
             {
-                "realization intent must be step_started or "
-                "step_compensation_started"
+                "realization intent must start an effect, compensation, "
+                "or native connection reobservation"
             },
         )
         for error in errors:
@@ -571,8 +571,8 @@ class EffectAttemptReconciliationContractTests(
                     dataclasses.replace(base, intent_event=event)
                 self.assertEqual(
                     str(caught.exception),
-                    "realization intent must be step_started or "
-                    "step_compensation_started",
+                    "realization intent must start an effect, compensation, "
+                    "or native connection reobservation",
                 )
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
@@ -636,6 +636,7 @@ class EffectAttemptReconciliationContractTests(
                 "control_plane_kit_core.runtime_authority",
                 "control_plane_kit_core.runtime_effect_observation",
                 "control_plane_kit_core.secrets",
+                "control_plane_kit_operations._configuration_preparation",
                 "control_plane_kit_operations.effect_attempt_fold",
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 LANGUAGE_MODULE,

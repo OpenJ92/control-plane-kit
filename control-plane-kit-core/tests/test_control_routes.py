@@ -66,6 +66,7 @@ class ControlRouteTests(unittest.TestCase):
                 ControlRouteSetName.LOADS,
                 ControlRouteSetName.DISCOVERY,
                 ControlRouteSetName.NODE_CONTROL,
+                ControlRouteSetName.NODE_HEALTH,
             },
         )
         self.assertEqual(

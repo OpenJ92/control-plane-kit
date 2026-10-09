@@ -149,6 +149,20 @@ class IngressAuthorityStore:
             )
         return _row_to_authority(row)
 
+    def _configuration_authority(self, workspace_id, reference, read):
+        columns = (("registration_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("authority_ref", "text", 2048), ("authority", "json", 65536),
+            ("admitted_by", "text", 2048), ("admitted_at", "time", 64),
+            ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_ingress_authorities", columns,
+            "workspace_id=%s AND authority_ref=%s AND status='active'", (workspace_id, reference.reference_id))
+        if not rows:
+            raise IngressAuthorityNotFound("registered ingress authority is unavailable")
+        value = _row_to_authority(rows[0])
+        if value.workspace_id != workspace_id or value.authority_ref != reference:
+            raise IngressAuthorityNotFound("registered ingress authority is unavailable")
+        return value
+
     def list_active(self, workspace_id: str) -> tuple[RegisteredIngressAuthority, ...]:
         rows = self._connection.execute(
             """
@@ -493,6 +507,20 @@ class IngressResourceStore:
         ).fetchall()
         return tuple(_row_to_cloudflare_resource(row) for row in rows)
 
+    def _configuration_resource(self, workspace_id, ingress_id, read):
+        names = ("workspace_id", "runtime_id", "ingress_id", "epoch", "status", "authority_ref",
+            "provider_kind", "tunnel_name", "tunnel_id", "dns_record_id", "hostname", "zone_id",
+            "lifecycle", "created_at", "observed_at", "source_run_id", "source_activity_id",
+            "source_event_id", "removed_at", "removed_by_run_id")
+        columns = tuple((name, "int" if name == "epoch" else "time" if name in
+            ("created_at", "observed_at", "removed_at") else "text", 2048) for name in names)
+        rows = read.bounded_rows("cpk_cloudflare_ingress_resources", columns,
+            "workspace_id=%s AND ingress_id=%s AND status='active'", (workspace_id, ingress_id),
+            order="epoch DESC")
+        if not rows:
+            raise IngressAuthorityNotFound("owned ingress resource is unavailable")
+        return _row_to_cloudflare_resource(rows[0])
+
     def _get_blocking_cloudflare(
         self,
         workspace_id: str,
@@ -683,6 +711,19 @@ class GeneratedIngressSecretReferenceStore:
                 "generated ingress secret reference was not found"
             )
         return evidence
+
+    def _configuration_source(self, resource, read):
+        columns = (("workspace_id", "text", 2048), ("purpose", "text", 128),
+            ("secret_ref", "text", 2048), ("recorded_at", "time", 64),
+            ("source_run_id", "text", 2048), ("source_activity_id", "text", 2048),
+            ("source_event_id", "text", 2048), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_generated_ingress_secret_references", columns,
+            "workspace_id=%s AND purpose=%s AND source_run_id=%s AND source_activity_id=%s AND source_event_id=%s",
+            (resource.workspace_id, GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN.value,
+             resource.source_run_id, resource.source_activity_id, resource.source_event_id))
+        if not rows:
+            raise IngressAuthorityNotFound("generated ingress secret reference is unavailable")
+        return _row_to_generated_ingress_secret_reference(rows[0])
 
     def list_for_workspace(
         self,

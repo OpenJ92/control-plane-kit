@@ -344,6 +344,31 @@ EXACT_INTERPRETER_CALLS = tuple(
 )
 
 
+# B1 adds only same-command accounting around the existing observer transaction.
+EXACT_INTERPRETER_IMPORTS = tuple(sorted((*EXACT_INTERPRETER_IMPORTS,
+    architecture_testing.ImportSurfaceEntry("control_plane_kit_core.planning", "CleanupConfigurationInstances", None),
+    architecture_testing.ImportSurfaceEntry("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
+    architecture_testing.ImportSurfaceEntry("control_plane_kit_operations._configuration_preparation", "_ACCOUNTING", None)),
+    key=lambda item: (item.module, item.imported_name or "", item.alias_name or "")))
+EXACT_INTERPRETER_CALLS = tuple(sorted((*EXACT_INTERPRETER_CALLS, *(architecture_testing.ResolvedCallTarget(name) for name in (
+    # #1936 bounded terminal routing and exact original cleanup proof only.
+    "stores.configuration_preparation._configure_run",
+    "stores.effect_attempt_intents.get",
+    "stores.configuration_cleanup_ownership.get",
+    "control_plane_kit_operations.records.OperationsRecordError",
+    "control_plane_kit_operations.records.OperationsRecordError",
+    "control_plane_kit_operations.effect_attempt_reconciliation.EffectAttemptReconciliationConflict",
+    "control_plane_kit_operations.effect_attempt_reconciliation.EffectAttemptReconciliationConflict",
+    "type", "type",
+    "control_plane_kit_operations.effect_attempt_reconciliation._valid_reconcile_command",
+    "control_plane_kit_operations.workflows.InvalidOperationCommand",
+    "control_plane_kit_operations._configuration_preparation._configuration_accounting",
+    "self._execute",
+    "control_plane_kit_operations._configuration_preparation._ACCOUNTING.get",
+    "stores.configuration_preparation._configure_run",
+))), key=lambda item: item.qualified_name))
+
+
 class FailIfUnitOfWork:
     def __init__(self, message: str) -> None:
         self.error = AssertionError(message)
@@ -376,6 +401,8 @@ class EffectAttemptReconciliationInterpreterContractTests(
     RuntimeEffectReconciliationFixture,
     unittest.TestCase,
 ):
+    maxDiff = None
+
     def service(self, unit_of_work_factory, observer=None, fold_service=None):
         self.require_service()
         return EffectAttemptReconciliationService(

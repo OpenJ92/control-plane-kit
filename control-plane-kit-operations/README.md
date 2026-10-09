@@ -57,6 +57,34 @@ The Postgres store bundle owns operational records for:
 
 Stores expose persistence operations but never commit independently.
 
+## Receiver Health And History
+
+Fresh signed health preparations address stable workload and gateway receiver
+identities. The request's separate `authority_context` retains the exact approved
+authored graph and realized projection. Operations composes Core's receiver V2
+values and verifiers; external adapters still own signing and delivery.
+
+`ReceiverHealthEffectPreparationRecord` uses the closed
+`health-effect-preparation.v2` envelope. The original
+`HealthEffectPreparationRecord` and V1 bytes remain readable as history. Neither
+record grants current permission: fresh start, signing reload and fresh fold
+check current receiver membership, original plan/approval, actor, fence, keys
+and the retained validity interval. Live signing pairs accept only V2.
+
+Standalone reload and nested fold acquire the receiver lifecycle lock before
+request, ordered runs, attempt, session and workspace rows. A nested reload uses
+only the same transaction's held prefix. It refuses changed or foreign evidence
+without retry. Historical replay checks original evidence without consulting
+current selection, retirement, signing keys or time. V2 history structurally
+decodes original common configuration; V1 history does not.
+
+The owner examples are `tests/receiver_health_execution_fixture.py` and the
+managed application chain. Their fresh positives use DESIRED initial deployment;
+the sampled A/B/C worlds retain pending introductions across desired revisions.
+Accepted-current update coverage belongs to #1912. O2 implementation validation
+is pending on [PR #1915](https://github.com/OpenJ92/control-plane-kit/pull/1915);
+these examples do not establish provider or published-image acceptance.
+
 ## Current Schema Installation
 
 Operations owns one exact current Postgres schema. `install_schema()` creates
@@ -97,6 +125,61 @@ short transaction: record durable intent
 
 No Postgres transaction or lock may span Docker, filesystem, provider, network,
 health, or other external IO.
+
+## Receiver authoring context
+
+`ReceiverAuthoringContextReadService(factory).read(query, context=context)`
+returns exact selected public receiver configuration and recorded provenance
+from one committed database snapshot. `ReceiverAuthoringContextQuery` names a
+workspace, optional complete `ReceiverLifecycleExpectation`, and optional
+`pending_draft={"draft_id": ..., "expected_head_revision": ...}`. The trusted
+operator needs both `INSTANCE_WORKSPACE_READ` and `DELEGATION_KEY_READ` in that
+workspace before the factory is called. Existing graph reads stay redacted.
+
+The `receiver-authoring-context.v1` descriptor contains `workspace_id`, the five
+`expectation` pins, `current`, optional `desired`, and optional `pending_draft`.
+Each assigned source contains its graph/projection IDs and complete ordered
+receiver list. A receiver contains its source-specific `binding`, literal
+`configuration_artifact`, immutable `origin` references and factual
+`lifecycle` (`current` or `pending`). The draft additionally carries its exact
+ID/head. A receiver-free legacy draft can have an explicitly null projection;
+an absent desired source differs from an assigned source with no receivers.
+
+This non-executing example explains the association:
+
+1. Assume accepted current graph A contains receiver X, established by the
+   existing advancement owner after its completion prerequisites. Desired B
+   retains X with different selected public configuration.
+2. Read A and B together. X appears once in each source with that source's exact
+   artifact bytes. Both entries retain X's original introducing action; B does
+   not become accepted merely because it is desired.
+3. Author proposal C using the appropriate source's material and all five
+   captured pins. Later admission checks current truth again; a concurrent
+   pointer change makes the old expectation stale. This example proves no
+   accepted managed update for #1912.
+4. For a pending receiver, name the exact live draft/head. A later revision of
+   that same draft keeps its original introduction. Reading a historical or
+   tombstoned head is refused; omission does not free a reserved receiver ID.
+5. If an original command is interrupted, retry with its retained prepared
+   artifact and receipt. Do not use a new context read to regenerate that
+   command, replace its receiver or reselect its verification keys.
+
+The read returns at most 64 total source bindings, counting duplicates. Its
+shared database budget is 1,024 SELECTs, 4,096 returned rows and 8 MiB of scalar
+values, with pre-fetch SQL bounds: graph/projection documents 1 MiB, selected
+configuration and introducing payloads 64 KiB, ancillary text 2 KiB. Arbitrary
+record metadata is excluded. Logical query/response bodies are capped at
+16 KiB/1 MiB using compact sorted JSON, `ensure_ascii=False`, `allow_nan=False`,
+then UTF-8 encoding. Malformed, stale, corrupt or over-budget contexts fail as
+a whole; there is no pagination or partial authoring material.
+
+The snapshot is read-only and may already be superseded at delivery. It grants
+no admission, signing, provider-health or retention authority and creates no
+action/history/identity. Core catalogue and Operations mapping do not establish
+actual HTTP/MCP transport support. Servers #238 must adopt the accepted package
+coordinates together with query decoding, both scopes and separate wire/envelope
+bounds before deploying this capability; installed catalogues can automatically
+expose routes and MCP resources.
 
 ## Execution Boundary
 

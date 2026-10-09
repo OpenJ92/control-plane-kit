@@ -685,7 +685,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                     language.runtime_effect_intent_fingerprint(candidate),
                     baseline,
                 )
-        self.assertEqual({value.value for value in RuntimeEffectKind}, {"realize-activity"})
+        self.assertEqual({value.value for value in RuntimeEffectKind}, {"realize-activity", "configuration-activity.v1"})
 
     def test_projection_and_fingerprint_require_exact_nominal_values(self) -> None:
         language = _language()
@@ -758,6 +758,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                 ("authority_ref", True),
                 ("authority_deliveries", True),
                 ("products", True),
+                ("configuration_instances", True),
             ),
         )
         self.assertTrue(language.RuntimeEffectIntentSource.__dataclass_params__.frozen)

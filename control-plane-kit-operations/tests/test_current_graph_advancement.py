@@ -11,6 +11,11 @@ from typing import Any
 
 import psycopg
 
+from tests.lifecycle_lock_fixture import (
+    LifecycleLockFixture, LIFECYCLE_LOCK, REQUEST_LOCK, RUN_LOCK,
+    SESSION_LOCK, WORKSPACE_LOCK,
+)
+
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
@@ -19,7 +24,9 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     LifecycleOperationKind,
 )
-from control_plane_kit_core.planning import ActivityId, ActivityPlan, NodeTarget
+from control_plane_kit_core.planning import (
+    ActivityDependency, ActivityId, ActivityPlan, NodeTarget, RuntimeTarget, StartRuntime,
+)
 from control_plane_kit_core.planning import PlannedActivity, StartNode
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
@@ -38,6 +45,8 @@ from control_plane_kit_operations.advancement import (
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+from tests.accepted_graph_origin_fixture import accept_selected_fixture_origin
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -59,7 +68,6 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     RealizedGraphProjectionKind,
     RetryIdentity,
-    WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
     CloseOperationSession,
@@ -245,7 +253,113 @@ class Sequence:
         return self._values.pop(0)
 
 
-class CurrentGraphAdvancementTests(unittest.TestCase):
+class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
+    def test_advancement_and_lifecycle_retry_recovery_preserve_outcomes_in_both_orders(self):
+        from control_plane_kit_core.operations.lifecycle import RecoveryScope
+        from control_plane_kit_operations.lifecycle import RunLifecycleCommandService, RunLifecycleError, StartActivityRun, ExecutionLeaseDuration
+        from control_plane_kit_operations.activity_run_retry import RetryFailedActivityRun
+        from control_plane_kit_operations.activity_run_retry_interpreter import ActivityRunRetryCommandService
+        from control_plane_kit_operations.execution_lease_recovery import RecoveryAuthority, RenewExpiredExecutionClaim
+        from control_plane_kit_operations.execution_lease_recovery_interpreter import ExecutionLeaseRecoveryCommandService
+        for kind in ("lifecycle", "retry", "recovery"):
+            for advance_first in (False, True):
+                with self.subTest(kind=kind, advance_first=advance_first):
+                    self.reset_truth()
+                    self.seed_succeeded_run()
+                    def advance(uow):
+                        return CurrentGraphAdvancementCommandService(uow,
+                            clock=lambda: "2026-07-22T13:05:00Z",
+                            id_factory=Sequence("advance-event", "advance-action")).execute(self.command())
+                    def other(uow):
+                        def no_id():
+                            self.fail("refused terminal operation allocated identity")
+                        fence = ExecutionLeaseFence("worker-a", 1)
+                        key = IdempotencyKey("opposing-" + kind)
+                        if kind == "lifecycle":
+                            return RunLifecycleCommandService(uow, clock=lambda: "2026-07-22T13:05:00Z",
+                                id_factory=no_id).execute(StartActivityRun("run-a", self.authority(), fence, key))
+                        if kind == "retry":
+                            return ActivityRunRetryCommandService(uow, id_factory=no_id).execute(
+                                RetryFailedActivityRun("request-a", RunId("run-a"), fence,
+                                    RecoveryAuthority("operator-a", "operator-proof", (RecoveryScope.OPERATE,)), key))
+                        return ExecutionLeaseRecoveryCommandService(uow, id_factory=no_id).execute(
+                            RenewExpiredExecutionClaim("request-a", RunId("run-a"), fence,
+                                RecoveryAuthority("operator-a", "operator-proof", (RecoveryScope.RENEW_CLAIM,)),
+                                ExecutionLeaseDuration(600), key))
+                    ordered = (advance, other) if advance_first else (other, advance)
+                    futures = self.opposing_commands(*ordered, pause_after=lambda sql, parameters:
+                        "FROM cpk_execution_requests" in sql and "FOR UPDATE" in sql
+                        and parameters == ("request-a",))
+                    accepted, refused = futures if advance_first else futures[::-1]
+                    result = accepted.result(timeout=1)
+                    self.assertEqual(result.to_authored_graph_id, "graph-desired")
+                    with self.assertRaises(RunLifecycleError):
+                        refused.result(timeout=1)
+                    self.assertEqual(self.advancement_truth()[2], 1)
+                    with self.unit_of_work() as uow:
+                        self.assertIs(uow.stores.execution.get_run("run-a").status, ActivityRunStatus.SUCCEEDED)
+                        actions = tuple(action for action in uow.stores.activity_history.actions_for_session("session-a")
+                            if action.action_type is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH)
+                        self.assertEqual(actions, (result.action,))
+
+    def test_selection_and_publication_vs_advancement_preserve_cas_in_both_orders(self):
+        from control_plane_kit_operations.desired_topology_drafts import (
+            CreateDesiredTopologyDraft, SelectDesiredTopologyDraft, DesiredTopologyDraftCommandService,
+        )
+        from control_plane_kit_operations.desired_realized_projections import (
+            PublishDesiredRealizedProjection, DesiredRealizedProjectionCommandService,
+        )
+        from tests.draft_catalogue_fixture import principal
+        for kind in ("selection", "publication"):
+            for advance_first in (False, True):
+                with self.subTest(kind=kind, advance_first=advance_first):
+                    self.reset_truth()
+                    self.seed_succeeded_run()
+                    draft_service = lambda uow: DesiredTopologyDraftCommandService(uow,
+                        clock=lambda: "2026-07-22T13:05:00Z",
+                        id_factory=Sequence("draft-a", "draft-graph", "draft-action", "selected-action"))
+                    if kind == "selection":
+                        draft = draft_service(self.unit_of_work).execute(CreateDesiredTopologyDraft(
+                            principal().command_context("workspace-a"), "session-a", "Next draft",
+                            DeploymentGraph("draft"), IdempotencyKey("create-draft")))
+                        selected_graph = draft.graph_id
+                        command = SelectDesiredTopologyDraft(principal().command_context("workspace-a"),
+                            "session-a", draft.draft_id, draft.revision, "graph-desired",
+                            self.desired_projection.projection_id, self.desired_graph_revision,
+                            IdempotencyKey("select-draft"))
+                        def publish(uow):
+                            return DesiredTopologyDraftCommandService(uow,
+                                clock=lambda: "2026-07-22T13:05:00Z",
+                                id_factory=Sequence("selection-action")).execute(command)
+                    else:
+                        selected_graph = "graph-desired"
+                        command = PublishDesiredRealizedProjection("session-a", "workspace-a", "operator-a",
+                            "graph-desired", self.desired_projection.projection_id, self.desired_graph_revision,
+                            self.desired_projection, "operation-publish", 1, IdempotencyKey("publish-new-generation"))
+                        def publish(uow):
+                            return DesiredRealizedProjectionCommandService(uow,
+                                clock=lambda: "2026-07-22T13:05:00Z",
+                                action_id_factory=lambda: "publication-action").execute(command)
+                    def advance(uow):
+                        return CurrentGraphAdvancementCommandService(uow,
+                            clock=lambda: "2026-07-22T13:05:00Z",
+                            id_factory=Sequence("advance-event", "advance-action")).execute(self.command())
+                    ordered = (advance, publish) if advance_first else (publish, advance)
+                    futures = self.opposing_commands(*ordered, pause_after=lambda sql, parameters:
+                        "pg_advisory_xact_lock" in sql and parameters == ("receiver-lifecycle:workspace-a",))
+                    advancement, publication = futures if advance_first else futures[::-1]
+                    self.assertIsNotNone(publication.result(timeout=1))
+                    if advance_first:
+                        self.assertEqual(advancement.result(timeout=1).to_authored_graph_id, "graph-desired")
+                    else:
+                        with self.assertRaises(CurrentGraphAdvancementConflict):
+                            advancement.result(timeout=1)
+                    with self.unit_of_work() as uow:
+                        workspace = uow.stores.workspaces.get("workspace-a")
+                    self.assertEqual(workspace.desired_graph_id, selected_graph)
+                    self.assertEqual(workspace.desired_graph_revision, self.desired_graph_revision + 1)
+                    self.assertEqual(workspace.current_graph_id, "graph-desired" if advance_first else "graph-current")
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -255,12 +369,11 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
             )
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.addCleanup(self.connection.execute, "TRUNCATE TABLE cpk_workspaces CASCADE")
         self.seed_truth()
-
-    def tearDown(self) -> None:
-        self.connection.close()
 
     def unit_of_work(self) -> PostgresUnitOfWork:
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
@@ -517,12 +630,14 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
 
         self.assertEqual(result.to_authored_graph_id, "graph-desired")
 
-    def test_first_execution_locks_workspace_before_request_and_run(self) -> None:
+    def test_first_execution_locks_request_before_session_and_workspace(self) -> None:
+        # #1896 A2 strengthened law explicitly supersedes the old
+        # workspace-before-request structural assertion; terminal truth survives.
         self.seed_succeeded_run()
         blocker = psycopg.connect(self.database_url)
         blocker.execute(
-            "SELECT workspace_id FROM cpk_workspaces "
-            "WHERE workspace_id = 'workspace-a' FOR UPDATE"
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
         )
         blocker_pid = blocker.info.backend_pid
         worker_pids: queue.Queue[int] = queue.Queue()
@@ -544,8 +659,12 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 self.wait_until_blocked_by(worker_pid, blocker_pid)
                 with psycopg.connect(self.database_url) as probe:
                     probe.execute(
-                        "SELECT request_id FROM cpk_execution_requests "
-                        "WHERE request_id = 'request-a' FOR UPDATE NOWAIT"
+                        "SELECT workspace_id FROM cpk_workspaces "
+                        "WHERE workspace_id = 'workspace-a' FOR UPDATE NOWAIT"
+                    )
+                    probe.execute(
+                        "SELECT session_id FROM cpk_operation_sessions "
+                        "WHERE session_id = 'session-a' FOR UPDATE NOWAIT"
                     )
                     probe.execute(
                         "SELECT run_id FROM cpk_activity_runs "
@@ -558,6 +677,19 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 blocker.close()
 
         self.assertEqual(result.to_authored_graph_id, "graph-desired")
+
+    def test_fresh_advancement_takes_exact_guard_before_request_and_all_later_rows(self):
+        self.seed_succeeded_run()
+        def execute(uow):
+            return CurrentGraphAdvancementCommandService(uow,
+                clock=lambda: "2026-07-22T13:05:00Z",
+                id_factory=Sequence("guard-event", "guard-action")).execute(self.command())
+        with self.blocked_command(LIFECYCLE_LOCK, ("receiver-lifecycle:workspace-a",), execute) as future:
+            for query, key in ((REQUEST_LOCK, "request-a"), (RUN_LOCK, "run-a"),
+                               (SESSION_LOCK, "session-a"), (WORKSPACE_LOCK, "workspace-a")):
+                self.assert_row_lockable(query, (key,))
+            self.assert_advisory_available("operation-action:session-a:advance-a", available=False)
+        self.assertEqual(future.result(timeout=1).to_authored_graph_id, "graph-desired")
 
     def test_replay_locks_request_before_run_but_changed_intent_locks_neither(self) -> None:
         self.seed_succeeded_run()
@@ -696,48 +828,33 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
     def test_replay_rejects_run_reassigned_to_another_compatible_request(self) -> None:
         self.seed_succeeded_run()
         command = self.command()
-        self.service("event-advance", "action-advance").execute(command)
+        accepted = self.service("event-advance", "action-advance").execute(command)
         accepted_truth = self.advancement_truth()
-        self.connection.execute(
-            "UPDATE cpk_execution_requests "
-            "SET status = 'abandoned', claim_worker_id = NULL, "
-            "claim_generation = NULL, claimed_at = NULL, lease_expires_at = NULL "
-            "WHERE request_id = 'request-a'"
-        )
-        with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.execution.add_request(
-                ExecutionRequestRecord(
-                    ExecutionRequestIdentity(
-                        "request-b",
-                        "workspace-a",
-                        "session-a",
-                        "plan-a",
-                    ),
-                    ExecutionRequestStatus.CLAIMED,
-                    "operator-a",
-                    "2026-07-22T13:06:00Z",
-                    "approval-request-a",
-                    "approval-decision-a",
-                    ExecutionIdempotency("execute-b", "fingerprint-b"),
-                    ClaimIdentity(
-                        "worker-a",
-                        1,
-                        "2026-07-22T13:06:30Z",
-                        "2026-07-22T13:16:30Z",
-                    ),
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        # Original acceptance now has a typed run/request FK. Reassignment is
+        # rejected at the durable boundary before replay can observe corruption.
+        with self.assertRaises(psycopg.errors.ForeignKeyViolation) as captured:
+            with self.connection.transaction():
+                self.connection.execute(
+                    "UPDATE cpk_execution_requests "
+                    "SET status = 'abandoned', claim_worker_id = NULL, "
+                    "claim_generation = NULL, claimed_at = NULL, lease_expires_at = NULL "
+                    "WHERE request_id = 'request-a'"
                 )
-            )
-            unit_of_work.commit()
-        self.connection.execute(
-            "UPDATE cpk_activity_runs SET request_id = 'request-b' "
-            "WHERE run_id = 'run-a'"
-        )
-
-        with self.assertRaises(CurrentGraphAdvancementError) as captured:
-            self.service("unused-event", "unused-action").execute(command)
-
-        self.assertIsNone(captured.exception.__cause__)
-        self.assertIsNone(captured.exception.__context__)
+                insert_recorded_request(self.connection, request_id="request-b", status="claimed",
+                    requested_at="2026-07-22T13:06:00Z", idempotency_key="execute-b", intent_fingerprint="fingerprint-b",
+                    claim_worker_id="worker-a", claim_generation=1, claimed_at="2026-07-22T13:06:30Z",
+                    lease_expires_at="2026-07-22T13:16:30Z")
+                self.connection.execute(
+                    "UPDATE cpk_activity_runs SET request_id = 'request-b' "
+                    "WHERE run_id = 'run-a'"
+                )
+        self.assertEqual(captured.exception.diag.constraint_name, "cpk_action_advancement_run_fk")
+        self.assertEqual(self.connection.execute(
+            "SELECT request_id FROM cpk_activity_runs WHERE run_id='run-a'"
+        ).fetchone(), ("request-a",))
+        self.assertEqual(self.service("unused-event", "unused-action").execute(command),
+            replace(accepted, replayed=True))
         self.assertEqual(self.advancement_truth(), accepted_truth)
 
     def test_replay_translates_malformed_persisted_action(self) -> None:
@@ -858,7 +975,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                         "session-a"
                     )
                 self.assertEqual(workspace.current_graph_id, "graph-current")
-                self.assertEqual(actions, ())
+                self.assertEqual(actions, self.admission_actions)
 
     def test_scope_worker_and_stale_graph_fail_closed(self) -> None:
         self.seed_succeeded_run()
@@ -973,19 +1090,20 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         plan = ActivityPlan(
             (PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api"))),)
         )
+        WorkspaceCommandService(self.unit_of_work,
+            clock=lambda: "2026-07-22T10:00:00Z", id_factory=lambda: "stable-origin-graph").create(
+                CreateWorkspace("workspace-rotation", "Rotation", "operator-a", IdempotencyKey("stable-origin-create")))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.create(
-                WorkspaceRecord("workspace-rotation", "Rotation")
-            )
+            reference = self.register_origin_product(stores, "workspace-rotation")
             authored = stores.graphs.save(
                 GraphVersionRecord.from_graph(
                     graph_id="graph-stable",
                     workspace_id="workspace-rotation",
-                    version=1,
+                    version=2,
                     graph=DeploymentGraph("stable-authored"),
                     created_by="operator-a",
-                    created_at="2026-07-22T12:00:00Z",
+                    created_at="2026-07-22T10:00:00Z",
                 )
             )
             projections = tuple(
@@ -998,18 +1116,22 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                             RealizedGraphProjectionKind.DELEGATION_VERIFIER
                         ),
                         projection_key=key,
-                        graph=DeploymentGraph(f"realized-{key}"),
+                        graph=self.origin_graph(f"realized-{key}", reference),
                         created_by="rotation-program",
-                        created_at="2026-07-22T12:00:30Z",
+                        created_at="2026-07-22T10:00:30Z",
                     )
                 )
                 for key in ("a", "a-plus-b", "b")
             )
-            stores.workspaces.set_current_graph(
+            stores.workspaces.set_desired_graph(
                 "workspace-rotation",
                 authored.graph_id,
                 projections[0].projection_id,
             )
+            unit_of_work.commit()
+        accept_selected_fixture_origin(self, self.origin_plan(), workspace_id="workspace-rotation", prefix="stable-origin")
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
             workspace = stores.workspaces.set_desired_graph(
                 "workspace-rotation",
                 authored.graph_id,
@@ -1028,6 +1150,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
+        self._admit_recorded_execution("overlap", "workspace-rotation")
         overlap = self.service("event-overlap-advance", "action-overlap-advance").execute(
             AdvanceCurrentGraph(
                 workspace_id="workspace-rotation",
@@ -1070,6 +1193,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
+        self._admit_recorded_execution("b", "workspace-rotation")
         final = self.service("event-b-advance", "action-b-advance").execute(
             AdvanceCurrentGraph(
                 workspace_id="workspace-rotation",
@@ -1114,7 +1238,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 OperationActionRecord(
                     "action-duplicate",
                     "session-a",
-                    1,
+                    unit_of_work.stores.activity_history.next_action_ordinal("session-a"),
                     LifecycleOperationKind.START_RUN,
                     "worker-a",
                     created_at="2026-07-22T13:04:00Z",
@@ -1162,36 +1286,66 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
             1,
         )
 
+    def origin_plan(self):
+        runtime = PlannedActivity(ActivityId("advancement-origin-runtime"), StartRuntime(RuntimeTarget("runtime-a")))
+        return ActivityPlan((runtime, PlannedActivity(ActivityId("advancement-origin-api"), StartNode(NodeTarget("api")),
+            dependencies=(ActivityDependency(runtime.activity_id),))))
+
+    def register_origin_product(self, stores, workspace_id="workspace-a"):
+        from control_plane_kit_core.products import (
+            ContainerServerProduct, OciImageReference, ProductDescriptorCodec, ProductIdentity, ProductRuntimeContract,
+        )
+        from control_plane_kit_operations.products import InlineDescriptorSource
+        document = ProductDescriptorCodec().encode_document(ContainerServerProduct(
+            identity=ProductIdentity("control-plane-kit", "advancement-fixture", 1),
+            image=OciImageReference("ghcr.io", "openj92/advancement-fixture", "sha256:" + "a" * 64),
+            runtime_contract=ProductRuntimeContract()))
+        return stores.registered_products.register(workspace_id=workspace_id, descriptor_document=document,
+            source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-07-22T10:00:00Z").reference
+
+    def origin_graph(self, name, reference):
+        from tests.graph_lineage_fixture import execution_graph
+        graph = execution_graph(name, node_ids=("api",))
+        return replace(graph, nodes={"api": replace(graph.nodes["api"], metadata={
+            "product_identity": reference.identity.key,
+            "product_descriptor_digest": reference.descriptor_sha256.value})})
+
     def seed_truth(self) -> None:
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
         plan = ActivityPlan(
             (PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api"))),)
         )
+        WorkspaceCommandService(self.unit_of_work,
+            clock=lambda: "2026-07-22T10:00:00Z", id_factory=lambda: "advancement-origin-graph").create(
+                CreateWorkspace("workspace-a", "Workspace A", "operator-a", IdempotencyKey("advancement-origin-create")))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.create(
-                WorkspaceRecord("workspace-a", "Workspace A")
-            )
+            reference = self.register_origin_product(stores)
             stores.graphs.save(
                 GraphVersionRecord.from_graph(
                     graph_id="graph-current",
                     workspace_id="workspace-a",
-                    version=1,
-                    graph=DeploymentGraph("current"),
+                    version=2,
+                    graph=self.origin_graph("current", reference),
                     created_by="operator-a",
-                    created_at="2026-07-22T12:00:00Z",
+                    created_at="2026-07-22T10:00:30Z",
                 )
             )
+            stores.workspaces.set_desired_graph("workspace-a", "graph-current")
+            unit_of_work.commit()
+        self.origin_acceptance = accept_selected_fixture_origin(self, self.origin_plan(), prefix="advancement-origin")
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
             stores.graphs.save(
                 GraphVersionRecord.from_graph(
                     graph_id="graph-desired",
                     workspace_id="workspace-a",
-                    version=2,
-                    graph=DeploymentGraph("desired"),
+                    version=3,
+                    graph=self.origin_graph("desired", reference),
                     created_by="operator-a",
                     created_at="2026-07-22T12:00:30Z",
                 )
             )
-            stores.workspaces.set_current_graph("workspace-a", "graph-current")
             stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             workspace = stores.workspaces.get("workspace-a")
             self.current_projection = stores.realized_graphs.get(
@@ -1251,29 +1405,13 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                     "2026-07-22T12:03:30Z",
                 )
             )
-            stores.execution.add_request(
-                ExecutionRequestRecord(
-                    ExecutionRequestIdentity(
-                        "request-a",
-                        "workspace-a",
-                        "session-a",
-                        "plan-a",
-                    ),
-                    ExecutionRequestStatus.CLAIMED,
-                    "operator-a",
-                    "2026-07-22T12:04:00Z",
-                    "approval-request-a",
-                    "approval-decision-a",
-                    ExecutionIdempotency("execute-a", "fingerprint-a"),
-                    ClaimIdentity(
-                        "worker-a",
-                        1,
-                        "2026-07-22T12:04:30Z",
-                        "2026-07-22T12:14:30Z",
-                    ),
-                )
-            )
             unit_of_work.commit()
+
+        admitted = admit_fixture_plan(self)
+        self.admission_actions = (admitted.action,)
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', claim_generation=1, "
+            "claimed_at='2026-07-22T12:04:30Z', lease_expires_at='2026-07-22T12:14:30Z' WHERE request_id='request-a'")
 
     def reset_truth(self) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
@@ -1287,7 +1425,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
     ) -> None:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-a",
                     "plan-a",
@@ -1326,9 +1464,9 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         return self.connection.execute(
             "SELECT current_graph_id, current_realized_projection_id, "
             "(SELECT COUNT(*) FROM cpk_activity_events "
-            " WHERE event_type = 'current_graph_advanced'), "
+            " WHERE event_type = 'current_graph_advanced' AND run_id = 'run-a'), "
             "(SELECT COUNT(*) FROM cpk_operation_actions "
-            " WHERE action_type = 'advance_current_graph') "
+            " WHERE action_type = 'advance-current-graph' AND session_id = 'session-a') "
             "FROM cpk_workspaces WHERE workspace_id = 'workspace-a'"
         ).fetchone()
 
@@ -1395,62 +1533,52 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 "2026-07-22T12:03:30Z",
             )
         )
-        stores.execution.add_request(
-            ExecutionRequestRecord(
-                ExecutionRequestIdentity(
-                    request_id,
-                    workspace_id,
-                    session_id,
-                    plan_id,
-                ),
-                ExecutionRequestStatus.CLAIMED,
-                "operator-a",
-                "2026-07-22T12:04:00Z",
-                f"approval-request-{suffix}",
-                f"approval-decision-{suffix}",
-                ExecutionIdempotency(f"execute-{suffix}", f"fingerprint-{suffix}"),
-                ClaimIdentity(
-                    "worker-a",
-                    1,
-                    "2026-07-22T12:04:30Z",
-                    "2026-07-22T12:14:30Z",
-                ),
-            )
-        )
-        stores.execution.add_run(
-            ActivityRunRecord(
-                run_id,
-                plan_id,
-                AdmittedRun(request_id),
-                RetryIdentity(1),
-                ActivityRunStatus.SUCCEEDED,
-                "2026-07-22T13:00:00Z",
-                started_at="2026-07-22T13:00:30Z",
-                settled_at="2026-07-22T13:04:00Z",
-            )
-        )
-        for ordinal, (kind, activity_id) in enumerate(
-            (
-                (ActivityEventKind.RUN_OPENED, None),
-                (ActivityEventKind.RUN_STARTED, None),
-                (ActivityEventKind.STEP_STARTED, "start-api"),
-                (ActivityEventKind.STEP_SUCCEEDED, "start-api"),
-                (ActivityEventKind.RUN_SUCCEEDED, None),
-            ),
-            start=1,
-        ):
-            stores.execution.add_event(
-                ActivityEventRecord(
-                    f"event-{suffix}-{ordinal}",
+
+    def _admit_recorded_execution(self, suffix, workspace_id):
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
+        request_id, plan_id, run_id = f"request-{suffix}", f"plan-{suffix}", f"run-{suffix}"
+        admit_fixture_plan(self, workspace_id=workspace_id, session_id=f"session-{suffix}",
+            plan_id=plan_id, request_id=request_id, approval_request_id=f"approval-request-{suffix}", key=f"execute-{suffix}")
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', claim_generation=1, "
+            "claimed_at='2026-07-22T12:04:30Z', lease_expires_at='2026-07-22T12:14:30Z' WHERE request_id=%s", (request_id,))
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution._add_run(
+                ActivityRunRecord(
                     run_id,
-                    ordinal,
-                    kind,
-                    f"2026-07-22T13:00:{ordinal:02d}Z",
-                    activity_id=activity_id,
-                    evidence=BoundedEvidence.from_mapping({"seed": "rotation"}),
+                    plan_id,
+                    AdmittedRun(request_id),
+                    RetryIdentity(1),
+                    ActivityRunStatus.SUCCEEDED,
+                    "2026-07-22T13:00:00Z",
+                    started_at="2026-07-22T13:00:30Z",
+                    settled_at="2026-07-22T13:04:00Z",
                 )
             )
+            for ordinal, (kind, activity_id) in enumerate(
+                (
+                    (ActivityEventKind.RUN_OPENED, None),
+                    (ActivityEventKind.RUN_STARTED, None),
+                    (ActivityEventKind.STEP_STARTED, "start-api"),
+                    (ActivityEventKind.STEP_SUCCEEDED, "start-api"),
+                    (ActivityEventKind.RUN_SUCCEEDED, None),
+                ),
+                start=1,
+            ):
+                stores.execution.add_event(
+                    ActivityEventRecord(
+                        f"event-{suffix}-{ordinal}",
+                        run_id,
+                        ordinal,
+                        kind,
+                        f"2026-07-22T13:00:{ordinal:02d}Z",
+                        activity_id=activity_id,
+                        evidence=BoundedEvidence.from_mapping({"seed": "rotation"}),
+                    )
+                )
 
+            unit_of_work.commit()
 
 if __name__ == "__main__":
     unittest.main()

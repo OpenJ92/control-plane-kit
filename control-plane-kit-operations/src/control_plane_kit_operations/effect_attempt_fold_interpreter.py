@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from contextlib import ExitStack
 from typing import Any, Callable
 
 from control_plane_kit_core.operations import (
@@ -14,9 +16,14 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
+    ActivityRunStatus,
     ExecutionRequestStatus,
 )
-from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
+from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
+from control_plane_kit_core.planning import resolve_management_observation, CleanupConfigurationInstances
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
+from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure, RuntimeEffectKind
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -24,10 +31,14 @@ from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldResult,
     ExistingFold,
     FoldEffectAttempt,
+    FoldNativeConnectionObservation,
     GuardedObservedEffectFold,
+    GuardedHealthEffectFold,
     NewlyFolded,
     _valid_fold_command,
     _valid_guarded_observed_fold,
+    _valid_native_fold,
+    _valid_health_fold,
 )
 from control_plane_kit_operations.effect_attempt_intent_evidence import (
     EffectAttemptIntentRecord,
@@ -39,13 +50,31 @@ from control_plane_kit_operations.effect_attempts import (
 )
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
+    ExecutionEffectOutcome,
+    NativeConnectionEffectOutcome,
+    NativeConnectionObservation,
+    NativeConnectionRefused,
     ObservedEffectOutcome,
     _legacy_effect_outcome_failure,
     effect_outcome_failure,
     effect_outcome_observation_records,
+    effect_outcome_transition,
 )
+from control_plane_kit_operations.effect_run_prefix import (
+    EffectRunPrefixConflict, _lock_effect_run_prefix,
+)
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+from control_plane_kit_operations.runtime_management_targets import (
+    is_native_connection_operation, is_signed_management_health_operation,
+)
+from control_plane_kit_operations.health_signing_authority import (
+    HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority, _lock_health_prefix,
+)
+from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
+    ActivityPlanStatus,
+    ApprovalDecisionKind,
     BoundedEvidence,
     ObservationRecord,
     OperationsRecordError,
@@ -91,6 +120,27 @@ class EffectAttemptFoldService:
                 "guarded observed effect fold command is invalid"
             )
         return _execute_fold(self, command.fold, command)
+
+    def execute_native(
+        self, command: FoldNativeConnectionObservation,
+    ) -> EffectAttemptFoldResult:
+        if not _valid_native_fold(command):
+            raise InvalidOperationCommand("native connection fold command is invalid")
+        required = (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE)
+        if any(scope not in command.context.granted_scopes for scope in required):
+            raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+        return _execute_fold(self, command, None)
+
+    def execute_health(self, command: GuardedHealthEffectFold, *,
+            signing_authority: HealthSigningAuthorityReloadService) -> EffectAttemptFoldResult:
+        if (not _valid_health_fold(command)
+                or type(signing_authority) is not HealthSigningAuthorityReloadService):
+            raise InvalidOperationCommand("signed health fold command is invalid")
+        required = (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE,
+            PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
+        if any(scope not in command.context.granted_scopes for scope in required):
+            raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+        return _execute_fold(self, command.fold, None, command, signing_authority)
 
     def _plan_result(
         self,
@@ -166,26 +216,131 @@ class EffectAttemptFoldService:
         return result
 
 
-def _execute_fold(
+def _execute_fold(self, command, guarded, health=None, signing_authority=None):
+    if type(command) is FoldNativeConnectionObservation or health is not None:
+        return _execute_fold_once(self, command, guarded, health, signing_authority)
+    from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+    try:
+        with _configuration_accounting(command.transition.identity.run_id.value, join=True, active=False) as accounting:
+            return _execute_fold_once(self, command, guarded, health, signing_authority)
+    except (KeyError, ValueError, TypeError, AttributeError):
+        if not accounting.active:
+            raise
+        pass
+    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+
+
+def _execute_fold_once(
     self: EffectAttemptFoldService,
-    command: FoldEffectAttempt,
+    command: FoldEffectAttempt | FoldNativeConnectionObservation,
     guarded: GuardedObservedEffectFold | None,
+    health: GuardedHealthEffectFold | None = None,
+    signing_authority: HealthSigningAuthorityReloadService | None = None,
 ) -> EffectAttemptFoldResult:
     if PolicyScope.EXECUTION_OPERATE not in command.authority.scopes:
         raise EffectAttemptFoldDenied("scope execution:operate is missing")
     fence = _translate_fence(command)
+    native = command if type(command) is FoldNativeConnectionObservation else None
+    identity = native.identity if native is not None else command.transition.identity
 
-    with self._unit_of_work_factory() as unit_of_work:
+    with self._unit_of_work_factory() as unit_of_work, ExitStack() as evidence_contexts:
         stores = unit_of_work.stores
+        health_prefix = None
+        health_locator = None
+        configuration_locator = None
+        configuration_request = None
+        configuration_guard = None
+        configuration_prefix = None
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+        accounting = _ACCOUNTING.get()
+        if accounting is not None and native is None and health is None:
+            if not accounting.active:
+                stores.configuration_preparation._configure_run(identity.run_id.value)
+            if accounting.active:
+                from .postgres.configuration_evidence import _joined_read
+                evidence_contexts.enter_context(_joined_read(stores.connection))
+                configuration_request = stores.execution.get_request(command.request_id)
+                configuration_locator = _attempt_for_update(stores, identity, for_update=False)
+                original = stores.effect_attempt_intents.get(identity)
+                if (original.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1
+                        and _fold(command, configuration_locator) != configuration_locator.state):
+                    configuration_guard = stores.graphs.lock_receiver_lifecycle(configuration_request.identity.workspace_id)
+        if health is not None:
+            # Locate replay without current permission. Only a fresh transition
+            # acquires L, before ANY request/run/attempt/runtime row lock.
+            locator = stores.execution.get_request(command.request_id)
+            health_locator = _attempt_for_update(stores, identity, for_update=False)
+            if _fold(command, health_locator) != health_locator.state:
+                if locator.identity.workspace_id != health.context.workspace_id:
+                    raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+                health_prefix = _lock_health_prefix(unit_of_work, locator, identity)
         request = _request_for_update(stores, command.request_id)
+        if configuration_request is not None and request != configuration_request:
+            raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        if configuration_guard is not None:
+            configuration_prefix = _lock_effect_run_prefix(unit_of_work, request,
+                identity.run_id.value, latest_required=True)
+            if configuration_prefix.latest_run != configuration_prefix.requested_run:
+                raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+        if health is not None and request != locator:
+            raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        if native is not None and native.context.workspace_id != request.identity.workspace_id:
+            raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+        if health is not None and health.context.workspace_id != request.identity.workspace_id:
+            raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
         run = _run_for_request_for_update(
             stores,
             command.request_id,
-            command.transition.identity.run_id.value,
+            identity.run_id.value,
         )
-        attempt = _attempt_for_update(stores, command.transition.identity)
-        _require_request_run(command, request, run, attempt)
+        run_prefix, located_native_intent, located_health_intent = health_prefix or configuration_prefix, None, None
+        if native is not None or health is not None:
+            # Request serialization permits a nonlocking branch locator. Keep
+            # malformed truth/current authority refusals before fresh latest-run
+            # acquisition; then lock the selected prefix before the attempt.
+            located_attempt = _attempt_for_update(stores, identity, for_update=False)
+            if health_locator is not None and located_attempt != health_locator:
+                raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+            _require_current_authority(command, request)
+            latest_required = False
+            if native is not None:
+                located_native_intent = _native_fold_intent(
+                    stores, native, request, run, located_attempt, fence)
+                latest_required = located_attempt.state.status is EffectAttemptStatus.STARTED
+                if latest_required and run.status is not ActivityRunStatus.RUNNING:
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+            else:
+                _require_request_run(command, request, run, located_attempt)
+                _require_transition_authority(command, fence, located_attempt, False)
+                latest_required = _fold(command, located_attempt) != located_attempt.state
+                if latest_required:
+                    located_health_intent = _read_fold_intent(stores, command, located_attempt, None, health)
+                    if located_health_intent is None:
+                        raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+                    _require_managed_plan(stores, located_health_intent, request)
+            if latest_required:
+                try:
+                    if health_prefix is None:
+                        run_prefix = _lock_effect_run_prefix(unit_of_work, request,
+                            identity.run_id.value, latest_required=True)
+                    else:
+                        health_prefix.require(unit_of_work, command.request_id, identity)
+                except EffectRunPrefixConflict:
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR) from None
+            attempt = _attempt_for_update(stores, identity)
+            if attempt != located_attempt:
+                raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        else:
+            attempt = _attempt_for_update(stores, identity)
+        if configuration_locator is not None and attempt != configuration_locator:
+            raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
         _require_current_authority(command, request)
+        native_intent, native_clock = None, None
+        if native is not None:
+            command, native_intent, native_clock = _prepare_native_fold(
+                stores, native, request, run, attempt, fence,
+                run_prefix=run_prefix, intent=located_native_intent)
+        _require_request_run(command, request, run, attempt)
         if guarded is None and type(command.outcome) is ObservedEffectOutcome:
             raise EffectAttemptFoldConflict(_REPLAY_ERROR)
         _require_transition_authority(command, fence, attempt, guarded is not None)
@@ -216,40 +371,63 @@ def _execute_fold(
             result = None
             if replay_error is None:
                 try:
+                    if configuration_request is not None:
+                        if type(original.intent.operation) is CleanupConfigurationInstances:
+                            if stores.configuration_cleanup_ownership.get(identity) is None:
+                                raise OperationsRecordError(_INVALID_TRUTH_ERROR)
+                        else:
+                            stores.configuration_completions.get(identity)
                     result = ExistingFold(attempt, outcome_record)
                 except OperationsRecordError:
                     replay_error = _INVALID_TRUTH_ERROR
             if replay_error is not None:
                 raise EffectAttemptFoldConflict(replay_error)
         else:
-            invalid_truth = False
             denied = False
-            intent_record = None
-            try:
-                intent_record = stores.effect_attempt_intents.get(
-                    attempt.state.identity
-                )
-            except (KeyError, OperationsRecordError):
-                invalid_truth = True
-            else:
-                invalid_truth = (
-                    type(intent_record) is not EffectAttemptIntentRecord
-                    or intent_record.identity != attempt.state.identity
-                    or intent_record.original_start_event
-                    != attempt.original_start_event
-                    or intent_record.request_id != command.request_id
-                    or intent_record.request_fingerprint
-                    != attempt.state.request_fingerprint
-                    or (
-                        guarded is not None
-                        and intent_record != guarded.intent_record
-                    )
-                )
+            completion_prepared = None
+            cleanup_store = None
+            cleanup_prepared = None
+            if configuration_guard is not None:
+                stores.activity_history.get_session_for_update(request.identity.session_id)
+            intent_record = (located_health_intent if health is not None else
+                _read_fold_intent(stores, command, attempt, guarded, None))
+            invalid_truth = intent_record is None
+            if (not invalid_truth and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
+                if configuration_guard is None:
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+                stores.graphs._require_receiver_lifecycle(configuration_guard, request.identity.workspace_id)
+                from .postgres.configuration_evidence import _active_read
+                if type(intent_record.intent.operation) is not CleanupConfigurationInstances:
+                    stores.configuration_preparation._require_original(intent_record, read=_active_read(stores.connection))
             observation = None
+            if (not invalid_truth and native is None
+                    and is_native_connection_operation(intent_record.intent.operation)):
+                # Generic mutation success is not native connection evidence.
+                # A separate guarded native refusal/uncertainty entrance owns
+                # unsuccessful dispatch results as well.
+                raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+            if (not invalid_truth and health is None
+                    and is_signed_management_health_operation(intent_record.intent.operation)):
+                raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+            health_clock = None
+            if not invalid_truth and health is not None:
+                try:
+                    current_runtime = stores.runtime_authorities.get_active_for_update(
+                        request.identity.workspace_id, intent_record.intent.authority_ref)
+                except RuntimeAuthorityNotFound:
+                    raise EffectAttemptFoldDenied(_AUTHORITY_ERROR) from None
+                if current_runtime != health.runtime_authority:
+                    raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+                authority, health_clock = signing_authority.in_unit_of_work(unit_of_work,
+                    ReloadHealthSigningAuthority(command.request_id, attempt.state.identity,
+                        health.context, command.authority, command.fence), run_prefix=run_prefix)
+                if authority.preparation != health.preparation:
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
             if not invalid_truth:
-                observation = _observation(stores, command.request_id)
+                observation = (native_clock if native is not None else health_clock
+                    if health is not None else _observation(stores, command.request_id))
                 invalid_truth = observation.request != request
-                denied = guarded is not None and observation.expired
+                denied = (guarded is not None or native is not None or health is not None) and observation.expired
             if (
                 not invalid_truth
                 and not denied
@@ -282,6 +460,15 @@ def _execute_fold(
                 raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
             if denied:
                 raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+            if configuration_guard is not None and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+                if type(intent_record.intent.operation) is CleanupConfigurationInstances:
+                    cleanup_store = stores.configuration_cleanup_ownership
+                    cleanup_prepared = evidence_contexts.enter_context(cleanup_store._fold_scope(unit_of_work,
+                        configuration_guard, configuration_prefix, intent_record, attempt, command.outcome, request, fence))
+                else:
+                    completion_prepared = stores.configuration_completions._prepare(
+                        stores, configuration_guard, intent_record, attempt, command.outcome,
+                        unit_of_work=unit_of_work, prefix=configuration_prefix, request=request, fence=fence)
             event_ordinal = stores.execution.next_event_ordinal(run.run_id)
             result = self._plan_result(
                 command,
@@ -293,6 +480,10 @@ def _execute_fold(
                 intent_record=intent_record,
             )
             event = result.attempt.latest_transition_event
+            if completion_prepared is not None:
+                stores.configuration_completions._bind(completion_prepared, result.outcome_record)
+            if cleanup_prepared is not None:
+                cleanup_store._bind_fold(cleanup_prepared, result.outcome_record)
             event_acknowledgement = stores.execution.add_event(event)
             changed = (
                 type(event_acknowledgement) is not ActivityEventRecord
@@ -329,8 +520,194 @@ def _execute_fold(
                 )
             if changed:
                 raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+            if completion_prepared is not None:
+                stores.configuration_completions._insert(completion_prepared, result.outcome_record)
+            if cleanup_prepared is not None:
+                cleanup_store._insert_fold(cleanup_prepared, result.outcome_record)
+        evidence_contexts.close()
         unit_of_work.commit()
         return result
+
+
+@dataclass(frozen=True)
+class _AcceptedNativeFold:
+    """Private normalized fold, constructed only under the durable guard."""
+
+    request_id: str
+    authority: object
+    fence: object
+    outcome: NativeConnectionEffectOutcome | ExecutionEffectOutcome
+
+    @property
+    def transition(self):
+        return effect_outcome_transition(self.outcome)
+
+    @property
+    def failure(self):
+        return effect_outcome_failure(self.outcome)
+
+
+def _read_fold_intent(stores, command, attempt, guarded, health):
+    try:
+        intent = stores.effect_attempt_intents.get(attempt.state.identity)
+    except (KeyError, OperationsRecordError):
+        return None
+    if (type(intent) is not EffectAttemptIntentRecord
+            or intent.identity != attempt.state.identity
+            or intent.original_start_event != attempt.original_start_event
+            or intent.request_id != command.request_id
+            or intent.request_fingerprint != attempt.state.request_fingerprint
+            or guarded is not None and intent != guarded.intent_record
+            or health is not None and intent != health.intent_record):
+        return None
+    return intent
+
+
+def _native_fold_intent(stores, command, request, run, attempt, fence):
+    if (attempt.state.identity != command.identity
+            or run.admission.request_id != command.request_id
+            or run.plan_id != request.identity.plan_id
+            or attempt.state.fence != fence
+            or attempt.state.recovery_decision is not None):
+        raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+    try:
+        intent = stores.effect_attempt_intents.get(command.identity)
+    except (KeyError, OperationsRecordError):
+        raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR) from None
+    if (type(intent) is not EffectAttemptIntentRecord or intent != command.intent_record
+            or intent.workspace_id != request.identity.workspace_id
+            or intent.original_start_event != attempt.original_start_event
+            or intent.request_fingerprint != attempt.state.request_fingerprint):
+        raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+    return intent
+
+
+def _prepare_native_fold(stores, command, request, run, attempt, fence, *, run_prefix, intent):
+    if attempt.state.status is not EffectAttemptStatus.STARTED:
+        # Replay recovers the accepted value; it never asks today's runtime or
+        # clock to reinterpret an old sample. The ordinary fold checks it again.
+        try:
+            retained = stores.effect_outcomes.get(command.identity,
+                attempt.latest_transition_event.event_id)
+        except (KeyError, OperationsRecordError):
+            raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR) from None
+        if (type(retained) is not EffectAttemptOutcomeRecord
+                or retained.attempt != attempt
+                or retained.workspace_id != request.identity.workspace_id):
+            raise EffectAttemptFoldConflict(_REPLAY_ERROR)
+        if type(command.observation) is NativeConnectionObservation:
+            matches = (type(retained.outcome) is NativeConnectionEffectOutcome
+                and retained.outcome.observation == command.observation)
+        else:
+            matches = retained.outcome == _native_read_failure_outcome(command, intent)
+        if not matches:
+            raise EffectAttemptFoldConflict(_REPLAY_ERROR)
+        outcome, clock = retained.outcome, None
+    else:
+        if (run.status is not ActivityRunStatus.RUNNING
+                or run_prefix is None or run_prefix.latest_run != run):
+            raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+        _require_native_plan(stores, intent, request)
+        try:
+            active = stores.runtime_authorities.get_active_for_update(
+                request.identity.workspace_id, intent.intent.authority_ref)
+        except RuntimeAuthorityNotFound:
+            raise EffectAttemptFoldDenied(_AUTHORITY_ERROR) from None
+        except RuntimeAuthorityRegistrationError:
+            raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR) from None
+        if active != command.runtime_authority:
+            raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+        clock = _observation(stores, command.request_id)
+        if clock.request != request:
+            raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+        if clock.expired:
+            raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+        outcome = None
+        try:
+            if type(command.observation) is NativeConnectionObservation:
+                outcome = NativeConnectionEffectOutcome.from_observation(
+                    identity=command.identity, request_fingerprint=intent.request_fingerprint,
+                    observation=command.observation, accepted_at=clock.observed_at)
+            else:
+                outcome = _native_read_failure_outcome(command, intent)
+        except (ValueError, TypeError):
+            pass
+        if outcome is None:
+            raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+    return _AcceptedNativeFold(command.request_id, command.authority, command.fence, outcome), intent, clock
+
+
+def _native_read_failure_outcome(command, intent):
+    refused = type(command.observation) is NativeConnectionRefused
+    result = (RuntimeEffectResult.unsupported if refused else RuntimeEffectResult.uncertain)(
+        intent.original_start_event.event_id, RuntimeEffectFailure(
+            "native-read-refused" if refused else "native-read-result-unknown",
+            "native reader did not produce a completed correlated observation"))
+    return ExecutionEffectOutcome(command.identity, intent.request_fingerprint, result)
+
+
+def _require_native_plan(stores, intent_record, request):
+    if not is_native_connection_operation(intent_record.intent.operation):
+        raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+    return _require_managed_plan(stores, intent_record, request)
+
+
+def _require_managed_plan(stores, intent_record, request):
+    """Re-resolve the original accepted operation from durable graph pins."""
+    valid = False
+    try:
+        intent = intent_record.intent
+        plan = stores.activity_history.get_plan(request.identity.plan_id)
+        source = intent.source
+        if (plan.derivation_profile is not PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
+                or plan.status is not ActivityPlanStatus.PLANNED
+                or plan.session_id != request.identity.session_id
+                or source.plan_id != plan.plan_id
+                or source.base_graph_id != plan.base_graph_id
+                or source.desired_graph_id != plan.desired_graph_id
+                or not (is_native_connection_operation(intent.operation)
+                    or is_signed_management_health_operation(intent.operation))):
+            raise ValueError
+        graphs = []
+        for projection_id, authored_id in ((plan.base_realized_projection_id, plan.base_graph_id),
+                (plan.desired_realized_projection_id, plan.desired_graph_id)):
+            projection = stores.realized_graphs.get(projection_id)
+            authored = stores.graphs.get(authored_id)
+            if (projection.workspace_id != request.identity.workspace_id
+                    or projection.projection_id != projection_id
+                    or projection.source_authored_graph_id != authored_id
+                    or authored.workspace_id != request.identity.workspace_id
+                    or authored.graph_id != authored_id):
+                raise ValueError
+            graph = validate_graph(DEFAULT_GRAPH_CODEC.decode(projection.graph_descriptor))
+            graph.require_valid()
+            graphs.append(graph)
+        if runtime_management_execution_is_unsupported(graphs[0].graph, graphs[1].graph,
+                plan.plan, derivation_profile=plan.derivation_profile):
+            raise ValueError
+        approval = stores.activity_history.get_approval_request(request.approval_request_id)
+        decision = stores.activity_history.approval_decision_for_request(approval.request_id)
+        requirement = ApprovalPolicy().requirement_for(plan.plan)
+        if (type(approval.subject) is not ActivityPlanApprovalSubject
+                or approval.request_id != request.approval_request_id
+                or approval.session_id != request.identity.session_id
+                or approval.subject.plan_id != plan.plan_id
+                or decision.decision_id != request.approval_decision_id
+                or decision.request_id != approval.request_id
+                or decision.decision is not ApprovalDecisionKind.APPROVED
+                or decision.scope is not approval.required_scope
+                or (approval.required_scope, approval.destructive, approval.max_risk)
+                    != (requirement.required_scope, requirement.destructive, requirement.max_risk)):
+            raise ValueError
+        resolved = resolve_management_observation(intent.operation, *graphs,
+            expected_operation=plan.plan.activity(intent.activity_id).operation)
+        runtime = resolved.selected_graph.graph.runtimes[intent.operation.target.runtime_id]
+        valid = (runtime.authority_ref == intent.authority_ref
+            and runtime.kind is intent.runtime_kind)
+    except (KeyError, ValueError, TypeError, AttributeError):
+        pass
+    if not valid:
+        raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
 
 
 def _translate_fence(command: FoldEffectAttempt) -> EffectAttemptFence:
@@ -388,9 +765,10 @@ def _run_for_request_for_update(stores: Any, request_id: str, run_id: str):
     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
 
 
-def _attempt_for_update(stores: Any, identity: Any) -> EffectAttemptRecord:
+def _attempt_for_update(stores: Any, identity: Any, *, for_update=True) -> EffectAttemptRecord:
     try:
-        attempt = stores.effect_attempts.get_for_update(identity)
+        read = stores.effect_attempts.get_for_update if for_update else stores.effect_attempts.get
+        attempt = read(identity)
     except KeyError:
         failure = "missing"
     except (OperationsRecordError, ValueError):
@@ -527,6 +905,7 @@ def _event_kind(
 
 
 _EVENT_KIND_BY_STATE = {
+    (False, EffectAttemptStatus.NOT_READY, False): ActivityEventKind.STEP_OBSERVATION_NOT_READY,
     (False, EffectAttemptStatus.SUCCEEDED, False): ActivityEventKind.STEP_SUCCEEDED,
     (False, EffectAttemptStatus.FAILED, False): ActivityEventKind.STEP_FAILED,
     (False, EffectAttemptStatus.UNSUPPORTED, False): ActivityEventKind.STEP_UNSUPPORTED,

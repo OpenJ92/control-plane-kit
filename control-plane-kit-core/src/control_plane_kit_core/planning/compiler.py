@@ -441,13 +441,16 @@ def _add_dependencies(
     matching = [draft for draft in drafts if _change_token(change) in draft.activity_id.value]
     match change:
         case AddedChange(subject=NodeSubject(node_id=node_id), after=NodeValue(node=node)):
+            start = start_node.get(node_id)
+            if start is None:
+                return
             if runtime := start_runtime.get(node.runtime_id):
-                start_node[node_id].dependencies.add(runtime.activity_id)
+                start.dependencies.add(runtime.activity_id)
             for ingress_id, ingress_value in added_public_ingresses.items():
                 if ingress_value.ingress.connector_node_id != node_id:
                     continue
                 if allocate := allocate_ingress.get(ingress_id):
-                    start_node[node_id].dependencies.add(allocate.activity_id)
+                    start.dependencies.add(allocate.activity_id)
         case AddedChange(
             subject=PublicIngressSubject(ingress_id=ingress_id),
             after=PublicIngressValue(ingress=ingress),
@@ -536,9 +539,10 @@ def _reconciliation_owner(change: StructuralChange) -> NodeSubject | RuntimeSubj
         return None
     if not isinstance(change.subject, FieldSubject):
         return None
-    if change.subject.field is StructuralField.RESOURCE_LIFECYCLE:
+    if change.subject.field in (StructuralField.RESOURCE_LIFECYCLE, StructuralField.RUNTIME_MANAGEMENT):
         # Ownership and retention changes alter what later plans may destroy.
-        # They require an explicit review path rather than ordinary reconciliation.
+        # Management references select a control path, not a physical runtime
+        # configuration. Both changes require review before execution support.
         return None
     if isinstance(change.subject.owner, (NodeSubject, RuntimeSubject)):
         return change.subject.owner

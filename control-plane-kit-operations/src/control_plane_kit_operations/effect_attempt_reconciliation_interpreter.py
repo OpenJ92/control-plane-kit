@@ -93,6 +93,16 @@ class EffectAttemptReconciliationService:
         command: ReconcileEffectAttempt,
     ) -> EffectAttemptFoldResult:
         if not _valid_reconcile_command(command):
+            raise InvalidOperationCommand("effect attempt reconciliation command is invalid")
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with _configuration_accounting(command.identity.run_id.value, join=True, active=False):
+            return self._execute(command)
+
+    def _execute(
+        self,
+        command: ReconcileEffectAttempt,
+    ) -> EffectAttemptFoldResult:
+        if not _valid_reconcile_command(command):
             raise InvalidOperationCommand(
                 "effect attempt reconciliation command is invalid"
             )
@@ -103,6 +113,9 @@ class EffectAttemptReconciliationService:
 
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
+            from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+            if not _ACCOUNTING.get().active:
+                stores.configuration_preparation._configure_run(command.identity.run_id.value)
             request = _request_for_update(stores, command.request_id)
             run = _run_for_request_for_update(
                 stores,
@@ -113,7 +126,14 @@ class EffectAttemptReconciliationService:
             _require_current_claim(command, request, run, attempt)
             _require_historical_lineage(command, attempt)
             if attempt.state.status is not EffectAttemptStatus.STARTED:
-                return _existing_fold(stores, request, attempt)
+                try:
+                    route = stores.configuration_preparation._configure_run(command.identity.run_id.value,
+                        replay_request_id=request.identity.request_id, replay_activity_id=command.identity.activity_id)
+                except (OperationsRecordError, ValueError, KeyError):
+                    raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR) from None
+                if route not in ("ordinary", "cleanup"):
+                    raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR)
+                return _existing_fold(stores, request, attempt, cleanup=route == "cleanup")
 
             invalid_truth = False
             denied = False
@@ -304,6 +324,8 @@ def _existing_fold(
     stores: Any,
     request: ExecutionRequestRecord,
     attempt: EffectAttemptRecord,
+    *,
+    cleanup: bool,
 ) -> ExistingFold:
     invalid = False
     outcome_record = None
@@ -323,8 +345,24 @@ def _existing_fold(
         )
     if not invalid:
         try:
+            if cleanup:
+                from control_plane_kit_core.planning import CleanupConfigurationInstances
+                original = stores.effect_attempt_intents.get(attempt.state.identity)
+                if (type(original) is not EffectAttemptIntentRecord
+                        or type(original.intent.operation) is not CleanupConfigurationInstances
+                        or original.identity != attempt.state.identity
+                        or original.original_start_event != attempt.original_start_event
+                        or original.request_id != request.identity.request_id
+                        or original.workspace_id != request.identity.workspace_id
+                        or original.request_fingerprint != attempt.state.request_fingerprint):
+                    raise OperationsRecordError(_INVALID_TRUTH_ERROR)
+                retained = stores.configuration_cleanup_ownership.get(attempt.state.identity)
+                if (retained is None or retained.status is not attempt.state.status
+                        or retained.original_event_id != attempt.original_start_event.event_id
+                        or retained.outcome_fingerprint != outcome_record.outcome.outcome_fingerprint):
+                    raise OperationsRecordError(_INVALID_TRUTH_ERROR)
             result = ExistingFold(attempt, outcome_record)
-        except OperationsRecordError:
+        except (KeyError, OperationsRecordError):
             invalid = True
         else:
             invalid = type(result) is not ExistingFold

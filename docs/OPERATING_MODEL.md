@@ -25,6 +25,20 @@ The issue controls scope. A source dry run should establish what already exists,
 the exact missing behavior, the owner, the source ceiling, and the validation
 boundary before implementation grows.
 
+Follow the source-reading requirement in `AGENTS.md`: after governing-test
+inspection, trace the selected entrypoint and imports through values,
+transformations, authority/effects, and result/history before designing a change.
+Record a few source anchors and dependency versions in the existing issue or PR.
+Keep current and proposed paths separate, identify the smallest missing connection,
+and distinguish selected code from merged, published, or live evidence. This is
+the existing dry run, not an additional gate or permission to run effects.
+
+Apply the source-traversal cadence in `AGENTS.md`: trace at parent-to-child
+issue design, reuse and confirm the relevant trace at child implementation
+planning, and reread affected paths when code or evidence changes. An unchanged
+trace is not repeated for routine updates or handoffs. Independent review still
+checks changed code and relevant boundaries without duplicating the whole tour.
+
 Use focused target-red evidence when the issue requires migration/parity proof
 or when it is necessary to distinguish genuinely missing behavior from broken
 collection or apparatus. It is not mandatory ceremony for every change.

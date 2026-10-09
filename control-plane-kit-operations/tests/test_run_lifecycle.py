@@ -225,7 +225,21 @@ class RunRecordLawTests(unittest.TestCase):
         )
 
 
-class RunLifecycleTests(unittest.TestCase):
+from tests.lifecycle_lock_fixture import LifecycleLockFixture, REQUEST_LOCK, SESSION_LOCK
+
+
+class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
+    def test_first_claim_holds_c3_lifecycle_guard_before_request_and_session(self):
+        def execute(uow):
+            return RunLifecycleCommandService(uow, clock=lambda: "2026-07-22T13:00:00Z",
+                id_factory=Sequence("run-lock", "event-lock", "action-lock")).execute(self.target_claim_command())
+        with self.blocked_command(REQUEST_LOCK, ("request-a",), execute) as future:
+            self.assert_row_lockable(SESSION_LOCK, ("session-a",))
+            self.assert_advisory_available("receiver-lifecycle:workspace-a", available=False)
+        result = future.result(timeout=1)
+        self.assertEqual(result.run.run_id, "run-lock")
+        self.assertEqual(result.request.claim.generation, 1)
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -601,6 +615,8 @@ class RunLifecycleTests(unittest.TestCase):
         for duration_seconds in (600, 601):
             with self.subTest(duration_seconds=duration_seconds):
                 with self.unit_of_work() as unit_of_work:
+                    # This WaitForHealthy request has empty receiver scope.
+                    # Its public conditional claim cannot manufacture replay.
                     retained = unit_of_work.stores.execution.claim_request(
                         "request-a",
                         "worker-a",
@@ -649,7 +665,7 @@ class RunLifecycleTests(unittest.TestCase):
         )
         self.assertEqual(self._count("cpk_activity_runs"), 0)
         self.assertEqual(self._count("cpk_activity_events"), 0)
-        self.assertEqual(self._count("cpk_operation_actions"), 0)
+        self.assertEqual(self._count("cpk_operation_actions"), self.admission_action_count)
 
     def test_target_late_event_failure_rolls_back_generated_claim_and_run(
         self,
@@ -958,7 +974,7 @@ class RunLifecycleTests(unittest.TestCase):
                 )
 
         self.assertEqual(self._count("cpk_activity_events"), 2)
-        self.assertEqual(self._count("cpk_operation_actions"), 2)
+        self.assertEqual(self._count("cpk_operation_actions"), self.admission_action_count + 2)
 
     def test_post_claim_replay_rejects_missing_and_malformed_payload(self) -> None:
         self.claim()
@@ -1017,7 +1033,7 @@ class RunLifecycleTests(unittest.TestCase):
                         )
 
         self.assertEqual(self._count("cpk_activity_events"), 2)
-        self.assertEqual(self._count("cpk_operation_actions"), 2)
+        self.assertEqual(self._count("cpk_operation_actions"), self.admission_action_count + 2)
 
     def test_first_transition_locks_request_before_run(self) -> None:
         self.claim()
@@ -1241,7 +1257,7 @@ class RunLifecycleTests(unittest.TestCase):
         self._insert_run("a", status=ActivityRunStatus.CANCELLED)
         with self.unit_of_work() as unit_of_work:
             store = unit_of_work.stores.execution
-            store.add_run(
+            store._add_run(
                 self._run_record(long_run_id, attempt=2, prior_run_id="a")
             )
             store.add_event(
@@ -1320,7 +1336,7 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertEqual(self._request_status(), ExecutionRequestStatus.QUEUED.value)
         self.assertEqual(self._count("cpk_activity_runs"), 0)
         self.assertEqual(self._count("cpk_activity_events"), 0)
-        self.assertEqual(self._count("cpk_operation_actions"), 0)
+        self.assertEqual(self._count("cpk_operation_actions"), self.admission_action_count)
         self.assertIsNotNone(error)
         self._assert_safe_error(error, "factory-canary")
 
@@ -1487,17 +1503,9 @@ class RunLifecycleTests(unittest.TestCase):
         )
 
     def _seed_second_request(self) -> None:
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-b', 'workspace-a', 'session-a', 'plan-a', 'cancelled',
-                    'operator-a', '2026-07-22T12:05:00Z', 'approval-request-a',
-                    'approval-decision-a', 'execute-b', 'fingerprint-b')
-            """
-        )
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        insert_recorded_request(self.connection, request_id="request-b", status="cancelled",
+            requested_at="2026-07-22T12:05:00Z", idempotency_key="execute-b", intent_fingerprint="fingerprint-b")
 
     def _request_status(self) -> str:
         return self.connection.execute(
@@ -1514,6 +1522,12 @@ class RunLifecycleTests(unittest.TestCase):
         return self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
 
     def seed_execution_request(self) -> None:
+        from psycopg.types.json import Jsonb
+        from control_plane_kit_core.planning import ActivityPlan, ActivityId, PlannedActivity, WaitForHealthy, NodeTarget
+        from control_plane_kit_operations.plan_derivation import encode_stored_activity_plan
+        from tests.graph_lineage_fixture import execution_graph
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
+        plan = ActivityPlan((PlannedActivity(ActivityId("wait-node"), WaitForHealthy(NodeTarget("node-a"))),))
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -1525,7 +1539,10 @@ class RunLifecycleTests(unittest.TestCase):
                 unit_of_work.stores,
                 workspace_id="workspace-a",
                 graph_ids=("graph-current", "graph-desired"),
+                graphs={key: execution_graph(key, node_ids=("node-a",)) for key in ("graph-current", "graph-desired")},
             )
+            unit_of_work.stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            workspace = unit_of_work.stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             unit_of_work.commit()
         self.connection.execute(
             """
@@ -1540,11 +1557,12 @@ class RunLifecycleTests(unittest.TestCase):
             INSERT INTO cpk_activity_plans
               (plan_id, session_id, base_graph_id, desired_graph_id,
                base_realized_projection_id, desired_realized_projection_id,
-               status, created_at, payload)
+               desired_graph_revision, status, created_at, payload)
             VALUES ('plan-a', 'session-a', 'graph-current', 'graph-desired',
-                    %s, %s, 'planned', '2026-07-22T12:02:00Z', '{}'::jsonb);
+                    %s, %s, %s, 'planned', '2026-07-22T12:02:00Z', %s);
             """,
-            (lineage["graph-current"], lineage["graph-desired"]),
+            (lineage["graph-current"], lineage["graph-desired"], workspace.desired_graph_revision,
+             Jsonb(encode_stored_activity_plan(plan, profile=None))),
         )
         self.connection.execute(
             """
@@ -1561,12 +1579,7 @@ class RunLifecycleTests(unittest.TestCase):
               (decision_id, request_id, actor_id, decision, scope, decided_at)
             VALUES ('approval-decision-a', 'approval-request-a', 'manager-a',
                     'approved', 'plan:approve', '2026-07-22T12:03:30Z');
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
-                    'operator-a', '2026-07-22T12:04:00Z', 'approval-request-a',
-                    'approval-decision-a', 'execute-a', 'fingerprint-a');
             """
         )
+        admit_fixture_plan(self)
+        self.admission_action_count = self._count("cpk_operation_actions")

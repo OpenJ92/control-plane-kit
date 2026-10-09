@@ -36,10 +36,10 @@ _CATEGORIES = frozenset(
 _CONSUMER_KINDS = frozenset({"production", "test-only"})
 _CATEGORY_COUNTS = {
     "public-paged": 17,
-    "fixed-cardinality": 7,
+    "fixed-cardinality": 10,
     "closed-finite": 2,
     "internal-complete": 24,
-    "exact-verifier": 14,
+    "exact-verifier": 23,
 }
 _GENERIC_CONSUMERS = frozenset({"internal", "module", "test", "tests"})
 _MODULE = re.compile(r"^control_plane_kit_operations\.postgres(?:\.[a-z][a-z0-9_]*)+$")
@@ -204,15 +204,15 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
     def _assert_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 64)
-        self.assertEqual(len(set(identities)), 64)
+        self.assertEqual(len(identities), 76)
+        self.assertEqual(len(set(identities)), 76)
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
             self.assertNotRegex(identity.selector, r":\d+$")
             grouped[(identity.module, identity.selector)].append(identity.occurrence)
         repeated = {key: values for key, values in grouped.items() if len(values) > 1}
-        self.assertEqual(len(repeated), 3)
+        self.assertEqual(len(repeated), 6)
         self.assertEqual(set(tuple(values) for values in repeated.values()), {(1, 2)})
         self.assertEqual(
             tuple(

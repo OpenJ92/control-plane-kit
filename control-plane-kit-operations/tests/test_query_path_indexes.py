@@ -93,7 +93,7 @@ class QueryPathIndexContractTests(unittest.TestCase):
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         indexes = {value.name: value for value in contract.indexes}
 
-        self.assertEqual(len(contract.indexes), 131)
+        self.assertEqual(len(contract.indexes), 194)
         for name, (relation, keys, predicate) in _EXPECTED_QUERY_PATH_INDEXES.items():
             with self.subTest(index=name):
                 value = indexes[name]
@@ -765,6 +765,17 @@ class QueryPathPlannerTests(unittest.TestCase):
         )
 
     def _seed_runs(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        from psycopg.types.json import Jsonb
+        from tests.graph_lineage_fixture import seed_authored_graphs
+        from tests.receiver_scope_history_fixture import empty_plan_payload, insert_recorded_requests
+        from control_plane_kit_operations.postgres.graph_store import PostgresRealizedGraphProjectionStore
+        self.connection.execute("INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) "
+                                "VALUES ('workspace-target','Target','created')")
+        seed_authored_graphs(self.connection, workspace_id="workspace-target", graph_ids=("graph-a", "graph-b"))
+        projections = PostgresRealizedGraphProjectionStore(self.connection)
+        original_pins = tuple(projections.save(projections.identity_for_authored("workspace-target", graph_id)).projection_id
+                              for graph_id in ("graph-a", "graph-b"))
         self.connection.execute("SET session_replication_role = replica")
         try:
             self.connection.execute(
@@ -780,17 +791,20 @@ class QueryPathPlannerTests(unittest.TestCase):
                 VALUES ('plan-target', 'session-target', 'graph-a', 'graph-b',
                         'projection-a', 'projection-b', 'planned',
                         '2026-08-12T00:00:00Z', '{}'::jsonb);
-                INSERT INTO cpk_execution_requests
-                  (request_id, workspace_id, session_id, plan_id, status,
-                   requested_by, requested_at, approval_request_id,
-                   approval_decision_id, idempotency_key, intent_fingerprint)
-                SELECT 'execution-' || value, 'workspace-target', 'session-target',
-                       'plan-target', 'cancelled', 'operator',
-                       '2026-08-12T00:00:00Z'::timestamptz
-                         + value * interval '1 second',
-                       'approval-' || value, 'decision-' || value,
-                       'execution-' || value, 'fingerprint-' || value
-                FROM generate_series(1, 10000) AS value;
+                """
+            )
+            self.connection.execute("UPDATE cpk_activity_plans SET base_realized_projection_id=%s, "
+                                    "desired_realized_projection_id=%s, payload=%s WHERE plan_id='plan-target'",
+                                    (*original_pins, Jsonb(empty_plan_payload())))
+            insert_recorded_requests(self.connection, ({
+                "request_id": f"execution-{value}", "workspace_id": "workspace-target", "session_id": "session-target",
+                "plan_id": "plan-target", "status": "cancelled", "requested_by": "operator",
+                "requested_at": datetime(2026, 8, 12, tzinfo=timezone.utc) + timedelta(seconds=value),
+                "approval_request_id": f"approval-{value}", "approval_decision_id": f"decision-{value}",
+                "idempotency_key": f"execution-{value}", "intent_fingerprint": f"fingerprint-{value}",
+            } for value in range(1, 10001)))
+            self.connection.execute(
+                """
                 INSERT INTO cpk_activity_runs
                   (run_id, plan_id, request_id, attempt, status, created_at,
                    started_at, settled_at, metadata)

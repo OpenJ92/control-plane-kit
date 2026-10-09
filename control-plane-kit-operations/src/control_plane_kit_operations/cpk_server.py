@@ -55,7 +55,10 @@ from control_plane_kit_operations.approvals import (
     DecideApproval,
     RequestApproval,
 )
-from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
+from control_plane_kit_operations.coordinator import (
+    ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator, ReobserveConnectorConnection,
+)
+from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
@@ -123,6 +126,9 @@ from control_plane_kit_operations.products import (
     RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
+from control_plane_kit_operations.read_services.receiver_authoring_context import (
+    ReceiverAuthoringContextError, ReceiverAuthoringContextQuery, ReceiverAuthoringContextReadService,
+)
 from control_plane_kit_operations.desired_topology_drafts import (
     CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft, DesiredTopologyDraftCommandService,
     DesiredTopologyDraftError, DesiredTopologyDraftConflict,
@@ -263,6 +269,8 @@ _WORKER_OPERATION = RouteAuthorizationPolicy(
 )
 
 _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
+    "read.receiver-authoring-context": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),
     "read.desired-topology-drafts": _WORKSPACE_READ,
     "read.desired-topology-draft-revisions": _WORKSPACE_READ,
     "read.desired-topology-draft-revision": _WORKSPACE_READ,
@@ -326,6 +334,9 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
         required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
     ),
     "read.gateway-verifier-configuration": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
+    "read.workload-verifier-configuration": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
     ),
     "command.workspace.create": RouteAuthorizationPolicy(
@@ -411,6 +422,7 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "command.run.claim": _WORKER_OPERATION,
     "command.run.start": _WORKER_OPERATION,
     "command.deployment.execute": _WORKER_OPERATION,
+    "command.deployment.reobserve-connector": _WORKER_OPERATION,
     "command.graph.advance-current": _WORKER_OPERATION,
     "command.recovery.decide": _WORKER_OPERATION,
 }
@@ -438,6 +450,13 @@ class CpkServerOperationsApplication:
             ) from error
         return service.handle(request)
 
+    async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.service_role is ControlPlaneServiceRole.EXECUTION:
+            service = self.services[request.service_role]
+            if isinstance(service, CpkServerExecutionService):
+                return await service.handle_async(request)
+        return self.handle(request)
+
 
 class CpkServerReadService:
     """Read route interpreter over ``InstanceReadService`` and one request UoW."""
@@ -452,6 +471,17 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id == "read.receiver-authoring-context":
+            context = _trusted_context(request)
+            arguments = _closed_read_arguments(request)
+            failure = None
+            try:
+                query = ReceiverAuthoringContextQuery.from_mapping(arguments)
+                return ReceiverAuthoringContextReadService(self._unit_of_work_factory).read(
+                    query, context=context).descriptor()
+            except ReceiverAuthoringContextError as error:
+                failure = (error.status, str(error))
+            raise CpkServerApplicationError(*failure)
         if request.route_id.startswith("read.desired-topology-draft"):
             _trusted_context(request)
         read_arguments = (
@@ -565,7 +595,8 @@ class CpkServerPlanningService:
                 command = SelectDesiredTopologyDraft(**arguments, revision=_draft_revision(values),
                     expected_desired_graph_id=_optional_text(values, "expected_desired_graph_id"),
                     expected_desired_realized_projection_id=_optional_text(values, "expected_desired_realized_projection_id"),
-                    expected_desired_graph_revision=_nonnegative_integer(values, "expected_desired_graph_revision"))
+                    expected_desired_graph_revision=_nonnegative_integer(values, "expected_desired_graph_revision"),
+                    receiver_lifecycle=_receiver_expectation(values))
             else:
                 command = DeleteDesiredTopologyDraft(**arguments,
                     expected_head_revision=_positive_int(values, "expected_head_revision", default=0))
@@ -584,7 +615,8 @@ class CpkServerPlanningService:
             except (ValueError, TypeError, KeyError):
                 raise CpkServerApplicationError(400, "draft graph is malformed") from None
             arguments = dict(context=context, session_id=_text(values, "session_id"), graph=graph,
-                             idempotency_key=_draft_idempotency_key(values))
+                             idempotency_key=_draft_idempotency_key(values),
+                             receiver_lifecycle=_receiver_expectation(values))
             if request.route_id.endswith(".create"):
                 command = CreateDesiredTopologyDraft(**arguments, title=values.get("title"))
             else:
@@ -831,6 +863,8 @@ class CpkServerPlanningService:
                     workspace_id=_workspace_id(payload),
                     actor_id=context.actor_id,
                     graph=graph,
+                    proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
+                    receiver_lifecycle=_receiver_expectation(payload),
                     expected_desired_graph_id=_optional_text(
                         payload,
                         "expected_desired_graph_id",
@@ -909,6 +943,7 @@ def _prepare_deployment(
                     _text(payload, "idempotency_key")
                 ),
                 approval_comment=_optional_text(payload, "approval_comment"),
+                proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
             )
         )
     except DeploymentProgramAuthorizationDenied:
@@ -1348,6 +1383,27 @@ class CpkServerExecutionService:
         self._service = service
         self._lifecycle = lifecycle
 
+    async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id not in ("command.deployment.execute", "command.deployment.reobserve-connector"):
+            return self.handle(request)
+        context = _trusted_context(request)
+        payload = _arguments(request)
+        command = ExecuteActivityRun(
+            run_id=_path_or_payload(payload, "run_id", "run_id"),
+            authority=_worker_authority(context),
+            fence=ExecutionLeaseFence(context.actor_id, _claim_generation(payload)),
+            idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+            max_effects=(1 if request.route_id == "command.deployment.reobserve-connector"
+                else _positive_int(payload, "max_effects", default=1)),
+        )
+        if request.route_id == "command.deployment.reobserve-connector":
+            predecessor = EffectAttemptIdentity(RunId(command.run_id), _text(payload, "activity_id"),
+                _positive_int(payload, "prior_attempt", default=0))
+            result = await self._service.reobserve(ReobserveConnectorConnection(command, context, predecessor))
+        else:
+            result = await self._service.execute_managed(ExecuteManagedActivityRun(command, context))
+        return result.descriptor()
+
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         context = _trusted_context(request)
         if request.route_id == "command.run.start":
@@ -1698,7 +1754,27 @@ def _read_model(
             _workspace_id(args),
             _path_or_payload(args, "gateway_node_id", "gateway_node_id"),
         )
+    if route_id == "read.workload-verifier-configuration":
+        return service.workload_verifier_configuration(
+            _workspace_id(args), _workload_verifier_purposes(args),
+        )
     raise _unsupported_route(request)
+
+
+def _workload_verifier_purposes(
+    values: Mapping[str, object],
+) -> tuple[DelegationKeyPurpose, ...]:
+    selector = values.get("purposes")
+    if type(selector) is not str or not 1 <= len(selector) <= 192:
+        raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+    tokens = selector.split(",")
+    if not 1 <= len(tokens) <= 3:
+        raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+    try:
+        return tuple(DelegationKeyPurpose(token) for token in tokens)
+    except ValueError:
+        pass
+    raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
 
 
 def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
@@ -1709,6 +1785,8 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 
 _CLOSED_READ_ARGUMENTS = {
+    "read.receiver-authoring-context": (None, False),
+    "read.workload-verifier-configuration": ("purposes", False),
     "read.desired-topology-drafts": (None, True),
     "read.desired-topology-draft-revisions": ("draft_id", True),
     "read.desired-topology-draft-revision": (("draft_id", "revision"), False),
@@ -1766,6 +1844,8 @@ def _closed_read_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     parent, paged = _CLOSED_READ_ARGUMENTS[request.route_id]
     required = {"workspace_id"} | (set() if parent is None else set(parent) if isinstance(parent, tuple) else {parent})
     optional = {"limit", "after"} if paged else set()
+    if request.route_id == "read.receiver-authoring-context":
+        optional = {"expected", "pending_draft"}
     path = dict(request.path_parameters)
     payload = dict(request.payload)
     if request.surface == "http":
@@ -1982,6 +2062,20 @@ def _text_tuple(
             f"{name} must be a nonempty bounded list of text",
         )
     return tuple(value)
+
+
+def _receiver_expectation(values):
+    from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
+    if "receiver_lifecycle" not in values:
+        return None
+    value = values["receiver_lifecycle"]
+    if type(value) is not dict or set(value) != {"current_graph_id", "current_realized_projection_id",
+            "desired_graph_id", "desired_realized_projection_id", "desired_graph_revision"}:
+        raise CpkServerApplicationError(400, "receiver expectation is malformed")
+    try:
+        return ReceiverLifecycleExpectation(**value)
+    except (TypeError, ValueError):
+        raise CpkServerApplicationError(400, "receiver expectation is malformed") from None
 
 
 def _draft_idempotency_key(values: Mapping[str, object]) -> IdempotencyKey:

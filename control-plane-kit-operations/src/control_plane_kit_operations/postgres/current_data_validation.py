@@ -159,13 +159,19 @@ SELECT NOT EXISTS (
         AND octet_length(approvals.plan_id) BETWEEN 1 AND 200
         AND (approvals.plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
         AND (approvals.plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
-        AND approvals.subject_payload = jsonb_build_object(
+        AND ((approvals.subject_payload = jsonb_build_object(
           'kind', 'activity-plan', 'plan_id', approvals.plan_id
         )
         AND (approvals.review_digest COLLATE "C") = encode(
           sha256(convert_to('activity-plan:' || approvals.plan_id, 'UTF8')),
           'hex'
-        )
+        )) OR (
+          approvals.subject_payload = jsonb_build_object(
+            'kind', 'activity-plan', 'plan_id', approvals.plan_id,
+            'profile', 'configuration-cleanup-approval.v1',
+            'proposal_fingerprint', approvals.subject_payload->>'proposal_fingerprint')
+          AND (approvals.subject_payload->>'proposal_fingerprint' COLLATE "C") ~ '^[0-9a-f]{64}$'
+        ))
       )
       WHEN (approvals.subject_kind COLLATE "C") =
            'gateway-key-rotation' THEN NOT (
@@ -189,7 +195,7 @@ SELECT NOT EXISTS (
         AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
         AND (rotations.purpose COLLATE "C") IN (
           'gateway-probe', 'workload-node-control',
-          'workload-node-control-surface-read'
+          'workload-node-control-surface-read', 'gateway-node-control-transit'
         )
         AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
         AND rotations.clock_skew_seconds BETWEEN 0 AND 60
@@ -252,10 +258,35 @@ def validate_current_rows(connection: _Connection) -> None:
             _validate_current_rows as validate_saved_preparation_sources,
         )
 
+        from control_plane_kit_operations.postgres.health_effect_preparation_store import (
+            _validate_current_rows as validate_health_preparations,
+        )
+        from control_plane_kit_operations.postgres.receiver_lifecycle_store import (
+            validate_current_rows as validate_receiver_rows,
+        )
+        from control_plane_kit_operations.postgres.receiver_execution_scopes import (
+            validate_current_rows as validate_execution_scope_rows,
+        )
+
         validate_effect_attempt_rows(connection)
         _validate_effect_attempt_intent_rows(connection)
+        from .configuration_preparation_store import _validate_current_rows as validate_configuration
+        validate_configuration(connection)
+        from .graph_store import _validate_workspace_initializations
+        _validate_workspace_initializations(connection)
+        from .configuration_acceptance_store import validate_configuration_advancement_rows
+        validate_configuration_advancement_rows(connection)
         validate_effect_outcome_rows(connection)
+        from .configuration_completion_store import validate_configuration_completion_rows
+        validate_configuration_completion_rows(connection)
         validate_saved_preparation_sources(connection)
+        validate_health_preparations(connection)
+        validate_receiver_rows(connection)
+        validate_execution_scope_rows(connection)
+        from .configuration_cleanup_store import validate_cleanup_rows
+        validate_cleanup_rows(connection)
+        from .configuration_cleanup_ownership_store import validate_cleanup_ownership_rows
+        validate_cleanup_ownership_rows(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()
