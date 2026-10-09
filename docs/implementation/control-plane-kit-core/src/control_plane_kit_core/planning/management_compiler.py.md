@@ -90,3 +90,29 @@ bootstrap transport/execution and legacy-helper retirement. Interpreters #149 ow
 paired signing, Servers #188 connection evidence and #181 composition. Core planning cannot
 establish successful stage observations or freshness. The existing Operations
 unsupported-execution guard remains intact.
+
+`compile_managed_update_activity_plan` is the closed pure refinement for one
+retained managed runtime with gateway, connector, ingress and one unchanged
+SDK-readiness workload. It accepts only one owned, ephemeral-compute,
+same-runtime SDK-readiness workload addition or removal paired with runtime-
+containment and retained-gateway configuration-artifact reconciliation. Removing
+the changed child from the changed runtime tuple must recover the other graph's
+exact child tuple, so the profile cannot hide retained-child reordering. It
+recognizes graph structure, never product names, artifact IDs, origins,
+permission or provider success.
+
+For addition it orders Start(new workload) before Reconcile(gateway), then uses
+the desired retained bootstrap path for both new-workload and retained-workload
+SDK health. For removal it creates the otherwise absent desired connected/path
+and retained-workload observations after gateway reconciliation, then gates the
+base workload Stop -> Remove chain on that proof. All observation targets retain
+the existing desired graph/relation pins and activity identities. Extra graph
+changes, independent verification, ambiguous SDK selection or a different
+managed shape add a categorical review instead of broadening update support.
+Liveness-only workloads and retained compute are explicit refusals; removal also
+requires the structural plan to contain both the exact Stop and Remove activity.
+
+The compiler adds no effect or result value. Reconcile success is only an order
+predecessor here; Operations admission remains closed and the provider owner must
+separately prove installed selected material before execution support can use the
+plan.

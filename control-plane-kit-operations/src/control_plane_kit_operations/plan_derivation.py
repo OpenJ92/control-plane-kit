@@ -12,6 +12,7 @@ from control_plane_kit_core.planning import (
     ManagementObservationError,
     compile_activity_plan,
     compile_graph_activity_plan,
+    compile_managed_update_activity_plan,
 )
 from control_plane_kit_core.planning.codec import (
     ACTIVITY_PLAN_SCHEMA,
@@ -34,6 +35,7 @@ from control_plane_kit_operations.configuration_cleanup import (
 class PlanDerivationProfile(StrEnum):
     STRUCTURAL_V1 = "structural-v1"
     MANAGEMENT_GRAPH_PAIR_V1 = "management-graph-pair-v1"
+    MANAGED_UPDATE_V1 = "managed-update-v1"
     CONFIGURATION_CLEANUP_V1 = "configuration-cleanup-v1"
     CONFIGURATION_CLEANUP_V2 = "configuration-cleanup-v2"
 
@@ -70,6 +72,10 @@ def derive_activity_plan(
         raise PlanDerivationError("activity plan derivation requires a deployment transition")
     if profile is PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1:
         return compile_graph_activity_plan(transition.current, transition.desired)
+    if profile is PlanDerivationProfile.MANAGED_UPDATE_V1:
+        return compile_managed_update_activity_plan(
+            transition.current, transition.desired,
+        )
     return compile_activity_plan(transition.diff)
 
 

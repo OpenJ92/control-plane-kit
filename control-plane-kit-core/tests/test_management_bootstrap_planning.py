@@ -11,7 +11,10 @@ from control_plane_kit_core.algebra import (
     ProviderSocket, RequirementSocket, SocketConnection,
 )
 from control_plane_kit_core.capabilities import CapabilityName
-from control_plane_kit_core.lifecycle import ResourceLifecycle
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+from control_plane_kit_core.lifecycle import (
+    ResourceLifecycle, ResourceOwnership, ResourcePersistence,
+)
 from control_plane_kit_core.node_control import (
     NodeControlGraphReference, NodeControlGraphReferenceRole, NodeHealthReadKind,
     WorkloadNodeControlSurfaceDescriptor,
@@ -19,7 +22,7 @@ from control_plane_kit_core.node_control import (
 from control_plane_kit_core.planning import (
     ActivityId, ActivityPlan, ActivityPlanDescriptorCodec, AllocatePublicIngress,
     InvalidActivityPlan, NodeTarget, NoCompensationRequired, PlannedActivity,
-    ReconcileNode, ReconcileRuntime, RemovePublicIngress, ReviewChange, ReviewReason,
+    ReconcileNode, ReconcileRuntime, RemoveNodeResource, RemovePublicIngress, ReviewChange, ReviewReason,
     StartNode, StartRuntime, StopNode, StopRuntime, WaitForHealthy,
     compile_activity_plan, compensation_for_operation,
 )
@@ -43,6 +46,17 @@ from tests.test_graph_codec import PureImplementation
 from tests import test_node_control_surfaces as variable_fixtures
 
 
+@dataclass(frozen=True)
+class ArtifactImplementation(PureImplementation):
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+
+    def materialize(self, block_id, sockets, runtime):
+        return replace(
+            super().materialize(block_id, sockets, runtime),
+            configuration_artifacts=self.configuration_artifacts,
+        )
+
+
 def surface(socket="control", kinds=(NodeHealthReadKind.READINESS,), *, variable=False):
     return WorkloadNodeControlSurfaceDescriptor(
         NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, socket),
@@ -51,7 +65,7 @@ def surface(socket="control", kinds=(NodeHealthReadKind.READINESS,), *, variable
     )
 
 
-def block(name, surfaces=(), *, gateway=False, checks=(), requirements=()):
+def block(name, surfaces=(), *, gateway=False, checks=(), requirements=(), artifacts=()):
     names = {"control", *(value.provider_socket_name.value for value in surfaces)}
     if gateway:
         names.add("transit")
@@ -63,23 +77,32 @@ def block(name, surfaces=(), *, gateway=False, checks=(), requirements=()):
         verification=VerificationContract(checks),
         gateway_transit=GatewayTransitDeclaration("transit", GatewayTransitProtocol.RECEIVER_HEALTH_READ_V2) if gateway else None,
     )
+    implementation = ArtifactImplementation(
+        "test-service",
+        {name_: f"http://{name}.{name_}" for name_ in sorted(names)},
+        artifacts,
+    )
     return ApplicationBlock(
-        spec, PureImplementation("test-service", {name_: f"http://{name}.{name_}" for name_ in sorted(names)}),
+        spec, implementation,
         BlockSockets(providers=tuple(ProviderSocket(name_, Protocol.HTTP) for name_ in sorted(names)), requirements=requirements),
     )
 
 
 def topology(*, prefix="", workload=True, workload_surfaces=None, checks=(),
-             gateway_surfaces=None, gateway_checks=(), connector_surfaces=(), cycle=False):
+             gateway_surfaces=None, gateway_checks=(), connector_surfaces=(), cycle=False,
+             gateway_artifacts=(), added_workload=False):
     runtime_id = prefix + "runtime"
     gateway_id, connector_id, workload_id = (prefix + value for value in ("gateway", "connector", "workload"))
     gateway = block(gateway_id, (surface(),) if gateway_surfaces is None else gateway_surfaces,
                     gateway=True, checks=gateway_checks,
-                    requirements=(RequirementSocket("service", Protocol.HTTP, ("SERVICE_URL",)),) if cycle else ())
+                    requirements=(RequirementSocket("service", Protocol.HTTP, ("SERVICE_URL",)),) if cycle else (),
+                    artifacts=gateway_artifacts)
     connector = block(connector_id, connector_surfaces)
     children = [gateway, connector]
     if workload:
         children.append(block(workload_id, (surface(),) if workload_surfaces is None else workload_surfaces, checks=checks))
+    if added_workload:
+        children.append(block(prefix + "added-workload", (surface(),)))
     if cycle:
         children.append(SocketConnection(workload_id, "control", gateway_id, "service", edge_id=prefix + "actual-service-dependency"))
     ingress = NamedPublicIngress(prefix + "management", IngressAuthorityReference("management-authority"),
@@ -94,6 +117,24 @@ def graph(**options):
 
 def empty():
     return DeploymentGraph("bootstrap")
+
+
+def managed_update_graphs():
+    """Generic algebraic A/B/C values modeled on accepted Servers #241/#238."""
+    def routes(*node_ids):
+        return ConfigurationArtifact(
+            "management-routes", "/etc/cpk/gateway/routes.json",
+            ConfigurationMediaType.JSON,
+            json.dumps({"targets": list(node_ids)}, sort_keys=True, separators=(",", ":")),
+        )
+
+    graph_a = graph(gateway_artifacts=(routes("workload"),))
+    graph_b = graph(
+        gateway_artifacts=(routes("workload", "added-workload"),),
+        added_workload=True,
+    )
+    graph_c = graph(gateway_artifacts=(routes("workload"),))
+    return graph_a, graph_b, graph_c
 
 
 def predecessors(plan, activity):
@@ -138,6 +179,12 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertTrue(left.valid, left.descriptor())
         self.assertTrue(right.valid, right.descriptor())
         return self.api("compile_graph_activity_plan")(left, right)
+
+    def compile_update(self, current, desired):
+        left, right = validate_graph(current), validate_graph(desired)
+        self.assertTrue(left.valid, left.descriptor())
+        self.assertTrue(right.valid, right.descriptor())
+        return self.api("compile_managed_update_activity_plan")(left, right)
 
     def find(self, plan, operation_type, *, node=None, stage=None, runtime=None):
         found = [value for value in plan.activities if isinstance(value.operation, operation_type)
@@ -221,6 +268,143 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.before(plan, local, connected)
         self.before(plan, connected, path)
         self.assertFalse(any(getattr(value.operation, "stage", None) == "gateway-ingress-ready" for value in plan.activities))
+
+    def test_managed_update_add_orders_route_and_both_sdk_readiness(self):
+        graph_a, graph_b, _ = managed_update_graphs()
+        plan = self.compile_update(graph_a, graph_b)
+        bootstrap = self.api("ObserveManagementBootstrap")
+        health_type = self.api("ObserveNodeHealth")
+        start = self.find(plan, StartNode, node="added-workload")
+        reconcile = self.find(plan, ReconcileNode, node="gateway")
+        local = self.find(plan, bootstrap, stage="gateway-local-ready")
+        connected = self.find(plan, bootstrap, stage="connector-connected")
+        path = self.find(plan, bootstrap, stage="authenticated-management-path")
+        retained = self.find(plan, health_type, node="workload")
+        added = self.find(plan, health_type, node="added-workload")
+        for observation in (retained, added):
+            self.assertIs(observation.operation.target.graph_side, self.api("PlanGraphSide").DESIRED_GRAPH)
+            self.assertIs(observation.operation.health_kind, NodeHealthReadKind.READINESS)
+        for first, second in (
+            (start, reconcile), (reconcile, local), (local, connected),
+            (connected, path), (path, retained), (path, added), (start, added),
+        ):
+            self.before(plan, first, second)
+        self.assertFalse(any(
+            isinstance(value.operation, WaitForHealthy)
+            and value.operation.target.node_id in {"workload", "added-workload"}
+            for value in plan.activities
+        ))
+        self.assertTrue(plan.ready_for_execution)
+
+    def test_managed_update_remove_proves_retained_path_before_disposal(self):
+        _, graph_b, graph_c = managed_update_graphs()
+        plan = self.compile_update(graph_b, graph_c)
+        bootstrap = self.api("ObserveManagementBootstrap")
+        reconcile = self.find(plan, ReconcileNode, node="gateway")
+        local = self.find(plan, bootstrap, stage="gateway-local-ready")
+        connected = self.find(plan, bootstrap, stage="connector-connected")
+        path = self.find(plan, bootstrap, stage="authenticated-management-path")
+        retained = self.find(plan, self.api("ObserveNodeHealth"), node="workload")
+        stop = self.find(plan, StopNode, node="added-workload")
+        remove = self.find(plan, RemoveNodeResource, node="added-workload")
+        for first, second in (
+            (reconcile, local), (local, connected), (connected, path),
+            (path, retained), (retained, stop), (stop, remove),
+        ):
+            self.before(plan, first, second)
+        self.assertIs(retained.operation.target.graph_side, self.api("PlanGraphSide").DESIRED_GRAPH)
+        structural = compile_activity_plan(diff_graphs(validate_graph(graph_b), validate_graph(graph_c)))
+        self.assertEqual(stop.activity_id, self.find(structural, StopNode, node="added-workload").activity_id)
+        self.assertEqual(remove.activity_id, self.find(structural, RemoveNodeResource, node="added-workload").activity_id)
+        self.assertFalse(any(
+            isinstance(value.operation, self.api("ObserveNodeHealth"))
+            and value.operation.node_id == "added-workload"
+            for value in plan.activities
+        ))
+        self.assertTrue(plan.ready_for_execution)
+
+    def test_managed_update_refuses_material_outside_closed_generic_shape(self):
+        graph_a, graph_b, graph_c = managed_update_graphs()
+        liveness_a = replace(
+            graph_a,
+            nodes={**graph_a.nodes, "workload": replace(
+                graph_a.node("workload"),
+                block_spec=replace(
+                    graph_a.node("workload").block_spec,
+                    control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),),
+                ),
+            )},
+        )
+        liveness_b = replace(
+            graph_b,
+            nodes={**graph_b.nodes, "workload": replace(
+                graph_b.node("workload"),
+                block_spec=replace(
+                    graph_b.node("workload").block_spec,
+                    control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),),
+                ),
+            )},
+        )
+        cases = {
+            "retained-workload-material": (graph_a, replace(
+                graph_b,
+                nodes={**graph_b.nodes, "workload": replace(
+                    graph_b.node("workload"),
+                    metadata={"unrelated-selected-material": "changed"},
+                )},
+            )),
+            "unpaired-gateway-material": (graph_a, replace(
+                graph_b,
+                nodes={**graph_b.nodes, "gateway": replace(
+                    graph_b.node("gateway"),
+                    configuration_artifacts=graph_a.node("gateway").configuration_artifacts,
+                )},
+            )),
+            "independent-new-workload-verification": (graph_a, replace(
+                graph_b,
+                nodes={**graph_b.nodes, "added-workload": replace(
+                    graph_b.node("added-workload"),
+                    block_spec=replace(
+                        graph_b.node("added-workload").block_spec,
+                        verification=VerificationContract((HttpCheck(
+                            check_id="independent", provider_socket="control", path="/health",
+                        ),)),
+                    ),
+                )},
+            )),
+            "liveness-only-new-workload": (graph_a, replace(
+                graph_b,
+                nodes={**graph_b.nodes, "added-workload": replace(
+                    graph_b.node("added-workload"),
+                    block_spec=replace(
+                        graph_b.node("added-workload").block_spec,
+                        control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),),
+                    ),
+                )},
+            )),
+            "liveness-only-retained-workload": (liveness_a, liveness_b),
+            "retained-child-reordering": (graph_a, replace(
+                graph_b,
+                runtimes={"runtime": replace(
+                    graph_b.runtimes["runtime"],
+                    children=("connector", "gateway", "workload", "added-workload"),
+                )},
+            )),
+            "retained-compute-removal": (replace(
+                graph_b,
+                nodes={**graph_b.nodes, "added-workload": replace(
+                    graph_b.node("added-workload"),
+                    lifecycle=ResourceLifecycle(
+                        ResourceOwnership.OWNED, ResourcePersistence.RETAINED,
+                    ),
+                )},
+            ), graph_c),
+        }
+        for name, (current, desired) in cases.items():
+            with self.subTest(name=name):
+                plan = self.compile_update(current, desired)
+                self.assertFalse(plan.ready_for_execution)
+                self.assertTrue(any(isinstance(value.operation, ReviewChange) for value in plan.activities))
 
     def test_equal_name_only_and_unmanaged_pairs_preserve_exact_legacy_plans(self):
         managed = graph(gateway_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),))

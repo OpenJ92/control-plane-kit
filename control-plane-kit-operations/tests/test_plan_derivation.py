@@ -1,25 +1,58 @@
 """Closed provenance and stored-plan wire laws; no effects or fallback."""
 
 from copy import deepcopy
-from dataclasses import fields
+from dataclasses import fields, replace
 import importlib
 import importlib.util
 import unittest
 
 from control_plane_kit_core.planning import (
     ActivityPlan, DEFAULT_ACTIVITY_PLAN_CODEC, compile_activity_plan,
-    compile_graph_activity_plan,
+    compile_graph_activity_plan, compile_managed_update_activity_plan,
 )
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
 from control_plane_kit_core.topology import DeploymentGraph, validate_graph
 from control_plane_kit_operations.deployment_transitions import Deploy
 from control_plane_kit_operations.records import ActivityPlanRecord, ActivityPlanStatus, OperationsRecordError
-from tests.runtime_management_fixtures import management_graph
+from tests.runtime_management_fixtures import bootstrap_management_graph, management_graph
 
 
 def require_derivation(test):
     name = "control_plane_kit_operations.plan_derivation"
     test.assertIsNotNone(importlib.util.find_spec(name), "plan derivation provenance interface is missing")
     return importlib.import_module(name)
+
+
+def managed_update_pair(test):
+    """Generic Core values derived from accepted SDK-only Servers #241 shape."""
+    def routes(*node_ids):
+        import json
+        return ConfigurationArtifact(
+            "management-routes", "/etc/cpk/gateway/routes.json",
+            ConfigurationMediaType.JSON,
+            json.dumps({"targets": list(node_ids)}, sort_keys=True, separators=(",", ":")),
+        )
+
+    current = bootstrap_management_graph(test)
+    gateway = replace(current.node("gateway"), configuration_artifacts=(routes("api"),))
+    current = replace(current, nodes={**current.nodes, "gateway": gateway})
+    added = replace(
+        current.node("api"),
+        node_id="api-y",
+        block_spec=replace(current.node("api").block_spec, role_id="api-y"),
+    )
+    desired_gateway = replace(gateway, configuration_artifacts=(routes("api", "api-y"),))
+    runtime = current.runtimes["docker"]
+    desired = replace(
+        current,
+        nodes={**current.nodes, "gateway": desired_gateway, "api-y": added},
+        runtimes={**current.runtimes, "docker": replace(runtime, children=runtime.children + ("api-y",))},
+    )
+    current = validate_graph(current)
+    desired = validate_graph(desired)
+    test.assertTrue(current.valid, current.descriptor())
+    test.assertTrue(desired.valid, desired.descriptor())
+    return current, desired
 
 
 class PlanDerivationTests(unittest.TestCase):
@@ -33,7 +66,8 @@ class PlanDerivationTests(unittest.TestCase):
         module = require_derivation(self)
         plan = compile_activity_plan(Deploy(validate_graph(DeploymentGraph("empty")), validate_graph(management_graph(self))).diff)
         for profile in (module.PlanDerivationProfile.STRUCTURAL_V1,
-                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
+                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
+                        module.PlanDerivationProfile.MANAGED_UPDATE_V1):
             with self.subTest(profile=profile):
                 expected = {"schema": "control-plane-kit.operations.activity-plan-record", "version": 1,
                             "derivation_profile": profile.value, "plan": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)}
@@ -68,7 +102,9 @@ class PlanDerivationTests(unittest.TestCase):
         module = require_derivation(self)
         for profile in (None, *module.PlanDerivationProfile):
             for evidence in ({}, {"derivation_profile": None}, {"derivation_profile": "unknown"},
-                             {"derivation_profile": "structural-v1"}, {"derivation_profile": "management-graph-pair-v1"}):
+                             {"derivation_profile": "structural-v1"},
+                             {"derivation_profile": "management-graph-pair-v1"},
+                             {"derivation_profile": "managed-update-v1"}):
                 with self.subTest(profile=profile, evidence=evidence):
                     expected = ("derivation_profile" not in evidence if profile is None
                                 else evidence.get("derivation_profile") == profile.value)
@@ -86,6 +122,18 @@ class PlanDerivationTests(unittest.TestCase):
         for profile in ("structural-v1", "unknown", 1):
             with self.subTest(profile=profile), self.assertRaises(module.PlanDerivationError):
                 module.derive_activity_plan(transition, profile=profile)
+
+    def test_managed_update_profile_dispatches_exact_pure_core_derivation(self):
+        module = require_derivation(self)
+        current, desired = managed_update_pair(self)
+        transition = Deploy(current, desired)
+        expected = compile_managed_update_activity_plan(current, desired)
+        profile = module.PlanDerivationProfile.MANAGED_UPDATE_V1
+        self.assertEqual(module.derive_activity_plan(transition, profile=profile), expected)
+        self.assertEqual(profile.value, "managed-update-v1")
+        encoded = module.encode_stored_activity_plan(expected, profile=profile)
+        self.assertEqual(encoded["derivation_profile"], "managed-update-v1")
+        self.assertEqual(module.decode_stored_activity_plan(encoded), (expected, profile))
 
     def test_typed_profiles_and_exact_wire_strings_are_distinct_boundaries(self):
         module = require_derivation(self)
@@ -108,7 +156,8 @@ class PlanDerivationTests(unittest.TestCase):
         args = ("plan", "session", "base", "desired", ActivityPlanStatus.PLANNED, "2026-09-14T00:00:00Z", ActivityPlan(()))
         self.assertIsNone(ActivityPlanRecord(*args).derivation_profile)
         for profile in (module.PlanDerivationProfile.STRUCTURAL_V1,
-                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
+                        module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
+                        module.PlanDerivationProfile.MANAGED_UPDATE_V1):
             self.assertIs(ActivityPlanRecord(*args, derivation_profile=profile).derivation_profile, profile)
         for profile in ("structural-v1", "bad", False):
             with self.subTest(profile=profile), self.assertRaises(OperationsRecordError):
