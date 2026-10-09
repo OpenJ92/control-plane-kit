@@ -1,4 +1,5 @@
 Source: [test_activity_plan_compiler.py](../../../../control-plane-kit-core/tests/test_activity_plan_compiler.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
 
 These tests exercise the public structural compiler through graph validation and
 diffs. Existing laws cover owned startup, health, socket and ingress ordering,

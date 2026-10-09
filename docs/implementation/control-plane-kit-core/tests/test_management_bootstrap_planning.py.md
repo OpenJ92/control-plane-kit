@@ -1,4 +1,5 @@
 Source: [test_management_bootstrap_planning.py](../../../../control-plane-kit-core/tests/test_management_bootstrap_planning.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
 
 This suite uses the actual graph-pair compiler and inspects its returned DAG;
 fixtures do not implement a second planner. It covers initial and retained
