@@ -44,6 +44,7 @@ def is_signed_management_health_operation(operation: object) -> bool:
     """Classify the signed transport family; this supplies no authority."""
     return (type(operation) is ObserveNodeHealth
         or (type(operation) is ObserveManagementBootstrap and operation.stage in (
+            ManagementBootstrapStage.GATEWAY_LOCAL_READY,
             ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
             ManagementBootstrapStage.GATEWAY_INGRESS_READY,
         )))

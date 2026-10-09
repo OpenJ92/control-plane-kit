@@ -377,6 +377,7 @@ EXACT_INTERPRETER_CALLS = (
             "stores.graphs.lock_receiver_lifecycle",
             "stores.observed_state.put",
             "stores.realized_graphs.get",
+            "stores.registered_products.list_active",
             "stores.runtime_authorities.get_active_for_update",
             "stores.runtime_authorities.get_active_for_update",
             "stores.runtime_authorities.get_active_for_update",

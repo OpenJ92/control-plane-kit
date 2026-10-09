@@ -988,7 +988,10 @@ class ExecutionCoordinator:
                 except StopIteration as completed:
                     result = completed.value
                     break
-                reply = await self._execute_health(command, work)
+                from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+                with _configuration_accounting(
+                        (execution.run_id, work.activity.activity_id.value, "managed-health"), active=False):
+                    reply = await self._execute_health(command, work)
         finally:
             steps.close()
         self._complete_command(execution, result, provenance)
@@ -1231,8 +1234,11 @@ class ExecutionCoordinator:
         if type(admitted) is ExecutionCoordinatorResult:
             return admitted
         activity = context.plan.activity(ActivityId(command.predecessor.activity_id))
-        folded = await self._execute_health(command, _HealthExecution(context, activity),
-            admitted_attempt=admitted)
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with _configuration_accounting(
+                (execution.run_id, activity.activity_id.value, "managed-health"), active=False):
+            folded = await self._execute_health(command, _HealthExecution(context, activity),
+                admitted_attempt=admitted)
         observed = self._classify_current(self._load_context(execution), 1)
         status = {
             EffectAttemptStatus.UNCERTAIN: CoordinatorStatus.UNCERTAIN,

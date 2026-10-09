@@ -224,13 +224,22 @@ class _OrdinaryStartReadBoundsOwner:
 
         bindings = {pair: binding_set(pair, projection) for pair, projection in pairs.items()}
         base_pair = (material.base_graph.source_authored_graph_id, material.base_graph.projection_id)
-        # Accepted receiver histories are outside supported ordinary initial
-        # execution. They cannot silently become a new transport traversal.
-        _require(not bindings[base_pair])
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        managed_update = material.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_UPDATE_V1
+        # Ordinary initial execution still starts without accepted receiver
+        # history. The closed managed-update profile is the sole continuation:
+        # its base receivers must already have accepted origins and its new
+        # desired receivers must still be pending.
+        _require(not bindings[base_pair] or managed_update)
+        base_receivers = {binding.receiver_id for binding in bindings[base_pair]}
         origins = {}
         for receiver in sorted({b.receiver_id for items in bindings.values() for b in items}):
             origin = stores.graphs.receiver_introduction(workspace, receiver)
-            _require(origin is not None and origin.first_accepted_action_id is None and origin.retired_action_id is None)
+            _require(origin is not None and origin.retired_action_id is None)
+            if receiver in base_receivers:
+                _require(managed_update and origin.first_accepted_action_id is not None)
+            else:
+                _require(origin.first_accepted_action_id is None)
             origins[(workspace, receiver)] = origin
             pair = (origin.introducing_graph_id, origin.introducing_realized_projection_id)
             if pair not in pairs:
@@ -250,6 +259,36 @@ class _OrdinaryStartReadBoundsOwner:
         for identity, origin in origins.items():
             selectors.update((("introduction", identity),
                 ("origin-action", (origin.introducing_action_id, origin.introducing_session_id, workspace))))
+        collections = [("scopes", (request.identity.request_id,),
+            tuple((str(i),) for i in range(len(derived.scopes))))]
+        read = _EvidenceRead(self._connection)
+        accepted_origins = tuple(origin for origin in origins.values()
+            if origin.first_accepted_action_id is not None)
+        if accepted_origins:
+            from .receiver_execution_scopes import _ExecutionScopeStorage
+            scope_reader = _ExecutionScopeStorage(self._connection, read)
+            receipts = stores.execution._receiver_acceptance_evidence(accepted_origins)
+            for action, _, historical_plan, run, historical_desired, historical_bindings in receipts:
+                historical_request = stores.execution.get_request(action.payload["execution_request_id"])
+                historical_original, historical_derived = scope_reader.verify(historical_request.identity)
+                historical_runs = scope_reader.runs(historical_request)
+                historical_events = scope_reader.events(run.run_id)
+                selectors.update((("acceptance-action", (action.action_id, action.session_id)),
+                    ("request", (historical_request.identity.request_id,)), ("run", (run.run_id,)),
+                    ("plan", (historical_plan.plan_id,)), ("session", (action.session_id,))))
+                for projection in historical_original[1:]:
+                    selectors.update((("graph", (projection.source_authored_graph_id,)),
+                        ("projection", (projection.projection_id,))))
+                collections.extend((("scopes", (historical_request.identity.request_id,),
+                        tuple((str(i),) for i in range(len(historical_derived.scopes)))),
+                    ("runs", (historical_request.identity.request_id,),
+                        tuple((value.run_id,) for value in historical_runs)),
+                    ("events", (run.run_id,), tuple((value.event_id,) for value in historical_events)),
+                    ("advancement-actions", (action.session_id, run.run_id), ((action.action_id,),)),
+                    ("bindings", (workspace, historical_desired.source_authored_graph_id,
+                        historical_desired.projection_id),
+                        tuple((value.node_id, value.provider_socket_name)
+                            for value in historical_bindings))))
         invocations, roots = {}, []
         if transfers:
             _require(type(proof_read) is _EvidenceRead and proof_read.connection is self._connection
@@ -280,20 +319,18 @@ class _OrdinaryStartReadBoundsOwner:
                 if projection is not None:
                     selectors.add(("projection", (projection,)))
         _require(len(roots) == len(set(roots)))
-        read = _EvidenceRead(self._connection)
         transaction = _transaction(read)
         _require(transaction == self._guard._transaction_id)
         points = tuple((role, _capture_point(read, role, identity)) for role, identity in sorted(selectors))
-        scopes = ("scopes", _capture_collection(read, "scopes", (request.identity.request_id,),
-            tuple((str(i),) for i in range(len(derived.scopes)))))
-        collections = [scopes]
         for pair, items in sorted(bindings.items()):
             expected = tuple(sorted((b.node_id, b.provider_socket_name) for b in items))
-            collections.append(("bindings", _capture_collection(read, "bindings", (workspace, *pair), expected)))
+            collections.append(("bindings", (workspace, *pair), expected))
         for identity, expected in sorted(invocations.items()):
-            collections.append(("invocation-refs", _capture_collection(read, "invocation-refs", identity, expected)))
+            collections.append(("invocation-refs", identity, expected))
+        captured_collections = tuple((role, _capture_collection(read, role, identity, expected))
+            for role, identity, expected in sorted(set(collections)))
         self._transferred_roots = frozenset(roots)
-        self._issued = _OrdinaryStartReadBounds(self, transaction, points, tuple(collections))
+        self._issued = _OrdinaryStartReadBounds(self, transaction, points, captured_collections)
         return self._issued
 
     def require_transferred_roots(self, transfers):
@@ -555,7 +592,7 @@ class ConfigurationPreparationStore:
                       AND payload->>'schema'='control-plane-kit.operations.activity-plan-record'
                       AND jsonb_typeof(payload->'version')='number'
                       AND ((payload->>'version'='1' AND payload->>'derivation_profile'
-                            IN ('structural-v1','management-graph-pair-v1'))
+                            IN ('structural-v1','management-graph-pair-v1','managed-update-v1'))
                         OR (payload->>'version'='2' AND payload->>'derivation_profile'
                             IN ('configuration-cleanup-v1','configuration-cleanup-v2')))
                     THEN payload->'plan'
@@ -895,17 +932,33 @@ class ConfigurationPreparationStore:
         selected = tuple(by_allocation.get(ref.allocation_id) for ref in refs)
         if bindings:
             resolved = []
+            matched_bindings = []
             for ref, allocation in zip(refs, selected, strict=True):
-                if allocation is None:
+                slot = lambda value: (value.workspace_id, value.runtime_id, value.node_id,
+                    value.artifact_id, value.target_path, value.media_type, value.file_mode)
+                slot_bindings = tuple(binding for binding in bindings if slot(binding.ref) == slot(ref))
+                if len(slot_bindings) != 1:
+                    raise _Unavailable
+                matching = tuple(binding for binding in bindings if binding.ref == ref)
+                if len(matching) > 1:
+                    raise _Unavailable
+                if matching and allocation is None:
                     # Active-node discovery cannot find a transferred birth
                     # with zero outstanding uses. Prove that exact root and
                     # allocation independently, without recreating protection.
                     allocation = self._protective_allocation_evidence(ref, read)
                     if allocation.claims:
                         raise _Unavailable
+                if not matching and allocation is not None:
+                    # Changed material receives a new allocation; it cannot
+                    # adopt unrelated historical ownership merely because the
+                    # retained node has other accepted slots.
+                    raise _Unavailable
                 resolved.append(allocation)
+                matched_bindings.extend(matching)
             selected = tuple(resolved)
-            if tuple(value.birth for value in selected) != tuple(binding.birth for binding in bindings):
+            if (tuple(value.birth for value in selected if value is not None)
+                    != tuple(binding.birth for binding in matched_bindings)):
                 raise _Unavailable
         elif any(value is not None for value in selected):
             # A fresh birth must never silently adopt a historical allocation.
@@ -925,8 +978,9 @@ class ConfigurationPreparationStore:
             if transfers else (None, None))
         total_claims = sum(len(value.claims) for value in allocations)
         count = len(refs)
-        births = (tuple((value.birth.identity, value.birth.ref.artifact_id) for value in selected)
-            if bindings else tuple((command.transition.identity, ref.artifact_id) for ref in refs))
+        births = tuple((value.birth.identity, value.birth.ref.artifact_id)
+            if value is not None else (command.transition.identity, ref.artifact_id)
+            for ref, value in zip(refs, selected, strict=True))
         issued = owner.capture(material, request, transfers=transfers, proof_read=proof_read)
         owner._contexts.enter_context(owner.bind(issued))
         if transfers:
