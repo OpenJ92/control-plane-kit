@@ -659,7 +659,10 @@ def _require_managed_plan(stores, intent_record, request):
         intent = intent_record.intent
         plan = stores.activity_history.get_plan(request.identity.plan_id)
         source = intent.source
-        if (plan.derivation_profile is not PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
+        if (plan.derivation_profile not in (
+                    PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
+                    PlanDerivationProfile.MANAGED_UPDATE_V1,
+                )
                 or plan.status is not ActivityPlanStatus.PLANNED
                 or plan.session_id != request.identity.session_id
                 or source.plan_id != plan.plan_id
@@ -683,7 +686,11 @@ def _require_managed_plan(stores, intent_record, request):
             graph.require_valid()
             graphs.append(graph)
         if runtime_management_execution_is_unsupported(graphs[0].graph, graphs[1].graph,
-                plan.plan, derivation_profile=plan.derivation_profile):
+                plan.plan,
+                registered_products=stores.registered_products.list_active(
+                    request.identity.workspace_id,
+                ),
+                derivation_profile=plan.derivation_profile):
             raise ValueError
         approval = stores.activity_history.get_approval_request(request.approval_request_id)
         decision = stores.activity_history.approval_decision_for_request(approval.request_id)

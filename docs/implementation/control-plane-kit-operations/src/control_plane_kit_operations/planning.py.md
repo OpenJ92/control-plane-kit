@@ -27,6 +27,14 @@ cannot hide behind a faithful sibling. Malformed product references are refused
 independently of catalog contents, before the canonical-empty exception.
 Equal or name-only managed graph pairs retain their compiler-proven empty plan.
 
+The closed `managed-update-v1` profile is selected only after the pure admission
+owner identifies the bounded one-node add/remove candidate and proves its exact
+registered material. A recognizable but incomplete candidate is refused rather
+than downgraded. Updates outside that candidate family keep the established
+`management-graph-pair-v1` derivation and remain subject to its existing planning
+and execution guards; profile selection does not reinterpret or broaden their
+execution authority.
+
 Complete selected pairs may persist ready plans or Core's explanatory review
 plans. Missing gateway readiness and selected variable-only material do not gain
 invented observation or variable effects. A real graph-valid dependency cycle
