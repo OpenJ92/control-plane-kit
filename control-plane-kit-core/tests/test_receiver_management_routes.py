@@ -8,6 +8,7 @@ from pathlib import Path
 import unittest
 
 import control_plane_kit_core as core
+from tests.test_node_health_declarations import NodeHealthDeclarationTests
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -175,6 +176,24 @@ class ReceiverManagementRoutesTests(unittest.TestCase):
                     b'{"profile":NaN}', b'{"profile":Infinity}', b'{"profile":1.5}',
                     b"[" * 10 + b"]" * 10, raw + b"{}"):
             self.refusal(lambda: self.codec.decode_bytes(bad))
+
+    def test_mixed_declaration_preserves_public_producer_depth_refusal(self):
+        declaration = NodeHealthDeclarationTests().declaration("mode")
+        self.assertEqual(core.WorkloadNodeControlSurfaceDeclarationCodec().decode(
+            declaration.descriptor()), declaration)
+        value = self.codec.decode(self.document())
+        mixed = replace(value.targets[1], declaration=declaration)
+        routes = replace(value, targets=(mixed,))
+        self.assertEqual(routes.targets[0].declaration, declaration)
+        # The old constructor permits this value, but its public artifact
+        # producer decodes serialized bytes and refuses depth-nine contracts.
+        raw = json.dumps(routes.descriptor(), sort_keys=True, separators=(",", ":")).encode()
+        for name, action in (("encode", lambda: self.codec.encode(routes)),
+                             ("encode_bytes", lambda: self.codec.encode_bytes(routes)),
+                             ("decode", lambda: self.codec.decode(routes.descriptor())),
+                             ("decode_bytes", lambda: self.codec.decode_bytes(raw))):
+            with self.subTest(boundary=name):
+                self.refusal(action)
 
 
 if __name__ == "__main__":
