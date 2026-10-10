@@ -55,6 +55,17 @@ unchanged owning causal-red run with focused new tests, followed by source
 review/corrections and coordinated final green; no alternate harness or gate
 change. Red/green coordinates and terminal evidence will be recorded here.
 
+Target checkpoint `161ad018a1b256d1bfe4ff99d882f9807e5029c3` received
+[Kepler's independent target/interface PASS](https://github.com/OpenJ92/control-plane-kit/issues/1963#issuecomment-6100587389).
+The unchanged owning Core run terminated exit 1 after **958 tests / 88.848s,
+exactly eight missing-contract assertion failures and zero errors**. All eight
+new methods reached the explicit missing-module assertion; the other 950 tests
+passed. Support: 21 passed; integrity: 958 tests, zero mocks, zero approved skips.
+Compilation/import stages were not reached after the expected red. Log SHA256:
+`b78a55e92b9c6bd811da83b0981b1432a43244cdc8bb3f424cb8d00a5125b237`.
+Source implementation began only after this terminal result. Full green remains
+pending independent source review and the coordinated owning run.
+
 Security/data/history: no new I/O, route, authority, secret, persistence or
 provider effect. Bounded failures omit origins and candidate material. Valid
 configuration does not prove installation, current authority or health.
