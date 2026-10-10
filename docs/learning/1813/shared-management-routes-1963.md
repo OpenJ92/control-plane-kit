@@ -66,6 +66,27 @@ Compilation/import stages were not reached after the expected red. Log SHA256:
 Source implementation began only after this terminal result. Full green remains
 pending independent source review and the coordinated owning run.
 
+Review correction: source PASS at `47044215` was explicitly superseded by
+[Kepler's depth-parity HOLD](https://github.com/OpenJ92/control-plane-kit/issues/1963#issuecomment-6100646700).
+The original artifact producer decoded its output and therefore rejected
+depth-nine mixed declarations even though their typed constructors succeeded.
+The shared encoder must preserve that same postcondition. A regression at
+`881b902b` proved both encoder methods lacked the refusal; both decoder controls
+already refused and nested declaration/route constructor premises passed.
+
+That owning run terminated exit 1: **969 executions / 85.379s, three assertion
+failures, zero errors**. Two failures were the intended encoder subcases. The
+third was the exact module-set expectation missing the new module; it is a
+mechanical inventory omission, not intended-red evidence. The 959 declared
+tests included ten duplicate fixture-class executions because of a direct
+TestCase import. Corrected module-qualified fixture access restores ordinary
+collection; the exact-set assertion adds only `receiver_management_routes`.
+Support: 21 passed; integrity: 959 methods, zero mocks/skips. Log SHA256:
+`9e364b6528ea64dd701f835cd09c7cd2f9159fb38027398f980ce5dd382bdd7a`.
+The production correction applies structural validation inside the existing
+encoder error boundary only; constructors and canonical decoder bounds remain
+unchanged. Narrow independent rereview precedes final validation.
+
 Security/data/history: no new I/O, route, authority, secret, persistence or
 provider effect. Bounded failures omit origins and candidate material. Valid
 configuration does not prove installation, current authority or health.

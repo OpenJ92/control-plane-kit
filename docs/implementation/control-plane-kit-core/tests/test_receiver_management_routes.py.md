@@ -1,12 +1,15 @@
 Source: [test_receiver_management_routes.py](../../../../control-plane-kit-core/tests/test_receiver_management_routes.py).
 
 The focused law group translates the accepted gateway route codec's structural
-laws into its Core owner. Eight methods cover canonical wire round trips,
+laws into its Core owner. Nine methods cover canonical wire round trips,
 non-authorizing empty/subset values, frozen/revalidated types and public exports,
 duplicates/scope, closed profiles/declarations, origin/alias grammar, count/byte
 bounds, and strict JSON input. Full self+X and self+X+Y golden documents preserve
 the actual gateway consumer's self-route context without making graph policy a
-codec invariant.
+codec invariant. The mixed-declaration regression establishes a valid nested
+declaration and constructible route value, but preserves the predecessor's
+public producer/consumer refusal when its operation contracts reach depth nine.
+Module-qualified fixture access avoids collecting its TestCase twice.
 
 The explicit JSON fixtures are canonical source-derived vectors for the frozen
 Servers codec at `71cbf5b095cad9852db07a99da6b26ab48d9e2cc`; the fixture's trailing

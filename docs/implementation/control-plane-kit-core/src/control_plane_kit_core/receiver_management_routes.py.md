@@ -24,7 +24,11 @@ credentials, IPv6 literals, uppercase host spellings and normalized aliases
 remain outside this existing protocol. This is a private-origin syntax, not
 network authorization or evidence of a particular runtime endpoint.
 
-Construction and encoding revalidate nested nominal values. The fixed error
+Construction and encoding revalidate nested nominal values. Both encoder
+methods also retain the old public artifact producer's depth/type check: a
+constructible mixed declaration can exceed the route envelope's depth-eight
+limit and must then refuse on encode as well as decode. Constructors keep
+their existing semantics. The fixed error
 retains the predecessor text and has no candidate attributes or chained
 exception. Reprs omit route material. Decoding a value creates no effect,
 authority or installation/health evidence.

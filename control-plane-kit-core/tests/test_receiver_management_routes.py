@@ -8,7 +8,7 @@ from pathlib import Path
 import unittest
 
 import control_plane_kit_core as core
-from tests.test_node_health_declarations import NodeHealthDeclarationTests
+from tests import test_node_health_declarations as health_fixtures
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -178,7 +178,7 @@ class ReceiverManagementRoutesTests(unittest.TestCase):
             self.refusal(lambda: self.codec.decode_bytes(bad))
 
     def test_mixed_declaration_preserves_public_producer_depth_refusal(self):
-        declaration = NodeHealthDeclarationTests().declaration("mode")
+        declaration = health_fixtures.NodeHealthDeclarationTests().declaration("mode")
         self.assertEqual(core.WorkloadNodeControlSurfaceDeclarationCodec().decode(
             declaration.descriptor()), declaration)
         value = self.codec.decode(self.document())

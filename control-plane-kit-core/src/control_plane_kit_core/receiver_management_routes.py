@@ -160,7 +160,11 @@ class ReceiverManagementRoutesCodec:
         try:
             if type(routes) is not ReceiverManagementRoutes:
                 raise ValueError
-            return replace(routes).descriptor()
+            document = replace(routes).descriptor()
+            # The original public artifact producer decoded its serialized
+            # output; retain its depth/type refusal without changing values.
+            _structural_json(document)
+            return document
         except _INPUT_ERRORS:
             failure = ReceiverManagementRoutesError(_ERROR)
         raise failure
