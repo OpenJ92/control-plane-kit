@@ -7,6 +7,16 @@ using graph_authoring's authoritative per-node extractor. A second pure call to
 the shared graph-pair derivation proves canonical emptiness; this preserves the
 existing no-op exception without trusting a supplied plan or execution policy.
 
+Managed-update profile selection is a narrow opt-in. A structural prefilter
+recognizes only the retained single managed runtime/gateway family with exactly
+one node introduced or removed and no non-artifact gateway change. Recognized
+candidates must then satisfy the complete registered-product, lifecycle,
+readiness, authority-delivery, and exact route-artifact predicate; failure is a
+fixed refusal and cannot fall back to legacy execution. Other established
+management updates, including same-node material edits, retain
+`management-graph-pair-v1` planning and its existing execution guard. Equal and
+name-only pairs likewise retain their canonical empty legacy plan.
+
 For nonempty plans, each node's `(gateway_transit, control_surfaces)` must exactly
 equal the same projection of every matched identity-plus-digest registered
 contract. Each node declaring either surface needs management selected in its

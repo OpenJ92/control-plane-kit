@@ -55,6 +55,7 @@ from control_plane_kit_operations.coordinator import (
     ActivityExecutionDispatcher, ExecutionCoordinator, ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied, RuntimeInterpreterDispatcher,
 )
+from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
 from control_plane_kit_operations.cpk_server import (
     CpkServerApplicationError, CpkServerOperationsApplication, cpk_server_services,
 )
@@ -168,6 +169,10 @@ class RecordingManagedHealth:
     async def observe_connection(self, realization, request, authority):
         test = self.test
         test.assertEqual(test.tracker.active, 0)
+        accounting = _ACCOUNTING.get()
+        test.assertIsNotNone(accounting)
+        test.assertEqual(accounting.owner, request.source.run_id.value)
+        test.assertFalse(accounting.active)
         test.assertIs(request.operation.stage, ManagementBootstrapStage.CONNECTOR_CONNECTED)
         test.assertEqual(request.effect_id, realization.intent_event.event_id)
         test.assertEqual(request.activity_id, realization.activity.activity_id)
@@ -188,6 +193,10 @@ class RecordingManagedHealth:
     async def observe_signed(self, realization, request, authority):
         test = self.test
         test.assertEqual(test.tracker.active, 0)
+        accounting = _ACCOUNTING.get()
+        test.assertIsNotNone(accounting)
+        test.assertEqual(accounting.owner, request.source.run_id.value)
+        test.assertFalse(accounting.active)
         preparation = authority.preparation
         test.assertEqual(preparation.original_event_id, request.effect_id)
         test.assertEqual(preparation.identity.activity_id, request.activity_id.value)

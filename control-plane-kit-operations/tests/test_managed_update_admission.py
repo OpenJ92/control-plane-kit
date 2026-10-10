@@ -64,6 +64,20 @@ class ManagedUpdateAdmissionTests(unittest.TestCase):
             transition, registered_products=products[:-1],
         ))
 
+        gateway = graph_b.node("gateway")
+        route = next(value for value in gateway.configuration_artifacts
+                     if value.artifact_id == "gateway-health-targets")
+        malformed = replace(graph_b, nodes={**graph_b.nodes, "gateway": replace(
+            gateway, configuration_artifacts=tuple(
+                replace(value, target_path="/tmp/targets.json") if value is route else value
+                for value in gateway.configuration_artifacts
+            ),
+        )})
+        self.assertIsNone(runtime_management_plan_profile(
+            Deploy(validate_graph(graph_a), validate_graph(malformed)),
+            registered_products=products,
+        ))
+
     def test_exact_plan_activities_lower_with_their_pinned_graph_side_material(self):
         graph_a, graph_b, graph_c, products = managed_update_graphs(self)
         for current, desired in ((graph_a, graph_b), (graph_b, graph_c)):

@@ -962,11 +962,15 @@ class ExecutionCoordinator:
         if type(command) is not ExecuteManagedActivityRun:
             raise InvalidOperationCommand("managed execution command is invalid")
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
-        with _configuration_accounting(command.execution.run_id, active=False):
+        with _configuration_accounting(command.execution.run_id, active=False) as accounting:
             self._configure_run(command.execution.run_id)
-            return await self._execute_managed_command(command)
+            return await self._execute_managed_command(command, accounting)
 
-    async def _execute_managed_command(self, command: ExecuteManagedActivityRun) -> ExecutionCoordinatorResult:
+    async def _execute_managed_command(
+        self,
+        command: ExecuteManagedActivityRun,
+        accounting,
+    ) -> ExecutionCoordinatorResult:
         if type(command) is not ExecuteManagedActivityRun:
             raise InvalidOperationCommand("managed execution command is invalid")
         provenance = self._managed_provenance(command)
@@ -988,10 +992,12 @@ class ExecutionCoordinator:
                 except StopIteration as completed:
                     result = completed.value
                     break
-                from control_plane_kit_operations._configuration_preparation import _configuration_accounting
-                with _configuration_accounting(
-                        (execution.run_id, work.activity.activity_id.value, "managed-health"), active=False):
+                active = accounting.active
+                accounting.active = False
+                try:
                     reply = await self._execute_health(command, work)
+                finally:
+                    accounting.active = active
         finally:
             steps.close()
         self._complete_command(execution, result, provenance)
@@ -1213,11 +1219,15 @@ class ExecutionCoordinator:
         if type(command) is not ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
-        with _configuration_accounting(command.execution.run_id, active=False):
+        with _configuration_accounting(command.execution.run_id, active=False) as accounting:
             self._configure_run(command.execution.run_id)
-            return await self._reobserve(command)
+            return await self._reobserve(command, accounting)
 
-    async def _reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
+    async def _reobserve(
+        self,
+        command: ReobserveConnectorConnection,
+        accounting,
+    ) -> ExecutionCoordinatorResult:
         if type(command) is not ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
         provenance = self._managed_provenance(command)
@@ -1234,11 +1244,13 @@ class ExecutionCoordinator:
         if type(admitted) is ExecutionCoordinatorResult:
             return admitted
         activity = context.plan.activity(ActivityId(command.predecessor.activity_id))
-        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
-        with _configuration_accounting(
-                (execution.run_id, activity.activity_id.value, "managed-health"), active=False):
+        active = accounting.active
+        accounting.active = False
+        try:
             folded = await self._execute_health(command, _HealthExecution(context, activity),
                 admitted_attempt=admitted)
+        finally:
+            accounting.active = active
         observed = self._classify_current(self._load_context(execution), 1)
         status = {
             EffectAttemptStatus.UNCERTAIN: CoordinatorStatus.UNCERTAIN,

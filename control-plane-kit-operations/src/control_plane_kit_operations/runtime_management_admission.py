@@ -103,9 +103,9 @@ def runtime_management_plan_profile(
     management graph-pair derivation.
     """
 
-    if type(transition) is not UpdateDeployment or not any(
-        _has_management_material(graph)
-        for graph in (transition.current.graph, transition.desired.graph)
+    if type(transition) is not UpdateDeployment or not _managed_update_candidate_shape(
+        transition.current.graph,
+        transition.desired.graph,
     ):
         return PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
     candidate = derive_activity_plan(
@@ -258,34 +258,19 @@ def _managed_update_shape(
     configuration slot that the application selected for managed routing.
     """
 
-    if set(current.runtimes) != set(desired.runtimes) or len(current.runtimes) != 1:
+    if not _managed_update_candidate_shape(current, desired):
         return False
     runtime_id = next(iter(current.runtimes))
     before_runtime = current.runtimes[runtime_id]
-    after_runtime = desired.runtimes[runtime_id]
-    if (
-        before_runtime.management is None
-        or before_runtime.management != after_runtime.management
-        or replace(before_runtime, children=()) != replace(after_runtime, children=())
-    ):
-        return False
     gateway_id = before_runtime.management.gateway_node_id
-    if gateway_id not in current.nodes or gateway_id not in desired.nodes:
-        return False
 
     before_ids = set(current.nodes)
     after_ids = set(desired.nodes)
     introduced = after_ids - before_ids
     removed = before_ids - after_ids
-    if (len(introduced), len(removed)) not in ((1, 0), (0, 1)):
-        return False
     changed_id = next(iter(introduced or removed))
     before_gateway = current.nodes[gateway_id]
     after_gateway = desired.nodes[gateway_id]
-    if replace(before_gateway, configuration_artifacts=()) != replace(
-        after_gateway, configuration_artifacts=(),
-    ):
-        return False
     if not _gateway_artifact_change_is_exact(before_gateway, after_gateway):
         return False
 
@@ -329,6 +314,42 @@ def _managed_update_shape(
     if retained_product.reference != changed_product.reference:
         return False
     return products[(False, gateway_id)].reference == products[(True, gateway_id)].reference
+
+
+def _managed_update_candidate_shape(
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+) -> bool:
+    """Identify the bounded add/remove family before product admission.
+
+    A recognizable but malformed A/B/C candidate must not fall back to the
+    legacy graph-pair profile. Other established management updates retain
+    their existing planning profile and remain subject to execution admission.
+    """
+
+    if set(current.runtimes) != set(desired.runtimes) or len(current.runtimes) != 1:
+        return False
+    runtime_id = next(iter(current.runtimes))
+    before_runtime = current.runtimes[runtime_id]
+    after_runtime = desired.runtimes[runtime_id]
+    if (
+        before_runtime.management is None
+        or before_runtime.management != after_runtime.management
+        or replace(before_runtime, children=()) != replace(after_runtime, children=())
+    ):
+        return False
+    gateway_id = before_runtime.management.gateway_node_id
+    if gateway_id not in current.nodes or gateway_id not in desired.nodes:
+        return False
+    introduced = set(desired.nodes) - set(current.nodes)
+    removed = set(current.nodes) - set(desired.nodes)
+    if (len(introduced), len(removed)) not in ((1, 0), (0, 1)):
+        return False
+    return replace(
+        current.nodes[gateway_id], configuration_artifacts=(),
+    ) == replace(
+        desired.nodes[gateway_id], configuration_artifacts=(),
+    )
 
 
 def _gateway_artifact_change_is_exact(before, after) -> bool:
