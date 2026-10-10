@@ -69,6 +69,7 @@ EXPECTED_MODULES = {
     "receiver_health_reads",
     "receiver_health_transit",
     "receiver_identity",
+    "receiver_management_routes",
     "receiver_node_control",
     "receiver_node_control_results",
     "receiver_node_control_transit",
