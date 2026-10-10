@@ -16,6 +16,7 @@ EXPECTED_MODULES = {
     "capabilities",
     "configuration",
     "configuration_instances",
+    "configuration_installation",
     "configuration_invocation",
     "configuration_rendering",
     "control_contracts",

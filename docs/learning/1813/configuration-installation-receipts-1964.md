@@ -1,6 +1,7 @@
 # #1964: correlated installation receipts
 
-Status: interface/law dry run; no implementation or executable evidence yet.
+Status: intended-red established; bounded source implemented, source review and
+final validation pending.
 Parent #1962; accepted base `9228a51083c666f8583ceceff6494c5927bf1f0d`;
 branch `codex/1964-installation-receipts` targets `roadmap/1813-runtime-control`.
 
@@ -97,3 +98,24 @@ future trusted producer remains responsible for honest opaque commitments.
 Mathematical shape: a closed disposition sum with constrained prior/current
 products; canonical representation preserves the value; contextual extraction
 checks existing commitments without adding authority or executing an effect.
+
+## Target review and causal-red evidence
+
+Target-only commit `c956425248bceb2180cdf4f4c9191ea0ebff698c` contains eleven
+focused methods and this law/source record. Kepler passed the
+[interface](https://github.com/OpenJ92/control-plane-kit/issues/1964#issuecomment-6101739133)
+and [concrete targets](https://github.com/OpenJ92/control-plane-kit/issues/1964#issuecomment-6101751879).
+The unchanged Core Docker script exited 1: **970 tests / 53.581s, exactly eleven
+missing-module assertion failures and zero errors**; other 959 tests passed.
+Support: 21 passed. Integrity: 970 methods, zero mocks/approved skips.
+Compilation/import were not reached after expected red. No apparatus/fixture or
+collection failure occurred. Preserved log SHA256:
+`c4bc052a37afa16c400d27e4540c764ad35926411fcbad17118e52f285098f77`.
+[Durable terminal record](https://github.com/OpenJ92/control-plane-kit/issues/1964#issuecomment-6101770738).
+
+Implementation adds the one reviewed module, four public exports, exact inventory
+entry, exact module-set expectation and source/test companions. Existing
+application modules and the eleven behavioral targets remain unchanged. The
+byte reader rejects duplicate and noncanonical representations through exact
+canonical re-encoding equality. Source review precedes the coordinated final
+hosted Core/Operations/backend gates; no duplicate green suite is planned.
