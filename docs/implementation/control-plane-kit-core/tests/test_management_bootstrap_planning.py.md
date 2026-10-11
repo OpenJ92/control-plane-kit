@@ -6,6 +6,18 @@ fixtures do not implement a second planner. It covers initial and retained
 management observation ordering, exact graph-bound references, unsupported
 changes and real service dependency cycle refusal.
 
+`ManagedConfigurationUpdateTests` adds #1970's new-law target: exactly one
+existing public JSON application file changes content while the strict V2
+wrapper and all other graph material remain fixed. It checks deterministic
+disruptive workload reconciliation before desired protected health, retained
+management-path ordering, input preservation and no infrastructure replacement.
+Equal graphs remain empty and the old add/remove contract stays separate.
+Graph-valid refusal controls cover provenance-only changes, wrapper/slot/extra
+material changes, wrong receiver targets, data/secret/authority consumers and
+independent verification. The active socket-secret case uses ordinary topology
+compilation to prove that effective delivered material is excluded too.
+These are pure planner laws, not admission, installation or provider evidence.
+
 #1865 restores node-suppression coverage independently of the existing
 runtime-suppression law. For external and attached gateways/connectors, the
 runtime and the other management node still start and ingress allocation still

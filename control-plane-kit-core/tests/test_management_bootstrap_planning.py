@@ -11,7 +11,9 @@ from control_plane_kit_core.algebra import (
     ProviderSocket, RequirementSocket, SocketConnection,
 )
 from control_plane_kit_core.capabilities import CapabilityName
-from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationFileMode, ConfigurationMediaType
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference, SecretUseIntent
 from control_plane_kit_core.lifecycle import (
     ResourceLifecycle, ResourceOwnership, ResourcePersistence,
 )
@@ -44,6 +46,8 @@ from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
 from tests.test_graph_codec import PureImplementation
 from tests import test_node_control_surfaces as variable_fixtures
+from tests import test_receiver_configuration as receiver_fixtures
+from tests import test_node_authority_delivery as authority_fixtures
 
 
 @dataclass(frozen=True)
@@ -931,6 +935,173 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertEqual(plan.activities[0].operation, WaitForHealthy(NodeTarget("workload")))
         self.assertEqual(codec.dumps(plan), json.dumps(wire, sort_keys=True, separators=(",", ":")))
         self.assertEqual(codec.encode(plan), wire)
+
+
+class ManagedConfigurationUpdateTests(unittest.TestCase):
+    """#1970: one public file's content is a closed retained-node relation."""
+
+    def pair(self, *, socket_secret=False):
+        declaration = topology()
+        if socket_secret:
+            delivery = SecretEnvironmentDelivery(
+                "APPLICATION_TOKEN", SecretReference("secret://workspace/application"),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+            )
+            runtime = declaration.root
+            workload = runtime.children[2]
+            workload = replace(workload, sockets=replace(workload.sockets, requirements=(
+                RequirementSocket("upstream", Protocol.HTTP, ("UPSTREAM_URL",),
+                                  secret_deliveries=(delivery,)),
+            )))
+            declaration = replace(declaration, root=replace(runtime, children=(
+                *runtime.children[:2], workload,
+                SocketConnection("gateway", "control", "workload", "upstream"),
+            )))
+        current = compile_topology(declaration)
+        node = current.node("workload")
+        fixture = receiver_fixtures.ReceiverConfigurationTests()
+        fixture.setUp()
+        declaration = core.WorkloadNodeControlSurfaceDeclaration(
+            node.block_spec.control_surfaces[0],
+            profile=core.WorkloadNodeControlSurfaceDeclarationProfile.V2,
+        )
+        document = fixture.document(declaration)
+        document["target"].update(runtime_id="runtime", node_id="workload")
+        wrapper = fixture.artifact(document=document)
+        application = ConfigurationArtifact(
+            "application", "/etc/application/settings.json", ConfigurationMediaType.JSON,
+            '{"mode":"blue"}',
+        )
+        current = current.update_node(replace(
+            node, configuration_artifacts=(wrapper, application),
+            public_environment=(PublicStaticEnvironmentBinding(receiver_fixtures.PATH_KEY, wrapper.target_path),),
+        ))
+        desired = current.update_node(replace(
+            current.node("workload"),
+            configuration_artifacts=(wrapper, replace(application, content='{"mode":"green"}', source_digest=None)),
+        ))
+        return current, desired
+
+    def compile(self, current, desired):
+        left, right = validate_graph(current), validate_graph(desired)
+        self.assertTrue(left.valid, left.descriptor())
+        self.assertTrue(right.valid, right.descriptor())
+        compiler = getattr(core, "compile_managed_configuration_update_activity_plan", None)
+        self.assertTrue(callable(compiler), "retained public-configuration planning is missing")
+        return compiler(left, right)
+
+    def refused(self, current, desired):
+        plan = self.compile(current, desired)
+        self.assertFalse(plan.ready_for_execution)
+        self.assertTrue(any(isinstance(value.operation, ReviewChange) for value in plan.activities))
+
+    def test_content_change_reconciles_before_desired_health_without_replacing_infrastructure(self):
+        current, desired = self.pair()
+        codec = GraphDescriptorCodec()
+        originals = (codec.encode(current), codec.encode(desired))
+        plan = self.compile(current, desired)
+        self.assertTrue(plan.ready_for_execution)
+        self.assertEqual(plan, self.compile(current, desired))
+        replacements = [a for a in plan.activities if isinstance(a.operation, ReconcileNode)]
+        self.assertEqual([a.operation.target.node_id for a in replacements], ["workload"])
+        self.assertEqual(replacements[0].impact.value, "disruptive")
+        health = [a for a in plan.activities if isinstance(a.operation, core.ObserveNodeHealth)]
+        self.assertEqual([a.operation.node_id for a in health], ["workload"])
+        self.assertIn(replacements[0].activity_id, predecessors(plan, health[0]))
+        stages = {a.operation.stage: a for a in plan.activities
+                  if isinstance(a.operation, core.ObserveManagementBootstrap)}
+        local = stages[core.ManagementBootstrapStage.GATEWAY_LOCAL_READY]
+        connected = stages[core.ManagementBootstrapStage.CONNECTOR_CONNECTED]
+        path = stages[core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH]
+        for first, second in ((local, connected), (connected, path), (path, health[0])):
+            self.assertIn(first.activity_id, predecessors(plan, second))
+        self.assertEqual(health[0].operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
+        resolved = core.resolve_management_observation(
+            health[0].operation, validate_graph(current), validate_graph(desired),
+            expected_operation=health[0].operation,
+        )
+        self.assertEqual(resolved.workload_node, desired.node("workload"))
+        self.assertFalse(any(isinstance(a.operation, (StartNode, StartRuntime, AllocatePublicIngress,
+                                                     StopNode, RemoveNodeResource, ReconcileRuntime))
+                             for a in plan.activities))
+        self.assertEqual((codec.encode(current), codec.encode(desired)), originals)
+
+    def test_equal_material_is_empty_and_old_add_remove_contract_is_unchanged(self):
+        current, desired = self.pair()
+        self.assertEqual(self.compile(current, current).activities, ())
+        old = core.compile_managed_update_activity_plan(validate_graph(current), validate_graph(desired))
+        self.assertFalse(old.ready_for_execution)
+        a, b, c = managed_update_graphs()
+        self.assertTrue(core.compile_managed_update_activity_plan(validate_graph(a), validate_graph(b)).ready_for_execution)
+        self.assertTrue(core.compile_managed_update_activity_plan(validate_graph(b), validate_graph(c)).ready_for_execution)
+        self.refused(a, b)
+
+    def test_other_artifact_changes_and_provenance_only_are_refused(self):
+        current, desired = self.pair()
+        wrapper, before = current.node("workload").configuration_artifacts
+        after = desired.node("workload").configuration_artifacts[1]
+        cases = {
+            "source-digest-only": (wrapper, replace(before, source_digest="f" * 64)),
+            "path": (wrapper, replace(after, target_path="/etc/other.json")),
+            "mode": (wrapper, replace(after, file_mode=ConfigurationFileMode.OWNER_READ_ONLY)),
+            "media": (wrapper, replace(after, media_type=ConfigurationMediaType.TEXT)),
+            "added-artifact": (wrapper, before, replace(after, artifact_id="extra", target_path="/etc/extra.json")),
+            "removed-artifact": (wrapper,),
+            "wrapper-and-app": (replace(wrapper, source_digest="e" * 64), after),
+        }
+        for name, artifacts in cases.items():
+            with self.subTest(name=name):
+                self.refused(current, desired.update_node(replace(desired.node("workload"), configuration_artifacts=artifacts)))
+
+    def test_other_material_and_graph_changes_are_refused(self):
+        current, desired = self.pair()
+        node = desired.node("workload")
+        cases = {
+            "image-product": desired.update_node(replace(node, metadata={**node.metadata, "image": "example.invalid/app@sha256:" + "a" * 64})),
+            "declaration": desired.update_node(replace(node, block_spec=replace(node.block_spec, control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),)))),
+            "environment": desired.update_node(replace(node, public_environment=node.public_environment + (PublicStaticEnvironmentBinding("MODE", "other"),))),
+            "second-node": desired.update_node(replace(desired.node("connector"), metadata={"changed": True})),
+            "graph-name": replace(desired, name="other"),
+        }
+        for name, candidate in cases.items():
+            with self.subTest(name=name):
+                self.refused(current, candidate)
+
+    def test_ineligible_targets_are_refused_even_when_only_app_content_changes(self):
+        current, desired = self.pair()
+        cases = {
+            "external": {"lifecycle": ResourceLifecycle.external()},
+            "retained-data": {"lifecycle": ResourceLifecycle.owned_with_retained_data("app-data")},
+            "secret": {"secret_deliveries": (SecretEnvironmentDelivery(
+                "APPLICATION_TOKEN", SecretReference("secret://workspace/application"), SecretUseIntent.APPLICATION_CONTROL_TOKEN),)},
+            "runtime-authority": {"runtime_authority_deliveries": (authority_fixtures.DELIVERY,)},
+            "independent-verification": {"block_spec": replace(current.node("workload").block_spec,
+                verification=VerificationContract((HttpCheck("own", "control", "/health"),)))},
+        }
+        for name, changes in cases.items():
+            with self.subTest(name=name):
+                self.refused(*(value.update_node(replace(value.node("workload"), **changes)) for value in (current, desired)))
+
+    def test_active_socket_secret_is_effective_material_and_refused(self):
+        current, desired = self.pair(socket_secret=True)
+        self.assertTrue(current.node("workload").secret_deliveries)
+        self.refused(current, desired)
+
+    def test_actual_wrapper_and_exact_target_are_required(self):
+        current, desired = self.pair()
+        for target_node in ("foreign",):
+            wrapper = current.node("workload").configuration_artifacts[0]
+            document = json.loads(wrapper.content)
+            document["target"]["node_id"] = target_node
+            changed = replace(wrapper, content=json.dumps(document), source_digest=None)
+            pair = [value.update_node(replace(value.node("workload"), configuration_artifacts=(
+                changed, value.node("workload").configuration_artifacts[1],
+            ))) for value in (current, desired)]
+            self.refused(*pair)
+        pair = [value.update_node(replace(value.node("workload"), configuration_artifacts=(
+            value.node("workload").configuration_artifacts[1],
+        ), public_environment=())) for value in (current, desired)]
+        self.refused(*pair)
 
 
 if __name__ == "__main__":
