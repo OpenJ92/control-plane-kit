@@ -195,6 +195,49 @@ class ReceiverConfigurationTests(unittest.TestCase):
         self.refusal(lambda: self.select((artifact,)))
         self.assertEqual(old_codec.encode_bytes(old_codec.decode_bytes(original)), original)
 
+    def slot_selector(self):
+        selector = getattr(self.api, "select_receiver_node_control_configuration_slot", None)
+        self.assertTrue(callable(selector), "declared receiver slot selection is not implemented")
+        self.assertIs(getattr(core, "select_receiver_node_control_configuration_slot", None), selector)
+        self.assertIn("select_receiver_node_control_configuration_slot", core.__all__)
+        return selector
+
+    def test_declared_slot_needs_no_receiver_identity_or_verifier_payload(self):
+        artifact = ConfigurationArtifact("application-control", "/opt/application/control.json",
+            ConfigurationMediaType.JSON, "{}")
+        selector = self.slot_selector()
+        self.assertIs(self.select((artifact,), selector=selector), artifact)
+        self.refusal(lambda: self.select((artifact,)))
+        # Slot selection is profile agnostic; actual material is never allowed
+        # to inherit or fall back to the descriptor's payload.
+        unsupported = replace(artifact, content='{"profile":"unsupported"}')
+        self.assertIs(self.select((unsupported,), selector=selector), unsupported)
+        self.refusal(lambda: self.select((unsupported,)))
+
+    def test_declared_slot_preserves_ambiguity_integrity_and_binding_refusals(self):
+        selector = self.slot_selector()
+        artifact = ConfigurationArtifact("application-control", "/opt/application/control.json",
+            ConfigurationMediaType.JSON, "{}")
+        binding = PublicStaticEnvironmentBinding(PATH_KEY, artifact.target_path)
+        derived = SocketDerivedEnvironmentBinding(PATH_KEY, artifact.target_path, "edge-a")
+        cases = (((), (binding,), (self.declaration.surface,)),
+                 ((artifact,), (), (self.declaration.surface,)),
+                 ((artifact,), (binding, binding), (self.declaration.surface,)),
+                 ((artifact, artifact), (binding,), (self.declaration.surface,)),
+                 ((artifact,), (replace(binding, value="/opt/other.json"),), (self.declaration.surface,)),
+                 ((artifact,), (derived,), (self.declaration.surface,)),
+                 ((artifact,), (binding, derived), (self.declaration.surface,)),
+                 ((artifact,), (binding,), ()),
+                 ((artifact,), (binding,), (self.declaration.surface,) * 2))
+        for artifacts, environment, surfaces in cases:
+            self.refusal(lambda: self.select(artifacts, environment, surfaces, selector))
+        for changed in (replace(artifact, media_type=ConfigurationMediaType.TEXT),
+                        replace(artifact, file_mode=ConfigurationFileMode.OWNER_READ_ONLY)):
+            self.refusal(lambda: self.select((changed,), selector=selector))
+        forged = deepcopy(artifact)
+        object.__setattr__(forged, "target_path", "/etc/../private-canary")
+        self.refusal(lambda: self.select((forged,), selector=selector))
+
     def test_independent_products_paths_and_graph_roundtrip_use_the_same_contract(self):
         for name, path in (("weather", "/opt/weather/receiver.json"), ("inventory", "/etc/inventory/management.json")):
             artifact = self.artifact(name + "-settings", path)

@@ -11,3 +11,15 @@ Core receiver V2 now supplies independently named workload products without a wo
 
 Implementation validation is pending on PR #1915. The reviewed target-only red
 checkpoint establishes only its recorded missing boundaries, not these green laws.
+
+## Declared slots / #1968 target checkpoint
+
+The original independently named full-default examples remain. An additional
+product declares an inert `{}` payload at its exact slot; real first-start and
+reload must use the genuine selected V2 bytes without a workload decoder.
+The opposite case (valid descriptor default, actual `{}`) must fail without ID
+allocation or history mutation. A separately canonical registered product with
+a different declared control surface must not authorize the unchanged node's
+surface. Existing redirect, missing binding and unsupported profile refusals
+remain. These are new or strengthened owner laws; target red is pending, and
+no application implementation or downstream acceptance is claimed.

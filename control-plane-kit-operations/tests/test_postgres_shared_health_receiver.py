@@ -4,6 +4,7 @@ import unittest
 
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductIdentity, ProductReference
 from control_plane_kit_core.wrapper_configuration import (
     WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT as ENVIRONMENT,
@@ -78,12 +79,15 @@ class PostgresSharedHealthReceiverTests(PostgresHealthEffectStartFixture, unitte
         return nodes, documents, selected
 
     def test_independently_named_registered_products_and_paths_start_and_reload_without_workload_decoder(self):
-        for name, path in (("new-application", "/opt/new/receiver.json"),
-                           ("another-application", "/var/run/another.json")):
+        for name, path, inert in (("new-application", "/opt/new/receiver.json", False),
+                                  ("another-application", "/var/run/another.json", False),
+                                  ("inert-application", "/opt/inert/receiver.json", True)):
             with self.subTest(name=name):
                 def renamed(nodes, documents, selected):
                     default = documents["workload"].product.runtime_contract.configuration_artifacts[0]
                     default = replace(default, artifact_id=name, target_path=path)
+                    if inert:
+                        default = replace(default, content="{}")
                     chosen = replace(selected["workload"], artifact_id=name, target_path=path)
                     selected["workload"] = chosen
                     return self.publish(nodes, documents, selected, name=name, defaults=(default,),
@@ -102,6 +106,42 @@ class PostgresSharedHealthReceiverTests(PostgresHealthEffectStartFixture, unitte
                 self.assertEqual(result.preparation.workload_key_registration_id, self.keys["workload"].registration_id)
                 self.assertEqual(self.health_snapshot(), before)
                 self.assertEqual(self.health_counts(), (1, 1, 2, 1))
+
+    def test_actual_inert_payload_refuses_despite_valid_descriptor_default(self):
+        def incomplete(nodes, documents, selected):
+            default = documents["workload"].product.runtime_contract.configuration_artifacts[0]
+            chosen = replace(selected["workload"], content="{}")
+            selected["workload"] = chosen
+            return self.publish(nodes, documents, selected, name="incomplete-actual",
+                defaults=(default,), actual=(chosen,), declared_path=default.target_path,
+                selected_path=chosen.target_path)
+        self.transform = incomplete
+        self.reset_health()
+        self.refused()
+
+    def test_registered_surface_must_agree_with_actual_node_surface(self):
+        def different_surface(nodes, documents, selected):
+            document = documents["workload"]
+            contract = document.product.runtime_contract
+            surface = replace(contract.control_surfaces[0],
+                health_reads=(NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS))
+            self.assertNotEqual(surface, nodes["api"].block_spec.control_surfaces[0])
+            default, = contract.configuration_artifacts
+            configured = ReceiverNodeControlConfigurationCodec().decode_bytes(default.content.encode())
+            default = replace(default, content=ReceiverNodeControlConfigurationCodec().encode_bytes(
+                replace(configured, declaration=replace(configured.declaration, surface=surface))).decode())
+            document = ProductDescriptorCodec().encode_document(replace(document.product,
+                identity=ProductIdentity("independent", "different-surface", 1),
+                runtime_contract=replace(contract, configuration_artifacts=(default,), control_surfaces=(surface,))))
+            reference = ProductReference.from_document(document)
+            documents["workload"] = document
+            nodes["api"] = replace(nodes["api"], metadata={**nodes["api"].metadata,
+                "product_identity": reference.identity.key,
+                "product_descriptor_digest": reference.descriptor_sha256.value})
+            return nodes, documents, selected
+        self.transform = different_surface
+        self.reset_health()
+        self.refused()
 
     def test_redirect_from_declared_a_to_separately_valid_selected_b_refuses(self):
         def redirect(nodes, documents, selected):
