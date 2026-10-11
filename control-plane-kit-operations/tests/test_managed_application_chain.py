@@ -17,6 +17,15 @@ from unittest import mock
 
 import psycopg
 
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition,
+    ConfigurationInstallationReceipt,
+)
+from control_plane_kit_core.configuration_invocation import (
+    configuration_invocation_correlation_for_request,
+    configuration_invocation_selection_fingerprint,
+)
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind, WorkspaceGrant,
 )
@@ -24,11 +33,22 @@ from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
 from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
+from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfigurationCodec,
+    select_receiver_node_control_configuration_artifact,
+)
+from control_plane_kit_core.receiver_management_routes import (
+    ReceiverManagementRouteBinding,
+    ReceiverManagementRoutes,
+    ReceiverManagementRoutesCodec,
+)
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import (
     ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth,
-    StartNode, StartRuntime, compile_graph_activity_plan, derive_schedule, project_activity_journal,
+    ReconcileNode, ReconcileRuntime, RemoveNodeResource, StartNode, StartRuntime, StopNode,
+    compile_graph_activity_plan, derive_schedule, project_activity_journal,
 )
 from control_plane_kit_core.planning.saga import SagaStepId
 from control_plane_kit_core.policies import PolicyScope
@@ -46,20 +66,28 @@ from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations import coordinator, health_receiver_trust
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService
-from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService
+from control_plane_kit_operations.advancement import (
+    CurrentGraphAdvancementCommandService,
+    CurrentGraphAdvancementIncomplete,
+)
 from control_plane_kit_operations.approvals import ApprovalCommandService
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionDispatcher, ExecutionCoordinator, ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied, RuntimeInterpreterDispatcher,
 )
+from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
 from control_plane_kit_operations.cpk_server import (
     CpkServerApplicationError, CpkServerOperationsApplication, cpk_server_services,
 )
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+from control_plane_kit_operations.effect_attempt_fold import (
+    EffectAttemptFoldConflict,
+)
 from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_outcome_evidence import (
-    NativeConnectionObservation, NativeConnectionOutcome,
+    ExecutionEffectOutcome, NativeConnectionObservation, NativeConnectionOutcome,
+    effect_outcome_failure, effect_outcome_transition,
 )
 from control_plane_kit_operations.health_signing_authority import HealthSigningAuthorityReloadService
 from control_plane_kit_operations.ingress_authorities import CloudflareZoneIngressAuthority, IngressAuthorityProviderKind
@@ -69,6 +97,12 @@ from control_plane_kit_operations.planning import ActivityPlanningCommandService
 from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.products import ProductRegistrationService
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
+from control_plane_kit_operations.runtime_management_admission import (
+    runtime_management_execution_is_unsupported,
+    runtime_management_plan_profile,
+)
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand, RegisterSecretReferenceCommand,
     SecretProviderKind, SecretProviderRegistrationService, SecretUseAuthorizationService,
@@ -87,6 +121,34 @@ def now():
     return instant.isoformat(timespec="microseconds" if instant.microsecond else "seconds").replace("+00:00", "Z")
 
 
+def management_routes(nodes):
+    configured = {}
+    for node in nodes.values():
+        if node.node_id != "gateway" and not any(
+            NodeHealthReadKind.READINESS in surface.health_reads
+            for surface in node.block_spec.control_surfaces
+        ):
+            continue
+        artifact = select_receiver_node_control_configuration_artifact(
+            artifacts=node.configuration_artifacts,
+            environment=node.public_environment + node.socket_environment,
+            control_surfaces=node.block_spec.control_surfaces,
+        )
+        configured[node.node_id] = ReceiverNodeControlConfigurationCodec().decode_bytes(
+            artifact.content.encode("utf-8")
+        )
+    gateway = configured["gateway"]
+    return ReceiverManagementRoutes(gateway.target, tuple(
+        ReceiverManagementRouteBinding(
+            "self" if node_id == "gateway" else node_id,
+            value.target,
+            value.declaration,
+            f"http://{node_id}:8000",
+        )
+        for node_id, value in configured.items()
+    ))
+
+
 class ForbiddenRecovery:
     def observe(self, *args, **kwargs):
         raise AssertionError("completed native reads must not enter mutation recovery")
@@ -99,6 +161,8 @@ class RecordingRuntime:
         self.test = test
         self.calls = []
         self.containers = {}
+        self.installation_disposition = ConfigurationInstallationDisposition.REPLACED
+        self.installation_selection_fingerprint = None
 
     def execute(self, request):
         raise AssertionError("the managed runtime must use registered authority")
@@ -111,8 +175,11 @@ class RecordingRuntime:
         with test.unit_of_work() as uow:
             event = uow.stores.execution.get_event(request.effect_id)
             test.assertEqual(event.activity_id, request.activity_id.value)
-        test.assertIsInstance(request.operation, (StartRuntime, StartNode))
+        test.assertIsInstance(request.operation, (
+            StartRuntime, StartNode, ReconcileNode, ReconcileRuntime, StopNode, RemoveNodeResource,
+        ))
         self.calls.append(request)
+        test.effect_order.append(request.activity_id.value)
         if type(request.operation) is StartNode:
             node_id = request.operation.target.node_id
             test.assertNotIn(node_id, self.containers, "a container was allocated twice")
@@ -124,8 +191,23 @@ class RecordingRuntime:
                 grants = tuple(grant for grant in request.secret_resolution_grants
                     if grant.permits(SecretReference(token_reference), SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN))
                 test.assertEqual(len(grants), 1, "connector creation requires the actually generated token grant")
-        return RuntimeEffectResult.succeeded(request.effect_id,
-            evidence={"recording_provider": True, "activity_id": request.activity_id.value})
+        elif type(request.operation) is RemoveNodeResource:
+            self.containers.pop(request.operation.target.node_id, None)
+        evidence = {"recording_provider": True, "activity_id": request.activity_id.value}
+        if (type(request.operation) is ReconcileNode
+                and self.installation_disposition is not None):
+            correlation = configuration_invocation_correlation_for_request(request)
+            evidence["configuration_installation_receipt"] = (
+                ConfigurationInstallationReceipt(
+                    correlation.request_fingerprint,
+                    self.installation_selection_fingerprint
+                    or configuration_invocation_selection_fingerprint(correlation.selection),
+                    self.installation_disposition,
+                    "1" * 64,
+                    "2" * 64,
+                ).descriptor()
+            )
+        return RuntimeEffectResult.succeeded(request.effect_id, evidence=evidence)
 
 
 class RecordingManagedHealth:
@@ -142,8 +224,9 @@ class RecordingManagedHealth:
         selected = tuple(activity.activity_id for activity in plan.activities
             if type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth))
         self.test.assertTrue(selected)
-        self.test.assertFalse(current.nodes)
-        self.test.assertEqual(set(desired.nodes), {"gateway", "connector", "api"})
+        self.test.assertTrue({"gateway", "connector"} <= set(desired.nodes))
+        if current.nodes:
+            self.test.assertTrue({"gateway", "connector", "api"} <= set(current.nodes))
         self.test.assertEqual(len(registered_products), 3)
         self.test.assertTrue(any(value.authority_ref == desired.runtimes["docker"].authority_ref
             for value in runtime_authorities))
@@ -153,6 +236,10 @@ class RecordingManagedHealth:
     async def observe_connection(self, realization, request, authority):
         test = self.test
         test.assertEqual(test.tracker.active, 0)
+        accounting = _ACCOUNTING.get()
+        test.assertIsNotNone(accounting)
+        test.assertEqual(accounting.owner, request.source.run_id.value)
+        test.assertFalse(accounting.active)
         test.assertIs(request.operation.stage, ManagementBootstrapStage.CONNECTOR_CONNECTED)
         test.assertEqual(request.effect_id, realization.intent_event.event_id)
         test.assertEqual(request.activity_id, realization.activity.activity_id)
@@ -161,6 +248,7 @@ class RecordingManagedHealth:
         test.assertTrue(self.responses, "an unrequested native read was dispatched")
         kind = self.responses.pop(0)
         self.native_reads.append(request)
+        test.effect_order.append(request.activity_id.value)
         if kind is NativeConnectionOutcome.UNKNOWN:
             return NativeConnectionObservation(kind, request.effect_id, request.activity_id.value)
         stamp = now()
@@ -172,6 +260,10 @@ class RecordingManagedHealth:
     async def observe_signed(self, realization, request, authority):
         test = self.test
         test.assertEqual(test.tracker.active, 0)
+        accounting = _ACCOUNTING.get()
+        test.assertIsNotNone(accounting)
+        test.assertEqual(accounting.owner, request.source.run_id.value)
+        test.assertFalse(accounting.active)
         preparation = authority.preparation
         test.assertEqual(preparation.original_event_id, request.effect_id)
         test.assertEqual(preparation.identity.activity_id, request.activity_id.value)
@@ -189,6 +281,7 @@ class RecordingManagedHealth:
         result = ReceiverHealthReadResult(preparation.request, declaration,
             NodeHealthReadOutcome.UNKNOWN if path else NodeHealthReadOutcome.HEALTHY)
         self.signed_reads.append((request, preparation, result))
+        test.effect_order.append(request.activity_id.value)
         return result
 
 
@@ -205,6 +298,7 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         self.unit_of_work = self.tracker
         self.health = RecordingManagedHealth(self)
         self.runtime = RecordingRuntime(self)
+        self.effect_order = []
         self.ingress = RecordingIngressInterpreter(self.tracker)
         self.ids = {name: GeneratedIds("chain-" + name) for name in (
             "workspace", "plan", "desired", "approval", "admission", "lifecycle",
@@ -214,6 +308,8 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         self.graph, self.documents, self.registry = self.authored_graph()
         self.worker = worker_principal(scopes=tuple(PolicyScope))
         self.execution_number = 0
+        self.probe_forged_managed_fold = False
+        self.forged_managed_fold_refused = False
 
     def require_managed_interface(self):
         parameters = inspect.signature(ExecutionCoordinator).parameters
@@ -228,6 +324,14 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         nodes, documents, decoder_bindings = {}, {}, []
         decoder = ByteDecoder(health_receiver_trust)
         for name, node in graph.nodes.items():
+            if name == "api":
+                node = replace(node, block_spec=replace(
+                    node.block_spec,
+                    control_surfaces=(replace(
+                        node.block_spec.control_surfaces[0],
+                        health_reads=(NodeHealthReadKind.READINESS,),
+                    ),),
+                ))
             families = ("transit", "workload") if name == "gateway" else (
                 ("workload",) if name == "api" else ())
             chosen = ()
@@ -236,13 +340,36 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                     WorkloadNodeControlSurfaceDeclarationProfile.V2)
                 chosen = tuple(artifact(family, declaration, node=name, receiver=True)
                     for family in families)
+            original_chosen = chosen
+            if name == "gateway":
+                transit, control = chosen
+                chosen = (
+                    replace(transit, artifact_id="gateway-health-transit",
+                        target_path="/etc/cpk/gateway/health-transit.json"),
+                    ConfigurationArtifact(
+                        "gateway-health-targets",
+                        "/etc/cpk/gateway/health-targets.json",
+                        ConfigurationMediaType.JSON,
+                        json.dumps({"targets": ["api"]}, sort_keys=True, separators=(",", ":")),
+                    ),
+                    replace(control, artifact_id="gateway-control",
+                        target_path="/etc/cpk/gateway/control.json"),
+                )
+            environment = (
+                tuple(replace(value, value="/etc/cpk/gateway/control.json")
+                    for value in wrapper_environment(original_chosen))
+                if name == "gateway"
+                else wrapper_environment(chosen) if "workload" in families
+                else node.public_environment
+            )
             product = ContainerServerProduct(ProductIdentity("test", "chain-" + name, 1),
                 OciImageReference("ghcr.io", "test/chain-" + name, "sha256:" + "a" * 64),
                 ProductRuntimeContract(sockets=node.sockets,
                     provider_ports=tuple(ProviderRuntimePort(socket.name, 8000) for socket in node.sockets.providers),
                     capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
                     gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=chosen,
-                    public_environment=(*node.public_environment, *wrapper_environment(chosen)) if "workload" in families else node.public_environment))
+                    public_environment=(*node.public_environment, *environment)
+                    if "workload" in families else node.public_environment))
             document = ProductDescriptorCodec().encode_document(product)
             documents[name] = document
             reference = ProductReference.from_document(document)
@@ -250,8 +377,21 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                 public_environment=product.runtime_contract.public_environment, metadata={
                 "product_identity": reference.identity.key,
                 "product_descriptor_digest": reference.descriptor_sha256.value})
-            decoder_bindings.extend(bindings(health_receiver_trust,
-                {family: document for family in families}, decoder))
+            selected_bindings = bindings(health_receiver_trust,
+                {family: document for family in families}, decoder)
+            if name == "gateway":
+                selected_bindings = tuple(replace(value,
+                    artifact_id="gateway-health-transit",
+                    target_path="/etc/cpk/gateway/health-transit.json")
+                    for value in selected_bindings)
+            decoder_bindings.extend(selected_bindings)
+        routes = management_routes(nodes)
+        gateway = nodes["gateway"]
+        nodes["gateway"] = replace(gateway, configuration_artifacts=tuple(
+            replace(value, content=ReceiverManagementRoutesCodec().encode_bytes(routes).decode("utf-8"))
+            if value.artifact_id == "gateway-health-targets" else value
+            for value in gateway.configuration_artifacts
+        ))
         graph = replace(graph, nodes=nodes, runtimes={"docker": replace(graph.runtimes["docker"],
             authority_ref=RuntimeAuthorityReference("local-docker"))})
         graph = self.native_before_path_graph(graph)
@@ -285,6 +425,43 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         uow = self.unit_of_work
         lifecycle = RunLifecycleCommandService(uow, clock=now, id_factory=self.ids["lifecycle"])
         fold = EffectAttemptFoldService(uow, id_factory=self.ids["effect-fold"])
+        if self.probe_forged_managed_fold:
+            delegate = fold
+            fixture = self
+
+            class ForgedManagedFoldProbe:
+                def __getattr__(self, name):
+                    return getattr(delegate, name)
+
+                def execute(self, command):
+                    outcome = command.outcome
+                    receipt_key = "configuration_installation_receipt"
+                    if (
+                        not fixture.forged_managed_fold_refused
+                        and type(outcome) is ExecutionEffectOutcome
+                        and receipt_key in outcome.result.evidence
+                    ):
+                        forged_result = RuntimeEffectResult.succeeded(
+                            outcome.result.effect_id,
+                            evidence={key: value for key, value in outcome.result.evidence.items()
+                                if key != receipt_key},
+                            observations=outcome.result.observations,
+                        )
+                        forged_outcome = replace(outcome, result=forged_result)
+                        forged = replace(
+                            command,
+                            transition=effect_outcome_transition(forged_outcome),
+                            failure=effect_outcome_failure(forged_outcome),
+                            outcome=forged_outcome,
+                        )
+                        before = fixture.durable_snapshot()
+                        with fixture.assertRaises(EffectAttemptFoldConflict):
+                            delegate.execute(forged)
+                        fixture.assertEqual(fixture.durable_snapshot(), before)
+                        fixture.forged_managed_fold_refused = True
+                    return delegate.execute(command)
+
+            fold = ForgedManagedFoldProbe()
         authorizer = SecretUseAuthorizationService(uow)
         adapter = ActivityExecutionDispatcher(
             runtime=RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: self.runtime}, authorizer),
@@ -617,3 +794,328 @@ class ManagedApplicationChainTests(ManagedApplicationFixture):
                 "cpk_health_effect_preparations", "cpk_secret_use_authorizations",
                 "cpk_cloudflare_ingress_resources", "cpk_generated_ingress_secret_references"):
             self.assertEqual(self.rows(relation), (), relation)
+
+
+class ManagedUpdateExecutionTests(ManagedApplicationFixture):
+    async def complete_initial(self):
+        await self.reach_native_wait()
+        await self.reobserve(1, "update-origin-observe-2")
+        await self.reobserve(2, "update-origin-observe-3")
+        for _ in range(len(self.plan.activities) + 2):
+            result = await self.execute_one()
+            if result["coordinator_status"] == "completed":
+                break
+            self.assertEqual(result["coordinator_status"], "progressed", result)
+        self.assertEqual((result["coordinator_status"], result["run_status"]),
+            ("completed", "succeeded"))
+        plan = self.plan_descriptor
+        advanced = await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
+            payload={"plan_id": self.plan_id, "expected_current_graph_id": self.workspace["current_graph_id"],
+                "expected_current_realized_projection_id": self.workspace["current_realized_projection_id"],
+                "desired_graph_id": plan["desired_graph_id"],
+                "desired_realized_projection_id": plan["desired_realized_projection_id"],
+                "expected_desired_graph_revision": plan["desired_graph_revision"],
+                "claim_generation": self.generation, "idempotency_key": "update-origin-advance"})
+        return advanced
+
+    def update_graph(self):
+        api = self.graph.node("api")
+        declaration = WorkloadNodeControlSurfaceDeclaration(
+            api.block_spec.control_surfaces[0],
+            WorkloadNodeControlSurfaceDeclarationProfile.V2,
+        )
+        api_y = replace(
+            api,
+            node_id="api-y",
+            block_spec=replace(api.block_spec, role_id="api-y"),
+            configuration_artifacts=(artifact(
+                "workload", declaration, node="api-y", receiver=True,
+                receiver_id="c" * 32,
+            ),),
+        )
+        gateway = self.graph.node("gateway")
+        nodes = {**self.graph.nodes, "api-y": api_y}
+        routes = management_routes(nodes)
+        gateway = replace(gateway, configuration_artifacts=tuple(
+            replace(value, content=ReceiverManagementRoutesCodec().encode_bytes(routes).decode("utf-8"))
+            if value.artifact_id == "gateway-health-targets" else value
+            for value in gateway.configuration_artifacts
+        ))
+        runtime = self.graph.runtimes["docker"]
+        desired = replace(
+            self.graph,
+            nodes={**self.graph.nodes, "gateway": gateway, "api-y": api_y},
+            runtimes={"docker": replace(runtime, children=runtime.children + ("api-y",))},
+        )
+        validate_graph(desired).require_valid()
+        return desired
+
+    async def test_add_executes_installed_route_then_both_readiness_gates_before_advancement(self):
+        self.probe_forged_managed_fold = True
+        origin = await self.complete_initial()
+        effects_before = self.effects()
+        order_before = len(self.effect_order)
+        self.health.responses.append(NativeConnectionOutcome.CONNECTED)
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            current_configuration = uow.stores.configuration_acceptance.read_current_configuration(
+                "workspace-a")
+        self.assertEqual(workspace.current_graph_id, origin["to_graph_id"])
+        self.assertEqual(current_configuration.manifest_slot_count, 4)
+
+        desired = self.update_graph()
+        prepared = await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"}, payload={
+                "desired_graph": DEFAULT_GRAPH_CODEC.encode(desired),
+                "expected_current": {"authored_graph_id": workspace.current_graph_id,
+                    "realized_projection_id": workspace.current_realized_projection_id},
+                "expected_desired": {"authored_graph_id": workspace.desired_graph_id,
+                    "realized_projection_id": workspace.desired_realized_projection_id},
+                "expected_desired_graph_revision": workspace.desired_graph_revision,
+                "title": "Managed add", "idempotency_key": "prepare-update"})
+        self.assertEqual(prepared["status"], "approval-required")
+        detail = await self.invoke("read.plan-detail", ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]})
+        self.assertEqual(detail["plan"]["derivation_profile"], "managed-update-v1")
+        await self.invoke("command.approval.decide", ControlPlaneServiceRole.APPROVAL,
+            path={"workspace_id": "workspace-a", "approval_id": prepared["approval_request_id"]},
+            payload={"session_id": detail["plan"]["session_id"], "decision": "approved",
+                "idempotency_key": "approve-update"},
+            principal=operator_principal(subject_id="manager-a", scopes=(PolicyScope.PLAN_APPROVE,)))
+        admitted = await self.invoke("command.deployment.admit", ControlPlaneServiceRole.ADMISSION,
+            path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]}, payload={
+                "session_id": detail["plan"]["session_id"],
+                "approval_request_id": prepared["approval_request_id"],
+                "readiness": [], "idempotency_key": "admit-update"})
+        claimed = await self.invoke("command.run.claim", ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": admitted["execution_request_id"]},
+            principal=self.worker,
+            payload={"lease_duration_seconds": 1800, "idempotency_key": "claim-update"})
+        run_id, generation = claimed["run_id"], claimed["claim_generation"]
+        await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
+            path={"workspace_id": "workspace-a", "run_id": run_id}, principal=self.worker,
+            payload={"claim_generation": generation, "idempotency_key": "start-update"})
+
+        with self.unit_of_work() as uow:
+            stores = uow.stores
+            record = stores.activity_history.get_plan(prepared["plan_id"])
+            base = DEFAULT_GRAPH_CODEC.decode(stores.realized_graphs.get(
+                record.base_realized_projection_id).graph_descriptor)
+            target = DEFAULT_GRAPH_CODEC.decode(stores.realized_graphs.get(
+                record.desired_realized_projection_id).graph_descriptor)
+            products = stores.registered_products.list_active("workspace-a")
+        transition = Deploy(validate_graph(base), validate_graph(target))
+        self.assertIs(runtime_management_plan_profile(
+            transition, registered_products=products),
+            PlanDerivationProfile.MANAGED_UPDATE_V1)
+        self.assertEqual(record.plan, derive_activity_plan(
+            transition, profile=PlanDerivationProfile.MANAGED_UPDATE_V1))
+        self.assertFalse(runtime_management_execution_is_unsupported(
+            base, target, record.plan, registered_products=products,
+            derivation_profile=record.derivation_profile))
+
+        last = None
+        for number in range(1, 20):
+            payload = {"claim_generation": generation,
+                "idempotency_key": f"execute-update-{number}", "max_effects": 1}
+            last = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": run_id}, principal=self.worker,
+                payload=payload)
+            after = self.effects()
+            replay = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": run_id}, principal=self.worker,
+                payload=payload)
+            self.assertEqual(replay, last)
+            self.assertEqual(self.effects(), after)
+            if last["coordinator_status"] == "completed":
+                break
+            self.assertEqual(last["coordinator_status"], "progressed", last)
+        self.assertEqual((last["coordinator_status"], last["run_status"]),
+            ("completed", "succeeded"))
+        self.assertTrue(self.forged_managed_fold_refused)
+        update_calls = self.runtime.calls[len(effects_before[0]):]
+        expected_runtime_activities = tuple(activity for activity in record.plan.activities
+            if type(activity.operation) in (
+                StartNode, ReconcileNode, ReconcileRuntime, StopNode, RemoveNodeResource,
+            ))
+        self.assertEqual(
+            [(value.activity_id, value.operation) for value in update_calls],
+            [(value.activity_id, value.operation) for value in expected_runtime_activities],
+        )
+        expected_effect_order = [activity.activity_id.value for activity in record.plan.activities
+            if type(activity.operation) in (
+                StartNode, ReconcileNode, ReconcileRuntime, StopNode, RemoveNodeResource,
+                ObserveManagementBootstrap, ObserveNodeHealth,
+            )]
+        self.assertEqual(self.effect_order[order_before:], expected_effect_order)
+        gateway_request, = (value for value in update_calls
+            if type(value.operation) is ReconcileNode)
+        self.assertEqual({value.artifact_id for value in
+            gateway_request.products[0].product.runtime_contract.configuration_artifacts},
+            {"gateway-health-transit", "gateway-health-targets", "gateway-control"})
+        update_signed = self.health.signed_reads[len(effects_before[4]):]
+        update_native = self.health.native_reads[len(effects_before[3]):]
+        self.assertEqual(len(update_native), 1)
+        self.assertIs(update_native[0].operation.stage,
+            ManagementBootstrapStage.CONNECTOR_CONNECTED)
+        ready_nodes = [request.operation.node_id for request, _, _ in update_signed
+            if type(request.operation) is ObserveNodeHealth]
+        self.assertCountEqual(ready_nodes, ["api", "api-y"])
+
+        with self.unit_of_work() as uow:
+            still_current = uow.stores.workspaces.get("workspace-a")
+        self.assertEqual(still_current.current_graph_id, workspace.current_graph_id)
+        plan = detail["plan"]
+        advanced = await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": run_id}, principal=self.worker,
+            payload={"plan_id": prepared["plan_id"],
+                "expected_current_graph_id": workspace.current_graph_id,
+                "expected_current_realized_projection_id": workspace.current_realized_projection_id,
+                "desired_graph_id": plan["desired_graph_id"],
+                "desired_realized_projection_id": plan["desired_realized_projection_id"],
+                "expected_desired_graph_revision": plan["desired_graph_revision"],
+                "claim_generation": generation, "idempotency_key": "advance-update"})
+        self.assertEqual(advanced["to_graph_id"], plan["desired_graph_id"])
+
+        # The reverse B -> C removal must stop at gateway installation proof.
+        # A provider success without the correlated REPLACED receipt cannot
+        # release health, Y disposal, run completion, or graph advancement.
+        with self.unit_of_work() as uow:
+            workspace_b = uow.stores.workspaces.get("workspace-a")
+        remove_prepared = await self.invoke(
+            "command.deployment.prepare",
+            ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"},
+            payload={
+                "desired_graph": DEFAULT_GRAPH_CODEC.encode(self.graph),
+                "expected_current": {
+                    "authored_graph_id": workspace_b.current_graph_id,
+                    "realized_projection_id": workspace_b.current_realized_projection_id,
+                },
+                "expected_desired": {
+                    "authored_graph_id": workspace_b.desired_graph_id,
+                    "realized_projection_id": workspace_b.desired_realized_projection_id,
+                },
+                "expected_desired_graph_revision": workspace_b.desired_graph_revision,
+                "title": "Managed remove without installation proof",
+                "idempotency_key": "prepare-remove",
+            },
+        )
+        remove_detail = await self.invoke(
+            "read.plan-detail",
+            ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a", "plan_id": remove_prepared["plan_id"]},
+        )
+        self.assertEqual(remove_detail["plan"]["derivation_profile"], "managed-update-v1")
+        await self.invoke(
+            "command.approval.decide",
+            ControlPlaneServiceRole.APPROVAL,
+            path={
+                "workspace_id": "workspace-a",
+                "approval_id": remove_prepared["approval_request_id"],
+            },
+            payload={
+                "session_id": remove_detail["plan"]["session_id"],
+                "decision": "approved",
+                "idempotency_key": "approve-remove",
+            },
+            principal=operator_principal(
+                subject_id="manager-a",
+                scopes=(PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+            ),
+        )
+        remove_admitted = await self.invoke(
+            "command.deployment.admit",
+            ControlPlaneServiceRole.ADMISSION,
+            path={"workspace_id": "workspace-a", "plan_id": remove_prepared["plan_id"]},
+            payload={
+                "session_id": remove_detail["plan"]["session_id"],
+                "approval_request_id": remove_prepared["approval_request_id"],
+                "readiness": [],
+                "idempotency_key": "admit-remove",
+            },
+        )
+        remove_claimed = await self.invoke(
+            "command.run.claim",
+            ControlPlaneServiceRole.LIFECYCLE,
+            path={
+                "workspace_id": "workspace-a",
+                "run_id": remove_admitted["execution_request_id"],
+            },
+            principal=self.worker,
+            payload={
+                "lease_duration_seconds": 1800,
+                "idempotency_key": "claim-remove",
+            },
+        )
+        remove_run = remove_claimed["run_id"]
+        remove_generation = remove_claimed["claim_generation"]
+        await self.invoke(
+            "command.run.start",
+            ControlPlaneServiceRole.EXECUTION,
+            path={"workspace_id": "workspace-a", "run_id": remove_run},
+            principal=self.worker,
+            payload={
+                "claim_generation": remove_generation,
+                "idempotency_key": "start-remove",
+            },
+        )
+        with self.unit_of_work() as uow:
+            remove_record = uow.stores.activity_history.get_plan(remove_prepared["plan_id"])
+        self.assertTrue(any(
+            type(activity.operation) is StopNode
+            and activity.operation.target.node_id == "api-y"
+            for activity in remove_record.plan.activities
+        ))
+        self.assertTrue(any(
+            type(activity.operation) is RemoveNodeResource
+            and activity.operation.target.node_id == "api-y"
+            for activity in remove_record.plan.activities
+        ))
+
+        calls_before_remove = len(self.runtime.calls)
+        signed_before_remove = len(self.health.signed_reads)
+        self.runtime.installation_selection_fingerprint = "e" * 64
+        for number in range(1, 10):
+            remove_result = await self.invoke(
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": remove_run},
+                principal=self.worker,
+                payload={
+                    "claim_generation": remove_generation,
+                    "idempotency_key": f"execute-remove-{number}",
+                    "max_effects": 1,
+                },
+            )
+            if remove_result["coordinator_status"] == "uncertain":
+                break
+            self.assertEqual(remove_result["coordinator_status"], "progressed", remove_result)
+        self.assertEqual(remove_result["coordinator_status"], "uncertain")
+        remove_calls = self.runtime.calls[calls_before_remove:]
+        self.assertTrue(any(type(value.operation) is ReconcileNode for value in remove_calls))
+        self.assertFalse(any(type(value.operation) in (StopNode, RemoveNodeResource)
+            for value in remove_calls))
+        self.assertEqual(len(self.health.signed_reads), signed_before_remove)
+        with self.unit_of_work() as uow:
+            still_b = uow.stores.workspaces.get("workspace-a")
+        self.assertEqual(still_b.current_graph_id, workspace_b.current_graph_id)
+        remove_plan = remove_detail["plan"]
+        with self.assertRaises(CurrentGraphAdvancementIncomplete):
+            await self.invoke(
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                path={"workspace_id": "workspace-a", "run_id": remove_run},
+                principal=self.worker,
+                payload={
+                    "plan_id": remove_prepared["plan_id"],
+                    "expected_current_graph_id": workspace_b.current_graph_id,
+                    "expected_current_realized_projection_id": workspace_b.current_realized_projection_id,
+                    "desired_graph_id": remove_plan["desired_graph_id"],
+                    "desired_realized_projection_id": remove_plan["desired_realized_projection_id"],
+                    "expected_desired_graph_revision": remove_plan["desired_graph_revision"],
+                    "claim_generation": remove_generation,
+                    "idempotency_key": "advance-remove-without-proof",
+                },
+            )

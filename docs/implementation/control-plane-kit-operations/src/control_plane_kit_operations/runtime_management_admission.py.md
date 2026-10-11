@@ -7,6 +7,38 @@ using graph_authoring's authoritative per-node extractor. A second pure call to
 the shared graph-pair derivation proves canonical emptiness; this preserves the
 existing no-op exception without trusting a supplied plan or execution policy.
 
+Managed-update profile selection is a narrow opt-in. A structural prefilter
+recognizes only the retained single managed runtime/gateway family with exactly
+one node introduced or removed and no non-artifact gateway change. Recognized
+candidates must then satisfy the complete registered-product, lifecycle,
+readiness, authority-delivery, and exact route-artifact predicate; failure is a
+fixed refusal and cannot fall back to legacy execution. Other established
+management updates, including same-node material edits, retain
+`management-graph-pair-v1` planning and its existing execution guard. Equal and
+name-only pairs likewise retain their canonical empty legacy plan.
+
+The managed route slot is decoded with Core's shared
+`ReceiverManagementRoutesCodec` and compared to a complete value independently
+reconstructed for each pinned graph. The expected value selects each node's V2
+receiver configuration, requires its exact workspace/runtime/node/socket scope,
+uses the registered product's unique HTTP provider port for the private origin,
+and includes gateway self plus every readiness workload. Equality therefore
+preserves retained bindings and admits only the graph's exact Y addition/removal;
+an absent self binding, arbitrary origin, stale target, extra binding, or partial
+list is a fixed refusal. The accepted private origin is explicitly Docker-only,
+where graph node identifiers are the provider's private DNS names; other runtime
+kinds cannot inherit that provider-specific addressing law. This is
+application-independent: X and Y must share the
+same exact registered product within one transition, while unrelated product
+references in separate applications remain valid.
+
+Route `target_id` values remain caller-owned opaque aliases under Core's shared
+contract. Admission therefore compares the complete target, declaration, and
+origin set to graph-derived expectations without inventing alias names, while
+requiring every retained target's alias to remain byte-for-byte stable across
+the update. A newly introduced target may use any valid unique alias supplied by
+the accepted authoring path; an alias rewrite of gateway or retained X is refused.
+
 For nonempty plans, each node's `(gateway_transit, control_surfaces)` must exactly
 equal the same projection of every matched identity-plus-digest registered
 contract. Each node declaring either surface needs management selected in its

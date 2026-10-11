@@ -5,9 +5,12 @@ import unittest
 import rfc8785
 
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
 from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context, _runtime_effect_intent_for_context
+from control_plane_kit_operations._configuration_preparation import _propose_configuration
+from control_plane_kit_operations.records import OperationsRecordError
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.configuration_instance_fixture import configuration_language, configuration_ref, configuration_cleanup_activity
 from tests.effect_attempt_intent_fixture import (
@@ -67,6 +70,38 @@ class ConfigurationInstanceIntentTests(EffectAttemptIntentFixture, unittest.Test
         self.assertEqual(_decode_runtime_effect_intent(_encode_runtime_effect_intent(intent)), intent)
         self.assertNotIn("configuration_instances", intent.descriptor())
         self.assertEqual(intent.products, ())
+
+    def test_reconcile_reuses_exact_slots_and_allocates_changed_material(self):
+        identity = EffectAttemptIdentity(RunId("run-a"), "activity-a", 1)
+        retained = ConfigurationArtifact("retained", "/etc/service/retained.json",
+            ConfigurationMediaType.JSON, '{"value":1}')
+        route = ConfigurationArtifact("route", "/etc/service/route.json",
+            ConfigurationMediaType.JSON, '{"targets":["x"]}')
+        material = product_material()
+        material = replace(material, product=replace(material.product,
+            runtime_contract=replace(material.product.runtime_contract,
+                configuration_artifacts=(retained, route))))
+        intent = self.intent(products=(material,), process_delivery=False)
+        original = _propose_configuration(identity, intent)
+        accepted = original.configuration_instances.instances
+
+        changed_route = replace(route, content='{"targets":["x","y"]}')
+        changed_material = replace(material, product=replace(material.product,
+            runtime_contract=replace(material.product.runtime_contract,
+                configuration_artifacts=(retained, changed_route))))
+        proposed = _propose_configuration(identity,
+            replace(intent, products=(changed_material,)), accepted)
+        before = {value.artifact_id: value for value in accepted}
+        after = {value.artifact_id: value for value in proposed.configuration_instances.instances}
+
+        self.assertEqual(after["retained"], before["retained"])
+        self.assertNotEqual(after["route"].allocation_id, before["route"].allocation_id)
+        self.assertEqual(after["route"].content_digest, changed_route.content_digest)
+
+        wrong_slot = replace(before["retained"], target_path="/etc/service/other.json")
+        with self.assertRaisesRegex(OperationsRecordError,
+                "accepted configuration material is unavailable"):
+            _propose_configuration(identity, intent, (wrong_slot, before["route"]))
 
 
 class ConfigurationCleanupTranslationTests(unittest.TestCase):

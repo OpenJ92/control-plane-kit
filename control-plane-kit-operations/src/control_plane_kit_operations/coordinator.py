@@ -33,9 +33,17 @@ from control_plane_kit_core.planning import (
     ObserveManagementBootstrap,
     ObserveNodeHealth,
     PlannedActivity,
+    ReconcileNode,
     RemovePublicIngress,
     RemoveSocketConnection,
     SwitchSocketConnection,
+)
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition,
+    configuration_installation_receipt_for_result,
+)
+from control_plane_kit_core.configuration_invocation import (
+    configuration_invocation_correlation_for_request,
 )
 from control_plane_kit_core.planning.saga import (
     ExecutionSchedule,
@@ -751,7 +759,10 @@ class RuntimeInterpreterDispatcher:
             return _uncertain_runtime_result(
                 request, boundary="interpreter", reason=uncertainty_reason,
             )
-        return _admit_runtime_result(request, result)
+        return _admit_runtime_result(
+            request,
+            _admit_managed_installation_result(context, request, result),
+        )
 
     def _authorize_secret_resolutions(
         self,
@@ -962,11 +973,15 @@ class ExecutionCoordinator:
         if type(command) is not ExecuteManagedActivityRun:
             raise InvalidOperationCommand("managed execution command is invalid")
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
-        with _configuration_accounting(command.execution.run_id, active=False):
+        with _configuration_accounting(command.execution.run_id, active=False) as accounting:
             self._configure_run(command.execution.run_id)
-            return await self._execute_managed_command(command)
+            return await self._execute_managed_command(command, accounting)
 
-    async def _execute_managed_command(self, command: ExecuteManagedActivityRun) -> ExecutionCoordinatorResult:
+    async def _execute_managed_command(
+        self,
+        command: ExecuteManagedActivityRun,
+        accounting,
+    ) -> ExecutionCoordinatorResult:
         if type(command) is not ExecuteManagedActivityRun:
             raise InvalidOperationCommand("managed execution command is invalid")
         provenance = self._managed_provenance(command)
@@ -988,7 +1003,12 @@ class ExecutionCoordinator:
                 except StopIteration as completed:
                     result = completed.value
                     break
-                reply = await self._execute_health(command, work)
+                active = accounting.active
+                accounting.active = False
+                try:
+                    reply = await self._execute_health(command, work)
+                finally:
+                    accounting.active = active
         finally:
             steps.close()
         self._complete_command(execution, result, provenance)
@@ -1210,11 +1230,15 @@ class ExecutionCoordinator:
         if type(command) is not ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
-        with _configuration_accounting(command.execution.run_id, active=False):
+        with _configuration_accounting(command.execution.run_id, active=False) as accounting:
             self._configure_run(command.execution.run_id)
-            return await self._reobserve(command)
+            return await self._reobserve(command, accounting)
 
-    async def _reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
+    async def _reobserve(
+        self,
+        command: ReobserveConnectorConnection,
+        accounting,
+    ) -> ExecutionCoordinatorResult:
         if type(command) is not ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
         provenance = self._managed_provenance(command)
@@ -1231,8 +1255,13 @@ class ExecutionCoordinator:
         if type(admitted) is ExecutionCoordinatorResult:
             return admitted
         activity = context.plan.activity(ActivityId(command.predecessor.activity_id))
-        folded = await self._execute_health(command, _HealthExecution(context, activity),
-            admitted_attempt=admitted)
+        active = accounting.active
+        accounting.active = False
+        try:
+            folded = await self._execute_health(command, _HealthExecution(context, activity),
+                admitted_attempt=admitted)
+        finally:
+            accounting.active = active
         observed = self._classify_current(self._load_context(execution), 1)
         status = {
             EffectAttemptStatus.UNCERTAIN: CoordinatorStatus.UNCERTAIN,
@@ -1699,7 +1728,12 @@ class ExecutionCoordinator:
                     runtime_result = _uncertain_runtime_result(
                         request, boundary="adapter", reason=uncertainty_reason,
                     )
-                runtime_result = _admit_runtime_result(request, runtime_result)
+                runtime_result = _admit_runtime_result(
+                    request,
+                    _admit_managed_installation_result(
+                        realization, request, runtime_result,
+                    ),
+                )
                 outcome = ExecutionEffectOutcome(
                     attempt.state.identity,
                     attempt.state.request_fingerprint,
@@ -2550,6 +2584,34 @@ def _admit_runtime_result(request, result):
             configuration_cleanup_outcomes(request, result)
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
             return _unknown_cleanup_result(request, ConfigurationCleanupReason.PROVIDER_UNCERTAIN)
+    return result
+
+
+def _admit_managed_installation_result(context, request, result):
+    from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+    if (
+        type(context) is not ActivityRealizationContext
+        or context.plan_record.derivation_profile
+        is not PlanDerivationProfile.MANAGED_UPDATE_V1
+        or type(request.operation) is not ReconcileNode
+        or result.kind is not EffectResultKind.SUCCEEDED
+    ):
+        return result
+    try:
+        correlation = configuration_invocation_correlation_for_request(request)
+        receipt = configuration_installation_receipt_for_result(correlation, result)
+        if (
+            receipt is None
+            or receipt.disposition
+            is not ConfigurationInstallationDisposition.REPLACED
+        ):
+            raise ValueError
+    except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
+        return _uncertain_runtime_result(
+            request,
+            boundary="managed-installation",
+            reason="replacement-receipt-unavailable",
+        )
     return result
 
 

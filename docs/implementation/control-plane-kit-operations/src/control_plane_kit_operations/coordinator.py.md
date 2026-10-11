@@ -78,6 +78,23 @@ Cancellation inside a read retains uncertainty when current authority permits,
 then propagates cancellation; interrupted admission remains an incomplete receipt.
 No transaction spans a wait, signing, SDK call or network read.
 
+Configuration accounting remains one command-local ContextVar owner created by
+the existing managed-execute or reobserve entrance. `_configure_run` may activate
+that ledger for a plan containing configuration work. Immediately around awaited
+managed health I/O the coordinator pauses the same ledger and restores its prior
+active state in `finally`, including cancellation and error. It does not allocate
+a second ledger, discard cumulative usage, or add another private accounting
+import/call edge. ContextVar task isolation keeps unrelated command owners
+separate; child work for the selected health await observes the intended inactive
+state.
+
+For the `managed-update-v1` gateway `ReconcileNode` only, a provider success is
+admitted only when Core reads a fully correlated installation receipt with
+`REPLACED` disposition. Bare success, invocation-completion-only evidence,
+malformed or mismatched evidence, and CREATED/REUSED dispositions become a
+correlated UNCERTAIN result before the coordinator constructs its fold command.
+Other profiles and managed activities retain their established result semantics.
+
 The managed application targets exercise these paths through the actual
 authenticated Operations application, PostgreSQL owners and recording effect
 ports. They are source-composition evidence only; concrete server transport,

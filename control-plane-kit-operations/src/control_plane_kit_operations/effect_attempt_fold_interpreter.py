@@ -19,11 +19,26 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityRunStatus,
     ExecutionRequestStatus,
 )
+from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
-from control_plane_kit_core.planning import resolve_management_observation, CleanupConfigurationInstances
+from control_plane_kit_core.planning import (
+    ActivityId,
+    ReconcileNode,
+    resolve_management_observation,
+    CleanupConfigurationInstances,
+)
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition,
+    configuration_installation_receipt_for_result,
+)
+from control_plane_kit_core.configuration_invocation import ConfigurationInvocationCorrelation
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult, RuntimeEffectFailure, RuntimeEffectKind
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectResult,
+    RuntimeEffectFailure,
+    RuntimeEffectKind,
+)
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -392,6 +407,14 @@ def _execute_fold_once(
             intent_record = (located_health_intent if health is not None else
                 _read_fold_intent(stores, command, attempt, guarded, None))
             invalid_truth = intent_record is None
+            if (
+                not invalid_truth
+                and type(command.outcome) is ExecutionEffectOutcome
+                and command.outcome.result.kind is EffectResultKind.SUCCEEDED
+            ):
+                _require_managed_installation_receipt(
+                    stores, intent_record, request, command.outcome,
+                )
             if (not invalid_truth and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
                 if configuration_guard is None:
                     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
@@ -659,7 +682,10 @@ def _require_managed_plan(stores, intent_record, request):
         intent = intent_record.intent
         plan = stores.activity_history.get_plan(request.identity.plan_id)
         source = intent.source
-        if (plan.derivation_profile is not PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
+        if (plan.derivation_profile not in (
+                    PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
+                    PlanDerivationProfile.MANAGED_UPDATE_V1,
+                )
                 or plan.status is not ActivityPlanStatus.PLANNED
                 or plan.session_id != request.identity.session_id
                 or source.plan_id != plan.plan_id
@@ -683,7 +709,11 @@ def _require_managed_plan(stores, intent_record, request):
             graph.require_valid()
             graphs.append(graph)
         if runtime_management_execution_is_unsupported(graphs[0].graph, graphs[1].graph,
-                plan.plan, derivation_profile=plan.derivation_profile):
+                plan.plan,
+                registered_products=stores.registered_products.list_active(
+                    request.identity.workspace_id,
+                ),
+                derivation_profile=plan.derivation_profile):
             raise ValueError
         approval = stores.activity_history.get_approval_request(request.approval_request_id)
         decision = stores.activity_history.approval_decision_for_request(approval.request_id)
@@ -708,6 +738,77 @@ def _require_managed_plan(stores, intent_record, request):
         pass
     if not valid:
         raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+
+
+def _require_managed_installation_receipt(stores, intent_record, request, outcome):
+    """Refuse a forged managed replacement success before any durable fold."""
+    try:
+        intent = intent_record.intent
+        plan = stores.activity_history.get_plan(request.identity.plan_id)
+        if (
+            plan.derivation_profile is not PlanDerivationProfile.MANAGED_UPDATE_V1
+            or type(intent.operation) is not ReconcileNode
+        ):
+            return
+        if (
+            plan.status is not ActivityPlanStatus.PLANNED
+            or plan.session_id != request.identity.session_id
+            or intent.source.plan_id != plan.plan_id
+            or intent.source.base_graph_id != plan.base_graph_id
+            or intent.source.desired_graph_id != plan.desired_graph_id
+            or plan.plan.activity(ActivityId(intent_record.identity.activity_id)).operation
+            != intent.operation
+        ):
+            raise ValueError
+        graphs = []
+        for projection_id, authored_id in (
+            (plan.base_realized_projection_id, plan.base_graph_id),
+            (plan.desired_realized_projection_id, plan.desired_graph_id),
+        ):
+            projection = stores.realized_graphs.get(projection_id)
+            authored = stores.graphs.get(authored_id)
+            if (
+                projection.workspace_id != request.identity.workspace_id
+                or projection.projection_id != projection_id
+                or projection.source_authored_graph_id != authored_id
+                or authored.workspace_id != request.identity.workspace_id
+                or authored.graph_id != authored_id
+            ):
+                raise ValueError
+            graph = validate_graph(DEFAULT_GRAPH_CODEC.decode(projection.graph_descriptor))
+            graph.require_valid()
+            graphs.append(graph)
+        if runtime_management_execution_is_unsupported(
+            graphs[0].graph,
+            graphs[1].graph,
+            plan.plan,
+            registered_products=stores.registered_products.list_active(
+                request.identity.workspace_id,
+            ),
+            derivation_profile=plan.derivation_profile,
+        ):
+            raise ValueError
+        correlation = ConfigurationInvocationCorrelation(
+            intent_record.request_fingerprint,
+            intent_record.original_start_event.event_id,
+            intent.kind,
+            intent.source,
+            intent.operation,
+            intent.configuration_instances,
+        )
+        receipt = configuration_installation_receipt_for_result(
+            correlation, outcome.result,
+        )
+        if (
+            receipt is None
+            or receipt.disposition
+            is not ConfigurationInstallationDisposition.REPLACED
+        ):
+            raise ValueError
+        return
+    except (KeyError, ValueError, TypeError, AttributeError, RecursionError):
+        pass
+    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
 
 
 def _translate_fence(command: FoldEffectAttempt) -> EffectAttemptFence:

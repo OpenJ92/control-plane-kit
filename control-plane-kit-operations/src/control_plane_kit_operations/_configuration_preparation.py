@@ -115,9 +115,20 @@ def _propose_configuration(identity, intent, accepted_refs=None):
         selected = tuple(_birth_selection(identity, ConfigurationInstanceSelection((ref,))).instances[0]
             for ref in refs)
     else:
-        selected = ConfigurationInstanceSelection(accepted_refs).instances
-        material = lambda ref: replace(ref, allocation_id="proposal")
-        if tuple(map(material, selected)) != tuple(sorted(refs, key=lambda ref: ref.artifact_id)):
+        accepted = ConfigurationInstanceSelection(accepted_refs).instances
+        desired = tuple(sorted(refs, key=lambda ref: ref.artifact_id))
+        by_artifact = {ref.artifact_id: ref for ref in accepted}
+        slot = lambda ref: (ref.workspace_id, ref.runtime_id, ref.node_id, ref.artifact_id,
+            ref.target_path, ref.media_type, ref.file_mode)
+        if (len(by_artifact) != len(accepted) or len(accepted) != len(desired)
+                or any(ref.artifact_id not in by_artifact
+                    or slot(by_artifact[ref.artifact_id]) != slot(ref) for ref in desired)):
             raise OperationsRecordError("accepted configuration material is unavailable")
+        selected = tuple(
+            by_artifact[ref.artifact_id]
+            if replace(by_artifact[ref.artifact_id], allocation_id="proposal") == ref
+            else _birth_selection(identity, ConfigurationInstanceSelection((ref,))).instances[0]
+            for ref in desired
+        )
     return replace(intent, kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
         configuration_instances=ConfigurationInstanceSelection(selected))

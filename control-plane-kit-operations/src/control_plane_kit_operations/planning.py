@@ -57,6 +57,7 @@ from control_plane_kit_operations.runtime_authorities import (
     _admitted_runtime_authority_deliveries,
 )
 from control_plane_kit_operations.runtime_management_admission import (
+    runtime_management_plan_profile,
     runtime_management_planning_is_unsupported,
 )
 from control_plane_kit_operations.plan_derivation import (
@@ -649,6 +650,28 @@ class ActivityPlanningCommandService:
                     graph_codec=self._graph_codec,
                     profile=profile,
                 )
+                selected_profile = runtime_management_plan_profile(
+                    transition,
+                    registered_products=unit_of_work.stores.registered_products.list_active(
+                        command.workspace_id,
+                    ),
+                )
+                if selected_profile is None:
+                    raise InvalidOperationCommand(
+                        "runtime management planning is unsupported"
+                    )
+                if selected_profile is not profile:
+                    profile = selected_profile
+                    transition, plan = _planning_transition(
+                        unit_of_work,
+                        workspace_id=command.workspace_id,
+                        base_graph_id=command.expected_current_graph_id,
+                        desired_graph_id=command.expected_desired_graph_id,
+                        base_projection_id=expected_current_projection_id,
+                        desired_projection_id=expected_desired_projection_id,
+                        graph_codec=self._graph_codec,
+                        profile=profile,
+                    )
             except InvalidActivityPlan:
                 invalid_plan = True
             if invalid_plan:
