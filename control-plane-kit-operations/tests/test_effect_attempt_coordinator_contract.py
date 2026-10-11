@@ -196,6 +196,13 @@ def _exact_imports(*rows: tuple[str, str | None, str | None]):
 
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
+    # #1911/#1964 normalizes managed replacement receipts at both dispatch
+    # boundaries before the result can enter durable fold processing.
+    ("control_plane_kit_core.configuration_installation", "ConfigurationInstallationDisposition", None),
+    ("control_plane_kit_core.configuration_installation", "configuration_installation_receipt_for_result", None),
+    ("control_plane_kit_core.configuration_invocation", "configuration_invocation_correlation_for_request", None),
+    ("control_plane_kit_core.planning", "ReconcileNode", None),
+    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
     # #1936 uses Core's exact cleanup algebra and the existing plan profile.
     ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupOutcome", None),
     ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupOutcomeSet", None),
@@ -486,6 +493,13 @@ def _exact_calls(*rows: tuple[str | None, int]):
 
 
 EXACT_COORDINATOR_CALLS = _exact_calls(
+    # #1911/#1964 applies the same correlated replacement-receipt admission to
+    # interpreter and injected-adapter results, normalizing malformed success.
+    ("_admit_managed_installation_result", 2),
+    ("control_plane_kit_core.configuration_installation.configuration_installation_receipt_for_result", 1),
+    ("control_plane_kit_core.configuration_invocation.configuration_invocation_correlation_for_request", 1),
+    ("_uncertain_runtime_result", 1),
+    ("type", 2),
     # #1936 exact cleanup dispatch correspondence and canonical uncertainty.
     ("_admit_runtime_result", 2),
     ("self._cleanup_dispatch_matches", 1),

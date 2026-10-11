@@ -360,19 +360,6 @@ def _execute_fold_once(
             raise EffectAttemptFoldConflict(_REPLAY_ERROR)
         _require_transition_authority(command, fence, attempt, guarded is not None)
         next_state = _fold(command, attempt)
-        if (
-            next_state != attempt.state
-            and type(command.outcome) is ExecutionEffectOutcome
-            and command.outcome.result.kind is EffectResultKind.SUCCEEDED
-        ):
-            installation_intent = _read_fold_intent(
-                stores, command, attempt, guarded, health,
-            )
-            if installation_intent is None:
-                raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
-            _require_managed_installation_receipt(
-                stores, installation_intent, request, command.outcome,
-            )
         if next_state == attempt.state:
             replay_error = None
             if not _require_exact_replay(command, attempt):
@@ -420,6 +407,14 @@ def _execute_fold_once(
             intent_record = (located_health_intent if health is not None else
                 _read_fold_intent(stores, command, attempt, guarded, None))
             invalid_truth = intent_record is None
+            if (
+                not invalid_truth
+                and type(command.outcome) is ExecutionEffectOutcome
+                and command.outcome.result.kind is EffectResultKind.SUCCEEDED
+            ):
+                _require_managed_installation_receipt(
+                    stores, intent_record, request, command.outcome,
+                )
             if (not invalid_truth and intent_record.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
                 if configuration_guard is None:
                     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
