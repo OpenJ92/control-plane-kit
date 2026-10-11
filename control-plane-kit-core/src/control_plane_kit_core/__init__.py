@@ -830,6 +830,15 @@ from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfiguration, ReceiverNodeControlConfigurationCodec,
     select_receiver_node_control_configuration_artifact,
 )
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition, ConfigurationInstallationReceipt,
+    ConfigurationInstallationReceiptCodec, configuration_installation_receipt_for_result,
+)
+__all__ += [
+    "ConfigurationInstallationDisposition", "ConfigurationInstallationReceipt",
+    "ConfigurationInstallationReceiptCodec", "configuration_installation_receipt_for_result",
+]
+
 from control_plane_kit_core.receiver_management_routes import (
     ReceiverManagementRouteBinding, ReceiverManagementRoutes,
     ReceiverManagementRoutesCodec, ReceiverManagementRoutesError,

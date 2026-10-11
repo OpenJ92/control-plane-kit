@@ -765,6 +765,28 @@
       "motivation": "Own paired original refs and claims, symmetric bounded protective discovery, independent direct roots and fresh source proof before the unchanged ordinary accepted-use start rules."
     },
     {
+      "module": "control_plane_kit_core.configuration_installation",
+      "destination": "control_plane_kit_core.configuration_installation",
+      "source": "control-plane-kit-core/src/control_plane_kit_core/configuration_installation.py",
+      "owner": "core",
+      "role": "pure-contract",
+      "semantic_roles": ["values", "validation", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": ["#1964"],
+      "canonical_public_exports": [
+        "ConfigurationInstallationDisposition", "ConfigurationInstallationReceipt",
+        "ConfigurationInstallationReceiptCodec", "configuration_installation_receipt_for_result"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_invocation",
+        "control_plane_kit_core.runtime_effect_observation", "control_plane_kit_core.runtime_effects"
+      ],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_configuration_installation.py"],
+      "motivation": "Closed provider-neutral installation receipt syntax with exact generation laws and existing original-request/full-selection correlation; provider truth, derivation and durable acceptance remain external."
+    },
+    {
       "module": "control_plane_kit_core.configuration_invocation",
       "destination": "control_plane_kit_core.configuration_invocation",
       "source": "control-plane-kit-core/src/control_plane_kit_core/configuration_invocation.py",
