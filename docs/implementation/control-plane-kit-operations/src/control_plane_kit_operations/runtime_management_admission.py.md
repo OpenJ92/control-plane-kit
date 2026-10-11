@@ -25,9 +25,19 @@ uses the registered product's unique HTTP provider port for the private origin,
 and includes gateway self plus every readiness workload. Equality therefore
 preserves retained bindings and admits only the graph's exact Y addition/removal;
 an absent self binding, arbitrary origin, stale target, extra binding, or partial
-list is a fixed refusal. This is application-independent: X and Y must share the
+list is a fixed refusal. The accepted private origin is explicitly Docker-only,
+where graph node identifiers are the provider's private DNS names; other runtime
+kinds cannot inherit that provider-specific addressing law. This is
+application-independent: X and Y must share the
 same exact registered product within one transition, while unrelated product
 references in separate applications remain valid.
+
+Route `target_id` values remain caller-owned opaque aliases under Core's shared
+contract. Admission therefore compares the complete target, declaration, and
+origin set to graph-derived expectations without inventing alias names, while
+requiring every retained target's alias to remain byte-for-byte stable across
+the update. A newly introduced target may use any valid unique alias supplied by
+the accepted authoring path; an alias rewrite of gateway or retained X is refused.
 
 For nonempty plans, each node's `(gateway_transit, control_surfaces)` must exactly
 equal the same projection of every matched identity-plus-digest registered

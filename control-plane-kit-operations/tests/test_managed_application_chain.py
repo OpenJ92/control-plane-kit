@@ -66,7 +66,10 @@ from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations import coordinator, health_receiver_trust
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService
-from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService
+from control_plane_kit_operations.advancement import (
+    CurrentGraphAdvancementCommandService,
+    CurrentGraphAdvancementIncomplete,
+)
 from control_plane_kit_operations.approvals import ApprovalCommandService
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionDispatcher, ExecutionCoordinator, ExecutionCoordinatorConflict,
@@ -77,10 +80,14 @@ from control_plane_kit_operations.cpk_server import (
     CpkServerApplicationError, CpkServerOperationsApplication, cpk_server_services,
 )
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+from control_plane_kit_operations.effect_attempt_fold import (
+    EffectAttemptFoldConflict,
+)
 from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_outcome_evidence import (
-    NativeConnectionObservation, NativeConnectionOutcome,
+    ExecutionEffectOutcome, NativeConnectionObservation, NativeConnectionOutcome,
+    effect_outcome_failure, effect_outcome_transition,
 )
 from control_plane_kit_operations.health_signing_authority import HealthSigningAuthorityReloadService
 from control_plane_kit_operations.ingress_authorities import CloudflareZoneIngressAuthority, IngressAuthorityProviderKind
@@ -154,6 +161,8 @@ class RecordingRuntime:
         self.test = test
         self.calls = []
         self.containers = {}
+        self.installation_disposition = ConfigurationInstallationDisposition.REPLACED
+        self.installation_selection_fingerprint = None
 
     def execute(self, request):
         raise AssertionError("the managed runtime must use registered authority")
@@ -185,15 +194,15 @@ class RecordingRuntime:
         elif type(request.operation) is RemoveNodeResource:
             self.containers.pop(request.operation.target.node_id, None)
         evidence = {"recording_provider": True, "activity_id": request.activity_id.value}
-        if type(request.operation) is ReconcileNode:
+        if (type(request.operation) is ReconcileNode
+                and self.installation_disposition is not None):
             correlation = configuration_invocation_correlation_for_request(request)
             evidence["configuration_installation_receipt"] = (
                 ConfigurationInstallationReceipt(
                     correlation.request_fingerprint,
-                    configuration_invocation_selection_fingerprint(
-                        correlation.selection,
-                    ),
-                    ConfigurationInstallationDisposition.REPLACED,
+                    self.installation_selection_fingerprint
+                    or configuration_invocation_selection_fingerprint(correlation.selection),
+                    self.installation_disposition,
                     "1" * 64,
                     "2" * 64,
                 ).descriptor()
@@ -299,6 +308,8 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         self.graph, self.documents, self.registry = self.authored_graph()
         self.worker = worker_principal(scopes=tuple(PolicyScope))
         self.execution_number = 0
+        self.probe_forged_managed_fold = False
+        self.forged_managed_fold_refused = False
 
     def require_managed_interface(self):
         parameters = inspect.signature(ExecutionCoordinator).parameters
@@ -414,6 +425,43 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         uow = self.unit_of_work
         lifecycle = RunLifecycleCommandService(uow, clock=now, id_factory=self.ids["lifecycle"])
         fold = EffectAttemptFoldService(uow, id_factory=self.ids["effect-fold"])
+        if self.probe_forged_managed_fold:
+            delegate = fold
+            fixture = self
+
+            class ForgedManagedFoldProbe:
+                def __getattr__(self, name):
+                    return getattr(delegate, name)
+
+                def execute(self, command):
+                    outcome = command.outcome
+                    receipt_key = "configuration_installation_receipt"
+                    if (
+                        not fixture.forged_managed_fold_refused
+                        and type(outcome) is ExecutionEffectOutcome
+                        and receipt_key in outcome.result.evidence
+                    ):
+                        forged_result = RuntimeEffectResult.succeeded(
+                            outcome.result.effect_id,
+                            evidence={key: value for key, value in outcome.result.evidence.items()
+                                if key != receipt_key},
+                            observations=outcome.result.observations,
+                        )
+                        forged_outcome = replace(outcome, result=forged_result)
+                        forged = replace(
+                            command,
+                            transition=effect_outcome_transition(forged_outcome),
+                            failure=effect_outcome_failure(forged_outcome),
+                            outcome=forged_outcome,
+                        )
+                        before = fixture.durable_snapshot()
+                        with fixture.assertRaises(EffectAttemptFoldConflict):
+                            delegate.execute(forged)
+                        fixture.assertEqual(fixture.durable_snapshot(), before)
+                        fixture.forged_managed_fold_refused = True
+                    return delegate.execute(command)
+
+            fold = ForgedManagedFoldProbe()
         authorizer = SecretUseAuthorizationService(uow)
         adapter = ActivityExecutionDispatcher(
             runtime=RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: self.runtime}, authorizer),
@@ -804,6 +852,7 @@ class ManagedUpdateExecutionTests(ManagedApplicationFixture):
         return desired
 
     async def test_add_executes_installed_route_then_both_readiness_gates_before_advancement(self):
+        self.probe_forged_managed_fold = True
         origin = await self.complete_initial()
         effects_before = self.effects()
         order_before = len(self.effect_order)
@@ -884,6 +933,7 @@ class ManagedUpdateExecutionTests(ManagedApplicationFixture):
             self.assertEqual(last["coordinator_status"], "progressed", last)
         self.assertEqual((last["coordinator_status"], last["run_status"]),
             ("completed", "succeeded"))
+        self.assertTrue(self.forged_managed_fold_refused)
         update_calls = self.runtime.calls[len(effects_before[0]):]
         expected_runtime_activities = tuple(activity for activity in record.plan.activities
             if type(activity.operation) in (
@@ -927,3 +977,145 @@ class ManagedUpdateExecutionTests(ManagedApplicationFixture):
                 "expected_desired_graph_revision": plan["desired_graph_revision"],
                 "claim_generation": generation, "idempotency_key": "advance-update"})
         self.assertEqual(advanced["to_graph_id"], plan["desired_graph_id"])
+
+        # The reverse B -> C removal must stop at gateway installation proof.
+        # A provider success without the correlated REPLACED receipt cannot
+        # release health, Y disposal, run completion, or graph advancement.
+        with self.unit_of_work() as uow:
+            workspace_b = uow.stores.workspaces.get("workspace-a")
+        remove_prepared = await self.invoke(
+            "command.deployment.prepare",
+            ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"},
+            payload={
+                "desired_graph": DEFAULT_GRAPH_CODEC.encode(self.graph),
+                "expected_current": {
+                    "authored_graph_id": workspace_b.current_graph_id,
+                    "realized_projection_id": workspace_b.current_realized_projection_id,
+                },
+                "expected_desired": {
+                    "authored_graph_id": workspace_b.desired_graph_id,
+                    "realized_projection_id": workspace_b.desired_realized_projection_id,
+                },
+                "expected_desired_graph_revision": workspace_b.desired_graph_revision,
+                "title": "Managed remove without installation proof",
+                "idempotency_key": "prepare-remove",
+            },
+        )
+        remove_detail = await self.invoke(
+            "read.plan-detail",
+            ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a", "plan_id": remove_prepared["plan_id"]},
+        )
+        self.assertEqual(remove_detail["plan"]["derivation_profile"], "managed-update-v1")
+        await self.invoke(
+            "command.approval.decide",
+            ControlPlaneServiceRole.APPROVAL,
+            path={
+                "workspace_id": "workspace-a",
+                "approval_id": remove_prepared["approval_request_id"],
+            },
+            payload={
+                "session_id": remove_detail["plan"]["session_id"],
+                "decision": "approved",
+                "idempotency_key": "approve-remove",
+            },
+            principal=operator_principal(
+                subject_id="manager-a",
+                scopes=(PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+            ),
+        )
+        remove_admitted = await self.invoke(
+            "command.deployment.admit",
+            ControlPlaneServiceRole.ADMISSION,
+            path={"workspace_id": "workspace-a", "plan_id": remove_prepared["plan_id"]},
+            payload={
+                "session_id": remove_detail["plan"]["session_id"],
+                "approval_request_id": remove_prepared["approval_request_id"],
+                "readiness": [],
+                "idempotency_key": "admit-remove",
+            },
+        )
+        remove_claimed = await self.invoke(
+            "command.run.claim",
+            ControlPlaneServiceRole.LIFECYCLE,
+            path={
+                "workspace_id": "workspace-a",
+                "run_id": remove_admitted["execution_request_id"],
+            },
+            principal=self.worker,
+            payload={
+                "lease_duration_seconds": 1800,
+                "idempotency_key": "claim-remove",
+            },
+        )
+        remove_run = remove_claimed["run_id"]
+        remove_generation = remove_claimed["claim_generation"]
+        await self.invoke(
+            "command.run.start",
+            ControlPlaneServiceRole.EXECUTION,
+            path={"workspace_id": "workspace-a", "run_id": remove_run},
+            principal=self.worker,
+            payload={
+                "claim_generation": remove_generation,
+                "idempotency_key": "start-remove",
+            },
+        )
+        with self.unit_of_work() as uow:
+            remove_record = uow.stores.activity_history.get_plan(remove_prepared["plan_id"])
+        self.assertTrue(any(
+            type(activity.operation) is StopNode
+            and activity.operation.target.node_id == "api-y"
+            for activity in remove_record.plan.activities
+        ))
+        self.assertTrue(any(
+            type(activity.operation) is RemoveNodeResource
+            and activity.operation.target.node_id == "api-y"
+            for activity in remove_record.plan.activities
+        ))
+
+        calls_before_remove = len(self.runtime.calls)
+        signed_before_remove = len(self.health.signed_reads)
+        self.runtime.installation_selection_fingerprint = "e" * 64
+        for number in range(1, 10):
+            remove_result = await self.invoke(
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": remove_run},
+                principal=self.worker,
+                payload={
+                    "claim_generation": remove_generation,
+                    "idempotency_key": f"execute-remove-{number}",
+                    "max_effects": 1,
+                },
+            )
+            if remove_result["coordinator_status"] == "uncertain":
+                break
+            self.assertEqual(remove_result["coordinator_status"], "progressed", remove_result)
+        self.assertEqual(remove_result["coordinator_status"], "uncertain")
+        remove_calls = self.runtime.calls[calls_before_remove:]
+        self.assertTrue(any(type(value.operation) is ReconcileNode for value in remove_calls))
+        self.assertFalse(any(type(value.operation) in (StopNode, RemoveNodeResource)
+            for value in remove_calls))
+        self.assertEqual(len(self.health.signed_reads), signed_before_remove)
+        with self.unit_of_work() as uow:
+            still_b = uow.stores.workspaces.get("workspace-a")
+        self.assertEqual(still_b.current_graph_id, workspace_b.current_graph_id)
+        remove_plan = remove_detail["plan"]
+        with self.assertRaises(CurrentGraphAdvancementIncomplete):
+            await self.invoke(
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                path={"workspace_id": "workspace-a", "run_id": remove_run},
+                principal=self.worker,
+                payload={
+                    "plan_id": remove_prepared["plan_id"],
+                    "expected_current_graph_id": workspace_b.current_graph_id,
+                    "expected_current_realized_projection_id": workspace_b.current_realized_projection_id,
+                    "desired_graph_id": remove_plan["desired_graph_id"],
+                    "desired_realized_projection_id": remove_plan["desired_realized_projection_id"],
+                    "expected_desired_graph_revision": remove_plan["desired_graph_revision"],
+                    "claim_generation": remove_generation,
+                    "idempotency_key": "advance-remove-without-proof",
+                },
+            )

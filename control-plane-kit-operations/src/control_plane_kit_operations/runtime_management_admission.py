@@ -30,7 +30,7 @@ from control_plane_kit_core.topology import (
     diff_graphs,
     validate_graph,
 )
-from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations.deployment_transitions import (
     Deploy,
     DeploymentTransition,
@@ -272,6 +272,8 @@ def _managed_update_shape(
         return False
     runtime_id = next(iter(current.runtimes))
     before_runtime = current.runtimes[runtime_id]
+    if before_runtime.kind is not RuntimeKind.DOCKER:
+        return False
     gateway_id = before_runtime.management.gateway_node_id
 
     before_ids = set(current.nodes)
@@ -301,15 +303,36 @@ def _managed_update_shape(
     ):
         return False
     try:
-        if any(
+        configured_routes = tuple(
             _configured_management_routes(graph, gateway_id)
-            != _expected_management_routes(
-                graph,
-                {node.node_id: products[(graph is desired, node.node_id)]
-                 for node in graph.nodes.values()},
-                gateway_id,
-            )
             for graph in (current, desired)
+        )
+        if any(
+            not _management_routes_are_exact(
+                configured,
+                _expected_management_routes(
+                    graph,
+                    {node.node_id: products[(graph is desired, node.node_id)]
+                     for node in graph.nodes.values()},
+                    gateway_id,
+                ),
+            )
+            for graph, configured in zip(
+                (current, desired), configured_routes, strict=True,
+            )
+        ):
+            return False
+        before_aliases = {
+            binding.target: binding.target_id
+            for binding in configured_routes[0].targets
+        }
+        after_aliases = {
+            binding.target: binding.target_id
+            for binding in configured_routes[1].targets
+        }
+        if any(
+            before_aliases[target] != after_aliases[target]
+            for target in before_aliases.keys() & after_aliases.keys()
         ):
             return False
     except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
@@ -494,6 +517,20 @@ def _expected_management_routes(graph, products, gateway_id):
             f"http://{node_id}:{ports[0]}",
         ))
     return ReceiverManagementRoutes(gateway.target, tuple(bindings))
+
+
+def _management_routes_are_exact(configured, expected) -> bool:
+    """Compare complete route semantics without inventing caller-owned aliases."""
+
+    if configured.gateway_target != expected.gateway_target:
+        return False
+    return {
+        (binding.target, binding.declaration, binding.origin)
+        for binding in configured.targets
+    } == {
+        (binding.target, binding.declaration, binding.origin)
+        for binding in expected.targets
+    }
 
 
 def _has_readiness(node) -> bool:
