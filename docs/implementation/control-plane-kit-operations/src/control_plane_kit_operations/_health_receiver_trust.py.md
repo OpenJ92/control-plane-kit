@@ -18,5 +18,7 @@ The shared selector now consumes Core common receiver V2 configuration for both 
 The #1968 amendment changes only descriptor-side payload interpretation and
 makes the product/node surface join explicit. Strict actual configuration,
 provenance, key coverage, first-start/reload and historical semantics remain.
-Its tests-first run reached the intended failures; implementation green remains
-pending on PR #1969. This is not Servers adoption or live delivery evidence.
+Its tests-first run reached the intended failures; corrected run `38157766679`
+at source `2ac2f06f64cc288b029d382544918176ae77d399` passed all 2,645 Operations
+tests, compilation and clean import. Final acceptance is recorded in PR #1969.
+This is not Servers adoption or live delivery evidence.

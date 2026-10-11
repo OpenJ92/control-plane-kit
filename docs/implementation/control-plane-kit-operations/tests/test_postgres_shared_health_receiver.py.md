@@ -9,8 +9,8 @@ Causal-red run36323184760 at2e229d6 executed1817 tests: all1813 prior tests pass
 
 Core receiver V2 now supplies independently named workload products without a workload registry binding. Positive products retain the real owner path and differing defaults. Declared-A/selected-B refusal remains independent. Unknown shared profile and absent common environment are allowed as non-receiver material by the existing authoring scanner, but still must fail live health selection without history. No authoring policy is broadened.
 
-Implementation validation is pending on PR #1915. The reviewed target-only red
-checkpoint establishes only its recorded missing boundaries, not these green laws.
+The O2 target checkpoint was recorded on PR #1915. Current declared-slot
+validation and its separate evidence follow below.
 
 ## Declared slots / #1968 target checkpoint
 
@@ -28,4 +28,8 @@ that boundary and exhausted the bounded forbidden-ID sequence at the allocation
 site. Neither failed in setup or collection. The strict actual `{}` refusal and
 other 2,642 tests passed. The implementation must now deny surface mismatch before
 all IDs/history and permit inert descriptor structure with valid actual bytes.
-Corrected owning green and downstream adoption remain pending on PR #1969.
+Corrected run `38157766679` at source
+`2ac2f06f64cc288b029d382544918176ae77d399` passed all 2,645 Operations tests,
+including these unchanged targets, then compilation and clean import. Normal
+exact-name harness cleanup completed; no separate provider residue proof is
+claimed. PR #1969 records final acceptance; downstream adoption remains separate.

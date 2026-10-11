@@ -14,5 +14,7 @@ absence, so intended red is a missing-contract assertion rather than failed
 test collection. Root export equality is checked. Existing actual selection
 tests are unchanged. Tests-only run `38144325303` executed 972 Core tests:
 the two new methods failed at the intended missing-function assertion; the
-other 970 passed. The implementation now supplies the distinct slot selector;
-corrected owning evidence remains pending on PR #1969.
+other 970 passed. Corrected run `38157766679` at source
+`2ac2f06f64cc288b029d382544918176ae77d399` passed all 972 tests, 21 support
+tests, compilation and clean import. The target tests remained unchanged.
+Final acceptance and downstream limits are recorded in PR #1969.
