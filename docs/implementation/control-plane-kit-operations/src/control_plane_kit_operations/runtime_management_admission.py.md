@@ -17,6 +17,18 @@ management updates, including same-node material edits, retain
 `management-graph-pair-v1` planning and its existing execution guard. Equal and
 name-only pairs likewise retain their canonical empty legacy plan.
 
+The managed route slot is decoded with Core's shared
+`ReceiverManagementRoutesCodec` and compared to a complete value independently
+reconstructed for each pinned graph. The expected value selects each node's V2
+receiver configuration, requires its exact workspace/runtime/node/socket scope,
+uses the registered product's unique HTTP provider port for the private origin,
+and includes gateway self plus every readiness workload. Equality therefore
+preserves retained bindings and admits only the graph's exact Y addition/removal;
+an absent self binding, arbitrary origin, stale target, extra binding, or partial
+list is a fixed refusal. This is application-independent: X and Y must share the
+same exact registered product within one transition, while unrelated product
+references in separate applications remain valid.
+
 For nonempty plans, each node's `(gateway_transit, control_surfaces)` must exactly
 equal the same projection of every matched identity-plus-digest registered
 contract. Each node declaring either surface needs management selected in its

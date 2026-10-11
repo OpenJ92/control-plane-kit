@@ -4,6 +4,19 @@ from dataclasses import replace
 import unittest
 
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition,
+    ConfigurationInstallationReceipt,
+)
+from control_plane_kit_core.configuration_invocation import (
+    ConfigurationInvocationCompletion,
+    configuration_invocation_correlation_for_request,
+    configuration_invocation_selection_fingerprint,
+)
+from control_plane_kit_core.configuration_instances import (
+    ConfigurationInstanceRef,
+    ConfigurationInstanceSelection,
+)
 from control_plane_kit_core.lifecycle import ResourceLifecycle
 from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.planning import (
@@ -20,7 +33,14 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
 )
 from control_plane_kit_core.topology import validate_graph
+from control_plane_kit_core.runtime_effects import (
+    EffectResultKind,
+    RuntimeEffectKind,
+    RuntimeEffectResult,
+)
+from control_plane_kit_operations.coordinator import _admit_managed_installation_result
 from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.graph_authoring import product_reference_in_node
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
 from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_execution_is_unsupported,
@@ -50,6 +70,28 @@ class ManagedUpdateAdmissionTests(unittest.TestCase):
                     current, desired, plan,
                     registered_products=products, derivation_profile=PROFILE,
                 ))
+
+    def test_route_admission_is_application_independent_but_preserves_same_product_xy(self):
+        references = []
+        for application in ("hello", "secrets"):
+            graph_a, graph_b, _, products = managed_update_graphs(
+                self, product_prefix=application,
+            )
+            plan = derive_activity_plan(
+                Deploy(validate_graph(graph_a), validate_graph(graph_b)),
+                profile=PROFILE,
+            )
+            self.assertFalse(runtime_management_execution_is_unsupported(
+                graph_a, graph_b, plan,
+                registered_products=products,
+                derivation_profile=PROFILE,
+            ))
+            x = next(value.reference for value in products
+                if value.reference == product_reference_in_node(graph_a.node("api-x")))
+            y = product_reference_in_node(graph_b.node("api-y"))
+            self.assertEqual(x, y)
+            references.append(x)
+        self.assertNotEqual(*references)
 
     def test_planning_selects_only_the_closed_managed_update_profile(self):
         graph_a, graph_b, _, products = managed_update_graphs(self)
@@ -170,6 +212,94 @@ class ManagedUpdateAdmissionTests(unittest.TestCase):
         )
         delivered = replace(api_y, runtime_authority_deliveries=(delivery,))
         self.assertTrue(refused(replace(graph_b, nodes={**graph_b.nodes, "api-y": delivered})))
+
+    def test_gateway_reconcile_success_requires_exact_replaced_installation_receipt(self):
+        graph_a, graph_b, _, products = managed_update_graphs(self)
+        plan = derive_activity_plan(
+            Deploy(validate_graph(graph_a), validate_graph(graph_b)), profile=PROFILE,
+        )
+        activity = next(
+            value for value in plan.activities
+            if type(value.operation) is ReconcileNode
+        )
+        context = _context(
+            activity=replace(activity, dependencies=()),
+            base_graph=graph_a,
+            desired_graph=graph_b,
+            registered_products=products,
+        )
+        context = replace(context, activity=activity, plan_record=replace(
+            context.plan_record, plan=plan, derivation_profile=PROFILE,
+        ))
+        request = runtime_effect_request_for_context(context)
+        material, = request.products
+        request = replace(
+            request,
+            kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
+            configuration_instances=ConfigurationInstanceSelection(tuple(
+                ConfigurationInstanceRef(
+                    allocation_id=f"allocation-{index}",
+                    workspace_id=request.source.workspace_id,
+                    runtime_id=material.runtime_id,
+                    node_id=material.node_id,
+                    artifact_id=artifact.artifact_id,
+                    target_path=artifact.target_path,
+                    media_type=artifact.media_type,
+                    file_mode=artifact.file_mode,
+                    content_digest=artifact.content_digest,
+                )
+                for index, artifact in enumerate(
+                    material.product.runtime_contract.configuration_artifacts,
+                    start=1,
+                )
+            )),
+        )
+        correlation = configuration_invocation_correlation_for_request(request)
+        selection = configuration_invocation_selection_fingerprint(correlation.selection)
+
+        def result(receipt=None, *, evidence=None):
+            body = {} if evidence is None else dict(evidence)
+            if receipt is not None:
+                body["configuration_installation_receipt"] = receipt.descriptor()
+            return RuntimeEffectResult.succeeded(request.effect_id, evidence=body)
+
+        replaced = ConfigurationInstallationReceipt(
+            correlation.request_fingerprint, selection,
+            ConfigurationInstallationDisposition.REPLACED,
+            "1" * 64, "2" * 64,
+        )
+        accepted = result(replaced)
+        self.assertEqual(
+            _admit_managed_installation_result(context, request, accepted),
+            accepted,
+        )
+        completion = ConfigurationInvocationCompletion(
+            correlation.request_fingerprint, selection,
+        )
+        refused = (
+            result(),
+            result(evidence={"configuration_invocation_completion": completion.descriptor()}),
+            result(ConfigurationInstallationReceipt(
+                correlation.request_fingerprint, selection,
+                ConfigurationInstallationDisposition.CREATED, None, "2" * 64,
+            )),
+            result(ConfigurationInstallationReceipt(
+                correlation.request_fingerprint, selection,
+                ConfigurationInstallationDisposition.REUSED, "2" * 64, "2" * 64,
+            )),
+            result(ConfigurationInstallationReceipt(
+                "f" * 64, selection,
+                ConfigurationInstallationDisposition.REPLACED, "1" * 64, "2" * 64,
+            )),
+            result(evidence={"configuration_installation_receipt": {"profile": "wrong"}}),
+        )
+        for candidate in refused:
+            with self.subTest(evidence=candidate.evidence):
+                admitted = _admit_managed_installation_result(
+                    context, request, candidate,
+                )
+                self.assertIs(admitted.kind, EffectResultKind.UNCERTAIN)
+                self.assertEqual(admitted.effect_id, request.effect_id)
 
 
 if __name__ == "__main__":

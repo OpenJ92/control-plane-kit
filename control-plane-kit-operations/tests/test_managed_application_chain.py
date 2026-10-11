@@ -18,6 +18,14 @@ from unittest import mock
 import psycopg
 
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition,
+    ConfigurationInstallationReceipt,
+)
+from control_plane_kit_core.configuration_invocation import (
+    configuration_invocation_correlation_for_request,
+    configuration_invocation_selection_fingerprint,
+)
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind, WorkspaceGrant,
 )
@@ -27,6 +35,15 @@ from control_plane_kit_core.node_control_surface_reads import (
 from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
 from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfigurationCodec,
+    select_receiver_node_control_configuration_artifact,
+)
+from control_plane_kit_core.receiver_management_routes import (
+    ReceiverManagementRouteBinding,
+    ReceiverManagementRoutes,
+    ReceiverManagementRoutesCodec,
+)
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import (
     ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth,
@@ -97,6 +114,34 @@ def now():
     return instant.isoformat(timespec="microseconds" if instant.microsecond else "seconds").replace("+00:00", "Z")
 
 
+def management_routes(nodes):
+    configured = {}
+    for node in nodes.values():
+        if node.node_id != "gateway" and not any(
+            NodeHealthReadKind.READINESS in surface.health_reads
+            for surface in node.block_spec.control_surfaces
+        ):
+            continue
+        artifact = select_receiver_node_control_configuration_artifact(
+            artifacts=node.configuration_artifacts,
+            environment=node.public_environment + node.socket_environment,
+            control_surfaces=node.block_spec.control_surfaces,
+        )
+        configured[node.node_id] = ReceiverNodeControlConfigurationCodec().decode_bytes(
+            artifact.content.encode("utf-8")
+        )
+    gateway = configured["gateway"]
+    return ReceiverManagementRoutes(gateway.target, tuple(
+        ReceiverManagementRouteBinding(
+            "self" if node_id == "gateway" else node_id,
+            value.target,
+            value.declaration,
+            f"http://{node_id}:8000",
+        )
+        for node_id, value in configured.items()
+    ))
+
+
 class ForbiddenRecovery:
     def observe(self, *args, **kwargs):
         raise AssertionError("completed native reads must not enter mutation recovery")
@@ -139,8 +184,21 @@ class RecordingRuntime:
                 test.assertEqual(len(grants), 1, "connector creation requires the actually generated token grant")
         elif type(request.operation) is RemoveNodeResource:
             self.containers.pop(request.operation.target.node_id, None)
-        return RuntimeEffectResult.succeeded(request.effect_id,
-            evidence={"recording_provider": True, "activity_id": request.activity_id.value})
+        evidence = {"recording_provider": True, "activity_id": request.activity_id.value}
+        if type(request.operation) is ReconcileNode:
+            correlation = configuration_invocation_correlation_for_request(request)
+            evidence["configuration_installation_receipt"] = (
+                ConfigurationInstallationReceipt(
+                    correlation.request_fingerprint,
+                    configuration_invocation_selection_fingerprint(
+                        correlation.selection,
+                    ),
+                    ConfigurationInstallationDisposition.REPLACED,
+                    "1" * 64,
+                    "2" * 64,
+                ).descriptor()
+            )
+        return RuntimeEffectResult.succeeded(request.effect_id, evidence=evidence)
 
 
 class RecordingManagedHealth:
@@ -316,6 +374,13 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                     target_path="/etc/cpk/gateway/health-transit.json")
                     for value in selected_bindings)
             decoder_bindings.extend(selected_bindings)
+        routes = management_routes(nodes)
+        gateway = nodes["gateway"]
+        nodes["gateway"] = replace(gateway, configuration_artifacts=tuple(
+            replace(value, content=ReceiverManagementRoutesCodec().encode_bytes(routes).decode("utf-8"))
+            if value.artifact_id == "gateway-health-targets" else value
+            for value in gateway.configuration_artifacts
+        ))
         graph = replace(graph, nodes=nodes, runtimes={"docker": replace(graph.runtimes["docker"],
             authority_ref=RuntimeAuthorityReference("local-docker"))})
         graph = self.native_before_path_graph(graph)
@@ -722,14 +787,11 @@ class ManagedUpdateExecutionTests(ManagedApplicationFixture):
             ),),
         )
         gateway = self.graph.node("gateway")
-        routes = ConfigurationArtifact(
-            "gateway-health-targets",
-            "/etc/cpk/gateway/health-targets.json",
-            ConfigurationMediaType.JSON,
-            json.dumps({"targets": ["api", "api-y"]}, sort_keys=True, separators=(",", ":")),
-        )
+        nodes = {**self.graph.nodes, "api-y": api_y}
+        routes = management_routes(nodes)
         gateway = replace(gateway, configuration_artifacts=tuple(
-            routes if value.artifact_id == routes.artifact_id else value
+            replace(value, content=ReceiverManagementRoutesCodec().encode_bytes(routes).decode("utf-8"))
+            if value.artifact_id == "gateway-health-targets" else value
             for value in gateway.configuration_artifacts
         ))
         runtime = self.graph.runtimes["docker"]

@@ -33,9 +33,17 @@ from control_plane_kit_core.planning import (
     ObserveManagementBootstrap,
     ObserveNodeHealth,
     PlannedActivity,
+    ReconcileNode,
     RemovePublicIngress,
     RemoveSocketConnection,
     SwitchSocketConnection,
+)
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition,
+    configuration_installation_receipt_for_result,
+)
+from control_plane_kit_core.configuration_invocation import (
+    configuration_invocation_correlation_for_request,
 )
 from control_plane_kit_core.planning.saga import (
     ExecutionSchedule,
@@ -751,7 +759,10 @@ class RuntimeInterpreterDispatcher:
             return _uncertain_runtime_result(
                 request, boundary="interpreter", reason=uncertainty_reason,
             )
-        return _admit_runtime_result(request, result)
+        return _admit_runtime_result(
+            request,
+            _admit_managed_installation_result(context, request, result),
+        )
 
     def _authorize_secret_resolutions(
         self,
@@ -1717,7 +1728,12 @@ class ExecutionCoordinator:
                     runtime_result = _uncertain_runtime_result(
                         request, boundary="adapter", reason=uncertainty_reason,
                     )
-                runtime_result = _admit_runtime_result(request, runtime_result)
+                runtime_result = _admit_runtime_result(
+                    request,
+                    _admit_managed_installation_result(
+                        realization, request, runtime_result,
+                    ),
+                )
                 outcome = ExecutionEffectOutcome(
                     attempt.state.identity,
                     attempt.state.request_fingerprint,
@@ -2568,6 +2584,34 @@ def _admit_runtime_result(request, result):
             configuration_cleanup_outcomes(request, result)
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
             return _unknown_cleanup_result(request, ConfigurationCleanupReason.PROVIDER_UNCERTAIN)
+    return result
+
+
+def _admit_managed_installation_result(context, request, result):
+    from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+    if (
+        type(context) is not ActivityRealizationContext
+        or context.plan_record.derivation_profile
+        is not PlanDerivationProfile.MANAGED_UPDATE_V1
+        or type(request.operation) is not ReconcileNode
+        or result.kind is not EffectResultKind.SUCCEEDED
+    ):
+        return result
+    try:
+        correlation = configuration_invocation_correlation_for_request(request)
+        receipt = configuration_installation_receipt_for_result(correlation, result)
+        if (
+            receipt is None
+            or receipt.disposition
+            is not ConfigurationInstallationDisposition.REPLACED
+        ):
+            raise ValueError
+    except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
+        return _uncertain_runtime_result(
+            request,
+            boundary="managed-installation",
+            reason="replacement-receipt-unavailable",
+        )
     return result
 
 

@@ -7,6 +7,15 @@ from control_plane_kit_core.lifecycle import (
     ResourceOwnership,
 )
 from control_plane_kit_core.node_control import NodeHealthReadKind
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfigurationCodec,
+    select_receiver_node_control_configuration_artifact,
+)
+from control_plane_kit_core.receiver_management_routes import (
+    ReceiverManagementRouteBinding,
+    ReceiverManagementRoutes,
+    ReceiverManagementRoutesCodec,
+)
 from control_plane_kit_core.planning import (
     ActivityPlan,
     ManagementBootstrapStage,
@@ -21,6 +30,7 @@ from control_plane_kit_core.topology import (
     diff_graphs,
     validate_graph,
 )
+from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.deployment_transitions import (
     Deploy,
     DeploymentTransition,
@@ -290,6 +300,20 @@ def _managed_update_shape(
         for node in graph.nodes.values()
     ):
         return False
+    try:
+        if any(
+            _configured_management_routes(graph, gateway_id)
+            != _expected_management_routes(
+                graph,
+                {node.node_id: products[(graph is desired, node.node_id)]
+                 for node in graph.nodes.values()},
+                gateway_id,
+            )
+            for graph in (current, desired)
+        ):
+            return False
+    except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
+        return False
 
     before_workloads = {
         node.node_id for node in current.nodes.values()
@@ -402,6 +426,74 @@ def _configuration_slots(artifacts):
         (value.artifact_id, value.target_path, value.media_type, value.file_mode)
         for value in artifacts
     ))
+
+
+def _configured_management_routes(graph, gateway_id):
+    artifacts = {
+        artifact.artifact_id: artifact
+        for artifact in graph.nodes[gateway_id].configuration_artifacts
+    }
+    return ReceiverManagementRoutesCodec().decode_bytes(
+        artifacts["gateway-health-targets"].content.encode("utf-8")
+    )
+
+
+def _expected_management_routes(graph, products, gateway_id):
+    configurations = {}
+    for node in graph.nodes.values():
+        if node.node_id != gateway_id and not _has_readiness(node):
+            continue
+        artifact = select_receiver_node_control_configuration_artifact(
+            artifacts=node.configuration_artifacts,
+            environment=node.public_environment + node.socket_environment,
+            control_surfaces=node.block_spec.control_surfaces,
+        )
+        configured = ReceiverNodeControlConfigurationCodec().decode_bytes(
+            artifact.content.encode("utf-8")
+        )
+        target = configured.target
+        if (
+            target.runtime_id.value != node.runtime_id
+            or target.node_id.value != node.node_id
+            or target.provider_socket_name.value
+            != configured.declaration.surface.provider_socket_name.value
+            or not any(
+                socket.name == target.provider_socket_name.value
+                for socket in node.sockets.providers
+            )
+        ):
+            raise ValueError
+        configurations[node.node_id] = configured
+
+    gateway = configurations[gateway_id]
+    bindings = []
+    for node_id, configured in configurations.items():
+        product = products[node_id]
+        contract = product.descriptor_document.product.runtime_contract
+        provider_socket = configured.target.provider_socket_name.value
+        sockets = tuple(
+            socket for socket in graph.nodes[node_id].sockets.providers
+            if socket.name == provider_socket
+        )
+        ports = tuple(
+            port.container_port
+            for port in contract.provider_ports
+            if port.provider_socket == provider_socket
+        )
+        if (
+            configured.target.workspace_id.value != product.workspace_id
+            or len(sockets) != 1
+            or sockets[0].protocol is not Protocol.HTTP
+            or len(ports) != 1
+        ):
+            raise ValueError
+        bindings.append(ReceiverManagementRouteBinding(
+            "self" if node_id == gateway_id else graph.nodes[node_id].block_spec.role_id,
+            configured.target,
+            configured.declaration,
+            f"http://{node_id}:{ports[0]}",
+        ))
+    return ReceiverManagementRoutes(gateway.target, tuple(bindings))
 
 
 def _has_readiness(node) -> bool:
