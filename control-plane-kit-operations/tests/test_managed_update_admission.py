@@ -143,6 +143,27 @@ class ManagedUpdateAdmissionTests(unittest.TestCase):
             registered_products=products, derivation_profile=PROFILE,
         ))
 
+        self_current, self_desired, _, self_products = managed_update_graphs(
+            self,
+            workload_ids=("self", "api-y"),
+            route_aliases={
+                "gateway": "gateway-self",
+                "self": "workload-self",
+                "api-y": "candidate-workload",
+            },
+        )
+        self_transition = Deploy(
+            validate_graph(self_current), validate_graph(self_desired),
+        )
+        self.assertIs(runtime_management_plan_profile(
+            self_transition, registered_products=self_products,
+        ), PROFILE)
+        self_plan = derive_activity_plan(self_transition, profile=PROFILE)
+        self.assertFalse(runtime_management_execution_is_unsupported(
+            self_current, self_desired, self_plan,
+            registered_products=self_products, derivation_profile=PROFILE,
+        ))
+
     def test_planning_selects_only_the_closed_managed_update_profile(self):
         graph_a, graph_b, _, products = managed_update_graphs(self)
         transition = Deploy(validate_graph(graph_a), validate_graph(graph_b))

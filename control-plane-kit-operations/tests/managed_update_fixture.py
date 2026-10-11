@@ -41,15 +41,27 @@ def _artifact(artifact_id, content):
     )
 
 
-def managed_update_graphs(test_case, *, product_prefix="test"):
+def managed_update_graphs(
+    test_case,
+    *,
+    product_prefix="test",
+    workload_ids=("api-x", "api-y"),
+    route_aliases=None,
+):
     """Return accepted A/B/C projections plus their exact active products."""
 
+    x_id, y_id = workload_ids
+    route_aliases = route_aliases or {
+        "gateway": "self",
+        x_id: x_id,
+        y_id: y_id,
+    }
     graph = bootstrap_management_graph(test_case)
     renamed = {}
-    for old, new in (("api", "api-x"), ("gateway", "gateway"), ("connector", "connector")):
+    for old, new in (("api", x_id), ("gateway", "gateway"), ("connector", "connector")):
         node = graph.node(old)
         block_spec = node.block_spec
-        if new == "api-x":
+        if new == x_id:
             block_spec = replace(
                 block_spec,
                 role_id=new,
@@ -64,7 +76,7 @@ def managed_update_graphs(test_case, *, product_prefix="test"):
             block_spec=replace(block_spec, role_id=block_spec.role_id),
         )
     configured = {}
-    for node_id, receiver_id in (("gateway", "b" * 32), ("api-x", "a" * 32)):
+    for node_id, receiver_id in (("gateway", "b" * 32), (x_id, "a" * 32)):
         node = renamed[node_id]
         declaration = WorkloadNodeControlSurfaceDeclaration(
             node.block_spec.control_surfaces[0],
@@ -83,16 +95,16 @@ def managed_update_graphs(test_case, *, product_prefix="test"):
         gateway_control.content.encode("utf-8")
     )
     api_x_value = ReceiverNodeControlConfigurationCodec().decode_bytes(
-        configured["api-x"].content.encode("utf-8")
+        configured[x_id].content.encode("utf-8")
     )
     routes_a = ReceiverManagementRoutes(gateway_value.target, (
         ReceiverManagementRouteBinding(
-            "self", gateway_value.target, gateway_value.declaration,
+            route_aliases["gateway"], gateway_value.target, gateway_value.declaration,
             "http://gateway:8000",
         ),
         ReceiverManagementRouteBinding(
-            "api-x", api_x_value.target, api_x_value.declaration,
-            "http://api-x:8000",
+            route_aliases[x_id], api_x_value.target, api_x_value.declaration,
+            f"http://{x_id}:8000",
         ),
     ))
     artifacts_a = (
@@ -113,18 +125,18 @@ def managed_update_graphs(test_case, *, product_prefix="test"):
                 gateway_control.target_path,
             )),
     )
-    renamed["api-x"] = replace(
-        renamed["api-x"],
-        configuration_artifacts=(configured["api-x"],),
-        public_environment=(*renamed["api-x"].public_environment,
+    renamed[x_id] = replace(
+        renamed[x_id],
+        configuration_artifacts=(configured[x_id],),
+        public_environment=(*renamed[x_id].public_environment,
             PublicStaticEnvironmentBinding(
                 WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT,
-                configured["api-x"].target_path,
+                configured[x_id].target_path,
             )),
     )
     runtime = replace(
         graph.runtimes["docker"],
-        children=("gateway", "connector", "api-x"),
+        children=("gateway", "connector", x_id),
         authority_ref=RuntimeAuthorityReference("local-docker"),
     )
     graph_a = replace(graph, nodes=renamed, runtimes={"docker": runtime})
@@ -168,16 +180,16 @@ def managed_update_graphs(test_case, *, product_prefix="test"):
     graph_a = replace(graph_a, nodes=selected)
 
     api_y = replace(
-        graph_a.node("api-x"),
-        node_id="api-y",
-        block_spec=replace(graph_a.node("api-x").block_spec, role_id="api-y"),
+        graph_a.node(x_id),
+        node_id=y_id,
+        block_spec=replace(graph_a.node(x_id).block_spec, role_id=y_id),
     )
     declaration_y = WorkloadNodeControlSurfaceDeclaration(
         api_y.block_spec.control_surfaces[0],
         WorkloadNodeControlSurfaceDeclarationProfile.V2,
     )
     control_y = receiver_artifact(
-        "workload", declaration_y, node="api-y", receiver=True,
+        "workload", declaration_y, node=y_id, receiver=True,
         receiver_id="c" * 32,
     )
     api_y = replace(api_y, configuration_artifacts=(control_y,))
@@ -187,8 +199,8 @@ def managed_update_graphs(test_case, *, product_prefix="test"):
     routes_b = ReceiverManagementRoutes(gateway_value.target, (
         *routes_a.targets,
         ReceiverManagementRouteBinding(
-            "api-y", api_y_value.target, api_y_value.declaration,
-            "http://api-y:8000",
+            route_aliases[y_id], api_y_value.target, api_y_value.declaration,
+            f"http://{y_id}:8000",
         ),
     ))
     artifacts_b = tuple(
@@ -201,9 +213,9 @@ def managed_update_graphs(test_case, *, product_prefix="test"):
         nodes={
             **graph_a.nodes,
             "gateway": replace(graph_a.node("gateway"), configuration_artifacts=artifacts_b),
-            "api-y": api_y,
+            y_id: api_y,
         },
-        runtimes={"docker": replace(runtime, children=runtime.children + ("api-y",))},
+        runtimes={"docker": replace(runtime, children=runtime.children + (y_id,))},
     )
     graph_c = graph_a
     for value in (graph_a, graph_b, graph_c):

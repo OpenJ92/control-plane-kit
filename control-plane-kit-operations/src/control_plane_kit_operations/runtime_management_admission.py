@@ -12,8 +12,6 @@ from control_plane_kit_core.receiver_configuration import (
     select_receiver_node_control_configuration_artifact,
 )
 from control_plane_kit_core.receiver_management_routes import (
-    ReceiverManagementRouteBinding,
-    ReceiverManagementRoutes,
     ReceiverManagementRoutesCodec,
 )
 from control_plane_kit_core.planning import (
@@ -510,27 +508,24 @@ def _expected_management_routes(graph, products, gateway_id):
             or len(ports) != 1
         ):
             raise ValueError
-        bindings.append(ReceiverManagementRouteBinding(
-            "self" if node_id == gateway_id else graph.nodes[node_id].block_spec.role_id,
+        bindings.append((
             configured.target,
             configured.declaration,
             f"http://{node_id}:{ports[0]}",
         ))
-    return ReceiverManagementRoutes(gateway.target, tuple(bindings))
+    return gateway.target, frozenset(bindings)
 
 
 def _management_routes_are_exact(configured, expected) -> bool:
     """Compare complete route semantics without inventing caller-owned aliases."""
 
-    if configured.gateway_target != expected.gateway_target:
+    gateway_target, expected_bindings = expected
+    if configured.gateway_target != gateway_target:
         return False
     return {
         (binding.target, binding.declaration, binding.origin)
         for binding in configured.targets
-    } == {
-        (binding.target, binding.declaration, binding.origin)
-        for binding in expected.targets
-    }
+    } == expected_bindings
 
 
 def _has_readiness(node) -> bool:
