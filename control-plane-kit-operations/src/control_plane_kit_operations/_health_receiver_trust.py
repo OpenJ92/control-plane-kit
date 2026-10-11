@@ -7,6 +7,7 @@ from control_plane_kit_core.planning import PlanGraphSide
 from control_plane_kit_core.products import ProductReference
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
+    select_receiver_node_control_configuration_slot,
 )
 from control_plane_kit_core.receiver_identity import NodeControlAuthorityContext
 from control_plane_kit_operations.graph_authoring import product_reference_in_node
@@ -84,9 +85,10 @@ def _selection(registry, product, node, reference, purpose, workspace, authored,
     # No ACTIVE-status policy is introduced: this is immutable descriptor provenance.
     contract = product.descriptor_document.product.runtime_contract
     if purpose is _PURPOSES[1]:
-        # Each input must select the same declared slot. Independently valid
-        # configurations cannot redirect descriptor A to selected artifact B.
-        declared = select_receiver_node_control_configuration_artifact(
+        # Descriptor payload is not installed authority. Bind its structure and
+        # surface to the actual node before validating the complete V2 material.
+        _require(_same(contract.control_surfaces, node.block_spec.control_surfaces))
+        declared = select_receiver_node_control_configuration_slot(
             artifacts=contract.configuration_artifacts, environment=contract.public_environment,
             control_surfaces=contract.control_surfaces)
         actual = select_receiver_node_control_configuration_artifact(

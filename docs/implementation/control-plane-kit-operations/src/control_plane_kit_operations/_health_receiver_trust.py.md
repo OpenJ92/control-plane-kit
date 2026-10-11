@@ -3,7 +3,7 @@ Maintain this companion alongside its source.
 
 The common first-start/reload owner joins original approved graph pins to receiver node/runtime/socket, then retrieves the exact registered canonical descriptor by workspace/reference. This is immutable provenance; no ACTIVE-only revocation policy or product-status lock is added. Store exceptions remain outside pure-refusal catches.
 
-For WORKLOAD_NODE_HEALTH_READ, the shared Core selector resolves the registered descriptor's public binding/artifacts/surface and separately resolves actual node artifacts plus all effective public/socket-derived bindings and surfaces. Their complete id/path/media/mode slots must match. The actual selected artifact alone supplies receiver target/runtime/declaration and health verifier issuer/keys through Core's shared codec. The declared/default bytes are validated as protocol data for slot selection but never replace actual bytes. Thus separately valid A/default and B/selected still refuse when redirected. No product name/path allowlist, own-health decoder registry or old-format fallback exists.
+For WORKLOAD_NODE_HEALTH_READ, Core's structural declared-slot selector resolves the registered descriptor's public binding/artifacts/surface. Its payload retains artifact integrity but need not contain deployment-specific receiver identity or keys. The registered product and actual node control surfaces must agree exactly. The unchanged strict V2 selector separately resolves actual node artifacts plus all effective public/socket-derived bindings and surfaces. Their complete id/path/media/mode slots must match. The actual selected artifact alone supplies receiver target/runtime/declaration and health verifier issuer/keys through Core's shared codec. Thus separately valid A/default and B/selected still refuse when redirected. No product name/path allowlist, own-health decoder registry or old-format fallback exists.
 
 Gateway transit retains the existing exact product/transit-purpose binding and declared/actual slot selection, then its separate trusted decoder. This distinction applies to protocol semantics, not the gateway product's own-health: that always follows the common workload branch.
 
@@ -15,5 +15,10 @@ First-start calls live coverage after original graph/current-key checks and befo
 
 The shared selector now consumes Core common receiver V2 configuration for both the workload and the gateway's own control surface. original_receiver_health_configurations is pure original-byte reconstruction, also used by historical persistence. It joins workspace/runtime/node/control socket and declaration without consulting stores, current pins, keys, lifecycle or a transit registry. Live coverage separately joins each declared/selected common slot and verifies the workload signer plus the existing product-specific gateway transit facts. The transit socket may differ from the gateway own-control socket. The public legacy workload fact type is unchanged.
 
-Implementation validation is pending on PR #1915. The reviewed target-only red
-checkpoint establishes only its recorded missing boundaries, not these green laws.
+The #1968 amendment changes only descriptor-side payload interpretation and
+makes the product/node surface join explicit. Strict actual configuration,
+provenance, key coverage, first-start/reload and historical semantics remain.
+Its tests-first run reached the intended failures; corrected run `38157766679`
+at source `2ac2f06f64cc288b029d382544918176ae77d399` passed all 2,645 Operations
+tests, compilation and clean import. Final acceptance is recorded in PR #1969.
+This is not Servers adoption or live delivery evidence.

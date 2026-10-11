@@ -828,6 +828,7 @@ from control_plane_kit_core.receiver_identity import (
 )
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfiguration, ReceiverNodeControlConfigurationCodec,
+    select_receiver_node_control_configuration_slot,
     select_receiver_node_control_configuration_artifact,
 )
 from control_plane_kit_core.configuration_installation import (
@@ -850,6 +851,7 @@ __all__ += [
     "NodeControlReceiverTargetCodec", "NodeControlAuthorityContextCodec",
     "receiver_node_control_audience", "ReceiverNodeControlConfiguration",
     "ReceiverNodeControlConfigurationCodec", "select_receiver_node_control_configuration_artifact",
+    "select_receiver_node_control_configuration_slot",
     "ReceiverManagementRouteBinding", "ReceiverManagementRoutes",
     "ReceiverManagementRoutesCodec", "ReceiverManagementRoutesError",
 ]

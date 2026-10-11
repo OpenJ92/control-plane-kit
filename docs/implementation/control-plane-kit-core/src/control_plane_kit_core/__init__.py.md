@@ -37,3 +37,8 @@ Core #1889 reexports explicit V2 receiver surface-description request/grant and
 V3 capabilities/status result contracts. Existing declaration versions, kinds,
 coverage and bounds retain their original owners. Surface description remains
 distinct from health and variable READ_STATE; no transit or route is introduced.
+
+Core #1968 reexports `select_receiver_node_control_configuration_slot` from
+receiver_configuration. This pure declared-slot operation is distinct from
+strict actual V2 configuration validation and grants no identity, key or runtime
+authority. Existing public exports and dependency direction are preserved.

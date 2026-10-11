@@ -17,11 +17,27 @@ decoding. It reuses the existing 65,536-byte configuration bound and categorical
 `WrapperConfigurationError`. Construction and encoding reconstruct nominal values
 so mutated dataclasses and nested private material are refused.
 
-The selector takes artifact/environment/surface values and resolves the exact
+The strict artifact selector takes artifact/environment/surface values and resolves the exact
 `CPK_WRAPPER_CONFIGURATION_FILE` public path binding to one JSON/0444 artifact.
 It decodes only V2 and requires equality with the single declared surface. The
 old selector decodes only V1. Shared slot validation does not probe profiles or
 read files, environments or descriptor defaults on a caller's behalf.
+
+`select_receiver_node_control_configuration_slot` is the separate declared-slot
+operation introduced by #1968. It delegates to that existing structural helper
+and revalidates the nominal surface through its existing codec. It returns the
+exact JSON/0444 artifact selected by the sole public path binding, preserving
+artifact integrity and generic content bounds. Its payload may be `{}`: the
+function does not interpret it as receiver identity, declaration or verifier
+authority. Ambiguous/derived bindings, invalid artifacts and forged surfaces
+retain the fixed, cause-free `WrapperConfigurationError` boundary. There is no
+I/O or permission decision. The strict V2 artifact selector remains unchanged.
+
+Operations compares the registered product's surface with the actual node's
+surface and joins the two exact slots. Actual node material must still pass
+full V2 decoding, original scope/provenance and live signer coverage. Downstream
+consumers must adopt this function only for their descriptor-side selection;
+using it for actual receiver material would omit required protocol validation.
 
 For already constructed deployment values:
 
