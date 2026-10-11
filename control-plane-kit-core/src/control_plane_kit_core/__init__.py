@@ -830,6 +830,19 @@ from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfiguration, ReceiverNodeControlConfigurationCodec,
     select_receiver_node_control_configuration_artifact,
 )
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition, ConfigurationInstallationReceipt,
+    ConfigurationInstallationReceiptCodec, configuration_installation_receipt_for_result,
+)
+__all__ += [
+    "ConfigurationInstallationDisposition", "ConfigurationInstallationReceipt",
+    "ConfigurationInstallationReceiptCodec", "configuration_installation_receipt_for_result",
+]
+
+from control_plane_kit_core.receiver_management_routes import (
+    ReceiverManagementRouteBinding, ReceiverManagementRoutes,
+    ReceiverManagementRoutesCodec, ReceiverManagementRoutesError,
+)
 
 __all__ += [
     "MAX_NODE_CONTROL_RECEIVER_TARGET_BYTES", "MAX_NODE_CONTROL_AUTHORITY_CONTEXT_BYTES",
@@ -837,6 +850,8 @@ __all__ += [
     "NodeControlReceiverTargetCodec", "NodeControlAuthorityContextCodec",
     "receiver_node_control_audience", "ReceiverNodeControlConfiguration",
     "ReceiverNodeControlConfigurationCodec", "select_receiver_node_control_configuration_artifact",
+    "ReceiverManagementRouteBinding", "ReceiverManagementRoutes",
+    "ReceiverManagementRoutesCodec", "ReceiverManagementRoutesError",
 ]
 
 from control_plane_kit_core.receiver_health_reads import (

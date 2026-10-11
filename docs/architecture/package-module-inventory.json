@@ -2,6 +2,28 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_core.receiver_management_routes",
+      "destination": "control_plane_kit_core.receiver_management_routes",
+      "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_management_routes.py",
+      "owner": "core",
+      "role": "deployment-language",
+      "semantic_roles": ["values", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "ReceiverManagementRouteBinding", "ReceiverManagementRoutes",
+        "ReceiverManagementRoutesCodec", "ReceiverManagementRoutesError"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.receiver_identity"
+      ],
+      "known_package_consumers": ["control_plane_kit_core"],
+      "optional_external_dependencies": [],
+      "motivation": "Shared canonical receiver-management routing values preserve existing v2 wire meaning without product process policy or graph authorization.",
+      "protecting_tests": ["tests/test_receiver_management_routes.py"]
+    },
+    {
       "module": "control_plane_kit_operations._configuration_cleanup_ownership",
       "destination": "control_plane_kit_operations._configuration_cleanup_ownership",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_configuration_cleanup_ownership.py",
@@ -741,6 +763,28 @@
         "tests/test_configuration_preparation_capacity.py"
       ],
       "motivation": "Own paired original refs and claims, symmetric bounded protective discovery, independent direct roots and fresh source proof before the unchanged ordinary accepted-use start rules."
+    },
+    {
+      "module": "control_plane_kit_core.configuration_installation",
+      "destination": "control_plane_kit_core.configuration_installation",
+      "source": "control-plane-kit-core/src/control_plane_kit_core/configuration_installation.py",
+      "owner": "core",
+      "role": "pure-contract",
+      "semantic_roles": ["values", "validation", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": ["#1964"],
+      "canonical_public_exports": [
+        "ConfigurationInstallationDisposition", "ConfigurationInstallationReceipt",
+        "ConfigurationInstallationReceiptCodec", "configuration_installation_receipt_for_result"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_invocation",
+        "control_plane_kit_core.runtime_effect_observation", "control_plane_kit_core.runtime_effects"
+      ],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_configuration_installation.py"],
+      "motivation": "Closed provider-neutral installation receipt syntax with exact generation laws and existing original-request/full-selection correlation; provider truth, derivation and durable acceptance remain external."
     },
     {
       "module": "control_plane_kit_core.configuration_invocation",
