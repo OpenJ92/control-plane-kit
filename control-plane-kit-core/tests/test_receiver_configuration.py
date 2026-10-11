@@ -237,6 +237,12 @@ class ReceiverConfigurationTests(unittest.TestCase):
         forged = deepcopy(artifact)
         object.__setattr__(forged, "target_path", "/etc/../private-canary")
         self.refusal(lambda: self.select((forged,), selector=selector))
+        forged = deepcopy(artifact)
+        object.__setattr__(forged, "content", '{"changed":true}')
+        self.refusal(lambda: self.select((forged,), selector=selector))
+        surface = deepcopy(self.declaration.surface)
+        object.__setattr__(surface, "provider_socket_name", "non-nominal")
+        self.refusal(lambda: self.select((artifact,), surfaces=(surface,), selector=selector))
 
     def test_independent_products_paths_and_graph_roundtrip_use_the_same_contract(self):
         for name, path in (("weather", "/opt/weather/receiver.json"), ("inventory", "/etc/inventory/management.json")):
