@@ -1076,7 +1076,7 @@ class ManagedConfigurationUpdateTests(unittest.TestCase):
                 "APPLICATION_TOKEN", SecretReference("secret://workspace/application"), SecretUseIntent.APPLICATION_CONTROL_TOKEN),)},
             "runtime-authority": {"runtime_authority_deliveries": (authority_fixtures.DELIVERY,)},
             "independent-verification": {"block_spec": replace(current.node("workload").block_spec,
-                verification=VerificationContract((HttpCheck("own", "control", "/health"),)))},
+                verification=VerificationContract((HttpCheck(check_id="own", provider_socket="control", path="/health"),)))},
         }
         for name, changes in cases.items():
             with self.subTest(name=name):
