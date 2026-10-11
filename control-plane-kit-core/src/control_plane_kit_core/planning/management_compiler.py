@@ -6,6 +6,7 @@ readiness, successful transport, or freshness of an execution attempt.
 from dataclasses import dataclass, replace
 import hashlib
 
+from control_plane_kit_core.configuration import ConfigurationMediaType
 from control_plane_kit_core.lifecycle import ResourceOwnership, ResourcePersistence
 from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor
 from control_plane_kit_core.planning.activity_plan import (
@@ -20,6 +21,9 @@ from control_plane_kit_core.planning.management_observations import (
     ObserveManagementBootstrap, ObserveNodeHealth, PlanGraphSide, _bounded_wire,
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
+)
 from control_plane_kit_core.topology.changes import (
     AddedChange, FieldSubject, ModifiedChange, RemovedChange, StructuralField,
 )
@@ -255,6 +259,74 @@ def _managed_update_shape(current, desired, diff):
     return _ManagedUpdateShape(
         mode, runtime_id, gateway_id, connector_id, retained_id, changed_node_id,
     )
+
+
+def _managed_configuration_update_shape(current, desired, diff):
+    """Recognize one public app-file content change, preserving all other values."""
+    if len(diff.changes) != 1:
+        return False
+    change = diff.changes[0]
+    if (not isinstance(change, ModifiedChange)
+            or not isinstance(change.subject, FieldSubject)
+            or change.subject.field is not StructuralField.CONFIGURATION_ARTIFACTS
+            or not isinstance(change.subject.owner, NodeSubject)):
+        return False
+    node_id = change.subject.owner.node_id
+    before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
+    # Restore only the allowed field: every other graph value must still agree.
+    restored = replace(after, configuration_artifacts=before.configuration_artifacts)
+    if desired.graph.update_node(restored) != current.graph:
+        return False
+    runtime = desired.graph.runtimes[after.runtime_id]
+    surface, _ = _selected_surface(after)
+    if (runtime.management is None or surface is None
+            or NodeHealthReadKind.READINESS not in surface.health_reads
+            or _independent_verification(after)
+            or after.lifecycle.ownership is not ResourceOwnership.OWNED
+            or after.lifecycle.compute is not ResourcePersistence.EPHEMERAL
+            or after.lifecycle.data or after.secret_deliveries
+            or after.runtime_authority_deliveries):
+        return False
+    # Compiled Node.secret_deliveries includes active socket-derived deliveries.
+    try:
+        _, gateway, connector, _, _ = _pin_path(desired, after.runtime_id, PlanGraphSide.DESIRED_GRAPH)
+        if node_id in (gateway.node_id, connector.node_id):
+            return False
+        wrapper = select_receiver_node_control_configuration_artifact(
+            artifacts=before.configuration_artifacts,
+            environment=before.public_environment + before.socket_environment,
+            control_surfaces=before.block_spec.control_surfaces,
+        )
+        configuration = ReceiverNodeControlConfigurationCodec().decode_bytes(wrapper.content.encode("utf-8"))
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return False
+    if (configuration.target.node_id.value != node_id
+            or configuration.target.runtime_id.value != after.runtime_id
+            or configuration.target.provider_socket_name.value != surface.provider_socket_name.value):
+        return False
+    old = {value.artifact_id: value for value in before.configuration_artifacts}
+    new = {value.artifact_id: value for value in after.configuration_artifacts}
+    if old.keys() != new.keys():
+        return False
+    changed = [key for key in old if old[key] != new[key]]
+    if len(changed) != 1 or changed[0] == wrapper.artifact_id:
+        return False
+    original, successor = old[changed[0]], new[changed[0]]
+    return (original.media_type is ConfigurationMediaType.JSON
+            and original.content != successor.content
+            and replace(successor, content=original.content, source_digest=original.source_digest) == original)
+
+
+def compile_managed_configuration_update_activity_plan(
+    current: ValidatedGraph, desired: ValidatedGraph,
+) -> ActivityPlan:
+    """Plan one retained public JSON content update; grant no execution authority."""
+    _require_pair(current, desired)
+    diff = diff_graphs(current, desired)
+    base = compile_graph_activity_plan(current, desired)
+    if not diff.changes or _managed_configuration_update_shape(current, desired, diff):
+        return base
+    return _review_blocked(base, diff)
 
 
 def _review_blocked(plan, diff):

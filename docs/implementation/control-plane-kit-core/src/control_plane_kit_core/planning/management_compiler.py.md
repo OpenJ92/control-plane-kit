@@ -116,3 +116,39 @@ The compiler adds no effect or result value. Reconcile success is only an order
 predecessor here; Operations admission remains closed and the provider owner must
 separately prove installed selected material before execution support can use the
 plan.
+
+`compile_managed_configuration_update_activity_plan(current, desired)` (#1970)
+recognizes a separate closed relation: one existing non-wrapper public JSON file
+on one retained workload changes actual content. Its artifact ID, path, media and
+read-only mode remain equal. The strict V2 wrapper, receiver scope/identity,
+declaration and public trust remain byte-for-byte fixed, as do all other graph
+values. Restoring the old artifact field must recover the whole current graph.
+The selected wrapper target must name that runtime/node/control socket.
+
+```python
+plan = compile_managed_configuration_update_activity_plan(
+    validate_graph(current_graph), validate_graph(desired_graph),
+)
+```
+
+The complete authored graphs are inputs, including the unchanged actual wrapper
+and changed application file. The executable example is
+`ManagedConfigurationUpdateTests.pair` in the owner test module. The compiler
+reuses structural disruptive `ReconcileNode` and the existing desired protected
+health dependency. It adds no ordering algorithm or operation. The unchanged
+gateway-local -> connected -> authenticated-path chain still precedes health;
+no retained infrastructure start, allocation or replacement is introduced.
+
+The workload must be owned ephemeral compute with no data, effective secret
+deliveries (including those compiled from connected sockets), runtime-authority
+deliveries or unsupported independent verification. A unique readiness surface
+and unchanged managed runtime are required. Gateway/connector updates, missing
+or wrong-target wrappers, provenance-only deltas and every other graph change
+are review-blocked. Equal material remains empty. The existing add/remove
+compiler and old stored profile meanings are unchanged.
+
+This pure relation grants no permission and proves no installation. Operations
+#1971 must independently admit registered product/authority facts and own the
+versioned derivation, original attempts, installation evidence and advancement.
+Image, secret-version, verifier and declaration updates retain their later
+separate contracts. No provider, persistence or network dependency is added.
