@@ -7,7 +7,9 @@ import json
 from control_plane_kit_core._node_control_public_wire import canonical_json_bytes
 from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding
-from control_plane_kit_core.node_control import WorkloadNodeControlSurfaceDescriptor
+from control_plane_kit_core.node_control import (
+    WorkloadNodeControlSurfaceDescriptor, WorkloadNodeControlSurfaceDescriptorCodec,
+)
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationCodec,
 )
@@ -93,6 +95,28 @@ class ReceiverNodeControlConfigurationCodec:
         raise failure
 
 
+def select_receiver_node_control_configuration_slot(
+    *, artifacts: tuple[ConfigurationArtifact, ...],
+    environment: tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...],
+    control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...],
+) -> ConfigurationArtifact:
+    """Select declared structure, never receiver identity or verifier authority.
+
+    Payload retains ConfigurationArtifact integrity and bounds but need not be
+    receiver configuration. Actual material requires the strict V2 selector.
+    """
+    try:
+        artifact = _select_wrapper_configuration_slot(
+            artifacts=artifacts, environment=environment, control_surfaces=control_surfaces)
+        surface = control_surfaces[0]
+        codec = WorkloadNodeControlSurfaceDescriptorCodec()
+        _require(codec.decode(codec.encode(surface)) == surface)
+        return artifact
+    except _INPUT_ERRORS:
+        failure = WrapperConfigurationError(_ERROR)
+    raise failure
+
+
 def select_receiver_node_control_configuration_artifact(
     *, artifacts: tuple[ConfigurationArtifact, ...],
     environment: tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...],
@@ -112,5 +136,6 @@ def select_receiver_node_control_configuration_artifact(
 
 __all__ = [
     "ReceiverNodeControlConfiguration", "ReceiverNodeControlConfigurationCodec",
+    "select_receiver_node_control_configuration_slot",
     "select_receiver_node_control_configuration_artifact",
 ]

@@ -21,5 +21,11 @@ The opposite case (valid descriptor default, actual `{}`) must fail without ID
 allocation or history mutation. A separately canonical registered product with
 a different declared control surface must not authorize the unchanged node's
 surface. Existing redirect, missing binding and unsupported profile refusals
-remain. These are new or strengthened owner laws; target red is pending, and
-no application implementation or downstream acceptance is claimed.
+remain. These are new or strengthened owner laws. Tests-only run `38144325303`
+executed 2,645 tests with exactly two errors: the inert positive reached actual
+first-start and old descriptor-side coverage denial; the surface mismatch passed
+that boundary and exhausted the bounded forbidden-ID sequence at the allocation
+site. Neither failed in setup or collection. The strict actual `{}` refusal and
+other 2,642 tests passed. The implementation must now deny surface mismatch before
+all IDs/history and permit inert descriptor structure with valid actual bytes.
+Corrected owning green and downstream adoption remain pending on PR #1969.
