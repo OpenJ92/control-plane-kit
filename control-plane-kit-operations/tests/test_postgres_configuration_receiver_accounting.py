@@ -110,18 +110,14 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
         self.advance(claimed, "retaining-one")
         self.assertIsNotNone(self.receiver_origin().first_accepted_action_id)
 
-    def test_1950_initial_receiver_feasibility_and_update_refusal(self):
+    def test_1950_initial_receiver_feasibility_and_update_planning_refusal(self):
         from dataclasses import replace
         from unittest import mock
         from control_plane_kit_core.planning import StartNode
-        from control_plane_kit_core.policies import PolicyScope
-        from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval
-        from control_plane_kit_operations.coordinator import CoordinatorStatus
         from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
         from control_plane_kit_operations.planning import ActivityPlanningCommandService, RequestActivityPlan
-        from control_plane_kit_operations.records import ApprovalDecisionKind
-        from control_plane_kit_operations.workflows import IdempotencyKey
-        from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
+        from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
+        from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds
         from tests.configuration_cleanup_phase_read_bounds_fixture import ordinary_start_feasibility
 
         graph = self.canonical_receiver_graph
@@ -152,26 +148,25 @@ class PostgresConfigurationInitialReceiverFeasibilityTests(ReceiverCanonicalAcce
         suffix = "diagnostic-update"
         planning = ActivityPlanningCommandService(self.unit_of_work, clock=self.now,
             id_factory=GeneratedIds("plan-" + suffix))
-        planned = planning.execute(RequestActivityPlan("session-a", "workspace-a", "operator-a",
-            workspace.current_graph_id, workspace.desired_graph_id, IdempotencyKey("plan-" + suffix),
-            workspace.current_realized_projection_id, workspace.desired_realized_projection_id,
-            workspace.desired_graph_revision))
-        approvals = ApprovalCommandService(self.unit_of_work, clock=self.now,
-            id_factory=GeneratedIds("approval-" + suffix))
-        approval = approvals.execute(RequestApproval("session-a", planned.plan_record.plan_id,
-            "operator-a", tuple(PolicyScope), IdempotencyKey("approval-" + suffix)))
-        approvals.execute(DecideApproval("session-a", approval.request.request_id, "manager-a",
-            tuple(PolicyScope), ApprovalDecisionKind.APPROVED, IdempotencyKey("decision-" + suffix)))
-        self.admit_approved(suffix, planned.plan_record, approval)
-        updated = self.ready_run(suffix)
-        adapter = RecordingRuntimeAdapter()
+        # This TEXT/liveness fixture lacks the complete managed content contract.
+        # #1971 refuses that candidate at planning, before a plan can be approved.
+        def planning_truth():
+            return {table: self.connection.execute("SELECT to_jsonb(t) FROM " + table
+                + " AS t ORDER BY to_jsonb(t)::text").fetchall() for table in (
+                    "cpk_activity_plans", "cpk_approval_requests", "cpk_approval_decisions")}
+
         before = self.execution_truth()
+        graphs_before = self.graph_truth()
+        plans_before = planning_truth()
         with mock.patch.object(EffectAttemptStartService, "execute",
                 side_effect=AssertionError("unsupported managed update reached effect start")) as start:
-            refused = self.coordinator(self.unit_of_work, adapter, suffix).execute(self.execution_command(updated, suffix))
-        self.assertIs(refused.status, CoordinatorStatus.UNSUPPORTED)
-        self.assertEqual(refused.effects_attempted, 0)
+            with self.assertRaisesRegex(InvalidOperationCommand,
+                    "^runtime management planning is unsupported$"):
+                planning.execute(RequestActivityPlan("session-a", "workspace-a", "operator-a",
+                    workspace.current_graph_id, workspace.desired_graph_id, IdempotencyKey("plan-" + suffix),
+                    workspace.current_realized_projection_id, workspace.desired_realized_projection_id,
+                    workspace.desired_graph_revision))
         self.assertEqual(self.execution_truth(), before)
+        self.assertEqual(self.graph_truth(), graphs_before)
+        self.assertEqual(planning_truth(), plans_before)
         self.assertEqual(start.call_count, 0)
-        self.assertEqual(adapter.runtime_calls, [])
-        self.assertEqual(adapter.legacy_calls, [])

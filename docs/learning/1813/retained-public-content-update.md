@@ -83,8 +83,35 @@ No source ordering change is required. The affected single-test rerun at
 integrity, compile and installed import with exit 0. All 28 selected laws are
 green across the retained 26 passing cases and these focused corrected reruns.
 Application source stayed identical to reviewed `fbaa820b` throughout the test
-expectation corrections. Full hosted Core/Operations/current-backend acceptance
-remains pending; focused evidence is not full package acceptance.
+expectation corrections. Hosted Core and current-backend passed at `efce87b3`.
+Hosted Operations ran 2,653 tests in 9,154.465 seconds and failed with one failure
+and one error; full acceptance remains held. The exact runtime-intent architecture
+manifest omitted the reviewed same-package `PlanDerivationProfile` import and
+one `type`, `any`, and `InvalidOperationCommand` call each. Its exact policies
+remain intact; only those entries change.
+
+The older #1950 feasibility test used a TEXT/liveness/incomplete-management
+fixture that remains outside the supported content contract. O1 now rejects its
+material-change candidate at planning instead of allowing a generic plan to reach
+coordinator refusal. Initial-start/read-budget feasibility remains unchanged.
+The negative law now expects the exact planning refusal and checks unchanged
+graph/execution truth plus all plan and approval rows. It cannot advance the
+accepted graph or create a new plan, approval, run, or attempt. No production
+effect port exists on the planning service; the retained effect-start tripwire
+and durable-state checks carry that boundary evidence. The disconnected recording
+adapter and its empty-list assertions were removed as vacuous after review.
+No production admission relaxation or fixture conversion is required. Kepler independently
+classified both failures and North released these bounded test corrections.
+The maintained two-test local reproduction on `efce87b3` reproduced one failure
+and one error in 24.639 seconds, exit 1. The corrected focused pair passed in
+15.814 seconds. The disconnected-adapter cleanup followed the test-container
+snapshot; it changes no executed command or effective assertion. The owning
+script completed integrity, compile and installed import with exit 0. Production
+remains identical to reviewed `fbaa820b`. This is combined evidence from the
+prior full run's 2,651 passing tests and two corrected focused passes, not a
+single complete green run. Acceptance and the next full-suite timing remain
+North/user decisions; no replacement CI run is started by this checkpoint.
+[Hosted failure record](https://github.com/OpenJ92/control-plane-kit/pull/1981#issuecomment-6117979646).
 
 ## Security, data and history
 
