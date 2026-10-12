@@ -78,3 +78,12 @@ history. The existing context adapter and bounded preparation owner share
 `_runtime_effect_intent_for_material`; there is one translation law, not a second
 configuration translator. Selected product, runtime, pull, delivery and ingress
 material is exact. Configuration compensation remains explicitly unsupported.
+
+#1971 retains the current managed-update profile for workload content replacement.
+After independent canonical plan/admission checks, the existing product lowering
+selects the desired instance artifacts and any image-pull authority. A workload
+Reconcile in this closed family refuses a selected pull authority before fresh
+configuration preparation can commit an attempt. Gateway reconciliation retains
+its existing material contract, including unchanged connector ingress custody.
+Original attempt replay still uses the original durable intent rather than
+today's selections. No credentials are resolved, returned or logged here.

@@ -10,10 +10,11 @@ Existing clean-import and module-boundary tests remain governing checks.
 Core #1910 also reexports the pure managed-update compiler. The export adds no
 product dependency, permission, execution admission or provider interpretation.
 
-Core #1970 adds `compile_managed_configuration_update_activity_plan` through the
-Core and planning entrances. Its owner remains the existing management compiler.
-It plans the closed single-public-file content relation without widening the
-old managed add/remove contract or granting execution authority.
+Core #1971 consolidates #1970's closed single-public-file content relation into
+`compile_managed_update_activity_plan` at both Core and planning entrances.
+The superseded content-only public function is removed, without an alias.
+One current compiler recognizes the closed add/remove/content union; it grants
+no execution authority and introduces no new package ownership.
 
 Core #1826 exports the new pure health request/grant/verifier and result
 contracts, profiles and derived byte limits from node_health_reads and

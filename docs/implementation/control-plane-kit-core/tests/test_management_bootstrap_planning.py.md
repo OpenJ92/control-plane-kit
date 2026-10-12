@@ -11,7 +11,10 @@ existing public JSON application file changes content while the strict V2
 wrapper and all other graph material remain fixed. It checks deterministic
 disruptive workload reconciliation before desired protected health, retained
 management-path ordering, input preservation and no infrastructure replacement.
-Equal graphs remain empty and the old add/remove contract stays separate.
+Equal graphs remain empty. #1971 retargets these laws to the common managed-update
+compiler, which accepts the closed content/add/remove union. The obsolete
+assertion that this entry point rejects valid content is intentionally replaced
+with acceptance; useful add/remove behavior and refusal laws remain.
 Graph-valid refusal controls cover provenance-only changes, wrapper/slot/extra
 material changes, wrong receiver targets, data/secret/authority consumers and
 independent verification. The active socket-secret case uses ordinary topology

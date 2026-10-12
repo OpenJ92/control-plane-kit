@@ -456,6 +456,7 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
         None,
     ),
     ("control_plane_kit_operations.ingress_authorities", "require_cloudflared_tunnel_token_delivery", None),
+    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
     ("control_plane_kit_operations.products", "RegisteredImagePullAuthority", None),
     ("control_plane_kit_operations.products", "RegisteredProduct", None),
     ("control_plane_kit_operations.runtime_authorities", "RegisteredRuntimeAuthority", None),
@@ -781,6 +782,10 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
 )
 
 EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
+    # #1971 refuses pull authority before managed content replacement effects.
+    ("type", 1),
+    ("any", 1),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 1),
     # #1936 exact cleanup branch resolves only its two pinned runtimes.
     ("type", 1),
     ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),

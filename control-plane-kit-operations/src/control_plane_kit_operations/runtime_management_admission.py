@@ -111,9 +111,9 @@ def runtime_management_plan_profile(
     management graph-pair derivation.
     """
 
-    if type(transition) is not UpdateDeployment or not _managed_update_candidate_shape(
-        transition.current.graph,
-        transition.desired.graph,
+    if type(transition) is not UpdateDeployment or not (
+        _managed_update_candidate_shape(transition.current.graph, transition.desired.graph)
+        or _managed_content_runtime(transition.current.graph, transition.desired.graph) is not None
     ):
         return PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
     candidate = derive_activity_plan(
@@ -266,6 +266,11 @@ def _managed_update_shape(
     configuration slot that the application selected for managed routing.
     """
 
+    content_runtime = _managed_content_runtime(current, desired)
+    if content_runtime is not None:
+        return _managed_content_participants_are_exact(
+            current, desired, content_runtime, registered_products,
+        )
     if not _managed_update_candidate_shape(current, desired):
         return False
     runtime_id = next(iter(current.runtimes))
@@ -359,6 +364,51 @@ def _managed_update_shape(
     if retained_product.reference != changed_product.reference:
         return False
     return products[(False, gateway_id)].reference == products[(True, gateway_id)].reference
+
+
+def _managed_content_runtime(current, desired):
+    """Locate a content candidate; the common Core compiler owns its exact law."""
+    if set(current.nodes) != set(desired.nodes):
+        return None
+    changed = tuple(node for name, node in desired.nodes.items()
+        if node.configuration_artifacts != current.nodes[name].configuration_artifacts)
+    if len(changed) != 1:
+        return None
+    node = changed[0]
+    runtime = desired.runtimes.get(node.runtime_id)
+    if runtime is None or runtime.management is None:
+        return None
+    # Gateway route changes belong to the separately recognized add/remove law.
+    if node.node_id == runtime.management.gateway_node_id:
+        return None
+    return node.runtime_id
+
+
+def _managed_content_participants_are_exact(current, desired, runtime_id, registered_products):
+    """Bind every participant and the complete routes of the affected runtime."""
+    try:
+        runtime = desired.runtimes[runtime_id]
+        if runtime.kind is not RuntimeKind.DOCKER:
+            return False
+        gateway_id = runtime.management.gateway_node_id
+        for graph in (current, desired):
+            products = {}
+            for node in graph.nodes.values():
+                if node.runtime_id != runtime_id:
+                    continue
+                product = _selected_product(node, registered_products)
+                if (product is None or not _node_matches_product(node, product)
+                        or node.runtime_authority_deliveries):
+                    return False
+                products[node.node_id] = product
+            if not _management_routes_are_exact(
+                _configured_management_routes(graph, gateway_id),
+                _expected_management_routes(graph, products, gateway_id, runtime_id=runtime_id),
+            ):
+                return False
+    except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
+        return False
+    return True
 
 
 def _managed_update_candidate_shape(
@@ -459,9 +509,11 @@ def _configured_management_routes(graph, gateway_id):
     )
 
 
-def _expected_management_routes(graph, products, gateway_id):
+def _expected_management_routes(graph, products, gateway_id, *, runtime_id=None):
     configurations = {}
     for node in graph.nodes.values():
+        if runtime_id is not None and node.runtime_id != runtime_id:
+            continue
         if node.node_id != gateway_id and not _has_readiness(node):
             continue
         artifact = select_receiver_node_control_configuration_artifact(

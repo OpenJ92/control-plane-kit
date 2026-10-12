@@ -9,13 +9,29 @@ existing no-op exception without trusting a supplied plan or execution policy.
 
 Managed-update profile selection is a narrow opt-in. A structural prefilter
 recognizes only the retained single managed runtime/gateway family with exactly
-one node introduced or removed and no non-artifact gateway change. Recognized
+one node introduced or removed and no non-artifact gateway change, or a retained
+workload content candidate. The common Core compiler owns the exact closed union;
+the content prefilter only locates the affected runtime. Recognized
 candidates must then satisfy the complete registered-product, lifecycle,
 readiness, authority-delivery, and exact route-artifact predicate; failure is a
 fixed refusal and cannot fall back to legacy execution. Other established
-management updates, including same-node material edits, retain
+management updates outside these closed laws retain
 `management-graph-pair-v1` planning and its existing execution guard. Equal and
 name-only pairs likewise retain their canonical empty legacy plan.
+
+For retained content, all nodes in the affected Docker runtime must match an
+active exact registered product, including gateway, connector and every retained
+receiver. The complete configured route set must equal the scoped expected set.
+No workload count or same-product X/Y condition is imposed on this relation.
+Unrelated runtimes do not contribute routes or effects to the content update.
+Current plan selection and independent execution admission both enforce these
+facts; the supplied plan must equal the ready canonical current derivation.
+
+Immutable image authority comes from the active descriptor selected by product
+identity and descriptor digest. Core materialization also emits optional
+`oci_image` node metadata for description; Operations does not use that field to
+select an image or claim to validate it. Effect lowering consumes the registered
+descriptor's immutable image and the approved instance's declared slot payloads.
 
 The managed route slot is decoded with Core's shared
 `ReceiverManagementRoutesCodec` and compared to a complete value independently
