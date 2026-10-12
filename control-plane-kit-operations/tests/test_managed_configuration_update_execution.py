@@ -45,6 +45,7 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
         with self.assertRaises(CpkServerApplicationError):
             await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
                 path={"workspace_id": "workspace-a"}, payload={**payload,
+                    "idempotency_key": "prepare-stale-content",
                     "expected_current": {**payload["expected_current"], "authored_graph_id": "foreign"}})
         self.assertEqual((self.durable_snapshot(), self.effects()), before)
         prepared = await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
