@@ -27,6 +27,12 @@ Unrelated runtimes do not contribute routes or effects to the content update.
 Current plan selection and independent execution admission both enforce these
 facts; the supplied plan must equal the ready canonical current derivation.
 
+Immutable image authority comes from the active descriptor selected by product
+identity and descriptor digest. Core materialization also emits optional
+`oci_image` node metadata for description; Operations does not use that field to
+select an image or claim to validate it. Effect lowering consumes the registered
+descriptor's immutable image and the approved instance's declared slot payloads.
+
 The managed route slot is decoded with Core's shared
 `ReceiverManagementRoutesCodec` and compared to a complete value independently
 reconstructed for each pinned graph. The expected value selects each node's V2
