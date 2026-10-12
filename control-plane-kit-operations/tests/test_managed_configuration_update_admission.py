@@ -1,6 +1,7 @@
 """Current managed content interpretation binds complete registered material."""
 
 from dataclasses import replace
+import json
 import unittest
 
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
@@ -41,7 +42,10 @@ class ManagedConfigurationUpdateAdmissionTests(unittest.TestCase):
         return current, desired, products
 
     def admitted(self, current, desired, products):
-        transition = Deploy(validate_graph(current), validate_graph(desired))
+        left, right = validate_graph(current), validate_graph(desired)
+        self.assertTrue(left.valid, left.errors)
+        self.assertTrue(right.valid, right.errors)
+        transition = Deploy(left, right)
         self.assertIs(runtime_management_plan_profile(transition, registered_products=products), PROFILE)
         plan = derive_activity_plan(transition, profile=PROFILE)
         self.assertTrue(plan.ready_for_execution)
@@ -93,6 +97,8 @@ class ManagedConfigurationUpdateAdmissionTests(unittest.TestCase):
                 values.append(artifact)
             return graph.update_node(replace(gateway, configuration_artifacts=tuple(values)))
         left, right = missing_route(current), missing_route(desired)
+        validate_graph(left).require_valid()
+        validate_graph(right).require_valid()
         self.assertIsNone(runtime_management_plan_profile(
             Deploy(validate_graph(left), validate_graph(right)), registered_products=products,
         ))
@@ -113,3 +119,32 @@ class ManagedConfigurationUpdateAdmissionTests(unittest.TestCase):
         with self.assertRaises(InvalidOperationCommand):
             runtime_effect_request_for_context(replace(context,
                 image_pull_authorities=(_registered_pull_authority(repository="test/test-api-x"),)))
+
+    def test_unrelated_runtime_receivers_do_not_enter_selected_routes_or_effects(self):
+        current, desired, products = self.pair()
+        names = {name: "other-" + name for name in current.nodes}
+        unrelated = {}
+        for node in current.nodes.values():
+            artifacts = []
+            for value in node.configuration_artifacts:
+                document = json.loads(value.content)
+                if "target" in document:
+                    document["target"].update(runtime_id="other", node_id=names[node.node_id])
+                    value = replace(value, content=json.dumps(document), source_digest=None)
+                artifacts.append(value)
+            unrelated[names[node.node_id]] = replace(node, node_id=names[node.node_id], runtime_id="other",
+                block_spec=replace(node.block_spec, role_id=names[node.node_id]),
+                configuration_artifacts=tuple(artifacts), metadata={})
+        runtime = current.runtimes["docker"]
+        other = replace(runtime, runtime_id="other", children=tuple(unrelated),
+            management=replace(runtime.management, gateway_node_id="other-gateway", management_ingress_id="other-management"))
+        ingress = current.public_ingresses[0]
+        other_ingress = replace(ingress, ingress_id="other-management",
+            target=replace(ingress.target, node_id="other-gateway"), connector_node_id="other-connector",
+            hostname="other.example.invalid")
+        pair = tuple(replace(graph, nodes={**graph.nodes, **unrelated},
+            runtimes={**graph.runtimes, "other": other},
+            public_ingresses=(*graph.public_ingresses, other_ingress)) for graph in (current, desired))
+        plan = self.admitted(*pair, products)
+        self.assertFalse(any(getattr(value.operation.target, "runtime_id", None) == "other"
+            for value in plan.activities if hasattr(value.operation, "target")))

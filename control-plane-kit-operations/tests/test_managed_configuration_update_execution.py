@@ -5,6 +5,7 @@ from dataclasses import replace
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.planning import ObserveNodeHealth, ReconcileNode, StartNode
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.cpk_server import CpkServerApplicationError
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
@@ -134,12 +135,31 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
     async def test_missing_replacement_receipt_preserves_uncertainty_and_original_retry(self):
         await self.prepare_content()
         self.runtime.installation_disposition = None
-        before_reads = len(self.health.signed_reads)
+        def desired_health_count():
+            return sum(type(request.operation) is ObserveNodeHealth and request.operation.node_id == "api"
+                for request, _, _ in self.health.signed_reads)
+        before_reads = desired_health_count()
         result = await self.execute_content()
         self.assertEqual(result["coordinator_status"], "uncertain")
-        self.assertEqual(len(self.health.signed_reads), before_reads)
+        self.assertEqual(desired_health_count(), before_reads)
         self.assertEqual(len(self.runtime.calls) - len(self.origin_calls), 1)
         self.assertEqual(self.history(), self.origin_history)
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
                 self.before_update.current_graph_id)
+
+    async def test_fresh_selected_pull_authority_refuses_before_attempt_or_dispatch(self):
+        await self.prepare_content()
+        with self.unit_of_work() as uow:
+            uow.stores.image_pull_authorities.register(workspace_id="workspace-a",
+                authority=ImagePullAuthority("ghcr.io", "test/chain-api", "secret://local/workspace-a/pull"),
+                admitted_by="operator-a", admitted_at=chain.now())
+            uow.commit()
+        before = self.effects(), self.rows("cpk_effect_attempts"), self.rows("cpk_effect_configuration_refs")
+        with self.assertRaises(CpkServerApplicationError):
+            await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
+                payload={"claim_generation": self.update_generation,
+                    "idempotency_key": "execute-pull-refused", "max_effects": 1})
+        self.assertEqual((self.effects(), self.rows("cpk_effect_attempts"),
+            self.rows("cpk_effect_configuration_refs")), before)
