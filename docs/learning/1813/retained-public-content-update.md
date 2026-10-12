@@ -137,7 +137,7 @@ image/secret/verifier/declaration families retain their own acceptance gates.
 Live grandparent testing remains downstream. The original tunnel, DNS and
 protected token are unchanged.
 
-## Retained receiver read correction — #1982 (unvalidated implementation)
+## Retained receiver read correction — #1982 (focused green; owning gates pending)
 
 S1/Servers #249 exposed a larger retained-current topology than O1's original
 positive fixture. A reviewed owner-only reproduction at `8206de53` passed the
@@ -186,9 +186,14 @@ Test context and causal evidence:
 First focused red: 3 tests/341.956s (one intended failure, two passes). Remaining
 focused red: 3 tests/353.001s (two intended failures, final permission negative
 passed). Integrity passed and exact Docker resources were removed in both runs.
-Implementation is not yet validated or accepted. All six tuple variants,
-positive/forecast/history cases, relevant existing negatives and owning broader
-gates are required before independent review/acceptance.
+The reviewed implementation at `8ba51c66894611c1b4c9a38c8a781446e18add09`
+passed all 12 focused tests in 852.563 seconds: original O1 control, expanded
+four-receiver update/forecast, genuine two-history update/forecast, all six tuple
+variants and three freshness/refusal cases. The maintained Operations script also
+passed integrity, compile and clean installed import, exiting 0; both dedicated
+Docker resources were absent afterward. No diagnostic fixed-line observers
+remain. Normal Core/Operations/current-backend gates and final independent
+acceptance remain pending; focused green does not close S1 or this owner issue.
 
 Security/data/history: no new credential/network surface, schema, authority type,
 budget increase, provider call or durable semantics. Transaction/lock boundaries,
