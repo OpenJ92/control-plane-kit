@@ -3,11 +3,13 @@ from dataclasses import replace
 from unittest import mock
 
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
+from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_core.planning import ReconcileNode
 from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
 from control_plane_kit_operations import effect_attempt_start_interpreter as start
 from control_plane_kit_operations import receiver_lifecycle
 from control_plane_kit_operations.postgres import configuration_preparation_store as preparation
+from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 from tests.retained_receiver_read_bounds_fixture import conservative_suffix
 from tests import test_managed_application_chain as chain
 from tests.test_managed_configuration_update_admission import APPLICATION
@@ -150,9 +152,11 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
         target, = (activity for activity in self.record.plan.activities
             if type(activity.operation) is ReconcileNode)
         protected = {name: self.rows(name) for name in
-            ("cpk_effect_configuration_refs", "cpk_configuration_claims")}
+            ("cpk_effect_configuration_refs", "cpk_configuration_claims", "cpk_graph_receiver_bindings")}
         runtime_before = tuple(self.runtime.calls)
         material = receiver_lifecycle._retained_receiver_material
+        execution_material = PostgresExecutionStore._receiver_execution_material
+        validate_receiver = receiver_lifecycle._validate_receiver_execution
         insert = preparation.ConfigurationPreparationStore._insert_original
         permission = start._require_fresh_effect_receiver_permission
         with self.unit_of_work() as uow:
@@ -160,7 +164,8 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
         pairs = ((workspace.current_graph_id, workspace.current_realized_projection_id),
             (workspace.desired_graph_id, workspace.desired_realized_projection_id))
         self.assertNotEqual(pairs[0], pairs[1])
-        inserted, changed, refused = [], [], []
+        inserted, changed, refused, removed, receiver_refused = [], [], [], [], []
+        false_empty = fault in ("false-empty-originals", "false-empty-missing-binding")
 
         def inserted_original(*args, **kwargs):
             result = insert(*args, **kwargs)
@@ -169,7 +174,7 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
 
         def altered_material(stores, workspace_id, graph_id, projection_id):
             result = material(stores, workspace_id, graph_id, projection_id)
-            if inserted and (graph_id, projection_id) == pairs[side]:
+            if inserted and not false_empty and (graph_id, projection_id) == pairs[side]:
                 self.assertGreaterEqual(len(result), 2)
                 changed.append(True)
                 if fault == "order":
@@ -181,6 +186,35 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
                     for value in result)
             return result
 
+        def altered_originals(store, *args, **kwargs):
+            original, derived = execution_material(store, *args, **kwargs)
+            if inserted and false_empty:
+                # Verify actual original truth first, then fault only the value
+                # consumed by permission. Raw membership must still be read.
+                if fault == "false-empty-missing-binding" and not removed:
+                    cursor = store._connection.execute(
+                        "DELETE FROM cpk_graph_receiver_bindings WHERE graph_id=%s AND node_id='api'",
+                        (pairs[0][0],))
+                    self.assertEqual(cursor.rowcount, 1)
+                    removed.append(True)
+                original = (original[0], *(type(value).from_graph(
+                    projection_id=value.projection_id, workspace_id=value.workspace_id,
+                    source_authored_graph_id=value.source_authored_graph_id,
+                    projection_kind=value.projection_kind, projection_key=value.projection_key,
+                    graph=DeploymentGraph("false-empty"), created_by=value.created_by,
+                    created_at=value.created_at)
+                    for value in original[1:]))
+                changed.append(True)
+            return original, derived
+
+        def validated_receiver(*args, **kwargs):
+            try:
+                return validate_receiver(*args, **kwargs)
+            except Exception:
+                if false_empty and changed:
+                    receiver_refused.append(True)
+                raise
+
         def fresh(*args, **kwargs):
             try:
                 return permission(*args, **kwargs)
@@ -191,11 +225,15 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
 
         with mock.patch.object(preparation.ConfigurationPreparationStore, "_insert_original", inserted_original), \
                 mock.patch.object(receiver_lifecycle, "_retained_receiver_material", altered_material), \
+                mock.patch.object(PostgresExecutionStore, "_receiver_execution_material", altered_originals), \
+                mock.patch.object(receiver_lifecycle, "_validate_receiver_execution", validated_receiver), \
                 mock.patch.object(start, "_require_fresh_effect_receiver_permission", fresh), \
                 self.assertRaises(ExecutionCoordinatorConflict):
             await self.execute_content()
         self.assertEqual(inserted, [True])
         self.assertTrue(changed)
+        self.assertEqual(removed, [True] if fault == "false-empty-missing-binding" else [])
+        self.assertEqual(receiver_refused, [True] if false_empty else [])
         self.assertEqual(refused, [True])
         self.assertEqual(tuple(self.runtime.calls), runtime_before)
         for name, rows in protected.items():
@@ -222,3 +260,9 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
 
     async def test_final_permission_rejects_desired_graph_side(self):
         await self.assert_final_permission_tuple_refusal(1, "graph-side")
+
+    async def test_final_permission_rejects_false_empty_originals(self):
+        await self.assert_final_permission_tuple_refusal(0, "false-empty-originals")
+
+    async def test_final_permission_rejects_false_empty_originals_with_missing_binding(self):
+        await self.assert_final_permission_tuple_refusal(0, "false-empty-missing-binding")
