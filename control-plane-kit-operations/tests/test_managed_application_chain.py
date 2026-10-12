@@ -286,6 +286,8 @@ class RecordingManagedHealth:
 
 
 class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
+    application_artifacts = ()
+
     def setUp(self):
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -362,6 +364,8 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                 else wrapper_environment(chosen) if "workload" in families
                 else node.public_environment
             )
+            if name == "api":
+                chosen = (*chosen, *self.application_artifacts)
             product = ContainerServerProduct(ProductIdentity("test", "chain-" + name, 1),
                 OciImageReference("ghcr.io", "test/chain-" + name, "sha256:" + "a" * 64),
                 ProductRuntimeContract(sockets=node.sockets,
