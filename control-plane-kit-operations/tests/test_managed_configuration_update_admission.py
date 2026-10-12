@@ -115,7 +115,7 @@ class ManagedConfigurationUpdateAdmissionTests(unittest.TestCase):
         material, = request.products
         self.assertEqual(material.node_id, "api-x")
         self.assertEqual(material.product.runtime_contract.configuration_artifacts,
-            desired.node("api-x").configuration_artifacts)
+            tuple(sorted(desired.node("api-x").configuration_artifacts)))
         with self.assertRaises(InvalidOperationCommand):
             runtime_effect_request_for_context(replace(context,
                 image_pull_authorities=(_registered_pull_authority(repository="test/test-api-x"),)))

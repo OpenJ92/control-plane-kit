@@ -10,6 +10,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.cpk_server import CpkServerApplicationError
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.test_cpk_server_adapters import operator_principal
 from tests import test_managed_application_chain as chain
 from tests.test_managed_configuration_update_admission import APPLICATION
@@ -157,7 +158,8 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
                 admitted_by="operator-a", admitted_at=chain.now())
             uow.commit()
         before = self.effects(), self.rows("cpk_effect_attempts"), self.rows("cpk_effect_configuration_refs")
-        with self.assertRaises(CpkServerApplicationError):
+        with self.assertRaisesRegex(InvalidOperationCommand,
+                "^managed content update requires no image pull authority$"):
             await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
                 path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
                 payload={"claim_generation": self.update_generation,

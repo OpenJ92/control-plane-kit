@@ -56,7 +56,23 @@ Target `422e6d9d`: unchanged Core Docker gate ran 979 tests with exactly two
 expected common-entry content acceptance failures; all 21 support tests passed.
 Maintained Operations admission selection ran four tests with four expected
 profile-selection failures, no errors. [Causal-red record](https://github.com/OpenJ92/control-plane-kit/issues/1971#issuecomment-6116223270).
-Expanded service-target results and final green evidence are pending.
+Expanded target `b63b15cd` produced five intended profile failures and three
+fixture errors: a deliberately stale command reused the valid command's key.
+Those errors receive no causal-red credit. The authorized one-line correction
+uses a distinct negative-intent key. Corrected target-only `653a10c3`, with
+unchanged production, ran all three service cases to the intended stored-profile
+failure, with no errors (212.918 seconds).
+
+Implementation `fbaa820b` passed the unchanged Core gate: all 979 package and
+21 support tests, integrity, compile and installed import. Candidate `3d15034b`
+ran 28 focused Operations tests: 26 passed, including actual replacement,
+wrapper-reference reuse, app-reference change, forged-fold refusal, history,
+retry, advancement and missing-receipt uncertainty. Two test expectations were
+incorrect: the product contract canonically sorts artifacts, and the existing
+async Operations application forwards `InvalidOperationCommand` directly.
+Corrections preserve full artifact equality and the no-effect/attempt/reference
+snapshots, with an exact fixed refusal message. They require no production
+change. The two affected tests and full hosted acceptance remain pending.
 
 ## Security, data and history
 
