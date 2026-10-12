@@ -136,3 +136,127 @@ process replacement and business behavior. Physical provider work and later
 image/secret/verifier/declaration families retain their own acceptance gates.
 Live grandparent testing remains downstream. The original tunnel, DNS and
 protected token are unchanged.
+
+## Retained receiver read correction — #1982 (focused green; owning gates pending)
+
+S1/Servers #249 exposed a larger retained-current topology than O1's original
+positive fixture. A reviewed owner-only reproduction at `8206de53` passed the
+original control but refused four configured receivers before dispatch. At the
+final permission check, 4095 consumed records plus a prospective 5-record query
+exceeded the unchanged 4096 limit. The earlier forecast was 3062 consumed plus
+755 peak remaining records (3817); accounted bytes were below 16MiB. This proved
+an incomplete suffix expression, not missing credentials or a need to raise caps.
+
+Source review found that two reference validations each reread current/desired
+origins and accepted history. The expression still modeled initially empty
+current. #1982 keeps one complete fresh traversal per existing validation call,
+preserving separate current/desired tuples and comparing each to its exact pinned
+original projection. The legacy source helper retains its exterior and ordering.
+No evidence/permission is reused across checks, writes, commands or transactions.
+
+The matching expression now covers both complete retained sides, their maximum
+captured origin multiplicity, and every captured acceptance-action group with
+request/material verification, runs, events, advancement actions and historical
+bindings. It uses source-derived widths/cardinalities, not measured constants or
+cache credit. Native caps, shared ledger, approval alternatives and rollback stay
+unchanged. Source changes are confined to `receiver_lifecycle.py` and
+`postgres/configuration_preparation_store.py`.
+
+Test context and causal evidence:
+
+- Strengthened retained public law: unchanged O1 assertions with two additional
+  initially accepted siblings. Wrapper origin/history/replay/current advancement
+  remain part of the test. At target checkpoint `61ce5bcc`, prospective records
+  exceeded forecast (756 > 755); both new post-preparation refusal tests passed.
+- Strengthened footprint law: every actual query reservation and final settled
+  footprint must fit the declared suffix. A small shared test utility observes
+  real calls on the original accounting object, including rejected reservations.
+- Strengthened multiple-history law: the existing real add-B/removal-C scenario
+  proves two distinct first-acceptance actions, then measures its existing reverse
+  update. At `63447e09`, it failed 642 > 641; original uncertainty assertions remain.
+- Strengthened corrupt-proof consumer law: current/desired order, duplicates and
+  graph-side tuples are tested independently after original start insertion.
+  Representative current-order target red did not raise the required conflict.
+  This fault injection does not claim the real material reader reorders rows.
+- Freshness/rollback: a real binding deletion after start insertion reached final
+  receiver-permission denial, rolled back target attempt/intent/outcome and
+  configuration protection, and dispatched nothing. Existing approval, captured
+  growth, direct-write and lock-order laws remain governing evidence.
+
+First focused red: 3 tests/341.956s (one intended failure, two passes). Remaining
+focused red: 3 tests/353.001s (two intended failures, final permission negative
+passed). Integrity passed and exact Docker resources were removed in both runs.
+The reviewed implementation at `8ba51c66894611c1b4c9a38c8a781446e18add09`
+passed all 12 focused tests in 852.563 seconds: original O1 control, expanded
+four-receiver update/forecast, genuine two-history update/forecast, all six tuple
+variants and three freshness/refusal cases. The maintained Operations script also
+passed integrity, compile and clean installed import, exiting 0; both dedicated
+Docker resources were absent afterward. No diagnostic fixed-line observers
+remain. Normal Core/Operations/current-backend gates and final independent
+acceptance remain pending; focused green does not close S1 or this owner issue.
+
+Security/data/history: no new credential/network surface, schema, authority type,
+budget increase, provider call or durable semantics. Transaction/lock boundaries,
+fresh proof, exact replay and uncertain-effect behavior remain. The residual risk
+is an omitted branch or overbroad membership comparison; forecast and refusal
+tests explicitly protect both. Formula-only repair would reject earlier and
+cannot alone satisfy S1. Accepted owner merge and normal dependency adoption must
+precede Servers S1; live grandparent testing remains downstream.
+
+[Owner issue, law plan and red evidence](https://github.com/OpenJ92/control-plane-kit/issues/1982).
+
+### Full-gate receiver-free regression and correction
+
+The first normal gate at `8ad5b69e` did not pass: Operations ran 2663 tests in
+6622.557 seconds with 111 failures and four errors (including repeated subtest
+entries). Core and current-backend passed. The preceding focused green did not
+establish owner acceptance.
+
+The failures had four families. Forty-eight identity/factory entries failed
+because a fixed empty-material double did not provide newly invoked getters.
+Sixty-four cleanup entries stopped at a shared rehearsal premise encoding the
+old repeated traversal counts. Two large-provenance cases failed while building
+ordinary configuration history with 409585-byte metadata, before their final
+publication measurements. The compact accepted-use boundary failed its first
+no-new-start-ID assertion after a fold conflict; subsequent runtime and retained
+state assertions were not reached in that failed run.
+
+Source review found that the optimization had unconditionally added retained
+graph/projection getters even for receiver-free originals. This expanded actual
+transport and the suffix forecast; treating all failures as stale fixtures would
+have hidden a compatibility and capacity regression.
+
+The bounded correction restores the old meaningful empty-membership behavior:
+after existing pins and fresh original verification, derive both expected tuples
+and check both complete raw durable binding sets when they are empty. The raw
+reader independently derives receiver membership from current stored material.
+Receiver-bearing originals still use one fresh complete traversal and exact
+side-preserving equality. The forecast uses the smaller branch only if the
+maximum across all captured binding sets is zero. Limits, history, transaction
+boundaries and refusal policy are unchanged.
+
+Two additional proof-consumer tests return canonical false-empty original
+projections after actual verification and start insertion, while keeping real
+receiver material. One also deletes a durable binding. They require rejection
+by the receiver validator itself, final permission refusal, rollback and no
+target dispatch; later unrelated rejection cannot satisfy the test. Review
+caught and corrected a test-construction false positive before execution.
+The identity fixture remains unchanged. Cleanup's shared premise alone changes
+from repeated `(14,14,2)` reads/two event fetches to `(4,4,1)`/one; all downstream
+security and transport assertions remain.
+
+Local checkpoints were deliberately kept unpublished during focused validation
+to avoid automatically starting another full gate on the open PR: targets
+`3dd19e32`, cleanup structural premise `0eb1df4a`, source `e1fbaec1`. Kepler reviewed
+both exact deltas before execution. At `e1fbaec19b5fd6a5e8c63e0d3e2791e31a244f6d`,
+the maintained Docker runner passed all 67 selected tests in 2402.894 seconds,
+including all four failed families, all start-bound tests and the retained
+receiver/forecast/freshness targets. Integrity, compilation and clean installed
+import passed; script exit was zero and the exact owned container/network were
+absent afterward. The unchanged 64-use boundary and both large-metadata laws
+passed. Full normal CI and final acceptance remain required before downstream
+Servers adoption; this focused result does not establish live acceptance.
+
+[Full-gate classification and correction plan](https://github.com/OpenJ92/control-plane-kit/pull/1983#issuecomment-6130058291).
+[Exact correction review](https://github.com/OpenJ92/control-plane-kit/pull/1983#issuecomment-6130134308).
+[Focused command and local checkpoints](https://github.com/OpenJ92/control-plane-kit/pull/1983#issuecomment-6130149644).

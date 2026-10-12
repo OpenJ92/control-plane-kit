@@ -277,12 +277,14 @@ class ConfigurationCleanupPhaseReadBoundsFixture(ConfigurationCleanupReadCeiling
             and " FROM cpk_realized_graph_projections WHERE workspace_id=%s AND projection_id=%s" in q["sql"]]
         histories = [q for q in permission_queries if q["sql"].startswith("SELECT octet_length(")
             and " FROM cpk_activity_events WHERE run_id=%s ORDER BY ordinal" in q["sql"]]
-        self.assertEqual((len(raw_graphs), len(raw_projections), len(histories)), (14, 14, 2))
+        # One complete current/desired source traversal retains the same
+        # graph, origin and history proof with no repeated reference traversal.
+        self.assertEqual((len(raw_graphs), len(raw_projections), len(histories)), (4, 4, 1))
         # Establish the cross-row prerequisite in ordinary source BEFORE any
         # missing phase-owner assertion, using observed rows and no extra SQL.
         event_fetches = [q for q in permission_queries if q["role"] == "acceptance-events"
             and q["sql"].startswith("SELECT CASE WHEN")]
-        self.assertEqual(len(event_fetches), 2)
+        self.assertEqual(len(event_fetches), 1)
         for query in event_fetches:
             widths = [row[:-1] for row in query["widths"]]
             self.assertGreater(len(widths), 1)

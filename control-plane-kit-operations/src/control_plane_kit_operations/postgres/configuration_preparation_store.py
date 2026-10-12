@@ -439,19 +439,30 @@ def _ordinary_tail_budget(owner, intent, births):
 
     def permission():
         result = sequence(point("request"), point("session"), query(1, 1, 1),
-            native(9, 65536 + 8 * 2048), material(), bindings(), bindings())
-        if (d := count("bindings")):
-            # Initially empty current: two reference checks expand to six
-            # retained pairs and three origin visits per desired occurrence.
-            # The selected-set maximum also bounds a changed captured pair.
-            for side in range(2):
-                result = result.then(sequence(retained(), retained()))
-                for _ in range(d):
-                    result = result.then(origin())
-                result = result.then(retained())
-                if side:
-                    for _ in range(d):
-                        result = result.then(origin())
+            native(9, 65536 + 8 * 2048), material())
+        # Only a wholly empty captured membership set selects the legacy
+        # raw-binding path. Any captured nonempty alternative needs the full
+        # retained traversal even when the currently selected pair is empty.
+        if count("bindings"):
+            result = result.then(sequence(retained(), retained()))
+        else:
+            result = result.then(sequence(bindings(), bindings()))
+        # One fresh current/desired source traversal. Either side can select a
+        # captured pair, so both use the complete captured membership maximum.
+        for _ in range(count("bindings")):
+            result = result.then(origin())
+        # Accepted current membership has real historical receipt groups. Each
+        # captured action can select a different captured request/run/history;
+        # bound every group without relying on same-pass reader cache sharing.
+        for role, _ in owner._issued.points:
+            if role == "acceptance-action":
+                result = result.then(sequence(point("acceptance-action"), point("request"),
+                    material(), collection("runs"), collection("events"),
+                    collection("advancement-actions"), collection("bindings")))
+        # Keep caller order: accepted history precedes desired-origin reads.
+        # A suffix peak includes every earlier settled charge.
+        for _ in range(count("bindings")):
+            result = result.then(origin())
         result = result.then(sequence(native(15, 15 * 16384), native(9, 9 * 16384)))
         # Native approval truth can change its branch and incur action reads
         # before refusal. This alternative is deliberately unconditional.

@@ -227,7 +227,7 @@ class RecordingManagedHealth:
         self.test.assertTrue({"gateway", "connector"} <= set(desired.nodes))
         if current.nodes:
             self.test.assertTrue({"gateway", "connector", "api"} <= set(current.nodes))
-        self.test.assertEqual(len(registered_products), 3)
+        self.test.assertEqual(len(registered_products), len(self.test.documents))
         self.test.assertTrue(any(value.authority_ref == desired.runtimes["docker"].authority_ref
             for value in runtime_authorities))
         self.selections.append(selected)
@@ -983,6 +983,17 @@ class ManagedUpdateExecutionTests(ManagedApplicationFixture):
         self.assertEqual(advanced["to_graph_id"], plan["desired_graph_id"])
 
         # The reverse B -> C removal must stop at gateway installation proof.
+        # Its current receivers have two genuinely accepted origins: initial A
+        # and the actual add-B run. Budget every history group on the same ledger.
+        origins = self.connection.execute("SELECT DISTINCT first_accepted_action_id "
+            "FROM cpk_graph_receiver_introductions WHERE workspace_id='workspace-a' "
+            "AND first_accepted_action_id IS NOT NULL").fetchall()
+        self.assertEqual(len(origins), 2)
+        from tests.retained_receiver_read_bounds_fixture import conservative_suffix
+        with conservative_suffix(self):
+            await self.remove_without_installation_proof()
+
+    async def remove_without_installation_proof(self):
         # A provider success without the correlated REPLACED receipt cannot
         # release health, Y disposal, run completion, or graph advancement.
         with self.unit_of_work() as uow:
