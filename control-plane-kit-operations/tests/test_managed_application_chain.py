@@ -227,7 +227,7 @@ class RecordingManagedHealth:
         self.test.assertTrue({"gateway", "connector"} <= set(desired.nodes))
         if current.nodes:
             self.test.assertTrue({"gateway", "connector", "api"} <= set(current.nodes))
-        self.test.assertEqual(len(registered_products), 3)
+        self.test.assertEqual(len(registered_products), len(self.test.documents))
         self.test.assertTrue(any(value.authority_ref == desired.runtimes["docker"].authority_ref
             for value in runtime_authorities))
         self.selections.append(selected)
