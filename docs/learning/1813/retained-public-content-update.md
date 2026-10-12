@@ -72,7 +72,14 @@ incorrect: the product contract canonically sorts artifacts, and the existing
 async Operations application forwards `InvalidOperationCommand` directly.
 Corrections preserve full artifact equality and the no-effect/attempt/reference
 snapshots, with an exact fixed refusal message. They require no production
-change. The two affected tests and full hosted acceptance remain pending.
+change. The affected two-test rerun passed full selected-material equality and
+reached the exact pull refusal, but its global snapshot incorrectly prohibited
+an independent management observation before refusal. Review narrowed this to
+the intended mutation boundary: complete runtime/ingress traces, all configuration
+refs/claims, no attempt at any number for the exact Reconcile, only graph-authorized
+management observations, no desired workload health and unchanged current graph.
+No source ordering change is required. The affected single-test rerun and full
+hosted acceptance remain pending.
 
 ## Security, data and history
 

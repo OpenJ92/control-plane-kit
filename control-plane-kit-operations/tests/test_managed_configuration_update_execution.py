@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole
-from control_plane_kit_core.planning import ObserveNodeHealth, ReconcileNode, StartNode
+from control_plane_kit_core.planning import ObserveManagementBootstrap, ObserveNodeHealth, ReconcileNode, StartNode
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
@@ -157,12 +157,31 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
                 authority=ImagePullAuthority("ghcr.io", "test/chain-api", "secret://local/workspace-a/pull"),
                 admitted_by="operator-a", admitted_at=chain.now())
             uow.commit()
-        before = self.effects(), self.rows("cpk_effect_attempts"), self.rows("cpk_effect_configuration_refs")
+        reconcile, = (activity for activity in self.record.plan.activities
+            if type(activity.operation) is ReconcileNode)
+        def mutation_snapshot():
+            attempts = tuple(row for row in self.rows("cpk_effect_attempts")
+                if row[0] == self.update_run and row[1] == reconcile.activity_id.value)
+            self.assertEqual(attempts, (), "no attempt number may exist for the forbidden replacement")
+            return (self.effects()[:3], self.rows("cpk_effect_configuration_refs"),
+                self.rows("cpk_configuration_claims"))
+        before = mutation_snapshot()
+        native_before, signed_before = len(self.health.native_reads), len(self.health.signed_reads)
         with self.assertRaisesRegex(InvalidOperationCommand,
                 "^managed content update requires no image pull authority$"):
             await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
                 path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
                 payload={"claim_generation": self.update_generation,
                     "idempotency_key": "execute-pull-refused", "max_effects": 1})
-        self.assertEqual((self.effects(), self.rows("cpk_effect_attempts"),
-            self.rows("cpk_effect_configuration_refs")), before)
+        self.assertEqual(mutation_snapshot(), before)
+        # Independent authorized management observations may precede the refused
+        # mutation; they cannot become desired workload health or advancement.
+        observed = (*self.health.native_reads[native_before:],
+            *(request for request, _, _ in self.health.signed_reads[signed_before:]))
+        for request in observed:
+            self.assertIs(type(request.operation), ObserveManagementBootstrap)
+            self.assertEqual(request.source.run_id.value, self.update_run)
+            self.assertEqual(request.operation, self.record.plan.activity(request.activity_id).operation)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
+                self.before_update.current_graph_id)
