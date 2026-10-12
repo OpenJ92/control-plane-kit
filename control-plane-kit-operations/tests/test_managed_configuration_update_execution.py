@@ -240,10 +240,71 @@ class ManagedConfigurationS1ShapeTests(chain.ManagedApplicationFixture):
         from control_plane_kit_operations.postgres.effect_attempt_intent_store import EffectAttemptIntentStore
         from control_plane_kit_operations.postgres.effect_attempt_store import EffectAttemptStore
         from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+        from control_plane_kit_operations.postgres import configuration_preparation_store as preparation
+        from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead, _Capacity
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+        from control_plane_kit_operations.configuration_preparation import (
+            ConfigurationEvidenceFootprint, configuration_evidence_capacity,
+        )
 
         reports = 0
         retained_execution = False
+        modeled_suffix = None
         prepare_content = self.prepare_content
+        original_query = _EvidenceRead.query
+        original_budget = preparation._ordinary_tail_budget
+
+        def footprint(value):
+            return {name: getattr(value, name) for name in
+                ("records", "value_octets", "scalar_markers", "statements", "accounted_bytes")}
+
+        def measured_budget(*args, **kwargs):
+            nonlocal modeled_suffix
+            result = original_budget(*args, **kwargs)
+            try:
+                if retained_execution:
+                    budget, _ = result
+                    modeled_suffix = {"used": footprint(_ACCOUNTING.get().used),
+                        "settled": footprint(budget.settled), "peak": footprint(budget.peak)}
+            except Exception:
+                return result
+            return result
+
+        def measured_query(read, sql, params, *, records, octets, cells, identities=1):
+            nonlocal reports
+            try:
+                return original_query(read, sql, params, records=records,
+                    octets=octets, cells=cells, identities=identities)
+            except _Capacity as error:
+                try:
+                    final_permission = False
+                    caller = sys._getframe(1)
+                    for _ in range(32):
+                        if caller is None:
+                            break
+                        if (caller.f_code is start.EffectAttemptStartService._execute_once.__code__
+                                and 334 <= caller.f_lineno <= 335):
+                            final_permission = True
+                            break
+                        caller = caller.f_back
+                    del caller
+                    trace = error.__traceback__
+                    failed_reservation = False
+                    while trace is not None:
+                        if trace.tb_frame.f_code is original_query.__code__ and trace.tb_lineno == 110:
+                            failed_reservation = True
+                        trace = trace.tb_next
+                    if retained_execution and final_permission and failed_reservation and reports < 4:
+                        reserve = ConfigurationEvidenceFootprint(records * identities, octets, records * cells, 1)
+                        reports += 1
+                        print(json.dumps({"s1_owner_subcheck": "receiver-permission-capacity",
+                            "used": footprint(read.used), "reservation": footprint(reserve),
+                            "decision": configuration_evidence_capacity(read.used.plus(reserve)).value,
+                            "limits": {"records": 4096, "accounted_bytes": 16 * 1024 * 1024},
+                            "modeled_suffix": modeled_suffix}), flush=True)
+                except Exception:
+                    raise error
+                raise
 
         async def prepare_then_enable():
             nonlocal retained_execution
@@ -295,6 +356,8 @@ class ManagedConfigurationS1ShapeTests(chain.ManagedApplicationFixture):
 
         with ExitStack() as observers:
             observers.enter_context(mock.patch.object(self, "prepare_content", prepare_then_enable))
+            observers.enter_context(mock.patch.object(_EvidenceRead, "query", measured_query))
+            observers.enter_context(mock.patch.object(preparation, "_ordinary_tail_budget", measured_budget))
             for owner, method, stage in (
                 (PreparedEffectRunPrefix, "require", "run-prefix"),
                 (start, "_require_fresh_effect_receiver_permission", "receiver-permission"),
