@@ -136,3 +136,36 @@ process replacement and business behavior. Physical provider work and later
 image/secret/verifier/declaration families retain their own acceptance gates.
 Live grandparent testing remains downstream. The original tunnel, DNS and
 protected token are unchanged.
+
+## S1 focused owner diagnostic (pending)
+
+Accepted O1 merge `fe8d44fa` is the isolated baseline for branch
+`codex/249-s1-owner-diagnostic`. Servers #257's reviewed process implementation
+passes its port laws, but its joined retained update fails before process entry.
+The authorized diagnostic at Servers `60bfcac`, run `38256582393`, localized the
+refusal to `EffectAttemptStartService._execute_once:350`, after insertion but
+before commit, with zero actual process-port calls. Final prefix/permission,
+persisted record equality and original configuration revalidation share that
+catch; the exact inner check remains unknown.
+
+North released test-only owner reproduction. The existing positive
+`ManagedConfigurationUpdateExecutionTests` method remains unchanged as control:
+it already proves changed application plus transferred unchanged wrapper. A
+separate S1-shaped case adds two initially accepted wrapper-only siblings through
+the existing graph/public command harness (four configured receivers, seven
+slots). It reuses the same update/history/advancement assertions. Registration
+count follows the actual authored document set, preserving three for the control.
+ID/path widths and the existing owner observation history remain fixed for this
+first diagnostic; process restart writes no owner truth and is not fabricated.
+
+Transparent test observers surround final prefix, receiver permission,
+event/intent/attempt readbacks and original configuration verification. They
+forward calls and results exactly, rethrow the same errors and emit only bounded
+allowlisted error classes/source coordinates. No production owner, ledger,
+capacity, policy, schema, provider or acceptance record is patched or weakened.
+Kepler scope review precedes the maintained Docker `test.sh -k` invocation for
+only the original positive control and new sibling case. This is focused
+diagnostic evidence, not yet a causal regression or full package acceptance.
+Return the invariant/correction plan before any production implementation.
+
+[Law/shape and exact invocation](https://github.com/OpenJ92/control-plane-kit-servers/pull/257#issuecomment-6125639109).

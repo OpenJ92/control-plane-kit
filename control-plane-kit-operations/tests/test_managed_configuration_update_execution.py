@@ -1,12 +1,16 @@
 """Retained public content through real Operations and PostgreSQL owners."""
 
 from dataclasses import replace
+from contextlib import ExitStack
+import json
+from unittest import mock
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.planning import ObserveManagementBootstrap, ObserveNodeHealth, ReconcileNode, StartNode
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit_operations.cpk_server import CpkServerApplicationError
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
@@ -185,3 +189,101 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
                 self.before_update.current_graph_id)
+
+
+class ManagedConfigurationS1ShapeTests(chain.ManagedApplicationFixture):
+    """Diagnostic: same owner law, with S1's four retained configured receivers."""
+    application_artifacts = (APPLICATION,)
+    complete_initial = ManagedConfigurationUpdateExecutionTests.complete_initial
+    prepare_content = ManagedConfigurationUpdateExecutionTests.prepare_content
+    execute_content = ManagedConfigurationUpdateExecutionTests.execute_content
+
+    def authored_graph(self):
+        graph, documents, registry = super().authored_graph()
+        nodes = dict(graph.nodes)
+        target = nodes["api"]
+        declaration = chain.WorkloadNodeControlSurfaceDeclaration(
+            target.block_spec.control_surfaces[0], chain.WorkloadNodeControlSurfaceDeclarationProfile.V2)
+        for name, receiver in (("counter-example", "c" * 32), ("retained-example", "d" * 32)):
+            wrapper = chain.artifact("workload", declaration, node=name, receiver=True, receiver_id=receiver)
+            environment = chain.wrapper_environment((wrapper,))
+            product = replace(documents["api"].product,
+                identity=chain.ProductIdentity("test", "chain-" + name, 1),
+                runtime_contract=replace(documents["api"].product.runtime_contract,
+                    configuration_artifacts=(wrapper,), public_environment=environment))
+            document = chain.ProductDescriptorCodec().encode_document(product)
+            reference = chain.ProductReference.from_document(document)
+            documents[name] = document
+            nodes[name] = replace(target, node_id=name,
+                block_spec=replace(target.block_spec, role_id=name),
+                configuration_artifacts=(wrapper,), public_environment=environment,
+                endpoints={"http": Endpoint(LiteralAddress(f"http://{name}:8000"), target.endpoint("http").protocol)},
+                metadata={"product_identity": reference.identity.key,
+                    "product_descriptor_digest": reference.descriptor_sha256.value})
+        routes = chain.management_routes(nodes)
+        gateway = nodes["gateway"]
+        nodes["gateway"] = replace(gateway, configuration_artifacts=tuple(
+            replace(value, content=chain.ReceiverManagementRoutesCodec().encode_bytes(routes).decode(), source_digest=None)
+            if value.artifact_id == "gateway-health-targets" else value
+            for value in gateway.configuration_artifacts))
+        graph = replace(graph, nodes=nodes, runtimes={"docker":
+            replace(graph.runtimes["docker"], children=tuple(nodes))})
+        graph = self.native_before_path_graph(graph)
+        chain.validate_graph(graph).require_valid()
+        return graph, documents, registry
+
+    async def test_retained_update_with_two_unchanged_receivers(self):
+        from control_plane_kit_operations import effect_attempt_start_interpreter as start
+        from control_plane_kit_operations.effect_run_prefix import PreparedEffectRunPrefix
+        from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
+        from control_plane_kit_operations.postgres.effect_attempt_intent_store import EffectAttemptIntentStore
+        from control_plane_kit_operations.postgres.effect_attempt_store import EffectAttemptStore
+        from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+
+        reports = 0
+        def report(error, stage):
+            nonlocal reports
+            if reports >= 4:
+                return
+            reports += 1
+            frames, trace = [], error.__traceback__
+            while trace is not None:
+                code = trace.tb_frame.f_code
+                module = trace.tb_frame.f_globals.get("__name__", "")
+                if (type(module) is str and len(module) <= 160 and module.startswith("control_plane_kit_")
+                        and all(part.isidentifier() for part in module.split("."))):
+                    frames.append({"module": module, "function": code.co_name
+                        if code.co_name.isidentifier() and len(code.co_name) <= 128 else "anonymous",
+                        "line": trace.tb_lineno})
+                    frames = frames[-8:]
+                trace = trace.tb_next
+            kind = type(error).__name__
+            print(json.dumps({"s1_owner_subcheck": stage,
+                "kind": kind if kind in {"_Unavailable", "_Capacity", "OperationsRecordError",
+                    "ReceiverLifecycleStorageError", "ReceiverScopeUnavailable", "ReceiverScopeCapacity",
+                    "EffectRunPrefixConflict", "ValueError", "KeyError", "TypeError", "AttributeError"}
+                    else "other", "frames": frames}), flush=True)
+
+        def observe(function, stage):
+            def unchanged(*args, **kwargs):
+                try:
+                    return function(*args, **kwargs)
+                except Exception as error:
+                    try:
+                        report(error, stage)
+                    except Exception:
+                        raise error
+                    raise
+            return unchanged
+
+        with ExitStack() as observers:
+            for owner, method, stage in (
+                (PreparedEffectRunPrefix, "require", "run-prefix"),
+                (start, "_require_fresh_effect_receiver_permission", "receiver-permission"),
+                (PostgresExecutionStore, "get_event", "event-readback"),
+                (EffectAttemptIntentStore, "get", "intent-readback"),
+                (EffectAttemptStore, "get", "attempt-readback"),
+                (ConfigurationPreparationStore, "_require_original", "configuration-original"),
+            ):
+                observers.enter_context(mock.patch.object(owner, method, observe(getattr(owner, method), stage)))
+            await ManagedConfigurationUpdateExecutionTests.test_replacement_preserves_wrapper_origin_and_history_then_advances(self)
