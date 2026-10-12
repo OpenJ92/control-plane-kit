@@ -1,15 +1,14 @@
 """Retained receiver permission stays fresh within a conservative read bound."""
-from contextlib import contextmanager
 from dataclasses import replace
 from unittest import mock
 
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit_core.planning import ReconcileNode
-from control_plane_kit_operations import _configuration_preparation as support
-from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
 from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
+from control_plane_kit_operations import effect_attempt_start_interpreter as start
+from control_plane_kit_operations import receiver_lifecycle
 from control_plane_kit_operations.postgres import configuration_preparation_store as preparation
-from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+from tests.retained_receiver_read_bounds_fixture import conservative_suffix
 from tests import test_managed_application_chain as chain
 from tests.test_managed_configuration_update_admission import APPLICATION
 from tests import test_managed_configuration_update_execution as original
@@ -55,58 +54,7 @@ class RetainedReceiverReadBoundsTests(chain.ManagedApplicationFixture):
         chain.validate_graph(graph).require_valid()
         return graph, documents, registry
 
-    @contextmanager
-    def conservative_suffix(self):
-        """Observe every prospective query, including reservations refused before SQL."""
-        original_budget, original_query = preparation._ordinary_tail_budget, _EvidenceRead.query
-        original_bind = preparation._OrdinaryStartReadBoundsOwner.bind
-        witnesses = []
-
-        def budget(owner, *args, **kwargs):
-            result = original_budget(owner, *args, **kwargs)
-            witnesses.append(dict(owner=owner, accounting=owner._accounting,
-                before=owner._accounting.used, budget=result[0], peaks=[], settled=None))
-            return result
-
-        def query(read, sql, params, *, records, octets, cells, identities=1):
-            issued = support._BOUND_ORDINARY_START.get()
-            for witness in witnesses:
-                if (issued is not None and issued.owner is witness["owner"]
-                        and read.accounting is witness["accounting"]):
-                    reserve = ConfigurationEvidenceFootprint(records * identities, octets, records * cells, 1)
-                    witness["peaks"].append(read.used.plus(reserve))
-            return original_query(read, sql, params, records=records,
-                octets=octets, cells=cells, identities=identities)
-
-        @contextmanager
-        def bind(owner, *args, **kwargs):
-            try:
-                with original_bind(owner, *args, **kwargs) as result:
-                    yield result
-            finally:
-                for witness in witnesses:
-                    if witness["owner"] is owner:
-                        witness["settled"] = witness["accounting"].used
-
-        with mock.patch.object(preparation, "_ordinary_tail_budget", budget), \
-                mock.patch.object(_EvidenceRead, "query", query), \
-                mock.patch.object(preparation._OrdinaryStartReadBoundsOwner, "bind", bind):
-            try:
-                yield witnesses
-            finally:
-                self.assertTrue(witnesses, "retained update did not enter owner preparation")
-                for witness in witnesses:
-                    self.assertTrue(witness["peaks"])
-                    self.assertIsNotNone(witness["settled"])
-                    for name in ("records", "value_octets", "scalar_markers", "statements"):
-                        prior = getattr(witness["before"], name)
-                        for peak in witness["peaks"]:
-                            self.assertLessEqual(getattr(peak, name) - prior,
-                                getattr(witness["budget"].peak, name),
-                                f"retained suffix prospective {name} exceeds forecast")
-                        self.assertLessEqual(getattr(witness["settled"], name) - prior,
-                            getattr(witness["budget"].settled, name),
-                            f"retained suffix settled {name} exceeds forecast")
+    conservative_suffix = conservative_suffix
 
     async def test_four_receivers_complete_with_conservative_suffix(self):
         # Keep the original public positive law unchanged, enabling measurement
@@ -135,10 +83,13 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
     prepare_content = original.ManagedConfigurationUpdateExecutionTests.prepare_content
     execute_content = original.ManagedConfigurationUpdateExecutionTests.execute_content
 
-    async def late_refusal(self, change, snapshot):
+    async def late_refusal(self, change, snapshot, *, after_insert=False):
         await self.prepare_content()
-        original = preparation.ConfigurationPreparationStore._prepare
+        method = "_insert_original" if after_insert else "_prepare"
+        original = getattr(preparation.ConfigurationPreparationStore, method)
+        permission = start._require_fresh_effect_receiver_permission
         entered = []
+        refused_final_permission = []
         before = snapshot()
         runtime_before = tuple(self.runtime.calls)
         protected = {name: self.rows(name) for name in
@@ -150,10 +101,21 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
             self.assertEqual(change(store._connection).rowcount, 1)
             return result
 
-        with mock.patch.object(preparation.ConfigurationPreparationStore, "_prepare", mutate), \
+        def fresh(*args, **kwargs):
+            try:
+                return permission(*args, **kwargs)
+            except Exception:
+                if entered and after_insert:
+                    refused_final_permission.append(True)
+                raise
+
+        with mock.patch.object(preparation.ConfigurationPreparationStore, method, mutate), \
+                mock.patch.object(start, "_require_fresh_effect_receiver_permission", fresh), \
                 self.assertRaises(ExecutionCoordinatorConflict):
             await self.execute_content()
         self.assertEqual(len(entered), 1)
+        if after_insert:
+            self.assertEqual(refused_final_permission, [True])
         self.assertEqual(snapshot(), before)
         self.assertEqual(tuple(self.runtime.calls), runtime_before)
         for name, rows in protected.items():
@@ -176,3 +138,87 @@ class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
         await self.late_refusal(lambda connection: connection.execute(
             "DELETE FROM cpk_graph_receiver_bindings WHERE graph_id=%s AND node_id='api'",
             (self.before_update.current_graph_id,)), lambda: self.rows("cpk_graph_receiver_bindings"))
+
+    async def test_final_permission_rechecks_current_binding_after_start_insert(self):
+        await self.late_refusal(lambda connection: connection.execute(
+            "DELETE FROM cpk_graph_receiver_bindings WHERE graph_id=%s AND node_id='api'",
+            (self.before_update.current_graph_id,)), lambda: self.rows("cpk_graph_receiver_bindings"),
+            after_insert=True)
+
+    async def assert_final_permission_tuple_refusal(self, side, fault):
+        await self.prepare_content()
+        target, = (activity for activity in self.record.plan.activities
+            if type(activity.operation) is ReconcileNode)
+        protected = {name: self.rows(name) for name in
+            ("cpk_effect_configuration_refs", "cpk_configuration_claims")}
+        runtime_before = tuple(self.runtime.calls)
+        material = receiver_lifecycle._retained_receiver_material
+        insert = preparation.ConfigurationPreparationStore._insert_original
+        permission = start._require_fresh_effect_receiver_permission
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+        pairs = ((workspace.current_graph_id, workspace.current_realized_projection_id),
+            (workspace.desired_graph_id, workspace.desired_realized_projection_id))
+        self.assertNotEqual(pairs[0], pairs[1])
+        inserted, changed, refused = [], [], []
+
+        def inserted_original(*args, **kwargs):
+            result = insert(*args, **kwargs)
+            inserted.append(True)
+            return result
+
+        def altered_material(stores, workspace_id, graph_id, projection_id):
+            result = material(stores, workspace_id, graph_id, projection_id)
+            if inserted and (graph_id, projection_id) == pairs[side]:
+                self.assertGreaterEqual(len(result), 2)
+                changed.append(True)
+                if fault == "order":
+                    return tuple(reversed(result))
+                if fault == "duplicate":
+                    return result + result[:1]
+                other = pairs[1 - side]
+                return tuple(replace(value, graph_id=other[0], realized_projection_id=other[1])
+                    for value in result)
+            return result
+
+        def fresh(*args, **kwargs):
+            try:
+                return permission(*args, **kwargs)
+            except Exception:
+                if inserted:
+                    refused.append(True)
+                raise
+
+        with mock.patch.object(preparation.ConfigurationPreparationStore, "_insert_original", inserted_original), \
+                mock.patch.object(receiver_lifecycle, "_retained_receiver_material", altered_material), \
+                mock.patch.object(start, "_require_fresh_effect_receiver_permission", fresh), \
+                self.assertRaises(ExecutionCoordinatorConflict):
+            await self.execute_content()
+        self.assertEqual(inserted, [True])
+        self.assertTrue(changed)
+        self.assertEqual(refused, [True])
+        self.assertEqual(tuple(self.runtime.calls), runtime_before)
+        for name, rows in protected.items():
+            self.assertEqual(self.rows(name), rows)
+        for name in ("cpk_effect_attempts", "cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes"):
+            self.assertEqual(self.connection.execute(
+                "SELECT count(*) FROM " + name + " WHERE run_id=%s AND activity_id=%s",
+                (self.update_run, target.activity_id.value)).fetchone()[0], 0)
+
+    async def test_final_permission_rejects_current_order(self):
+        await self.assert_final_permission_tuple_refusal(0, "order")
+
+    async def test_final_permission_rejects_desired_order(self):
+        await self.assert_final_permission_tuple_refusal(1, "order")
+
+    async def test_final_permission_rejects_current_duplicate(self):
+        await self.assert_final_permission_tuple_refusal(0, "duplicate")
+
+    async def test_final_permission_rejects_desired_duplicate(self):
+        await self.assert_final_permission_tuple_refusal(1, "duplicate")
+
+    async def test_final_permission_rejects_current_graph_side(self):
+        await self.assert_final_permission_tuple_refusal(0, "graph-side")
+
+    async def test_final_permission_rejects_desired_graph_side(self):
+        await self.assert_final_permission_tuple_refusal(1, "graph-side")
