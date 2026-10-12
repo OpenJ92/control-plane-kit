@@ -169,3 +169,20 @@ diagnostic evidence, not yet a causal regression or full package acceptance.
 Return the invariant/correction plan before any production implementation.
 
 [Law/shape and exact invocation](https://github.com/OpenJ92/control-plane-kit-servers/pull/257#issuecomment-6125639109).
+
+The first focused run at `52809df0` passed integrity and the unchanged O1
+positive control, but the expanded case failed during retained update execution
+with the common start-truth conflict (two tests, 317.807 seconds, exit 1).
+Both dedicated Docker resources were absent after cleanup. Its four diagnostic
+reports were consumed by expected initial missing-attempt reads, so this run
+reproduces the public owner failure but does not classify the inner invariant.
+[Terminal classification](https://github.com/OpenJ92/control-plane-kit-servers/pull/257#issuecomment-6125831628).
+
+North released one minimal diagnostic refinement: enable reporting only after
+the unchanged preparation method returns, and only for calls directly from the
+accepted final `_execute_once` revalidation block (lines 333–344 at `fe8d44fa`).
+Stack inspection reads only code identity and line coordinates, never argument
+values or locals. Calls, returns, exceptions, four-record/eight-frame bounds,
+expanded topology and the O1 control remain unchanged. Kepler reviews this exact
+test-only delta before the same two focused targets run again. No production
+correction or full acceptance is implied.

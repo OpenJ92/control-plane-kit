@@ -3,6 +3,7 @@
 from dataclasses import replace
 from contextlib import ExitStack
 import json
+import sys
 from unittest import mock
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole
@@ -241,6 +242,15 @@ class ManagedConfigurationS1ShapeTests(chain.ManagedApplicationFixture):
         from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 
         reports = 0
+        retained_execution = False
+        prepare_content = self.prepare_content
+
+        async def prepare_then_enable():
+            nonlocal retained_execution
+            result = await prepare_content()
+            retained_execution = True
+            return result
+
         def report(error, stage):
             nonlocal reports
             if reports >= 4:
@@ -270,13 +280,21 @@ class ManagedConfigurationS1ShapeTests(chain.ManagedApplicationFixture):
                     return function(*args, **kwargs)
                 except Exception as error:
                     try:
-                        report(error, stage)
+                        # Diagnostic coordinates belong to the accepted fe8d44fa
+                        # final revalidation block; inspect no arguments/locals.
+                        caller = sys._getframe(1)
+                        at_final_check = (caller.f_code is start.EffectAttemptStartService._execute_once.__code__
+                            and 333 <= caller.f_lineno <= 344)
+                        del caller
+                        if retained_execution and at_final_check:
+                            report(error, stage)
                     except Exception:
                         raise error
                     raise
             return unchanged
 
         with ExitStack() as observers:
+            observers.enter_context(mock.patch.object(self, "prepare_content", prepare_then_enable))
             for owner, method, stage in (
                 (PreparedEffectRunPrefix, "require", "run-prefix"),
                 (start, "_require_fresh_effect_receiver_permission", "receiver-permission"),
