@@ -986,9 +986,7 @@ class ManagedConfigurationUpdateTests(unittest.TestCase):
         left, right = validate_graph(current), validate_graph(desired)
         self.assertTrue(left.valid, left.descriptor())
         self.assertTrue(right.valid, right.descriptor())
-        compiler = getattr(core, "compile_managed_configuration_update_activity_plan", None)
-        self.assertTrue(callable(compiler), "retained public-configuration planning is missing")
-        return compiler(left, right)
+        return core.compile_managed_update_activity_plan(left, right)
 
     def refused(self, current, desired):
         plan = self.compile(current, desired)
@@ -1026,15 +1024,13 @@ class ManagedConfigurationUpdateTests(unittest.TestCase):
                              for a in plan.activities))
         self.assertEqual((codec.encode(current), codec.encode(desired)), originals)
 
-    def test_equal_material_is_empty_and_old_add_remove_contract_is_unchanged(self):
+    def test_equal_material_is_empty_and_content_add_remove_share_one_compiler(self):
         current, desired = self.pair()
         self.assertEqual(self.compile(current, current).activities, ())
-        old = core.compile_managed_update_activity_plan(validate_graph(current), validate_graph(desired))
-        self.assertFalse(old.ready_for_execution)
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
         a, b, c = managed_update_graphs()
         self.assertTrue(core.compile_managed_update_activity_plan(validate_graph(a), validate_graph(b)).ready_for_execution)
         self.assertTrue(core.compile_managed_update_activity_plan(validate_graph(b), validate_graph(c)).ready_for_execution)
-        self.refused(a, b)
 
     def test_other_artifact_changes_and_provenance_only_are_refused(self):
         current, desired = self.pair()

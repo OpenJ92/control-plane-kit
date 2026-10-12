@@ -47,6 +47,7 @@ def managed_update_graphs(
     product_prefix="test",
     workload_ids=("api-x", "api-y"),
     route_aliases=None,
+    application_artifacts=(),
 ):
     """Return accepted A/B/C projections plus their exact active products."""
 
@@ -127,7 +128,7 @@ def managed_update_graphs(
     )
     renamed[x_id] = replace(
         renamed[x_id],
-        configuration_artifacts=(configured[x_id],),
+        configuration_artifacts=(configured[x_id], *application_artifacts),
         public_environment=(*renamed[x_id].public_environment,
             PublicStaticEnvironmentBinding(
                 WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT,
@@ -192,7 +193,7 @@ def managed_update_graphs(
         "workload", declaration_y, node=y_id, receiver=True,
         receiver_id="c" * 32,
     )
-    api_y = replace(api_y, configuration_artifacts=(control_y,))
+    api_y = replace(api_y, configuration_artifacts=(control_y, *application_artifacts))
     api_y_value = ReceiverNodeControlConfigurationCodec().decode_bytes(
         control_y.content.encode("utf-8")
     )
