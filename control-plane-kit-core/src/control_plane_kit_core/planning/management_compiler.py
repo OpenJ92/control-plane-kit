@@ -317,18 +317,6 @@ def _managed_configuration_update_shape(current, desired, diff):
             and replace(successor, content=original.content, source_digest=original.source_digest) == original)
 
 
-def compile_managed_configuration_update_activity_plan(
-    current: ValidatedGraph, desired: ValidatedGraph,
-) -> ActivityPlan:
-    """Plan one retained public JSON content update; grant no execution authority."""
-    _require_pair(current, desired)
-    diff = diff_graphs(current, desired)
-    base = compile_graph_activity_plan(current, desired)
-    if not diff.changes or _managed_configuration_update_shape(current, desired, diff):
-        return base
-    return _review_blocked(base, diff)
-
-
 def _review_blocked(plan, diff):
     if not diff.changes:
         return plan
@@ -345,10 +333,12 @@ def _matching_activity(plan, operation_type, predicate):
 
 
 def compile_managed_update_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
-    """Derive the closed retained-path add/remove plan without granting execution."""
+    """Derive closed add/remove or retained public-content updates, without authority."""
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
     base = compile_graph_activity_plan(current, desired)
+    if not diff.changes or _managed_configuration_update_shape(current, desired, diff):
+        return base
     shape = _managed_update_shape(current, desired, diff)
     if shape is None or not base.ready_for_execution:
         return _review_blocked(base, diff) if shape is None else base

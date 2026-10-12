@@ -85,6 +85,7 @@ from control_plane_kit_operations.products import (
     RegisteredImagePullAuthority,
     RegisteredProduct,
 )
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority,
     RemoteDockerTlsAuthority,
@@ -202,6 +203,14 @@ def _runtime_effect_intent_for_material(context: _RuntimeEffectMaterial, activit
             raise InvalidOperationCommand("configuration compensation execution is unsupported")
     runtime_id = _runtime_id_for_context(context, graph, operation)
     authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
+    products = _products_for_context(context, graph, runtime_id, operation)
+    if (context.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_UPDATE_V1
+            and type(operation) is ReconcileNode
+            and operation.target.node_id != graph.runtimes[runtime_id].management.gateway_node_id
+            and any(value.pull_authority is not None for value in products)):
+        # The public-content family excludes application/pull secrets. This
+        # selection exists only at lowering, before fresh preparation commits.
+        raise InvalidOperationCommand("managed content update requires no image pull authority")
     return RuntimeEffectIntent(
         kind=RuntimeEffectKind.REALIZE_ACTIVITY,
         runtime_kind=_runtime_kind_for_context(context, graph, runtime_id),
@@ -219,7 +228,7 @@ def _runtime_effect_intent_for_material(context: _RuntimeEffectMaterial, activit
         ),
         activity_id=activity.activity_id,
         operation=operation,
-        products=_products_for_context(context, graph, runtime_id, operation),
+        products=products,
     )
 
 

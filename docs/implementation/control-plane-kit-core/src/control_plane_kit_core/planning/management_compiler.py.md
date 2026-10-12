@@ -117,8 +117,8 @@ predecessor here; Operations admission remains closed and the provider owner mus
 separately prove installed selected material before execution support can use the
 plan.
 
-`compile_managed_configuration_update_activity_plan(current, desired)` (#1970)
-recognizes a separate closed relation: one existing non-wrapper public JSON file
+`compile_managed_update_activity_plan(current, desired)` (#1971) also
+recognizes the closed content relation introduced by #1970: one existing non-wrapper public JSON file
 on one retained workload changes actual content. Its artifact ID, path, media and
 read-only mode remain equal. The strict V2 wrapper, receiver scope/identity,
 declaration and public trust remain byte-for-byte fixed, as do all other graph
@@ -126,7 +126,7 @@ values. Restoring the old artifact field must recover the whole current graph.
 The selected wrapper target must name that runtime/node/control socket.
 
 ```python
-plan = compile_managed_configuration_update_activity_plan(
+plan = compile_managed_update_activity_plan(
     validate_graph(current_graph), validate_graph(desired_graph),
 )
 ```
@@ -144,11 +144,11 @@ deliveries (including those compiled from connected sockets), runtime-authority
 deliveries or unsupported independent verification. A unique readiness surface
 and unchanged managed runtime are required. Gateway/connector updates, missing
 or wrong-target wrappers, provenance-only deltas and every other graph change
-are review-blocked. Equal material remains empty. The existing add/remove
-compiler and old stored profile meanings are unchanged.
+are review-blocked. Equal material remains empty. Add/remove and content use one
+current compiler; the superseded content-only public API is removed without an alias.
 
 This pure relation grants no permission and proves no installation. Operations
-#1971 must independently admit registered product/authority facts and own the
-versioned derivation, original attempts, installation evidence and advancement.
+#1971 independently admits registered product/authority facts using the current
+managed-update profile. It owns original attempts, installation evidence and advancement.
 Image, secret-version, verifier and declaration updates retain their later
 separate contracts. No provider, persistence or network dependency is added.
