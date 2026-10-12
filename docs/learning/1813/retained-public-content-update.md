@@ -204,3 +204,59 @@ cannot alone satisfy S1. Accepted owner merge and normal dependency adoption mus
 precede Servers S1; live grandparent testing remains downstream.
 
 [Owner issue, law plan and red evidence](https://github.com/OpenJ92/control-plane-kit/issues/1982).
+
+### Full-gate receiver-free regression and correction
+
+The first normal gate at `8ad5b69e` did not pass: Operations ran 2663 tests in
+6622.557 seconds with 111 failures and four errors (including repeated subtest
+entries). Core and current-backend passed. The preceding focused green did not
+establish owner acceptance.
+
+The failures had four families. Forty-eight identity/factory entries failed
+because a fixed empty-material double did not provide newly invoked getters.
+Sixty-four cleanup entries stopped at a shared rehearsal premise encoding the
+old repeated traversal counts. Two large-provenance cases failed while building
+ordinary configuration history with 409585-byte metadata, before their final
+publication measurements. The compact accepted-use boundary failed its first
+no-new-start-ID assertion after a fold conflict; subsequent runtime and retained
+state assertions were not reached in that failed run.
+
+Source review found that the optimization had unconditionally added retained
+graph/projection getters even for receiver-free originals. This expanded actual
+transport and the suffix forecast; treating all failures as stale fixtures would
+have hidden a compatibility and capacity regression.
+
+The bounded correction restores the old meaningful empty-membership behavior:
+after existing pins and fresh original verification, derive both expected tuples
+and check both complete raw durable binding sets when they are empty. The raw
+reader independently derives receiver membership from current stored material.
+Receiver-bearing originals still use one fresh complete traversal and exact
+side-preserving equality. The forecast uses the smaller branch only if the
+maximum across all captured binding sets is zero. Limits, history, transaction
+boundaries and refusal policy are unchanged.
+
+Two additional proof-consumer tests return canonical false-empty original
+projections after actual verification and start insertion, while keeping real
+receiver material. One also deletes a durable binding. They require rejection
+by the receiver validator itself, final permission refusal, rollback and no
+target dispatch; later unrelated rejection cannot satisfy the test. Review
+caught and corrected a test-construction false positive before execution.
+The identity fixture remains unchanged. Cleanup's shared premise alone changes
+from repeated `(14,14,2)` reads/two event fetches to `(4,4,1)`/one; all downstream
+security and transport assertions remain.
+
+Local checkpoints were deliberately kept unpublished during focused validation
+to avoid automatically starting another full gate on the open PR: targets
+`3dd19e32`, cleanup structural premise `0eb1df4a`, source `e1fbaec1`. Kepler reviewed
+both exact deltas before execution. At `e1fbaec19b5fd6a5e8c63e0d3e2791e31a244f6d`,
+the maintained Docker runner passed all 67 selected tests in 2402.894 seconds,
+including all four failed families, all start-bound tests and the retained
+receiver/forecast/freshness targets. Integrity, compilation and clean installed
+import passed; script exit was zero and the exact owned container/network were
+absent afterward. The unchanged 64-use boundary and both large-metadata laws
+passed. Full normal CI and final acceptance remain required before downstream
+Servers adoption; this focused result does not establish live acceptance.
+
+[Full-gate classification and correction plan](https://github.com/OpenJ92/control-plane-kit/pull/1983#issuecomment-6130058291).
+[Exact correction review](https://github.com/OpenJ92/control-plane-kit/pull/1983#issuecomment-6130134308).
+[Focused command and local checkpoints](https://github.com/OpenJ92/control-plane-kit/pull/1983#issuecomment-6130149644).
