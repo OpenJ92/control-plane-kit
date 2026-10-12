@@ -11,3 +11,16 @@ The admitted managed chain now authors common receiver V2 artifacts and its reco
 
 Implementation validation is pending on PR #1915. The reviewed target-only red
 checkpoint establishes only its recorded missing boundaries, not these green laws.
+
+## Retained public content / #1971
+
+The shared fixture accepts optional application artifacts, defaulting to empty
+so existing scenarios retain their original products. The separate
+`test_managed_configuration_update_execution.py` uses the same initial
+deployment/acceptance and real PostgreSQL/application owners with one declared
+app file. It proves wrapper-reference reuse, new selected app material, exact
+replay, immutable original history, independently checked REPLACED receipt,
+protected health and explicit advancement. Missing receipt remains uncertain.
+The fresh pull-authority refusal checks the exact mutation/attempt/protection
+boundary while allowing independently scheduled approved management reads.
+Recording ports continue to make no physical installation claim.

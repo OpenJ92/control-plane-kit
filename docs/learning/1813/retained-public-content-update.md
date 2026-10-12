@@ -78,8 +78,13 @@ an independent management observation before refusal. Review narrowed this to
 the intended mutation boundary: complete runtime/ingress traces, all configuration
 refs/claims, no attempt at any number for the exact Reconcile, only graph-authorized
 management observations, no desired workload health and unchanged current graph.
-No source ordering change is required. The affected single-test rerun and full
-hosted acceptance remain pending.
+No source ordering change is required. The affected single-test rerun at
+`3c4fc67f` passed in 83.791 seconds; the unchanged owning script completed
+integrity, compile and installed import with exit 0. All 28 selected laws are
+green across the retained 26 passing cases and these focused corrected reruns.
+Application source stayed identical to reviewed `fbaa820b` throughout the test
+expectation corrections. Full hosted Core/Operations/current-backend acceptance
+remains pending; focused evidence is not full package acceptance.
 
 ## Security, data and history
 
