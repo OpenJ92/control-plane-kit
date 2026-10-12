@@ -439,7 +439,14 @@ def _ordinary_tail_budget(owner, intent, births):
 
     def permission():
         result = sequence(point("request"), point("session"), query(1, 1, 1),
-            native(9, 65536 + 8 * 2048), material(), retained(), retained())
+            native(9, 65536 + 8 * 2048), material())
+        # Only a wholly empty captured membership set selects the legacy
+        # raw-binding path. Any captured nonempty alternative needs the full
+        # retained traversal even when the currently selected pair is empty.
+        if count("bindings"):
+            result = result.then(sequence(retained(), retained()))
+        else:
+            result = result.then(sequence(bindings(), bindings()))
         # One fresh current/desired source traversal. Either side can select a
         # captured pair, so both use the complete captured membership maximum.
         for _ in range(count("bindings")):

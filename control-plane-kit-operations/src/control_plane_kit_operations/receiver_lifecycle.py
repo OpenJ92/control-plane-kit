@@ -240,13 +240,22 @@ def _validate_receiver_execution(stores, request, guard):
               desired.projection_id, plan.desired_graph_revision))
     # Legacy material remains legitimate. Receiver-bearing originals require
     # complete retained binding sets and lawful, still-selected origins.
+    expected = tuple(derive_receiver_bindings(workspace.workspace_id,
+        item.source_authored_graph_id, item.projection_id, item.graph_descriptor)
+        for item in (base, desired))
+    if not any(expected):
+        # Preserve legacy empty-material reads. The raw reader independently
+        # derives live membership and checks every durable binding; empty
+        # originals never excuse missing, extra, or changed receiver truth.
+        for item, bindings in zip((base, desired), expected, strict=True):
+            _require(stores.graphs.receiver_bindings(workspace.workspace_id,
+                item.source_authored_graph_id, item.projection_id) == bindings)
+        return
     current_bindings, desired_bindings, _, _ = _receiver_source_parts(stores, workspace)
     # Pins above bind each side to its original projection. One fresh complete
     # traversal checks their origins and acceptance; keep side/order/multiplicity
     # in these comparisons rather than treating membership as a combined set.
-    for item, bindings in ((base, current_bindings), (desired, desired_bindings)):
-        _require(bindings == derive_receiver_bindings(workspace.workspace_id,
-            item.source_authored_graph_id, item.projection_id, item.graph_descriptor))
+    _require((current_bindings, desired_bindings) == expected)
 
 
 def _validate_receiver_execution_approval(stores, request):
