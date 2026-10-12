@@ -136,3 +136,66 @@ process replacement and business behavior. Physical provider work and later
 image/secret/verifier/declaration families retain their own acceptance gates.
 Live grandparent testing remains downstream. The original tunnel, DNS and
 protected token are unchanged.
+
+## Retained receiver read correction — #1982 (unvalidated implementation)
+
+S1/Servers #249 exposed a larger retained-current topology than O1's original
+positive fixture. A reviewed owner-only reproduction at `8206de53` passed the
+original control but refused four configured receivers before dispatch. At the
+final permission check, 4095 consumed records plus a prospective 5-record query
+exceeded the unchanged 4096 limit. The earlier forecast was 3062 consumed plus
+755 peak remaining records (3817); accounted bytes were below 16MiB. This proved
+an incomplete suffix expression, not missing credentials or a need to raise caps.
+
+Source review found that two reference validations each reread current/desired
+origins and accepted history. The expression still modeled initially empty
+current. #1982 keeps one complete fresh traversal per existing validation call,
+preserving separate current/desired tuples and comparing each to its exact pinned
+original projection. The legacy source helper retains its exterior and ordering.
+No evidence/permission is reused across checks, writes, commands or transactions.
+
+The matching expression now covers both complete retained sides, their maximum
+captured origin multiplicity, and every captured acceptance-action group with
+request/material verification, runs, events, advancement actions and historical
+bindings. It uses source-derived widths/cardinalities, not measured constants or
+cache credit. Native caps, shared ledger, approval alternatives and rollback stay
+unchanged. Source changes are confined to `receiver_lifecycle.py` and
+`postgres/configuration_preparation_store.py`.
+
+Test context and causal evidence:
+
+- Strengthened retained public law: unchanged O1 assertions with two additional
+  initially accepted siblings. Wrapper origin/history/replay/current advancement
+  remain part of the test. At target checkpoint `61ce5bcc`, prospective records
+  exceeded forecast (756 > 755); both new post-preparation refusal tests passed.
+- Strengthened footprint law: every actual query reservation and final settled
+  footprint must fit the declared suffix. A small shared test utility observes
+  real calls on the original accounting object, including rejected reservations.
+- Strengthened multiple-history law: the existing real add-B/removal-C scenario
+  proves two distinct first-acceptance actions, then measures its existing reverse
+  update. At `63447e09`, it failed 642 > 641; original uncertainty assertions remain.
+- Strengthened corrupt-proof consumer law: current/desired order, duplicates and
+  graph-side tuples are tested independently after original start insertion.
+  Representative current-order target red did not raise the required conflict.
+  This fault injection does not claim the real material reader reorders rows.
+- Freshness/rollback: a real binding deletion after start insertion reached final
+  receiver-permission denial, rolled back target attempt/intent/outcome and
+  configuration protection, and dispatched nothing. Existing approval, captured
+  growth, direct-write and lock-order laws remain governing evidence.
+
+First focused red: 3 tests/341.956s (one intended failure, two passes). Remaining
+focused red: 3 tests/353.001s (two intended failures, final permission negative
+passed). Integrity passed and exact Docker resources were removed in both runs.
+Implementation is not yet validated or accepted. All six tuple variants,
+positive/forecast/history cases, relevant existing negatives and owning broader
+gates are required before independent review/acceptance.
+
+Security/data/history: no new credential/network surface, schema, authority type,
+budget increase, provider call or durable semantics. Transaction/lock boundaries,
+fresh proof, exact replay and uncertain-effect behavior remain. The residual risk
+is an omitted branch or overbroad membership comparison; forecast and refusal
+tests explicitly protect both. Formula-only repair would reject earlier and
+cannot alone satisfy S1. Accepted owner merge and normal dependency adoption must
+precede Servers S1; live grandparent testing remains downstream.
+
+[Owner issue, law plan and red evidence](https://github.com/OpenJ92/control-plane-kit/issues/1982).

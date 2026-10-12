@@ -130,6 +130,11 @@ def _receiver_origin(stores, binding):
 
 
 def _receiver_sources(stores, workspace, *, draft_head=None):
+    current, desired, head, origins = _receiver_source_parts(stores, workspace, draft_head=draft_head)
+    return current + desired + head, origins
+
+
+def _receiver_source_parts(stores, workspace, *, draft_head=None):
     """Rederive complete retained membership; no returned permission survives a write."""
     current = _retained_receiver_material(stores, workspace.workspace_id,
         workspace.current_graph_id, workspace.current_realized_projection_id)
@@ -170,7 +175,7 @@ def _receiver_sources(stores, workspace, *, draft_head=None):
         else:
             prior = pending.setdefault(binding.receiver_id, origin)
             _require(prior == origin)
-    return current + desired + head, accepted | pending
+    return current, desired, head, accepted | pending
 
 
 def _validate_receiver_admission(stores, workspace, expectation, proposed, guard, *, draft_head=None):
@@ -235,17 +240,13 @@ def _validate_receiver_execution(stores, request, guard):
               desired.projection_id, plan.desired_graph_revision))
     # Legacy material remains legitimate. Receiver-bearing originals require
     # complete retained binding sets and lawful, still-selected origins.
-    memberships = []
-    for item in (base, desired):
-        bindings = derive_receiver_bindings(workspace.workspace_id, item.source_authored_graph_id,
-            item.projection_id, item.graph_descriptor)
-        _require(stores.graphs.receiver_bindings(workspace.workspace_id,
-            item.source_authored_graph_id, item.projection_id) == bindings)
-        memberships.append(bindings)
-    if any(memberships):
-        for item in (base, desired):
-            _validate_receiver_reference(stores, workspace,
-                item.source_authored_graph_id, item.projection_id)
+    current_bindings, desired_bindings, _, _ = _receiver_source_parts(stores, workspace)
+    # Pins above bind each side to its original projection. One fresh complete
+    # traversal checks their origins and acceptance; keep side/order/multiplicity
+    # in these comparisons rather than treating membership as a combined set.
+    for item, bindings in ((base, current_bindings), (desired, desired_bindings)):
+        _require(bindings == derive_receiver_bindings(workspace.workspace_id,
+            item.source_authored_graph_id, item.projection_id, item.graph_descriptor))
 
 
 def _validate_receiver_execution_approval(stores, request):
