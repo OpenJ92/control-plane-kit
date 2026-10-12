@@ -809,7 +809,8 @@ from control_plane_kit_core.planning.management_observations import (
 )
 from control_plane_kit_core.planning.management_compiler import (
     ResolvedManagementBootstrap, ResolvedNodeHealth, compile_graph_activity_plan,
-    compile_managed_update_activity_plan, resolve_management_observation,
+    compile_managed_update_activity_plan, compile_managed_configuration_update_activity_plan,
+    resolve_management_observation,
 )
 
 __all__ += [
@@ -817,6 +818,7 @@ __all__ += [
     "NodeHealthObservationTransport", "ObserveManagementBootstrap", "ObserveNodeHealth",
     "PlanGraphSide", "ResolvedManagementBootstrap", "ResolvedNodeHealth",
     "compile_graph_activity_plan", "compile_managed_update_activity_plan",
+    "compile_managed_configuration_update_activity_plan",
     "resolve_management_observation",
 ]
 
