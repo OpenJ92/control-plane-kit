@@ -21,6 +21,7 @@ from control_plane_kit_core.planning.management_observations import (
     ObserveManagementBootstrap, ObserveNodeHealth, PlanGraphSide, _bounded_wire,
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.products import OciImageReference, ProductDescriptorDigest, ProductIdentity
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
 )
@@ -261,6 +262,39 @@ def _managed_update_shape(current, desired, diff):
     )
 
 
+def _retained_update_wrapper(current, desired, node_id):
+    """Select the exact receiver for an eligible retained workload update."""
+    before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
+    runtime = desired.graph.runtimes[after.runtime_id]
+    surface, _ = _selected_surface(after)
+    if (runtime.management is None or surface is None
+            or NodeHealthReadKind.READINESS not in surface.health_reads
+            or _independent_verification(after)
+            or after.lifecycle.ownership is not ResourceOwnership.OWNED
+            or after.lifecycle.compute is not ResourcePersistence.EPHEMERAL
+            or after.lifecycle.data or after.secret_deliveries
+            or after.runtime_authority_deliveries):
+        return None
+    # Compiled Node.secret_deliveries includes active socket-derived deliveries.
+    try:
+        _, gateway, connector, _, _ = _pin_path(desired, after.runtime_id, PlanGraphSide.DESIRED_GRAPH)
+        if node_id in (gateway.node_id, connector.node_id):
+            return None
+        wrapper = select_receiver_node_control_configuration_artifact(
+            artifacts=before.configuration_artifacts,
+            environment=before.public_environment + before.socket_environment,
+            control_surfaces=before.block_spec.control_surfaces,
+        )
+        configuration = ReceiverNodeControlConfigurationCodec().decode_bytes(wrapper.content.encode("utf-8"))
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return None
+    if (configuration.target.node_id.value != node_id
+            or configuration.target.runtime_id.value != after.runtime_id
+            or configuration.target.provider_socket_name.value != surface.provider_socket_name.value):
+        return None
+    return wrapper
+
+
 def _managed_configuration_update_shape(current, desired, diff):
     """Recognize one public app-file content change, preserving all other values."""
     if len(diff.changes) != 1:
@@ -277,32 +311,8 @@ def _managed_configuration_update_shape(current, desired, diff):
     restored = replace(after, configuration_artifacts=before.configuration_artifacts)
     if desired.graph.update_node(restored) != current.graph:
         return False
-    runtime = desired.graph.runtimes[after.runtime_id]
-    surface, _ = _selected_surface(after)
-    if (runtime.management is None or surface is None
-            or NodeHealthReadKind.READINESS not in surface.health_reads
-            or _independent_verification(after)
-            or after.lifecycle.ownership is not ResourceOwnership.OWNED
-            or after.lifecycle.compute is not ResourcePersistence.EPHEMERAL
-            or after.lifecycle.data or after.secret_deliveries
-            or after.runtime_authority_deliveries):
-        return False
-    # Compiled Node.secret_deliveries includes active socket-derived deliveries.
-    try:
-        _, gateway, connector, _, _ = _pin_path(desired, after.runtime_id, PlanGraphSide.DESIRED_GRAPH)
-        if node_id in (gateway.node_id, connector.node_id):
-            return False
-        wrapper = select_receiver_node_control_configuration_artifact(
-            artifacts=before.configuration_artifacts,
-            environment=before.public_environment + before.socket_environment,
-            control_surfaces=before.block_spec.control_surfaces,
-        )
-        configuration = ReceiverNodeControlConfigurationCodec().decode_bytes(wrapper.content.encode("utf-8"))
-    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
-        return False
-    if (configuration.target.node_id.value != node_id
-            or configuration.target.runtime_id.value != after.runtime_id
-            or configuration.target.provider_socket_name.value != surface.provider_socket_name.value):
+    wrapper = _retained_update_wrapper(current, desired, node_id)
+    if wrapper is None:
         return False
     old = {value.artifact_id: value for value in before.configuration_artifacts}
     new = {value.artifact_id: value for value in after.configuration_artifacts}
@@ -315,6 +325,50 @@ def _managed_configuration_update_shape(current, desired, diff):
     return (original.media_type is ConfigurationMediaType.JSON
             and original.content != successor.content
             and replace(successor, content=original.content, source_digest=original.source_digest) == original)
+
+
+def _managed_image_update_shape(current, desired, diff):
+    """Recognize a pinned image transition; registered contract truth is external."""
+    if len(diff.changes) != 1:
+        return False
+    change = diff.changes[0]
+    if (not isinstance(change, ModifiedChange)
+            or not isinstance(change.subject, FieldSubject)
+            or change.subject.field is not StructuralField.NODE_METADATA
+            or not isinstance(change.subject.owner, NodeSubject)):
+        return False
+    node_id = change.subject.owner.node_id
+    before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
+    keys = {"product_identity", "product_descriptor_digest", "oci_image"}
+    if (before.metadata.keys() != after.metadata.keys()
+            or not keys <= before.metadata.keys()
+            or any(before.metadata[key] == after.metadata[key] for key in keys)):
+        return False
+    restored = replace(after, metadata={**after.metadata,
+        **{key: before.metadata[key] for key in keys}})
+    if desired.graph.update_node(restored) != current.graph:
+        return False
+    references = []
+    try:
+        for node in (before, after):
+            namespace, name, revision = node.metadata["product_identity"].split("/")
+            identity = ProductIdentity(namespace, name, int(revision))
+            ProductDescriptorDigest(node.metadata["product_descriptor_digest"])
+            registry, path = node.metadata["oci_image"].split("/", 1)
+            repository, digest = path.split("@")
+            image = OciImageReference(registry, repository, digest)
+            if (identity.key != node.metadata["product_identity"]
+                    or image.execution_reference != node.metadata["oci_image"]):
+                return False
+            references.append((identity, image))
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        return False
+    (old_identity, old_image), (new_identity, new_image) = references
+    if ((old_identity.namespace, old_identity.name) != (new_identity.namespace, new_identity.name)
+            or (old_image.registry, old_image.repository) != (new_image.registry, new_image.repository)
+            or old_image.digest == new_image.digest):
+        return False
+    return _retained_update_wrapper(current, desired, node_id) is not None
 
 
 def _review_blocked(plan, diff):
@@ -333,11 +387,12 @@ def _matching_activity(plan, operation_type, predicate):
 
 
 def compile_managed_update_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
-    """Derive closed add/remove or retained public-content updates, without authority."""
+    """Derive closed add/remove, public-content or image updates, without authority."""
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
     base = compile_graph_activity_plan(current, desired)
-    if not diff.changes or _managed_configuration_update_shape(current, desired, diff):
+    if (not diff.changes or _managed_configuration_update_shape(current, desired, diff)
+            or _managed_image_update_shape(current, desired, diff)):
         return base
     shape = _managed_update_shape(current, desired, diff)
     if shape is None or not base.ready_for_execution:

@@ -5302,7 +5302,7 @@
     {
       "canonical_public_exports": ["ResolvedManagementBootstrap", "ResolvedNodeHealth", "compile_graph_activity_plan", "resolve_management_observation"],
       "destination": "control_plane_kit_core.planning.management_compiler",
-      "internal_dependencies": ["control_plane_kit_core.node_control", "control_plane_kit_core.planning.activity_plan", "control_plane_kit_core.planning.codec", "control_plane_kit_core.planning.compiler", "control_plane_kit_core.planning.management_observations", "control_plane_kit_core.public_ingress", "control_plane_kit_core.topology.changes", "control_plane_kit_core.topology.codec", "control_plane_kit_core.topology.diff", "control_plane_kit_core.topology.graph", "control_plane_kit_core.topology.validation"],
+      "internal_dependencies": ["control_plane_kit_core.node_control", "control_plane_kit_core.planning.activity_plan", "control_plane_kit_core.planning.codec", "control_plane_kit_core.planning.compiler", "control_plane_kit_core.planning.management_observations", "control_plane_kit_core.products", "control_plane_kit_core.public_ingress", "control_plane_kit_core.topology.changes", "control_plane_kit_core.topology.codec", "control_plane_kit_core.topology.diff", "control_plane_kit_core.topology.graph", "control_plane_kit_core.topology.validation"],
       "known_package_consumers": ["control_plane_kit_core", "control_plane_kit_core.planning"],
       "migration_prerequisites": ["#1833"],
       "module": "control_plane_kit_core.planning.management_compiler",
