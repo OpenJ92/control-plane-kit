@@ -20,6 +20,14 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
     application_artifacts = (APPLICATION,)
     complete_initial = chain.ManagedUpdateExecutionTests.complete_initial
 
+    async def desired_update(self):
+        node = self.graph.node("api")
+        return self.graph.update_node(replace(node, configuration_artifacts=tuple(
+            replace(value, content='{"mode":"green"}', source_digest=None)
+            if value.artifact_id == "application" else value
+            for value in node.configuration_artifacts
+        )))
+
     async def prepare_content(self):
         self.probe_forged_managed_fold = True
         await self.complete_initial()
@@ -28,12 +36,7 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
         with self.unit_of_work() as uow:
             self.before_update = uow.stores.workspaces.get("workspace-a")
         workspace = self.before_update
-        node = self.graph.node("api")
-        desired = self.graph.update_node(replace(node, configuration_artifacts=tuple(
-            replace(value, content='{"mode":"green"}', source_digest=None)
-            if value.artifact_id == "application" else value
-            for value in node.configuration_artifacts
-        )))
+        desired = await self.desired_update()
         payload = {"desired_graph": DEFAULT_GRAPH_CODEC.encode(desired),
             "expected_current": {"authored_graph_id": workspace.current_graph_id,
                 "realized_projection_id": workspace.current_realized_projection_id},
