@@ -19,6 +19,7 @@ from tests import test_managed_configuration_update_execution as original
 class RetainedReceiverReadBoundsTests(chain.ManagedApplicationFixture):
     application_artifacts = (APPLICATION,)
     complete_initial = original.ManagedConfigurationUpdateExecutionTests.complete_initial
+    desired_update = original.ManagedConfigurationUpdateExecutionTests.desired_update
     prepare_content = original.ManagedConfigurationUpdateExecutionTests.prepare_content
     execute_content = original.ManagedConfigurationUpdateExecutionTests.execute_content
 
@@ -82,6 +83,7 @@ class RetainedReceiverReadBoundsTests(chain.ManagedApplicationFixture):
 class RetainedReceiverFreshnessTests(chain.ManagedApplicationFixture):
     application_artifacts = (APPLICATION,)
     complete_initial = original.ManagedConfigurationUpdateExecutionTests.complete_initial
+    desired_update = original.ManagedConfigurationUpdateExecutionTests.desired_update
     prepare_content = original.ManagedConfigurationUpdateExecutionTests.prepare_content
     execute_content = original.ManagedConfigurationUpdateExecutionTests.execute_content
 
