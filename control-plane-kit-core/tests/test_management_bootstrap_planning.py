@@ -34,6 +34,10 @@ from control_plane_kit_core.planning.codec import (
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference, NamedPublicIngress, PublicIngressTarget,
 )
+from control_plane_kit_core.products import (
+    ContainerServerProduct, OciImageReference, ProductDescriptorCodec, ProductIdentity,
+    ProductInstanceConfiguration, ProductRuntimeContract, ProviderRuntimePort, instantiate_product,
+)
 from control_plane_kit_core.runtime_management import (
     GatewayTransitDeclaration, GatewayTransitProtocol, RuntimeManagement,
 )
@@ -1098,6 +1102,139 @@ class ManagedConfigurationUpdateTests(unittest.TestCase):
             value.node("workload").configuration_artifacts[1],
         ), public_environment=())) for value in (current, desired)]
         self.refused(*pair)
+
+
+class ManagedImageUpdateTests(unittest.TestCase):
+    """#1972: immutable image successor, with receiving identity unchanged."""
+
+    def pair(self):
+        configured, _ = ManagedConfigurationUpdateTests().pair()
+        node = configured.node("workload")
+        contract = ProductRuntimeContract(sockets=node.sockets,
+            provider_ports=(ProviderRuntimePort("control", 8000),),
+            capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
+            configuration_artifacts=node.configuration_artifacts, public_environment=node.public_environment)
+        before = ContainerServerProduct(ProductIdentity("examples", "receiver", 1),
+            OciImageReference("registry.example.invalid", "apps/receiver", "sha256:" + "a" * 64), contract)
+        after = replace(before, identity=replace(before.identity, contract_revision=2),
+            image=replace(before.image, digest="sha256:" + "b" * 64))
+        declaration = topology()
+        graphs = []
+        for product in (before, after):
+            workload = instantiate_product(product, "workload", ProductInstanceConfiguration.from_contract(contract))
+            graphs.append(compile_topology(replace(declaration, root=replace(declaration.root,
+                children=(*declaration.root.children[:2], workload)))))
+        return (*graphs, before, after)
+
+    def compile(self, current, desired):
+        pair = validate_graph(current), validate_graph(desired)
+        for value in pair:
+            self.assertTrue(value.valid, value.descriptor())
+        return core.compile_managed_update_activity_plan(*pair)
+
+    def refused(self, current, desired):
+        plan = self.compile(current, desired)
+        self.assertFalse(plan.ready_for_execution)
+        self.assertTrue(any(isinstance(item.operation, ReviewChange) for item in plan.activities))
+
+    def test_genuine_image_successor_reconciles_before_desired_health_preserving_receiver(self):
+        current, desired, before, after = self.pair()
+        codec = GraphDescriptorCodec()
+        original = codec.encode(current), codec.encode(desired)
+        for graph, product in ((current, before), (desired, after)):
+            self.assertEqual(graph.node("workload").metadata, {
+                "product_identity": product.identity.key,
+                "product_descriptor_digest": ProductDescriptorCodec().encode_document(product).content_digest,
+                "oci_image": product.image.execution_reference})
+        self.assertEqual(current.node("workload").configuration_artifacts,
+            desired.node("workload").configuration_artifacts)
+        plan = self.compile(current, desired)
+        self.assertTrue(plan.ready_for_execution)
+        self.assertEqual(plan, self.compile(codec.decode(original[0]), codec.decode(original[1])))
+        replacements = [item for item in plan.activities if isinstance(item.operation, ReconcileNode)]
+        self.assertEqual([item.operation.target.node_id for item in replacements], ["workload"])
+        self.assertEqual(replacements[0].impact.value, "disruptive")
+        health = [item for item in plan.activities if isinstance(item.operation, core.ObserveNodeHealth)]
+        self.assertEqual([item.operation.node_id for item in health], ["workload"])
+        self.assertIn(replacements[0].activity_id, predecessors(plan, health[0]))
+        stages = {item.operation.stage: item for item in plan.activities
+            if isinstance(item.operation, core.ObserveManagementBootstrap)}
+        chain = [stages[kind] for kind in (core.ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+            core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+            core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)] + health
+        for left, right in zip(chain, chain[1:]):
+            self.assertIn(left.activity_id, predecessors(plan, right))
+        resolved = core.resolve_management_observation(health[0].operation,
+            validate_graph(current), validate_graph(desired), expected_operation=health[0].operation)
+        self.assertEqual(resolved.workload_node, desired.node("workload"))
+        self.assertIs(health[0].operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
+        self.assertFalse(any(isinstance(item.operation, (StartNode, StartRuntime, AllocatePublicIngress,
+            StopNode, RemoveNodeResource, ReconcileRuntime)) for item in plan.activities))
+        self.assertEqual((codec.encode(current), codec.encode(desired)), original)
+        self.assertEqual(self.compile(current, current).activities, ())
+
+    def test_image_metadata_is_exact_canonical_and_an_actual_same_family_digest_transition(self):
+        current, desired, _, _ = self.pair()
+        old, new = current.node("workload").metadata, desired.node("workload").metadata
+        cases = ({**new, "oci_image": old["oci_image"]},
+            {**new, "product_descriptor_digest": old["product_descriptor_digest"]},
+            {**new, "product_identity": old["product_identity"]},
+            {**new, "product_identity": "other/receiver/2"},
+            {**new, "product_identity": "examples/other/2"},
+            {**new, "product_identity": "examples/receiver/02"},
+            {**new, "product_descriptor_digest": "B" * 64},
+            {**new, "oci_image": "registry.example.invalid/apps/receiver:latest"},
+            {**new, "oci_image": "registry.example.invalid/apps/receiver:tag@sha256:" + "b" * 64},
+            {**new, "oci_image": "other.example.invalid/apps/receiver@sha256:" + "b" * 64},
+            {**new, "oci_image": "registry.example.invalid/other@sha256:" + "b" * 64},
+            {**new, "extra": "changed"}, {key: value for key, value in new.items() if key != "oci_image"})
+        for index, metadata in enumerate(cases):
+            with self.subTest(case=index):
+                self.refused(current, desired.update_node(replace(desired.node("workload"), metadata=metadata)))
+        # No monotonic revision policy: explicit revisions differ without changing the receiver.
+        self.assertTrue(self.compile(desired, current).ready_for_execution)
+
+    def test_other_graph_and_configuration_changes_are_not_image_only(self):
+        current, desired, _, _ = self.pair()
+        node = desired.node("workload")
+        artifacts = {item.artifact_id: item for item in node.configuration_artifacts}
+        wrapper, application = artifacts["receiver"], artifacts["application"]
+        cases = (replace(node, configuration_artifacts=(wrapper, replace(application, content='{"mode":"new"}', source_digest=None))),
+            replace(node, configuration_artifacts=(replace(wrapper, source_digest="c" * 64), application)),
+            replace(node, public_environment=node.public_environment + (PublicStaticEnvironmentBinding("EXTRA", "value"),)),
+            replace(node, block_spec=replace(node.block_spec, control_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),))))
+        for index, changed in enumerate(cases):
+            with self.subTest(case=index):
+                self.refused(current, desired.update_node(changed))
+        self.refused(current, replace(desired, name="different"))
+        self.refused(current, desired.update_node(replace(desired.node("connector"), metadata={"extra": True})))
+
+    def test_image_relation_preserves_c1_eligibility_and_exact_wrapper_target(self):
+        current, desired, _, _ = self.pair()
+        artifacts = {item.artifact_id: item for item in current.node("workload").configuration_artifacts}
+        wrapper, application = artifacts["receiver"], artifacts["application"]
+        cases = ({"lifecycle": ResourceLifecycle.external()},
+            {"lifecycle": ResourceLifecycle.owned_with_retained_data("data")},
+            {"secret_deliveries": (SecretEnvironmentDelivery("TOKEN", SecretReference("secret://workspace/app"),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN),)},
+            {"runtime_authority_deliveries": (authority_fixtures.DELIVERY,)},
+            {"block_spec": replace(current.node("workload").block_spec,
+                verification=VerificationContract((HttpCheck(check_id="own", provider_socket="control", path="/health"),)))},
+            {"configuration_artifacts": (application,), "public_environment": ()})
+        for index, changes in enumerate(cases):
+            with self.subTest(case=index):
+                self.refused(*(graph.update_node(replace(graph.node("workload"), **changes))
+                    for graph in (current, desired)))
+        document = json.loads(wrapper.content)
+        document["target"]["node_id"] = "foreign"
+        wrong = replace(wrapper, content=json.dumps(document), source_digest=None)
+        self.refused(*(graph.update_node(replace(graph.node("workload"), configuration_artifacts=(wrong, application)))
+            for graph in (current, desired)))
+        for node_id in ("gateway", "connector"):
+            with self.subTest(excluded_target=node_id):
+                pair = [current.update_node(replace(current.node(node_id),
+                    metadata=graph.node("workload").metadata)) for graph in (current, desired)]
+                self.refused(*pair)
 
 
 if __name__ == "__main__":
