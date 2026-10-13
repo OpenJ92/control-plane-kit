@@ -114,6 +114,7 @@ def runtime_management_plan_profile(
     if type(transition) is not UpdateDeployment or not (
         _managed_update_candidate_shape(transition.current.graph, transition.desired.graph)
         or _managed_content_runtime(transition.current.graph, transition.desired.graph) is not None
+        or _managed_image_nodes(transition.current.graph, transition.desired.graph)
     ):
         return PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
     candidate = derive_activity_plan(
@@ -259,7 +260,7 @@ def _managed_update_shape(
     *,
     registered_products: tuple[RegisteredProduct, ...],
 ) -> bool:
-    """Recognize only the selected A/B/C product and artifact family.
+    """Bind closed managed add/remove, content and image updates to registered truth.
 
     Core owns the generic graph delta and operation ordering. This Operations
     policy binds that algebra to active registered products and the one named
@@ -268,8 +269,29 @@ def _managed_update_shape(
 
     content_runtime = _managed_content_runtime(current, desired)
     if content_runtime is not None:
-        return _managed_content_participants_are_exact(
+        return _managed_retained_participants_are_exact(
             current, desired, content_runtime, registered_products,
+        )
+    image_nodes = _managed_image_nodes(current, desired)
+    if image_nodes:
+        if len(image_nodes) != 1:
+            return False
+        after = image_nodes[0]
+        before = current.nodes[after.node_id]
+        try:
+            old = _selected_product(before, registered_products)
+            new = _selected_product(after, registered_products)
+            if old is None or new is None:
+                return False
+            old_product, new_product = old.descriptor_document.product, new.descriptor_document.product
+            if (old_product.runtime_contract != new_product.runtime_contract
+                    or before.metadata["oci_image"] != old_product.image.execution_reference
+                    or after.metadata["oci_image"] != new_product.image.execution_reference):
+                return False
+        except (TypeError, ValueError, KeyError, AttributeError):
+            return False
+        return _managed_retained_participants_are_exact(
+            current, desired, after.runtime_id, registered_products,
         )
     if not _managed_update_candidate_shape(current, desired):
         return False
@@ -366,6 +388,16 @@ def _managed_update_shape(
     return products[(False, gateway_id)].reference == products[(True, gateway_id)].reference
 
 
+def _managed_image_nodes(current, desired):
+    """Recognize image candidates without treating malformed ones as another profile."""
+    if set(current.nodes) != set(desired.nodes):
+        return ()
+    return tuple(node for name, node in desired.nodes.items()
+        if desired.runtimes[node.runtime_id].management is not None
+        and any(node.metadata.get(key) != current.nodes[name].metadata.get(key)
+            for key in ("product_identity", "product_descriptor_digest", "oci_image")))
+
+
 def _managed_content_runtime(current, desired):
     """Locate a content candidate; the common Core compiler owns its exact law."""
     if set(current.nodes) != set(desired.nodes):
@@ -384,7 +416,7 @@ def _managed_content_runtime(current, desired):
     return node.runtime_id
 
 
-def _managed_content_participants_are_exact(current, desired, runtime_id, registered_products):
+def _managed_retained_participants_are_exact(current, desired, runtime_id, registered_products):
     """Bind every participant and the complete routes of the affected runtime."""
     try:
         runtime = desired.runtimes[runtime_id]

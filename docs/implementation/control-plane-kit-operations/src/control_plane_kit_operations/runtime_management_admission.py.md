@@ -10,8 +10,9 @@ existing no-op exception without trusting a supplied plan or execution policy.
 Managed-update profile selection is a narrow opt-in. A structural prefilter
 recognizes only the retained single managed runtime/gateway family with exactly
 one node introduced or removed and no non-artifact gateway change, or a retained
-workload content candidate. The common Core compiler owns the exact closed union;
-the content prefilter only locates the affected runtime. Recognized
+workload content or immutable-image candidate. The common Core compiler owns the
+exact closed union; the retained-update prefilters only locate affected nodes or
+runtimes. Recognized
 candidates must then satisfy the complete registered-product, lifecycle,
 readiness, authority-delivery, and exact route-artifact predicate; failure is a
 fixed refusal and cannot fall back to legacy execution. Other established
@@ -19,19 +20,33 @@ management updates outside these closed laws retain
 `management-graph-pair-v1` planning and its existing execution guard. Equal and
 name-only pairs likewise retain their canonical empty legacy plan.
 
-For retained content, all nodes in the affected Docker runtime must match an
+For retained content or image updates, all nodes in the affected Docker runtime must match an
 active exact registered product, including gateway, connector and every retained
 receiver. The complete configured route set must equal the scoped expected set.
 No workload count or same-product X/Y condition is imposed on this relation.
-Unrelated runtimes do not contribute routes or effects to the content update.
+Unrelated runtimes do not contribute routes or effects to the retained update.
 Current plan selection and independent execution admission both enforce these
 facts; the supplied plan must equal the ready canonical current derivation.
 
 Immutable image authority comes from the active descriptor selected by product
-identity and descriptor digest. Core materialization also emits optional
-`oci_image` node metadata for description; Operations does not use that field to
-select an image or claim to validate it. Effect lowering consumes the registered
-descriptor's immutable image and the approved instance's declared slot payloads.
+identity and descriptor digest. For the closed image-update family, both exact
+registered references must be ACTIVE, their complete `ProductRuntimeContract`
+values must agree, and each graph's `oci_image` must equal its selected document's
+canonical execution reference. This includes descriptor-default artifact content,
+not merely graph-visible configuration slots. Core owns same namespace/name,
+distinct authored revisions, same registry/repository and changed image digest;
+all other graph values, including receiver bytes and selected artifacts, stay fixed.
+Malformed or incompatible image candidates refuse the managed-update profile.
+
+The metadata field does not select image authority: effect lowering consumes the
+registered descriptor's immutable image and the approved instance's declared slot
+payloads. Other existing update families do not gain a global `oci_image` requirement.
+The existing managed non-gateway Reconcile pull-credential guard remains in force
+before fresh preparation. Receiver permissions, active-product reads, fences,
+correlated replacement receipts, uncertainty and original-attempt replay retain
+their existing owners. No provider or schema change is introduced. The image
+admission and Operations/Postgres execution tests prove these owner boundaries;
+Servers #251 separately owns real CPK-client-driven Docker replacement.
 
 The managed route slot is decoded with Core's shared
 `ReceiverManagementRoutesCodec` and compared to a complete value independently
