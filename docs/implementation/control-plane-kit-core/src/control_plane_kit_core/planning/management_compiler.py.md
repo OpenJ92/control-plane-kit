@@ -150,5 +150,26 @@ current compiler; the superseded content-only public API is removed without an a
 This pure relation grants no permission and proves no installation. Operations
 #1971 independently admits registered product/authority facts using the current
 managed-update profile. It owns original attempts, installation evidence and advancement.
-Image, secret-version, verifier and declaration updates retain their later
-separate contracts. No provider, persistence or network dependency is added.
+Secret-version, verifier and declaration updates retain their later separate
+contracts. No provider, persistence or network dependency is added.
+
+The same entry point also recognizes the #1972 immutable-image relation. One
+eligible workload changes exactly `product_identity`, `product_descriptor_digest`
+and `oci_image`. Both references must be canonical existing Core product values:
+the product namespace/name and image registry/repository stay equal; the explicitly
+authored positive contract revision, descriptor digest and actual image digest
+must differ. Revision ordering is not inferred. Mutable tags, repository moves,
+unrelated products and mixed configuration/image edits remain review-blocked.
+
+Restoring only those three metadata values must recover the entire current graph,
+including all ordinary block metadata. Image and content updates share the same
+workload eligibility and exact receiver-wrapper selection. Image updates preserve
+all artifacts and receiver bytes, and reuse the existing disruptive replacement
+followed by desired health. `ManagedImageUpdateTests.pair` constructs the example
+through genuine product descriptors and product instantiation.
+
+This proves graph-level preservation only. Operations #1973 must independently
+validate both active registered descriptors, actual runtime-contract equality,
+current successor authority and durable execution evidence. Servers #251 owns
+the real Docker public-client experiment; neither publication nor image pull
+authority follows from this pure relation.
