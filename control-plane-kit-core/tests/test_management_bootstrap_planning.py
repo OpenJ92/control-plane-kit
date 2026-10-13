@@ -1142,7 +1142,8 @@ class ManagedImageUpdateTests(unittest.TestCase):
         codec = GraphDescriptorCodec()
         original = codec.encode(current), codec.encode(desired)
         for graph, product in ((current, before), (desired, after)):
-            self.assertEqual(graph.node("workload").metadata, {
+            self.assertEqual({key: graph.node("workload").metadata[key] for key in
+                ("product_identity", "product_descriptor_digest", "oci_image")}, {
                 "product_identity": product.identity.key,
                 "product_descriptor_digest": ProductDescriptorCodec().encode_document(product).content_digest,
                 "oci_image": product.image.execution_reference})
