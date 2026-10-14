@@ -7,6 +7,7 @@ from unittest import mock
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_operations import effect_attempt_reconciliation_interpreter
+from control_plane_kit_operations.runtime_effects import OperationalSecretUse
 from control_plane_kit_operations.effect_attempt_reconciliation import (
     EffectAttemptReconciliationConflict,
     EffectAttemptReconciliationDenied,
@@ -261,7 +262,8 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
         )
         uses = self.required_secret_uses(current, intent, authority)
         self.assertGreater(len(uses), 0)
-        self.assertEqual(tuple(sorted(set(uses), key=lambda value: (value[0].reference_id, value[1].value))), uses)
+        self.assertTrue(all(type(use) is OperationalSecretUse for use in uses))
+        self.assertEqual(tuple(sorted(set(uses), key=lambda value: (value.reference.reference_id, value.intent.value))), uses)
         self.admit_secret_uses(uses)
         service = SecretUseAuthorizationService(self.unit_of_work)
         command = self.reconciliation_command(
@@ -273,25 +275,25 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
                 self.authorization_command(
                     current,
                     intent,
-                    reference,
-                    use_intent,
+                    use.reference,
+                    use.intent,
                     command=command,
                 )
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         replayed = tuple(
             service.authorize_resolution(
                 self.authorization_command(
                     current,
                     intent,
-                    reference,
-                    use_intent,
+                    use.reference,
+                    use.intent,
                     command=command,
                     requested_at="2030-01-01T00:00:09Z",
                 )
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertEqual(replayed, grants)
         self.assertEqual(len(self.authorization_rows()), len(uses))
@@ -564,11 +566,11 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=command,
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertEqual(tuple(authorization_commands), expected_commands)
         self.assertTrue(
@@ -613,12 +615,12 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=command,
                 requested_at="2030-01-01T00:00:09Z",
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertEqual(tuple(authorization_commands), expected_retry_commands)
         self.assertEqual(self.authorization_rows(), first)
@@ -679,8 +681,8 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=command,
                 requested_at=(
                     "2030-01-01T00:00:02Z"
@@ -688,7 +690,7 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
                     else "2030-01-01T00:00:09Z"
                 ),
             )
-            for position, (reference, use_intent) in enumerate(uses)
+            for position, use in enumerate(uses)
         )
         self.assertEqual(
             tuple(_authorization_row_projection(row) for row in first_actor_rows),
@@ -724,12 +726,12 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=changed_actor,
                 requested_at="2030-01-01T00:00:10Z",
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertTrue(
             all(
