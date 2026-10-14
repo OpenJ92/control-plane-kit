@@ -990,6 +990,33 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                 r"\b(create|alter|drop|truncate|insert|update|delete)\b",
             )
 
+    def test_pre_version_authorization_schema_is_refused_without_relabeling_or_repair(self):
+        postgres.install_schema(self.connection)
+        columns = {row[0] for row in self.connection.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema=%s "
+            "AND table_name='cpk_secret_use_authorizations'", (self.schema,)).fetchall()}
+        required = {"authorization_kind", "selected_version_id", "request_fingerprint", "selection_fingerprint"}
+        self.assertTrue(required <= columns, "missing current version-authorization schema")
+        self._seed_authority_vocabulary_rows()
+        # This isolated test namespace represents the previous shape; installation must not upgrade it.
+        self.connection.execute("ALTER TABLE cpk_secret_use_authorizations "
+            "DROP COLUMN authorization_kind, DROP COLUMN selected_version_id, "
+            "DROP COLUMN request_fingerprint, DROP COLUMN selection_fingerprint")
+        before_rows = self._authority_rows()
+        before_objects = self._object_identities()
+        before_constraints = self._constraint_snapshot()
+        recorder = _RecordingConnection(self.connection)
+        error = _captured_install_error(recorder)
+        self._assert_install_error(error, "operations schema reset is required")
+        self.assertEqual(self._authority_rows(), before_rows)
+        self.assertEqual(self._object_identities(), before_objects)
+        self.assertEqual(self._constraint_snapshot(), before_constraints)
+        self._assert_calls_are_read_only(recorder.calls)
+        after_columns = {row[0] for row in self.connection.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema=%s "
+            "AND table_name='cpk_secret_use_authorizations'", (self.schema,)).fetchall()}
+        self.assertEqual(after_columns, columns - required)
+
     def test_nonempty_owned_object_families_require_reset_before_effect(self) -> None:
         fixtures = (
             "CREATE TABLE stray_table (value integer)",

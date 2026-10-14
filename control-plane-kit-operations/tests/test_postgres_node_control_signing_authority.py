@@ -384,6 +384,63 @@ class NodeControlSigningAuthorityPostgresTests(
             self.assertNotIn("BEGIN PUBLIC KEY", rendered)
             self.assertNotIn("provider-token", rendered)
 
+    def _replace_signing_authorization_with_consumer_version(self, family):
+        from control_plane_kit_core.policies import PolicyScope
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        from control_plane_kit_core.secrets import SecretUseIntent
+        from control_plane_kit_operations import secret_providers
+        command_type = getattr(secret_providers, "AuthorizeSecretVersionUse", None)
+        self.assertIsNotNone(command_type, "missing version-bound authorization command")
+        attempt = self.attempt()
+        old_id = getattr(attempt, family + "_authorization_id")
+        row = self.connection.execute(
+            "SELECT secret_reference,use_intent,actor_subject,correlation_id,operation_id "
+            "FROM cpk_secret_use_authorizations WHERE authorization_id=%s", (old_id,)).fetchone()
+        # Replace only this test's retained chain with a valid consumer record, not a corrupt fingerprint.
+        self.connection.execute("DELETE FROM cpk_node_control_attempts WHERE attempt_id=%s", (attempt.attempt_id,))
+        self.connection.execute("DELETE FROM cpk_secret_use_authorizations WHERE authorization_id=%s", (old_id,))
+        command = command_type(workspace_id="workspace-a",
+            selection=SecretVersionSelection(SecretReference(row[0]), SecretUseIntent(row[1]), "version-signing-test"),
+            actor_subject=row[2], correlation_id=row[3], operation_id=row[4],
+            requested_at="2027-01-15T08:00:00Z", actor_scopes=(PolicyScope.SECRET_PROVIDER_USE,),
+            session_id=None, run_id="run-consumer", activity_id="activity-consumer", effect_id="effect-consumer",
+            request_fingerprint="1" * 64, selection_fingerprint="2" * 64)
+        factory = lambda: PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
+        grant = secret_providers.SecretUseAuthorizationService(factory).authorize_version_resolution(command)
+        with factory() as unit:
+            stored = unit.stores.secret_use_authorizations.get("workspace-a", grant.authorization_id)
+        self.assertIs(type(stored), secret_providers.AuthorizedSecretVersionUse)
+        self.assertEqual((stored.selection.reference.reference_id, stored.selection.intent.value,
+            stored.actor_subject, stored.correlation_id, stored.operation_id), row)
+        replacement = replace(attempt, **{family + "_authorization_id": grant.authorization_id})
+        self.contract("NodeControlAttemptStore")(self.connection).add(replacement)
+        return replacement
+
+    def test_consumer_version_role_is_rejected_by_raw_signing_authority_reader(self):
+        from control_plane_kit_operations.postgres.node_control_signing_authority_store import (
+            _NodeControlSigningAuthorityStore,
+        )
+        from control_plane_kit_operations.node_control_signing_authority import _NodeControlSigningAuthorityStoreError
+        store = _NodeControlSigningAuthorityStore(self.connection)
+        self.assertIsNotNone(store.get_for_share(self.attempt()))
+        for family in ("transit", "workload"):
+            with self.subTest(family=family):
+                attempt = self._replace_signing_authorization_with_consumer_version(family)
+                with self.assertRaises(_NodeControlSigningAuthorityStoreError):
+                    store.get_for_share(attempt)
+                self._reset_fixture()
+
+    def test_consumer_version_role_is_rejected_by_raw_attempt_reader(self):
+        from control_plane_kit_operations.node_control_attempts import NodeControlAttemptError
+        store = self.contract("NodeControlAttemptStore")(self.connection)
+        self.assertEqual(store.get("attempt-a"), self.attempt())
+        for family in ("transit", "workload"):
+            with self.subTest(family=family):
+                self._replace_signing_authorization_with_consumer_version(family)
+                with self.assertRaises((NodeControlAttemptError, KeyError)):
+                    store.get("attempt-a")
+                self._reset_fixture()
+
     def test_selector_and_clock_fail_boundedly_without_provider_effect(self) -> None:
         class UnexpectedUnitOfWork:
             def __call__(self):

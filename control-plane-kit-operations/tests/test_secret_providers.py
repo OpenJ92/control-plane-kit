@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import concurrent.futures
 from dataclasses import replace
+from hashlib import sha256
+import json
 from datetime import datetime, timezone
 import os
 import time
@@ -53,6 +55,217 @@ class _FailOnAccessConnection:
 
 
 class SecretProviderStoreTests(unittest.TestCase):
+    def version_command(self, reference, **changes):
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        from control_plane_kit_operations import secret_providers
+        command_type = getattr(secret_providers, "AuthorizeSecretVersionUse", None)
+        self.assertIsNotNone(command_type, "missing version-bound authorization command")
+        values = dict(workspace_id="workspace-a",
+            selection=SecretVersionSelection(reference, SecretUseIntent.POSTGRES_PASSWORD, "version-1"),
+            actor_subject="operator-a", correlation_id="consumer-version-a",
+            requested_at="2026-07-30T12:02:00Z", actor_scopes=(PolicyScope.SECRET_PROVIDER_USE,),
+            operation_id="operation-a", session_id=None, run_id="run-a",
+            activity_id="activity-a", effect_id="effect-a",
+            request_fingerprint="1" * 64, selection_fingerprint="2" * 64)
+        return command_type(**{**values, **changes})
+
+    def test_version_authorization_roundtrip_restart_and_replay_are_exact(self):
+        from control_plane_kit_operations import secret_providers
+        provider, reference = self.admit_reference()
+        command = self.version_command(reference.reference)
+        service = self.authorization_service()
+        authorize = getattr(service, "authorize_version_resolution", None)
+        self.assertIsNotNone(authorize, "missing version-bound authorization service")
+        grant = authorize(command)
+        self.assertEqual(grant.selection, command.selection)
+        self.assertEqual(grant.request_fingerprint, command.request_fingerprint)
+        self.assertEqual(grant.selection_fingerprint, command.selection_fingerprint)
+        self.assertEqual(grant.provider_registration_id, provider.registration_id)
+        self.assertIsNone(grant.session_id)
+        with self.unit_of_work() as unit:
+            stored = unit.stores.secret_use_authorizations.get("workspace-a", grant.authorization_id)
+        self.assertIs(type(stored), secret_providers.AuthorizedSecretVersionUse)
+        self.assertEqual(stored.selection, command.selection)
+        self.assertEqual(stored.request_fingerprint, command.request_fingerprint)
+        self.assertEqual(stored.selection_fingerprint, command.selection_fingerprint)
+        restarted = self.authorization_service().authorize_version_resolution(
+            replace(command, requested_at="2026-07-30T12:30:00Z"))
+        self.assertEqual(restarted, grant)
+        row = self.connection.execute(
+            "SELECT authorization_kind,selected_version_id,request_fingerprint,selection_fingerprint,"
+            "session_id,probe_id FROM cpk_secret_use_authorizations WHERE authorization_id=%s",
+            (grant.authorization_id,)).fetchone()
+        self.assertEqual(row, ("consumer-version", "version-1", "1" * 64, "2" * 64, None, None))
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_secret_use_authorizations").fetchone(), (1,))
+
+    def test_version_authorization_conflicts_on_role_version_request_or_material(self):
+        _, reference = self.admit_reference()
+        command = self.version_command(reference.reference)
+        service = self.authorization_service()
+        original = service.authorize_version_resolution(command)
+        for changes in ({"selection": replace(command.selection, version_id="version-2")},
+                        {"request_fingerprint": "3" * 64}, {"selection_fingerprint": "4" * 64},
+                        {"actor_subject": "operator-b"}, {"effect_id": "effect-b"}):
+            with self.subTest(changes=tuple(changes)), self.assertRaises(SecretUseAuthorizationConflict):
+                service.authorize_version_resolution(replace(command, **changes))
+        with self.assertRaises(SecretUseAuthorizationConflict):
+            service.authorize_resolution(self.authorize_command(reference.reference,
+                correlation_id=command.correlation_id, session_id=None, probe_id=None))
+        operational = self.authorize_command(reference.reference, correlation_id="operational-a",
+            session_id=None, probe_id=None)
+        service.authorize_resolution(operational)
+        with self.assertRaises(SecretUseAuthorizationConflict):
+            service.authorize_version_resolution(replace(command, correlation_id="operational-a"))
+        self.assertEqual(service.authorize_version_resolution(command), original)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_secret_use_authorizations").fetchone(), (2,))
+
+    def test_version_authorization_rechecks_revocation_before_replay_preserving_history(self):
+        provider, reference = self.admit_reference()
+        command = self.version_command(reference.reference)
+        service = self.authorization_service()
+        grant = service.authorize_version_resolution(command)
+        with self.unit_of_work() as unit:
+            before = unit.stores.secret_use_authorizations.get("workspace-a", grant.authorization_id)
+        self.service().revoke_provider(RevokeSecretProviderCommand(
+            workspace_id="workspace-a", provider_id=provider.provider_id, revoked_by="operator-a",
+            revoked_at="2026-07-30T12:10:00Z", actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)))
+        for candidate in (command, replace(command, correlation_id="consumer-new")):
+            with self.assertRaises(SecretProviderRegistrationError):
+                service.authorize_version_resolution(candidate)
+        with self.unit_of_work() as unit:
+            after = unit.stores.secret_use_authorizations.get("workspace-a", grant.authorization_id)
+        self.assertEqual(after, before)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_secret_use_authorizations").fetchone(), (1,))
+
+    def test_version_authorization_refusals_leave_no_authorization_rows(self):
+        _, reference = self.admit_reference()
+        command = self.version_command(reference.reference)
+        service = self.authorization_service()
+        for changes in ({"actor_scopes": ()}, {"workspace_id": "workspace-b"},
+                        {"selection": replace(command.selection, intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN)}):
+            with self.subTest(changes=tuple(changes)), self.assertRaises(SecretProviderRegistrationError):
+                service.authorize_version_resolution(replace(command, **changes))
+            self.assertEqual(self.connection.execute(
+                "SELECT count(*) FROM cpk_secret_use_authorizations").fetchone(), (0,))
+        self.service().revoke_reference(RevokeSecretReferenceCommand(
+            workspace_id="workspace-a", registration_id=reference.registration_id,
+            revoked_by="operator-a", revoked_at="2026-07-30T12:10:00Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)))
+        with self.assertRaises(SecretProviderRegistrationError):
+            service.authorize_version_resolution(command)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_secret_use_authorizations").fetchone(), (0,))
+
+    def _race_version_authorizations(self, first, second):
+        self.assertEqual(first.correlation_id, second.correlation_id)
+
+        def authorize(command, application_name):
+            service = SecretUseAuthorizationService(lambda: PostgresUnitOfWork(lambda:
+                psycopg.connect(self.database_url, application_name=application_name)))
+            try:
+                return "authorized", service.authorize_version_resolution(command)
+            except SecretUseAuthorizationConflict as error:
+                return "conflict", error
+
+        names = ("cpk-version-auth-race-a", "cpk-version-auth-race-b")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            holder = psycopg.connect(self.database_url)
+            with PostgresUnitOfWork(lambda: holder) as unit:
+                unit.stores.secret_use_authorizations.lock_correlation(first.workspace_id, first.correlation_id)
+                futures = [executor.submit(authorize, command, name)
+                    for command, name in zip((first, second), names, strict=True)]
+                for name in names:
+                    self.wait_for_database_lock(name)
+                    blockers = self.connection.execute(
+                        "SELECT pg_blocking_pids(pid) FROM pg_stat_activity WHERE application_name=%s", (name,)).fetchone()
+                    self.assertIsNotNone(blockers)
+                    self.assertIn(holder.info.backend_pid, blockers[0])
+                unit.commit()
+            return [future.result(timeout=5) for future in futures]
+
+    def test_version_authorization_concurrent_identical_calls_commit_once(self):
+        _, reference = self.admit_reference()
+        command = self.version_command(reference.reference, correlation_id="consumer-race-identical")
+        outcomes = self._race_version_authorizations(command, command)
+        self.assertEqual([kind for kind, _ in outcomes], ["authorized", "authorized"])
+        self.assertEqual(outcomes[0][1], outcomes[1][1])
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_secret_use_authorizations WHERE correlation_id=%s",
+            (command.correlation_id,)).fetchone(), (1,))
+
+    def test_version_authorization_concurrent_changed_version_or_material_has_one_winner(self):
+        _, reference = self.admit_reference()
+        command = self.version_command(reference.reference)
+        for label, changes in (("version", {"selection": replace(command.selection, version_id="version-2")}),
+                               ("material", {"selection_fingerprint": "3" * 64})):
+            with self.subTest(change=label):
+                first = replace(command, correlation_id="consumer-race-" + label)
+                second = replace(first, **changes)
+                outcomes = self._race_version_authorizations(first, second)
+                self.assertEqual(sorted(kind for kind, _ in outcomes), ["authorized", "conflict"])
+                winner = next(value for kind, value in outcomes if kind == "authorized")
+                conflict = next(value for kind, value in outcomes if kind == "conflict")
+                self.assertLessEqual(len(str(conflict)), 128)
+                self.assertIn((winner.selection, winner.selection_fingerprint),
+                    ((first.selection, first.selection_fingerprint), (second.selection, second.selection_fingerprint)))
+                self.assertEqual(self.connection.execute(
+                    "SELECT count(*) FROM cpk_secret_use_authorizations WHERE correlation_id=%s",
+                    (first.correlation_id,)).fetchone(), (1,))
+                with self.unit_of_work() as unit:
+                    stored = unit.stores.secret_use_authorizations.get("workspace-a", winner.authorization_id)
+                self.assertEqual((stored.selection, stored.selection_fingerprint),
+                    (winner.selection, winner.selection_fingerprint))
+
+    def test_version_authorization_sql_requires_consumer_fields_and_forbids_operational_extras(self):
+        _, reference = self.admit_reference()
+        command = self.version_command(reference.reference)
+        consumer = self.authorization_service().authorize_version_resolution(command)
+        operational = self.authorization_service().authorize_resolution(
+            self.authorize_command(reference.reference))
+        for column in ("selected_version_id", "request_fingerprint", "selection_fingerprint",
+                       "operation_id", "run_id", "activity_id", "effect_id", "authorization_kind"):
+            with self.subTest(column=column), self.assertRaises(psycopg.IntegrityError):
+                self.connection.execute(f"UPDATE cpk_secret_use_authorizations SET {column}=NULL "
+                    "WHERE authorization_id=%s", (consumer.authorization_id,))
+        for column, invalid in (("selected_version_id", "bad/version"),
+                                ("request_fingerprint", "x" * 64),
+                                ("selection_fingerprint", "x" * 64),
+                                ("probe_id", "probe-a"), ("authorization_kind", "unknown")):
+            with self.subTest(column=column), self.assertRaises(psycopg.IntegrityError):
+                self.connection.execute(f"UPDATE cpk_secret_use_authorizations SET {column}=%s "
+                    "WHERE authorization_id=%s", (invalid, consumer.authorization_id))
+        for column, invalid in (("selected_version_id", "version-1"),
+                                ("request_fingerprint", "1" * 64),
+                                ("selection_fingerprint", "2" * 64)):
+            with self.subTest(operational_column=column), self.assertRaises(psycopg.IntegrityError):
+                self.connection.execute(f"UPDATE cpk_secret_use_authorizations SET {column}=%s "
+                    "WHERE authorization_id=%s", (invalid, operational.authorization_id))
+        self.assertEqual(self.authorization_service().authorize_version_resolution(command), consumer)
+
+    def test_version_role_addition_preserves_operational_fingerprint_and_correlation_bytes(self):
+        from control_plane_kit_operations.secret_providers import secret_use_correlation_for
+        provider, reference = self.admit_reference()
+        command = self.authorize_command(reference.reference)
+        original = dict(workspace_id=command.workspace_id, reference_id=command.reference.reference_id,
+            intent=command.intent.value, actor_subject=command.actor_subject,
+            operation_id=command.operation_id, session_id=command.session_id,
+            run_id=command.run_id, activity_id=command.activity_id,
+            effect_id=command.effect_id, probe_id=command.probe_id)
+        digest = lambda value: sha256(json.dumps(value, sort_keys=True,
+            separators=(",", ":")).encode("utf-8")).hexdigest()
+        correlation_arguments = {key: value for key, value in original.items()
+            if key not in ("reference_id", "intent")}
+        self.assertEqual(secret_use_correlation_for(**correlation_arguments,
+            reference=command.reference, intent=command.intent), "secret-use:" + digest(original))
+        expected = digest({**original, "reference_registration_id": reference.registration_id,
+            "provider_registration_id": provider.registration_id, "correlation_id": command.correlation_id})
+        authorized = self.authorization_service().authorize(command)
+        self.assertEqual(authorized.intent_fingerprint, expected)
+        self.assertEqual(authorized.authorization_id, "suse_" + expected)
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
