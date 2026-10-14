@@ -153,7 +153,13 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
         return current, intent, fence
 
     def _admit_version_reconciliation_material(self, intent):
-        from control_plane_kit_core.secrets import SecretUseIntent
+        from control_plane_kit_core.secrets import (
+            SecretProviderEndpointReference, SecretProviderId, SecretReference, SecretUseIntent,
+        )
+        from control_plane_kit_operations.secret_providers import (
+            RegisterSecretProviderCommand, RegisterSecretReferenceCommand,
+            SecretProviderKind, SecretProviderRegistrationService,
+        )
         uses = set()
         for material in intent.products:
             uses.update((selection.reference, selection.intent) for selection in material.secret_selections)
@@ -163,7 +169,24 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
                 authentication = getattr(check, "authentication", None)
                 if authentication is not None:
                     uses.add((authentication.password_reference, SecretUseIntent.POSTGRES_PASSWORD))
-        self.admit_secret_uses(tuple(sorted(uses, key=lambda value: (value[0].reference_id, value[1].value))))
+        reference = SecretReference("secret://provider-a/application/token")
+        use = SecretUseIntent.APPLICATION_CONTROL_TOKEN
+        self.assertEqual(uses, {(reference, use)})
+        service = SecretProviderRegistrationService(self.unit_of_work)
+        provider = service.register_provider(RegisterSecretProviderCommand(
+            workspace_id="workspace-a", provider_id=SecretProviderId("provider-a"),
+            provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
+            display_name="Version recovery fixture provider",
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference("secret://bootstrap/provider-a/client-token"),
+            allowed_reference_prefixes=(SecretReference("secret://provider-a/application"),),
+            allowed_intents=(use,), admitted_by="operator-a", admitted_at="2030-01-01T00:00:00Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
+        service.register_reference(RegisterSecretReferenceCommand(
+            workspace_id="workspace-a", reference=reference,
+            provider_registration_id=provider.registration_id, allowed_intents=(use,),
+            admitted_by="operator-a", admitted_at="2030-01-01T00:00:01Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
 
     def test_version_observation_unqualified_refuses_before_authorization_and_observer(self):
         from tests.test_secret_version_dispatch import registration
