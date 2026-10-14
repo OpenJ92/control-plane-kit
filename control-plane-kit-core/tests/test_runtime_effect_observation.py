@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant
+from control_plane_kit_core.secret_installation import secret_material_selection_fingerprint
 from tests.test_runtime_effects import _product_material as _complete_material
 
 from collections import UserDict
@@ -153,6 +155,27 @@ def _grant(
         effect_id=effect_id,
         operation_id=f"operation-{fresh}",
         session_id=f"session-{fresh}",
+    )
+
+
+def _consumer_grant(request, *, fresh="n") -> SecretVersionResolutionGrant:
+    language = _language()
+    return SecretVersionResolutionGrant(
+        authorization_id="suse_" + fresh * 64,
+        workspace_id=request.source.workspace_id,
+        reference_registration_id="sref_" + fresh * 64,
+        provider_registration_id="sprov_" + fresh * 64,
+        endpoint_reference=SecretProviderEndpointReference(f"provider-{fresh}"),
+        credential_reference=SecretReference(f"secret://bootstrap/provider-{fresh}-token"),
+        selection=SecretVersionSelection(
+            SecretReference("secret://local/workspace-a/app/token"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN, "version-1"),
+        actor_subject=f"worker-{fresh}", correlation_id="consumer-use-" + fresh * 64,
+        intent_fingerprint=hashlib.sha256(fresh.encode("utf-8")).hexdigest(),
+        operation_id=request.source.request_id, run_id=request.source.run_id.value,
+        activity_id=request.activity_id.value, effect_id=request.effect_id,
+        request_fingerprint=language.runtime_effect_intent_fingerprint(language.runtime_effect_intent_for_request(request)),
+        selection_fingerprint=secret_material_selection_fingerprint(request),
     )
 
 
@@ -440,29 +463,34 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
         }
         for index, (name, (reference, intent)) in enumerate(families.items()):
             fresh = chr(ord("h") + index)
-            admitted = _grant(
+            original = _request(products=(_grant_product(),))
+            consumer = name == "product secret delivery"
+            admitted = _consumer_grant(original, fresh=fresh) if consumer else _grant(
                 fresh=fresh,
                 label=name,
                 reference=reference,
                 intent=intent,
             )
-            wrong_intent = replace(
-                admitted,
+            use = admitted.selection if consumer else admitted
+            wrong_use = replace(
+                use,
                 intent=(
                     SecretUseIntent.POSTGRES_PASSWORD
                     if intent is not SecretUseIntent.POSTGRES_PASSWORD
                     else SecretUseIntent.APPLICATION_CONTROL_TOKEN
                 ),
             )
-            unrelated = replace(
-                admitted,
+            unrelated_use = replace(
+                use,
                 reference=SecretReference(
                     f"secret://local/workspace-a/unrelated/{index}"
                 ),
             )
+            wrong_intent = replace(admitted, selection=wrong_use) if consumer else wrong_use
+            unrelated = replace(admitted, selection=unrelated_use) if consumer else unrelated_use
 
             with self.subTest(family=name, case="positive"):
-                request = _request(grants=(admitted,), products=(_grant_product(),))
+                request = replace(original, secret_resolution_grants=(admitted,))
                 observation = language.RuntimeEffectObservationRequest(request, connection_admission=_connection())
                 self.assertIs(observation.runtime_request.secret_resolution_grants[0], admitted)
 
@@ -471,25 +499,21 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
                 ("unrelated reference", unrelated),
             ):
                 with self.subTest(family=name, case=case):
-                    request = _request(
-                        grants=(rejected,),
-                        products=(_grant_product(),),
-                    )
+                    # Revalidate malformed observation input even when normal
+                    # request construction already refuses the consumer grant.
+                    request = _forged_dataclass(original, secret_resolution_grants=(rejected,))
                     with self.assertRaises(RuntimeEffectContractError) as caught:
                         language.RuntimeEffectObservationRequest(request, connection_admission=_connection())
                     message = str(caught.exception) + repr(caught.exception)
-                    self.assertNotIn(rejected.reference.reference_id, message)
+                    rejected_use = rejected.selection if consumer else rejected
+                    self.assertNotIn(rejected_use.reference.reference_id, message)
                     self.assertNotIn(rejected.authorization_id, message)
                     self.assertIsNone(caught.exception.__cause__)
                     self.assertIsNone(caught.exception.__context__)
 
-        admitted = _grant(
-            fresh="n",
-            label="product secret delivery",
-            reference="secret://local/workspace-a/app/token",
-            intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
-        )
-        request = _request(grants=(admitted,), products=(_grant_product(),))
+        original = _request(products=(_grant_product(),))
+        admitted = _consumer_grant(original)
+        request = replace(original, secret_resolution_grants=(admitted,))
         duplicate = _forged_dataclass(
             request,
             secret_resolution_grants=(admitted, admitted),

@@ -953,6 +953,7 @@ class RuntimeEffectObservationPackageBoundaryTests(unittest.TestCase):
             {
                 "control_plane_kit_core.runtime_effects",
                 "control_plane_kit_core.secrets",
+                "control_plane_kit_core.secret_version_grants",
             },
         )
         self.assertEqual(row["optional_external_dependencies"], [])

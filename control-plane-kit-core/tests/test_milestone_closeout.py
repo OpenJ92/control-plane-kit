@@ -26,6 +26,7 @@ EXPECTED_MODULES = {
     "environment",
     "secret_selections",
     "secret_installation",
+    "secret_version_grants",
     "topology.secret_selection",
     "gateway_delegation",
     "identity",
