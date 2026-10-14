@@ -134,7 +134,7 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "c3b6c85f8ce78b77b9af6b97151b2472aa3bee18ae49582649b431f8c29ad42d"
+    "1ea4f162a104ef23c8f5ee72907636d9bf4c7228090790cde9efa0b24899d255"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
     "0ddf223858316741fdf907f8332009670746cfa4dc24c858bf50405a25091935"
@@ -1269,7 +1269,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (56, 715, 631, 194))
+        self.assertEqual(self._catalog_counts(), (56, 719, 633, 194))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)
