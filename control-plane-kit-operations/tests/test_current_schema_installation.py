@@ -730,6 +730,67 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                     self.assertEqual(observed_index[field], expected_index[field])
         postgres.install_schema(self.connection)
 
+    def test_version_authorization_schema_matches_frozen_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import current_schema_verification, schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        self.connection.execute(schema._CURRENT_SCHEMA_SQL)
+        query, separator, _ = current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
+            "\nSELECT\n  COALESCE(")
+        self.assertTrue(separator)
+        limits = tuple(len(getattr(contract, section)) + 1
+            for section in ("relations", "columns", "constraints", "indexes"))
+        relation = "cpk_secret_use_authorizations"
+        expected_names = [item.name for item in contract.constraints if item.relation == relation]
+        observed_names = [row[0] for row in self.connection.execute(
+            query + "\nSELECT conname FROM semantic_constraints WHERE relname=%s "
+            "ORDER BY conname LIMIT %s", (*limits, relation, len(expected_names) + 1)).fetchall()]
+        with self.subTest(boundary="ordered authorization constraints"):
+            self.assertEqual(observed_names, expected_names)
+
+        names = ("cpk_secret_use_authorizations_kind_check",
+            "cpk_secret_use_authorizations_role_shape_check")
+        rows = self.connection.execute(query + "\nSELECT value FROM semantic_constraints "
+            "WHERE relname=%s AND conname=ANY(%s) ORDER BY conname LIMIT 3",
+            (*limits, relation, list(names))).fetchall()
+        observed = {row[0]["name"]: row[0] for row in rows}
+        expected = {item.name: json.loads(json.dumps(dataclasses.asdict(item)))
+            for item in contract.constraints if item.relation == relation and item.name in names}
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(set(observed), set(names))
+        self.assertEqual(set(expected), set(names))
+        for name in names:
+            self.assertEqual(set(observed[name]), set(expected[name]))
+            for field, value in expected[name].items():
+                with self.subTest(constraint=name, field=field):
+                    self.assertEqual(observed[name][field], value)
+        column_names = ("authorization_kind", "selected_version_id",
+            "request_fingerprint", "selection_fingerprint")
+        rows = self.connection.execute(query + "\nSELECT value FROM semantic_columns "
+            "WHERE relname=%s AND value->>'name'=ANY(%s) ORDER BY attnum LIMIT 5",
+            (*limits, relation, list(column_names))).fetchall()
+        observed_columns = {row[0]["name"]: row[0] for row in rows}
+        expected_columns = {item.name: json.loads(json.dumps(dataclasses.asdict(item)))
+            for item in contract.columns if item.relation == relation and item.name in column_names}
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(set(observed_columns), set(column_names))
+        self.assertEqual(set(expected_columns), set(column_names))
+        for name in column_names:
+            self.assertEqual(set(observed_columns[name]), set(expected_columns[name]))
+            for field, value in expected_columns[name].items():
+                with self.subTest(column=name, field=field):
+                    self.assertEqual(observed_columns[name][field], value)
+        with self.subTest(boundary="complete schema contract"):
+            self.assertTrue(current_schema_verification.current_schema_contract_is_exact(self.connection))
+        with self.subTest(boundary="namespace adjuncts"):
+            self.assertTrue(current_schema_verification.current_namespace_adjuncts_are_exact(self.connection))
+        from control_plane_kit_operations.postgres.current_data_validation import validate_current_rows
+        with self.subTest(boundary="current rows"):
+            validate_current_rows(self.connection)
+        with self.subTest(boundary="ordinary installation verification"):
+            postgres.install_schema(self.connection)
+
     def test_configuration_protection_schema_matches_frozen_contract(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract
         from control_plane_kit_operations.postgres import current_schema_verification, schema
