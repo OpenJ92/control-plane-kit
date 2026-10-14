@@ -49,6 +49,7 @@ from control_plane_kit_core.planning.saga import (
     project_activity_journal,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
@@ -1006,6 +1007,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
         active_secret = replace(
             _generated_ingress_secret(),
+            provider_version_id="version-reallocated-ingress",
             secret_ref=SecretReference(
                 "secret://generated/ingress/workspace-a/"
                 "cloudflared-tunnel-token/run-realloc/"
@@ -1049,6 +1051,10 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             (active_secret.secret_ref.reference_id,),
         )
         self.assertNotIn("tunnel-token-value", repr(request.descriptor()).lower())
+        self.assertEqual(request.products[0].secret_selections, (
+            SecretVersionSelection(active_secret.secret_ref,
+                SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, "version-reallocated-ingress"),
+        ))
 
     def test_explicit_compiled_tunnel_token_needs_no_generated_material(self) -> None:
         delivery = SecretFileDelivery(
