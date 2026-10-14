@@ -1232,6 +1232,12 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
 
     def test_target_map_is_not_delivered_to_ordinary_products(self) -> None:
         graph = _gateway_graph()
+        postgres = graph.node("postgres")
+        graph = graph.update_node(replace(
+            postgres,
+            secret_selections=_fixture_secret_versions(
+                postgres.secret_deliveries, "version-ordinary-postgres"),
+        ))
         context = _context(
             activity=PlannedActivity(
                 ActivityId("activity-postgres"),
