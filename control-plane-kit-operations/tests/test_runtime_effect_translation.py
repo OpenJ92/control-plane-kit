@@ -49,7 +49,9 @@ from control_plane_kit_core.planning.saga import (
     project_activity_journal,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secret_selections import (
+    SecretVersionSelection, UnselectedSecretUse, resolving_secret_uses,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
@@ -820,6 +822,9 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 graph = compile_topology(DeploymentTopology(
                     "selected-deliveries", DockerRuntime(runtime_id="docker", children=(block,)),
                 ))
+                selected_versions = _fixture_secret_versions(
+                    configuration.secret_deliveries, "version-compiled-product")
+                graph = graph.update_node(replace(graph.node("api"), secret_selections=selected_versions))
 
                 request = runtime_effect_request_for_context(_context(
                     desired_graph=graph, registered_products=(registered,),
@@ -829,6 +834,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                     request.products[0].product.runtime_contract.secret_deliveries,
                     configuration.secret_deliveries,
                 )
+                self.assertEqual(request.products[0].secret_selections, selected_versions)
 
     def test_required_secret_slots_reject_missing_or_mismatched_selection(self) -> None:
         declared = _secret_contract_context(selected_deliveries=()).registered_products[
@@ -945,6 +951,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                             ),
                         },
                         secret_deliveries=active_deliveries,
+                        secret_selections=_fixture_secret_versions(active_deliveries, "version-socket"),
                     )
                 )
 
@@ -1268,6 +1275,12 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         self.assertNotIn("CPK_GATEWAY_TARGETS_JSON", environment)
 
 
+def _fixture_secret_versions(deliveries, version_id):
+    """Explicit fixture choice at a named authored-delivery site, never a runtime default."""
+    return tuple(SecretVersionSelection(reference, intent, version_id)
+        for _, (reference, intent) in sorted(resolving_secret_uses(deliveries).items()))
+
+
 def _secret_contract_context(
     *,
     selected_deliveries: tuple[SecretDelivery, ...],
@@ -1300,6 +1313,7 @@ def _secret_contract_context(
     graph = _graph()
     graph = replace(graph, nodes={"api": replace(
         graph.node("api"), secret_deliveries=selected_deliveries,
+        secret_selections=_fixture_secret_versions(selected_deliveries, "version-slot-contract"),
         metadata={
             "product_identity": registered.reference.identity.key,
             "product_descriptor_digest": registered.reference.descriptor_sha256.value,
@@ -1545,6 +1559,7 @@ def _public_ingress_graph(
                     ),
                 },
                 secret_deliveries=connector_deliveries,
+                secret_selections=_fixture_secret_versions(connector_deliveries, "version-explicit-connector"),
             ),
         },
         public_ingresses=(
@@ -1654,6 +1669,10 @@ def _gateway_graph(
                         SecretUseIntent.POSTGRES_PASSWORD,
                     ),
                 ),
+                secret_selections=(UnselectedSecretUse(
+                    SecretReference("secret://control-plane-kit/postgres/password"),
+                    SecretUseIntent.POSTGRES_PASSWORD,
+                ),),
             ),
             "router": Node(
                 node_id="router",
