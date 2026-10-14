@@ -75,6 +75,83 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
     PostgresEffectAttemptReconciliationFixture,
     unittest.TestCase,
 ):
+    def _seed_version_node_reconciliation(self):
+        from control_plane_kit_core.operations import (
+            EffectAttemptIdentity, EffectAttemptTransition, EffectAttemptTransitionKind, RunId,
+        )
+        from control_plane_kit_core.planning import StartNode
+        from control_plane_kit_core.runtime_effect_observation import (
+            runtime_effect_intent_fingerprint, runtime_effect_intent_for_request,
+        )
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+        from control_plane_kit_operations.effect_attempt_start import NewlyStarted, StartEffectAttempt
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+        from control_plane_kit_operations.lifecycle import (
+            ClaimAndOpenActivityRun, ExecutionLeaseDuration, StartActivityRun,
+        )
+        from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_context
+        from control_plane_kit_operations.workflows import IdempotencyKey
+        from tests.graph_lineage_fixture import execution_graph
+        from tests import test_execution_coordinator as coordinator_fixture
+        from tests.test_secret_version_dispatch import selected_context
+
+        # Reuse real node-plan admission and lifecycle owners. The inherited
+        # reconciliation fixture intentionally owns StartRuntime, not this law.
+        template = selected_context()
+        engine = coordinator_fixture.ExecutionCoordinatorTests()
+        engine.database_url, engine.connection = self.database_url, self.connection
+        engine.tracker = coordinator_fixture.TrackingUnitOfWorkFactory(self.database_url)
+        engine.reset_execution_request(plan=template.plan_record.plan,
+            base_graph=execution_graph("current", runtime_id="docker"),
+            desired_graph=DEFAULT_GRAPH_CODEC.decode(template.desired_graph.graph_descriptor),
+            product_document=template.registered_products[0].descriptor_document)
+        authority = self.authority(scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
+        opened = engine.lifecycle_with_ids("run-a", "version-open", "version-claim").execute(
+            ClaimAndOpenActivityRun("request-a", authority, ExecutionLeaseDuration(600),
+                IdempotencyKey("version-claim")))
+        fence = ExecutionLeaseFence(opened.request.claim.worker_id, opened.request.claim.generation)
+        engine.lifecycle_with_ids("version-run-start", "version-run-start-action").execute(
+            StartActivityRun("run-a", authority, fence, IdempotencyKey("version-run-start")))
+        with self.unit_of_work() as unit:
+            stores = unit.stores
+            plan = stores.activity_history.get_plan("plan-a")
+            activity, = plan.plan.activities
+            context = replace(template, activity=activity, plan_record=plan,
+                request=stores.execution.get_request("request-a"), run=stores.execution.get_run("run-a"),
+                base_graph=stores.realized_graphs.get(plan.base_realized_projection_id),
+                desired_graph=stores.realized_graphs.get(plan.desired_realized_projection_id),
+                registered_products=stores.registered_products.list_active("workspace-a"),
+                authority=authority, fence=fence)
+        intent = _runtime_effect_intent_for_context(context, activity)
+        self._admit_version_reconciliation_material(intent)
+        identity = EffectAttemptIdentity(RunId("run-a"), activity.activity_id.value, 1)
+        transition = EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
+            identity, request_fingerprint=runtime_effect_intent_fingerprint(intent))
+        started = self.start_service("version-node-start").execute(StartEffectAttempt(
+            "request-a", transition, intent, authority, fence))
+        self.assertIs(type(started), NewlyStarted)
+        current = started.attempt
+        with self.unit_of_work() as unit:
+            retained = unit.stores.effect_attempt_intents.get(identity)
+            persisted = unit.stores.effect_attempts.get(identity)
+        request = self.runtime_request(current, intent)
+        material, = request.products
+        self.assertIs(type(intent.operation), StartNode)
+        self.assertEqual(intent.operation, activity.operation)
+        self.assertEqual(intent.operation.target.node_id, material.node_id)
+        self.assertEqual(material.runtime_id, "docker")
+        self.assertTrue(material.secret_selections)
+        self.assertTrue(all(type(value) is SecretVersionSelection for value in material.secret_selections))
+        self.assertEqual(retained.intent, intent)
+        self.assertEqual(persisted, current)
+        self.assertEqual(retained.original_start_event, current.original_start_event)
+        self.assertEqual(runtime_effect_intent_for_request(request), intent)
+        self.assertEqual(current.state.request_fingerprint, runtime_effect_intent_fingerprint(intent))
+        self.assertEqual(retained.request_fingerprint, current.state.request_fingerprint)
+        self.assertEqual(current.original_start_event.evidence, self.evidence_for(current.state))
+        return current, intent, fence
+
     def _admit_version_reconciliation_material(self, intent):
         from control_plane_kit_core.secrets import SecretUseIntent
         uses = set()
@@ -92,9 +169,7 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
         from tests.test_secret_version_dispatch import registration
         for registered in (False, True):
             with self.subTest(explicit_registration=registered):
-                story = self.observed_story()
-                current, intent, _, _ = self.seed_reconciliation_source(story, authority_ref=False)
-                self._admit_version_reconciliation_material(intent)
+                current, intent, fence = self._seed_version_node_reconciliation()
                 observer = FailIfObserver("unqualified version observer was invoked")
                 fold = FailIfFold("unqualified observer reached fold")
                 port = registration(observer, exact_version_execute=True,
@@ -102,7 +177,7 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
                 before = self.complete_reconciliation_snapshot()
                 with self.assertRaises(EffectAttemptReconciliationDenied):
                     self.reconciliation_service(port, fold_service=fold).execute(
-                        self.reconciliation_command(current,
+                        self.reconciliation_command(current, generation=fence.generation,
                             scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE)))
                 self.assertEqual(observer.calls, [])
                 self.assertEqual(fold.calls, [])
@@ -120,9 +195,8 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
         self.assertIsNotNone(correlation_for, "missing version-bound correlation")
         from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant
         story = self.observed_story("observed-failed")
-        current, intent, _, _ = self.seed_reconciliation_source(story, authority_ref=False)
-        self._admit_version_reconciliation_material(intent)
-        command = self.reconciliation_command(current,
+        current, intent, fence = self._seed_version_node_reconciliation()
+        command = self.reconciliation_command(current, generation=fence.generation,
             scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
         request = self.runtime_request(current, intent)
         selection, = request.products[0].secret_selections
