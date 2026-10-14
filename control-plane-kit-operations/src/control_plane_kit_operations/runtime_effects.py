@@ -56,6 +56,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectRequest,
     RuntimeProductMaterial,
 )
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
@@ -414,12 +415,22 @@ def _products_for_context(
         product=product,
         registered_products=context.registered_products,
     )
+    material_product = _product_material_for_node(context, graph, product, node, operation)
+    selections = list(node.secret_selections)
+    ingress = _connector_ingress_for_node(graph, node.node_id)
+    if (ingress is not None and not isinstance(operation, (StopNode, RemoveNodeResource))
+            and not _has_tunnel_token_delivery(node.secret_deliveries)):
+        resource = _ingress_resource_for(context.ingress_resources, ingress.ingress_id)
+        generated = _generated_ingress_secret_for(context.generated_ingress_secrets, resource)
+        selections.append(SecretVersionSelection(generated.secret_ref,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, generated.provider_version_id))
     return (
         RuntimeProductMaterial(
             node_id=node_id,
             runtime_id=runtime_id,
             reference=product.reference,
-            product=_product_material_for_node(context, graph, product, node, operation),
+            product=material_product,
+            secret_selections=tuple(selections),
             public_environment=public_environment,
             socket_environment=node.socket_environment,
             runtime_authority_deliveries=node.runtime_authority_deliveries,

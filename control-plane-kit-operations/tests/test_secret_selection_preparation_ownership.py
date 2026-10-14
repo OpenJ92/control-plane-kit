@@ -1,11 +1,16 @@
 """Actual owner-issued preparation lifetime; no replacement token issuer."""
 
 from copy import copy
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from threading import Event
+import time
 import unittest
 
 from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.products import ProductDescriptorCodec, ProductReference
 from control_plane_kit_operations import graph_authoring
+from control_plane_kit_operations.products import RegisteredProductStatus
 from draft_catalogue_fixture import NOW
 from test_secret_selection_preparation import SecretSelectionPreparationFixture
 
@@ -176,6 +181,50 @@ class SecretSelectionPreparationOwnershipTests(SecretSelectionPreparationFixture
                 self.assert_no_insert(uow, "reused-stale")
                 uow.commit()
         self.assertEqual(self.truth(), before)
+
+    def test_product_revocation_waits_for_admitted_publication_to_commit(self):
+        self.prepare_owner_fixture()
+        pending, release, revoking = Event(), Event(), Event()
+        author_pid, revoker_pid = [], []
+        reference = ProductReference.from_document(ProductDescriptorCodec().encode_document(self.secret_product))
+        def publish(prepared):
+            with self.service._secret_selection_unit_of_work(prepared) as uow:
+                author_pid.append(uow.stores.connection.execute("SELECT pg_backend_pid()").fetchone()[0])
+                result = self.publish(uow, prepared)
+                pending.set()
+                if not release.wait(10):
+                    raise AssertionError("publication release was not delivered")
+                uow.commit()
+                return result
+        def revoke():
+            with self.unit_of_work() as uow:
+                revoker_pid.append(uow.stores.connection.execute("SELECT pg_backend_pid()").fetchone()[0])
+                revoking.set()
+                result = uow.stores.registered_products.revoke("workspace-a", reference)
+                uow.commit()
+                return result
+        with self.service._prepare_secret_selections(self.command()) as prepared:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                publication = executor.submit(publish, prepared)
+                try:
+                    self.assertTrue(pending.wait(5), "publication did not reach its pending commit")
+                    revocation = executor.submit(revoke)
+                    self.assertTrue(revoking.wait(5), "revoker did not enter its real transaction")
+                    deadline = time.monotonic() + 5
+                    while True:
+                        blockers = self.connection.execute("SELECT pg_blocking_pids(%s)",
+                            (revoker_pid[0],)).fetchone()[0]
+                        if author_pid[0] in blockers:
+                            break
+                        if revocation.done() or time.monotonic() >= deadline:
+                            self.fail("product revocation was not blocked by the admitting publication")
+                finally:
+                    release.set()
+                selected = publication.result(timeout=5)
+                revoked = revocation.result(timeout=5)
+        self.assertEqual(self.workspace().desired_graph_id, selected.graph_version.graph_id)
+        self.assertEqual(self.result_choices(selected)[0].version_id, "version-1")
+        self.assertIs(revoked.status, RegisteredProductStatus.REVOKED)
 
 
 if __name__ == "__main__":

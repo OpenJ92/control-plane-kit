@@ -10557,6 +10557,7 @@
       ],
       "destination": "control_plane_kit_operations.runtime_effects",
       "internal_dependencies": [
+        "control_plane_kit_core.secret_selections",
         "control_plane_kit_core.configuration",
         "control_plane_kit_core.environment",
         "control_plane_kit_core.operations",

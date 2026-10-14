@@ -8,13 +8,13 @@ import uuid
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
-    ProductDescriptorCodec, ProductIdentity, ProductInstanceConfiguration, instantiate_product,
+    ProductDescriptorCodec, ProductIdentity, ProductInstanceConfiguration, ProductReference, instantiate_product,
 )
 from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.secrets import SecretFileDelivery, SecretReference, SecretUseIntent
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_operations import graph_authoring
-from control_plane_kit_operations.products import InlineDescriptorSource
+from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProductStatus
 from control_plane_kit_operations.planning import DesiredGraphCommandService, SetDesiredGraph
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.secret_providers import (
@@ -121,6 +121,19 @@ class SecretSelectionPreparationFixture(DraftSelectionFixture):
         graph = DEFAULT_GRAPH_CODEC.decode(result.graph_version.graph_descriptor)
         return next(iter(graph.nodes.values())).secret_selections
 
+    def revoke_authoring_admission(self):
+        reference = ProductReference.from_document(ProductDescriptorCodec().encode_document(self.secret_product))
+        with self.unit_of_work() as uow:
+            revoked = uow.stores.registered_products.revoke("workspace-a", reference)
+            self.assertIs(revoked.status, RegisteredProductStatus.REVOKED)
+            uow.commit()
+        revoked = SecretProviderRegistrationService(self.unit_of_work).revoke_reference(
+            RevokeSecretReferenceCommand(workspace_id="workspace-a",
+                registration_id=self.registered_reference.registration_id,
+                revoked_by="operator-a", revoked_at=NOW,
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)))
+        self.assertIs(revoked.status, RegisteredSecretReferenceStatus.REVOKED)
+
 
 class SecretSelectionPreparationTests(SecretSelectionPreparationFixture, unittest.TestCase):
     def test_explicit_existing_version_is_read_outside_transaction_and_committed_exactly(self):
@@ -166,6 +179,7 @@ class SecretSelectionPreparationTests(SecretSelectionPreparationFixture, unittes
         changed = self.service.set_desired_graph(self.command(version="version-2"))
         self.assertEqual(self.result_choices(changed)[0].version_id, "version-2")
         self.assertEqual(self.workspace().desired_graph_id, changed.graph_version.graph_id)
+        self.revoke_authoring_admission()
         self.reader.calls.clear()
         before = self.truth()
         self.assertEqual(self.catalogue().execute(command), selected)
@@ -198,6 +212,7 @@ class SecretSelectionPreparationTests(SecretSelectionPreparationFixture, unittes
         changed = self.service.set_desired_graph(self.command(version="version-2"))
         self.assertEqual(self.result_choices(changed)[0].version_id, "version-2")
         self.assertEqual(self.workspace().desired_graph_id, changed.graph_version.graph_id)
+        self.revoke_authoring_admission()
         self.reader.calls.clear()
         before = self.truth()
         replay = service.execute(command)
@@ -346,6 +361,25 @@ class SecretSelectionPreparationTests(SecretSelectionPreparationFixture, unittes
             reference = uow.stores.secret_references.get_by_registration(
                 "workspace-a", self.registered_reference.registration_id)
             self.assertIs(reference.status, RegisteredSecretReferenceStatus.REVOKED)
+        self.assertEqual(self.truth(), before)
+
+    def test_product_revocation_after_metadata_refuses_without_graph_write(self):
+        self.prepare_fixture()
+        before = self.truth()
+        revoked = []
+        reference = ProductReference.from_document(ProductDescriptorCodec().encode_document(self.secret_product))
+        def observed(request):
+            response = self.metadata(request)
+            with self.unit_of_work() as uow:
+                revoked.append(uow.stores.registered_products.revoke("workspace-a", reference))
+                uow.commit()
+            return response
+        self.reader.observe = observed
+        with self.assertRaises(graph_authoring.GraphAuthoringError):
+            self.service.set_desired_graph(self.command())
+        self.assertEqual(len(self.reader.calls), 1)
+        self.assertEqual(len(revoked), 1)
+        self.assertIs(revoked[0].status, RegisteredProductStatus.REVOKED)
         self.assertEqual(self.truth(), before)
 
     def test_mutated_effective_delivery_during_metadata_read_invalidates_preparation(self):
