@@ -21,6 +21,7 @@ from control_plane_kit_core.runtime_effects import (
 from control_plane_kit_core.secrets import SecretReference, SecretUseIntent
 from control_plane_kit_core.types import RuntimeKind
 from test_runtime_effect_observation import _delivery, _grant, _grant_product
+from tests.test_runtime_authority_recipient import material as target_material
 
 
 AUTHORITY = RuntimeAuthorityReference("remote-docker")
@@ -47,7 +48,10 @@ def grants_for(admission, fresh="a"):
     )
 
 
-def request(*, operation=None, grants=(), products=(), deliveries=(), authority=AUTHORITY):
+def request(*, operation=None, grants=(), products=None, deliveries=(), authority=AUTHORITY):
+    operation = operation or StartNode(NodeTarget("api"))
+    if products is None:
+        products = (target_material(node_id="api", deliveries=()),) if type(operation) is StartNode else ()
     return RuntimeEffectRequest(
         effect_id="event-started-a", kind=RuntimeEffectKind.REALIZE_ACTIVITY,
         runtime_kind=RuntimeKind.DOCKER,
@@ -57,7 +61,7 @@ def request(*, operation=None, grants=(), products=(), deliveries=(), authority=
             intent_event_id="event-started-a",
         ),
         activity_id=ActivityId("activity-a"),
-        operation=operation or StartNode(NodeTarget("api")), authority_ref=authority,
+        operation=operation, authority_ref=authority,
         authority_deliveries=deliveries, secret_resolution_grants=grants,
         products=products,
     )
