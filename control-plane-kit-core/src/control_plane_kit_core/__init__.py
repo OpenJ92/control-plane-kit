@@ -953,6 +953,7 @@ from control_plane_kit_core.secret_installation import (
     SecretResolutionReceipt, SecretResolutionReceiptCodec, SecretInstallationReceipt,
     SecretInstallationReceiptCodec, SecretInstallationDisposition,
     secret_material_selection_fingerprint, secret_installation_receipt_for_result,
+    secret_installation_receipt_for_observation,
 )
 __all__ += [
     "SecretSelectionError", "UnselectedSecretUse", "SecretVersionSelection", "SecretSelection",
@@ -961,4 +962,5 @@ __all__ += [
     "SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt",
     "SecretInstallationReceiptCodec", "SecretInstallationDisposition",
     "secret_material_selection_fingerprint", "secret_installation_receipt_for_result",
+    "secret_installation_receipt_for_observation",
 ]

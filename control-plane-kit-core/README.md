@@ -77,8 +77,19 @@ exact versions for all effective delivered secrets before dispatch. Resolution
 and installation receipts are separate bounded assertions correlated with the
 original request, complete selected slots and resource incarnations. A known
 desired version or prior container identity is never proof of its installed
-secret version. Coexisting configuration/secret receipts must agree on the
-replacement incarnations and disposition.
+secret version. Selected configuration consumers require configuration installation
+proof as well as secret resolution and installation proof. The receipts share the
+original request commitment and must agree on replacement incarnations and
+disposition; secret-material and configuration-selection commitments each match
+their own distinct domain.
+
+`secret_installation_receipt_for_result` validates direct results, and
+`secret_installation_receipt_for_observation` validates the actual observed
+variant and its named bounded evidence against the original request. Neither
+reader changes the supplied evidence or converts an observed status into a
+direct result. Failed or uncertain evidence without success claims establishes
+no installation; contradictory partial success profiles are rejected. Ordinary
+requests without consumer secrets do not acquire installation proof implicitly.
 
 Core supplies syntax and validation only. Operations and Interpreters must
 enforce current authorization, exact resolution, recipient verification and

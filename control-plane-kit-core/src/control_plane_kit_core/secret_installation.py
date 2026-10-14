@@ -7,11 +7,13 @@ import rfc8785
 
 from control_plane_kit_core.configuration_installation import (
     ConfigurationInstallationDisposition, ConfigurationInstallationReceipt,
-    configuration_installation_receipt_for_result,
+    ConfigurationInstallationReceiptCodec, _configuration_receipt_for_correlation,
 )
 from control_plane_kit_core.configuration_invocation import configuration_invocation_correlation_for_request
 from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectObservationEvidence, RuntimeEffectObservationResult, RuntimeEffectObservedSucceeded,
     runtime_effect_intent_for_request, runtime_effect_intent_fingerprint, runtime_effect_result_fingerprint,
+    runtime_effect_observation_fingerprint,
 )
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectRequest, RuntimeEffectContractError, RuntimeEffectKind, EffectResultKind,
@@ -22,6 +24,7 @@ from control_plane_kit_core.secret_version_grants import secret_material_commitm
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _RESOLUTION = "secret_resolution_receipt"
 _INSTALLATION = "secret_installation_receipt"
+_CONFIGURATION = "configuration_installation_receipt"
 _RESOLUTION_PROFILE = "secret-resolution-receipt.v1"
 _INSTALLATION_PROFILE = "secret-installation-receipt.v1"
 _MAX_BYTES = 1024
@@ -115,6 +118,36 @@ def secret_material_selection_fingerprint(request):
     return secret_material_commitment(request.source.workspace_id, request.products[0])
 
 
+def _receipt_from_evidence(request, evidence, *, succeeded):
+    """Validate closed claims after the caller admits its actual envelope."""
+    request_fingerprint = runtime_effect_intent_fingerprint(runtime_effect_intent_for_request(request))
+    required = (type(request.operation) in (StartNode, ReconcileNode)
+                and bool(request.products[0].secret_selections))
+    present = _RESOLUTION in evidence or _INSTALLATION in evidence
+    if not succeeded:
+        _require(not present and not (required and _CONFIGURATION in evidence))
+        return None
+    if not required and not present:
+        return None
+    _require(required and _RESOLUTION in evidence and _INSTALLATION in evidence)
+    resolution = SecretResolutionReceiptCodec().decode(evidence[_RESOLUTION])
+    receipt = SecretInstallationReceiptCodec().decode(evidence[_INSTALLATION])
+    commitment = secret_material_selection_fingerprint(request)
+    for value in (resolution, receipt):
+        _require(value.request_fingerprint == request_fingerprint and value.selection_fingerprint == commitment)
+    if request.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+        _require(_CONFIGURATION in evidence)
+    if _CONFIGURATION in evidence:
+        _require(request.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
+        configuration = _configuration_receipt_for_correlation(
+            configuration_invocation_correlation_for_request(request),
+            ConfigurationInstallationReceiptCodec().decode(evidence[_CONFIGURATION]))
+        _require((configuration.disposition, configuration.prior_realization_fingerprint,
+            configuration.current_realization_fingerprint) == (
+            receipt.disposition, receipt.prior_realization_fingerprint, receipt.current_realization_fingerprint))
+    return receipt
+
+
 def secret_installation_receipt_for_result(request, result):
     """Read complete current evidence; failure/uncertainty remains without proof."""
     receipt = None
@@ -124,28 +157,37 @@ def secret_installation_receipt_for_result(request, result):
         RuntimeEffectRequest.__post_init__(request)
         runtime_effect_result_fingerprint(result)
         _require(result.effect_id == request.effect_id)
-        intent = runtime_effect_intent_for_request(request)
-        request_fingerprint = runtime_effect_intent_fingerprint(intent)
-        required = (type(request.operation) in (StartNode, ReconcileNode)
-                    and bool(request.products[0].secret_selections))
-        present = _RESOLUTION in result.evidence or _INSTALLATION in result.evidence
-        if result.kind is not EffectResultKind.SUCCEEDED:
-            _require(not present)
-        elif required or present:
-            _require(required and _RESOLUTION in result.evidence and _INSTALLATION in result.evidence)
-            resolution = SecretResolutionReceiptCodec().decode(result.evidence[_RESOLUTION])
-            receipt = SecretInstallationReceiptCodec().decode(result.evidence[_INSTALLATION])
-            commitment = secret_material_selection_fingerprint(request)
-            for value in (resolution, receipt):
-                _require(value.request_fingerprint == request_fingerprint and value.selection_fingerprint == commitment)
-            if "configuration_installation_receipt" in result.evidence:
-                _require(request.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
-                configuration = configuration_installation_receipt_for_result(
-                    configuration_invocation_correlation_for_request(request), result)
-                _require(configuration is not None and (
-                    configuration.disposition, configuration.prior_realization_fingerprint,
-                    configuration.current_realization_fingerprint) == (
-                    receipt.disposition, receipt.prior_realization_fingerprint, receipt.current_realization_fingerprint))
+        receipt = _receipt_from_evidence(request, result.evidence,
+            succeeded=result.kind is EffectResultKind.SUCCEEDED)
+        valid = True
+    except (ValueError, TypeError, AttributeError, IndexError, RecursionError):
+        valid = False
+    _require(valid)
+    return receipt
+
+
+def secret_installation_receipt_for_observation(
+    request: RuntimeEffectRequest,
+    observation: RuntimeEffectObservationResult,
+) -> SecretInstallationReceipt | None:
+    """Read the actual bounded observation against the original request."""
+    receipt = None
+    valid = False
+    try:
+        _require(type(request) is RuntimeEffectRequest)
+        RuntimeEffectRequest.__post_init__(request)
+        # The fingerprint owner first rejects non-exact observation variants.
+        runtime_effect_observation_fingerprint(observation)
+        type(observation).__post_init__(observation)
+        if observation.failure is not None:
+            type(observation.failure).__post_init__(observation.failure)
+        _require(observation.effect_id == request.effect_id)
+        _require(observation.request_fingerprint
+            == runtime_effect_intent_fingerprint(runtime_effect_intent_for_request(request)))
+        # Revalidate a detached evidence value; never mutate retained evidence.
+        evidence = RuntimeEffectObservationEvidence(observation.evidence.descriptor()).descriptor()
+        receipt = _receipt_from_evidence(request, evidence,
+            succeeded=type(observation) is RuntimeEffectObservedSucceeded)
         valid = True
     except (ValueError, TypeError, AttributeError, IndexError, RecursionError):
         valid = False
@@ -155,4 +197,5 @@ def secret_installation_receipt_for_result(request, result):
 
 __all__ = ["SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt",
            "SecretInstallationReceiptCodec", "SecretInstallationDisposition",
-           "secret_material_selection_fingerprint", "secret_installation_receipt_for_result"]
+           "secret_material_selection_fingerprint", "secret_installation_receipt_for_result",
+           "secret_installation_receipt_for_observation"]

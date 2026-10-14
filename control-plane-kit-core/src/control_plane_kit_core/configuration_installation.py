@@ -115,6 +115,21 @@ class ConfigurationInstallationReceiptCodec:
         raise failure
 
 
+def _configuration_receipt_for_correlation(
+    context: ConfigurationInvocationCorrelation,
+    receipt: ConfigurationInstallationReceipt,
+) -> ConfigurationInstallationReceipt:
+    """Keep receipt/selection correlation independent from its real envelope."""
+    _require(type(context) is ConfigurationInvocationCorrelation)
+    ConfigurationInvocationCorrelation.__post_init__(context)
+    _require(type(receipt) is ConfigurationInstallationReceipt)
+    ConfigurationInstallationReceipt.__post_init__(receipt)
+    _require(receipt.request_fingerprint == context.request_fingerprint)
+    _require(receipt.selection_fingerprint
+        == configuration_invocation_selection_fingerprint(context.selection))
+    return receipt
+
+
 def configuration_installation_receipt_for_result(
     context: ConfigurationInvocationCorrelation,
     result: RuntimeEffectResult,
@@ -135,10 +150,7 @@ def configuration_installation_receipt_for_result(
         receipt = ConfigurationInstallationReceiptCodec().decode(result.evidence[_KEY])
         _require(result.kind is EffectResultKind.SUCCEEDED)
         _require(result.effect_id == context.effect_id)
-        _require(receipt.request_fingerprint == context.request_fingerprint)
-        _require(receipt.selection_fingerprint
-            == configuration_invocation_selection_fingerprint(context.selection))
-        return receipt
+        return _configuration_receipt_for_correlation(context, receipt)
     except (TypeError, ValueError, AttributeError, RecursionError):
         failure = RuntimeEffectContractError(_ERROR)
     raise failure

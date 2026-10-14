@@ -99,7 +99,7 @@
       "source": "control-plane-kit-core/src/control_plane_kit_core/secret_installation.py",
       "owner": "core", "role": "pure-contract", "semantic_roles": ["values", "validation", "transformations"],
       "movement": "remain", "migration_prerequisites": [],
-      "canonical_public_exports": ["SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt", "SecretInstallationReceiptCodec", "SecretInstallationDisposition", "secret_material_selection_fingerprint", "secret_installation_receipt_for_result"],
+      "canonical_public_exports": ["SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt", "SecretInstallationReceiptCodec", "SecretInstallationDisposition", "secret_material_selection_fingerprint", "secret_installation_receipt_for_result", "secret_installation_receipt_for_observation"],
       "internal_dependencies": [
         "control_plane_kit_core.configuration_installation",
         "control_plane_kit_core.configuration_invocation",
@@ -109,7 +109,7 @@
         "control_plane_kit_core.secret_version_grants"
       ],
       "known_package_consumers": [], "optional_external_dependencies": ["rfc8785"],
-      "protecting_tests": ["tests/test_secret_installation.py"],
+      "protecting_tests": ["tests/test_secret_installation.py", "tests/test_secret_installation_observation.py"],
       "motivation": "Separate bounded resolution and recipient installation assertions with full original request/selection/incarnation correlation and cross-profile coherence."
     },
     {
