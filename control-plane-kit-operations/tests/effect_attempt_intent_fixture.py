@@ -46,6 +46,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectSource,
     RuntimeProductMaterial,
 )
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.secrets import (
     CredentialReference,
     SecretEnvironmentDelivery,
@@ -331,6 +332,11 @@ def product_material(
         runtime_id="docker",
         reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
         product=product,
+        secret_selections=(SecretVersionSelection(
+            SecretReference("secret://local/workspace-a/app/token"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+            "version-1",
+        ),),
         public_environment=(
             PublicStaticEnvironmentBinding("HELLO_MESSAGE", public_value),
         ),
