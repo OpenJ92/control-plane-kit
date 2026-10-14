@@ -586,20 +586,20 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
               (authorization_id, workspace_id, reference_registration_id,
                provider_registration_id, secret_reference, use_intent,
                actor_subject, correlation_id, requested_at, intent_fingerprint,
-               run_id)
+               run_id, authorization_kind)
             VALUES
               ('suse_1111111111111111111111111111111111111111111111111111111111111111',
                'workspace-a', 'reference-registration-a',
                'provider-registration-a',
                'secret://provider-a/database/password', 'postgres.password',
                'operator-a', 'authorization-a', '2026-08-14T00:18:00Z',
-               repeat('d', 64), 'run-secret'),
+               repeat('d', 64), 'run-secret', 'operational'),
               ('suse_2222222222222222222222222222222222222222222222222222222222222222',
                'workspace-a', 'reference-registration-a',
                'provider-registration-a',
                'secret://provider-a/database/password', 'postgres.password',
                'operator-a', 'authorization-b', '2026-08-14T00:19:00Z',
-               repeat('e', 64), NULL);
+               repeat('e', 64), NULL, 'operational');
             """
         )
 

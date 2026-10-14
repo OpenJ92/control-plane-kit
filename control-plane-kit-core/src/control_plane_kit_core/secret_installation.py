@@ -1,6 +1,5 @@
 """Bounded version evidence syntax; only interpreters establish recipient truth."""
 from dataclasses import dataclass
-from hashlib import sha256
 import json
 import re
 
@@ -18,10 +17,9 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectRequest, RuntimeEffectContractError, RuntimeEffectKind, EffectResultKind,
 )
 from control_plane_kit_core.planning import StartNode, ReconcileNode
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretFileDelivery, secret_delivery_sort_key
+from control_plane_kit_core.secret_version_grants import secret_material_commitment
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_DOMAIN = b"control-plane-kit.secret-material-selection.v1\x00"
 _RESOLUTION = "secret_resolution_receipt"
 _INSTALLATION = "secret_installation_receipt"
 _RESOLUTION_PROFILE = "secret-resolution-receipt.v1"
@@ -114,15 +112,7 @@ def secret_material_selection_fingerprint(request):
     _require(type(request) is RuntimeEffectRequest)
     RuntimeEffectRequest.__post_init__(request)
     _require(type(request.operation) in (StartNode, ReconcileNode))
-    material = request.products[0]
-    descriptor = dict(workspace_id=request.source.workspace_id, runtime_id=material.runtime_id,
-        node_id=material.node_id,
-        deliveries=[value.descriptor() for value in sorted(material.product.runtime_contract.secret_deliveries,
-                    key=secret_delivery_sort_key) if type(value) in (SecretEnvironmentDelivery, SecretFileDelivery)],
-        selections=[value.descriptor() for value in material.secret_selections])
-    canonical = rfc8785.dumps(descriptor)
-    _require(len(canonical) <= 1_048_576)
-    return sha256(_DOMAIN + canonical).hexdigest()
+    return secret_material_commitment(request.source.workspace_id, request.products[0])
 
 
 def secret_installation_receipt_for_result(request, result):

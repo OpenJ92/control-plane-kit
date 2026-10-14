@@ -223,6 +223,22 @@ control_plane_kit_core.policies
 The package root re-exports established public values. New code may import from
 the focused modules when module ownership is useful to the reader.
 
+## Secret authorization roles
+
+`SecretResolutionGrant` authorizes operational use such as an image pull,
+health probe, or remote TLS connection. The independent
+`SecretVersionResolutionGrant` authorizes one `SecretVersionSelection` for
+one consuming effect. Its required request and complete material fingerprints
+bind the original intent, including every selected delivery slot. Neither
+grant contains secret bytes or proves recipient installation.
+
+The closed `SecretResolutionGrantCodec` encodes both roles. Request validation
+admits exact nominal values, permits the same reference/use once in each role,
+and rejects duplicates or consumer grants with mismatched commitments.
+Transient grants remain excluded from the original intent fingerprint.
+For an executable composition example, see
+[`test_secret_version_grants.py`](tests/test_secret_version_grants.py).
+
 ## Installation
 
 From this repository checkout:

@@ -99,6 +99,58 @@ class SecretProviderStoreTests(unittest.TestCase):
         self.assertEqual(self.connection.execute(
             "SELECT count(*) FROM cpk_secret_use_authorizations").fetchone(), (1,))
 
+    def test_version_current_schema_scan_accepts_multiple_pages_and_refuses_later_identity_drift(self):
+        from control_plane_kit_operations.postgres.schema import SchemaInstallationError
+
+        # Exercise punctuation and letters across a full 64-row page using real
+        # authorization services. The maintained database chooses its locale;
+        # this test does not create or alter a database/collation environment.
+        workspaces = ("workspace-a", "workspace.a", "workspace_a", "workspacea")
+        registration = self.service()
+        authorization = self.authorization_service()
+        identities = []
+        for workspace_id in workspaces:
+            if workspace_id != "workspace-a":
+                self.connection.execute(
+                    "INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) VALUES (%s,%s,'created')",
+                    (workspace_id, workspace_id))
+            provider = registration.register_provider(self.provider_command(workspace_id=workspace_id))
+            reference = registration.register_reference(self.reference_command(provider.registration_id,
+                workspace_id=workspace_id,
+                reference=SecretReference(f"secret://workspace-secrets/{workspace_id}/postgres/password")))
+            for index in range(17):
+                grant = authorization.authorize_version_resolution(self.version_command(reference.reference,
+                    workspace_id=workspace_id, correlation_id=f"consumer-page-{index}"))
+                identities.append((workspace_id, grant.authorization_id))
+
+        before = self.connection.execute(
+            'SELECT workspace_id,authorization_id,request_fingerprint FROM cpk_secret_use_authorizations '
+            'ORDER BY workspace_id COLLATE "C",authorization_id COLLATE "C"').fetchall()
+        self.assertEqual(len(before), 68)
+        self.assertEqual([(row[0], row[1]) for row in before], sorted(identities))
+        install_schema(self.connection)
+
+        # The last identity is beyond the first scanner page. Changing a valid
+        # commitment preserves SQL shape while invalidating semantic identity.
+        workspace_id, authorization_id, original_fingerprint = before[-1]
+        self.assertGreater(before.index(before[-1]), 63)
+        try:
+            self.connection.execute(
+                "UPDATE cpk_secret_use_authorizations SET request_fingerprint=%s "
+                "WHERE workspace_id=%s AND authorization_id=%s",
+                ("3" * 64, workspace_id, authorization_id))
+            with self.assertRaisesRegex(SchemaInstallationError, "operations schema reset is required"):
+                install_schema(self.connection)
+        finally:
+            self.connection.execute(
+                "UPDATE cpk_secret_use_authorizations SET request_fingerprint=%s "
+                "WHERE workspace_id=%s AND authorization_id=%s",
+                (original_fingerprint, workspace_id, authorization_id))
+        install_schema(self.connection)
+        self.assertEqual(self.connection.execute(
+            'SELECT workspace_id,authorization_id,request_fingerprint FROM cpk_secret_use_authorizations '
+            'ORDER BY workspace_id COLLATE "C",authorization_id COLLATE "C"').fetchall(), before)
+
     def test_version_authorization_conflicts_on_role_version_request_or_material(self):
         _, reference = self.admit_reference()
         command = self.version_command(reference.reference)

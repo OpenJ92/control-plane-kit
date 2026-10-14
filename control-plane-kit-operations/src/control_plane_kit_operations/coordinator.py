@@ -71,9 +71,6 @@ from control_plane_kit_core.configuration_instances import (
     ConfigurationCleanupReason, ConfigurationCleanupStatus,
 )
 from control_plane_kit_core.planning import CleanupConfigurationInstances
-from control_plane_kit_core.secrets import (
-    SecretResolutionGrant,
-)
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.activity_journal import activity_journal_events
@@ -156,10 +153,12 @@ from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_execution_is_unsupported,
 )
 from control_plane_kit_operations.secret_providers import (
-    AuthorizeSecretUse,
     SecretProviderRegistrationError,
     SecretUseResolutionAuthorizer,
-    secret_use_correlation_for,
+    authorize_runtime_secret_command,
+)
+from control_plane_kit_operations.runtime_adapter_registration import (
+    RuntimeAdapterRegistration, adapter_is_qualified, registered_adapter,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -627,17 +626,17 @@ class RuntimeAuthorityAwareInterpreter(Protocol):
 class RuntimeInterpreterDispatcher:
     """Operations-owned adapter that dispatches pinned work by runtime kind."""
 
-    interpreters: Mapping[RuntimeKind, RuntimeEffectInterpreter]
+    interpreters: Mapping[RuntimeKind, RuntimeEffectInterpreter | RuntimeAdapterRegistration]
     secret_use_authorizer: SecretUseResolutionAuthorizer | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.interpreters, Mapping):
             raise InvalidOperationCommand("runtime interpreters must be a mapping")
-        normalized: dict[RuntimeKind, RuntimeEffectInterpreter] = {}
+        normalized: dict[RuntimeKind, RuntimeEffectInterpreter | RuntimeAdapterRegistration] = {}
         for key, interpreter in self.interpreters.items():
             if not isinstance(key, RuntimeKind):
                 raise InvalidOperationCommand("runtime interpreter keys must be RuntimeKind")
-            if not hasattr(interpreter, "execute"):
+            if not hasattr(registered_adapter(interpreter), "execute"):
                 raise InvalidOperationCommand("runtime interpreter must expose execute")
             normalized[key] = interpreter
         object.__setattr__(self, "interpreters", normalized)
@@ -709,6 +708,14 @@ class RuntimeInterpreterDispatcher:
                 "runtime authority reference has no active registration",
                 runtime_kind=runtime_kind,
             )
+        arm = "execute" if authority is None else "execute_with_authority"
+        if not adapter_is_qualified(interpreter, request, arm):
+            return _unsupported_runtime_result(request, "runtime.secret-version-unsupported",
+                "runtime adapter is not qualified for exact consumer versions", runtime_kind=runtime_kind)
+        interpreter = registered_adapter(interpreter)
+        if not callable(getattr(interpreter, arm, None)):
+            return _unsupported_runtime_result(request, "runtime.authority-interpreter-unsupported",
+                "runtime adapter does not implement the required arm", runtime_kind=runtime_kind)
         try:
             request = self._authorize_secret_resolutions(
                 context,
@@ -778,42 +785,12 @@ class RuntimeInterpreterDispatcher:
             raise InvalidOperationCommand(
                 "runtime secret resolution requires an operations authorizer"
             )
-        grants: list[SecretResolutionGrant] = []
-        for reference, intent in required_uses:
-            grant = self.secret_use_authorizer.authorize_resolution(
-                AuthorizeSecretUse(
-                    workspace_id=request.source.workspace_id,
-                    reference=reference,
-                    intent=intent,
-                    actor_subject=context.authority.worker_id,
-                    correlation_id=secret_use_correlation_for(
-                        workspace_id=request.source.workspace_id,
-                        reference=reference,
-                        intent=intent,
-                        actor_subject=context.authority.worker_id,
-                        operation_id=request.source.request_id,
-                        run_id=request.source.run_id.value,
-                        activity_id=request.activity_id.value,
-                        effect_id=request.effect_id,
-                    ),
-                    requested_at=context.intent_event.occurred_at,
-                    actor_scopes=context.authority.scopes,
-                    operation_id=request.source.request_id,
-                    run_id=request.source.run_id.value,
-                    activity_id=request.activity_id.value,
-                    effect_id=request.effect_id,
-                )
-            )
-            if (
-                not isinstance(grant, SecretResolutionGrant)
-                or grant.workspace_id != request.source.workspace_id
-                or grant.effect_id != request.effect_id
-                or not grant.permits(reference, intent)
-            ):
-                raise InvalidOperationCommand(
-                    "secret use authorizer returned an invalid resolution grant"
-                )
-            grants.append(grant)
+        grants = []
+        for use in required_uses:
+            command = secret_authorization_command(request, use,
+                actor_subject=context.authority.worker_id, requested_at=context.intent_event.occurred_at,
+                actor_scopes=context.authority.scopes)
+            grants.append(authorize_runtime_secret_command(self.secret_use_authorizer, command))
         return replace(
             request,
             secret_resolution_grants=tuple(grants),
@@ -2409,6 +2386,7 @@ class _CoordinatorContext:
 from control_plane_kit_operations.runtime_effects import (
     _runtime_effect_intent_for_context,
     required_secret_uses_for_runtime_effect,
+    secret_authorization_command,
 )
 from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import (
     EffectAttemptReconciliationService,

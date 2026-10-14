@@ -134,10 +134,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "d2c0c861f495f99ea3132ac6799172af67d5000f8741fab62a4ab6c18cb0aada"
+    "c3b6c85f8ce78b77b9af6b97151b2472aa3bee18ae49582649b431f8c29ad42d"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "306683ab1e28acd545d17a98c53d7840fe03893f879137df30f2c0eac7e8d9c8"
+    "0ddf223858316741fdf907f8332009670746cfa4dc24c858bf50405a25091935"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -431,8 +431,8 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         self.assertEqual(len(contract.relations), 56)
-        self.assertEqual(len(contract.columns), 715)
-        self.assertEqual(len(contract.constraints), 631)
+        self.assertEqual(len(contract.columns), 719)
+        self.assertEqual(len(contract.constraints), 633)
         self.assertEqual(len(contract.indexes), 194)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
@@ -670,7 +670,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (56, 715, 631, 194))
+        self.assertEqual(self._catalog_counts(), (56, 719, 633, 194))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -810,10 +810,10 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                 "INSERT INTO cpk_secret_use_authorizations "
                 "(authorization_id, workspace_id, reference_registration_id, "
                 "provider_registration_id, secret_reference, use_intent, actor_subject, "
-                "correlation_id, requested_at, intent_fingerprint) "
+                "correlation_id, requested_at, intent_fingerprint, authorization_kind) "
                 "VALUES (%s, 'workspace-a', 'reference-registration-a', "
                 "'provider-registration-a', 'secret://provider-a/signing/key', %s, "
-                "'operator-a', %s, '2026-08-11T00:00:00Z', %s)",
+                "'operator-a', %s, '2026-08-11T00:00:00Z', %s, 'operational')",
                 (f"suse_{index:064x}", intent, f"health-use-{index}", f"{index:064x}"),
             )
         before_objects, before_rows = self._object_identities(), self._authority_rows()
@@ -1343,10 +1343,10 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                 "INSERT INTO cpk_secret_use_authorizations ("
                 "authorization_id, workspace_id, reference_registration_id, "
                 "provider_registration_id, secret_reference, use_intent, "
-                "actor_subject, correlation_id, requested_at, intent_fingerprint"
+                "actor_subject, correlation_id, requested_at, intent_fingerprint, authorization_kind"
                 ") VALUES (%s, 'workspace-a', 'reference-registration-a', "
                 "'provider-registration-a', 'secret://provider-a/signing/key', "
-                "%s, 'operator-a', %s, '2026-08-11T00:00:00Z', %s)",
+                "%s, 'operator-a', %s, '2026-08-11T00:00:00Z', %s, 'operational')",
                 (
                     f"suse_{index:064x}",
                     intent,

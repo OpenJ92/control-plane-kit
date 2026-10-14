@@ -946,6 +946,9 @@ from control_plane_kit_core.secret_selections import (
     secret_selection_from_descriptor,
 )
 from control_plane_kit_core.topology.secret_selection import carry_forward_secret_selections
+from control_plane_kit_core.secret_version_grants import (
+    SecretVersionResolutionGrant, SecretResolutionGrantCodec, ResolutionGrant,
+)
 from control_plane_kit_core.secret_installation import (
     SecretResolutionReceipt, SecretResolutionReceiptCodec, SecretInstallationReceipt,
     SecretInstallationReceiptCodec, SecretInstallationDisposition,
@@ -953,6 +956,7 @@ from control_plane_kit_core.secret_installation import (
 )
 __all__ += [
     "SecretSelectionError", "UnselectedSecretUse", "SecretVersionSelection", "SecretSelection",
+    "SecretVersionResolutionGrant", "SecretResolutionGrantCodec", "ResolutionGrant",
     "secret_selection_from_descriptor", "carry_forward_secret_selections",
     "SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt",
     "SecretInstallationReceiptCodec", "SecretInstallationDisposition",

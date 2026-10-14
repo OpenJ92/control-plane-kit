@@ -12,7 +12,7 @@ from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservationRequest,
     runtime_effect_request_for_intent,
 )
-from control_plane_kit_core.secrets import SecretResolutionGrant
+from control_plane_kit_core.secret_version_grants import ResolutionGrant
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -54,15 +54,16 @@ from control_plane_kit_operations.runtime_authorities import (
 )
 from control_plane_kit_operations.runtime_effects import (
     required_secret_uses_for_runtime_effect,
+    secret_authorization_command,
 )
 from control_plane_kit_operations.secret_providers import (
-    AuthorizeSecretUse,
     SecretProviderAuthorizationDenied,
     SecretProviderRegistrationError,
     SecretUseAuthorizationConflict,
     SecretUseAuthorizationService,
-    secret_use_correlation_for,
+    authorize_runtime_secret_command,
 )
+from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration, adapter_is_qualified, registered_adapter
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
@@ -78,7 +79,7 @@ class EffectAttemptReconciliationService:
     def __init__(
         self,
         unit_of_work_factory: Callable[[], Any],
-        observer: RuntimeEffectObserver,
+        observer: RuntimeEffectObserver | RuntimeAdapterRegistration,
         fold_service: Any,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -379,7 +380,7 @@ def _authorize_required_secrets(
     runtime_request: Any,
     runtime_authority: RegisteredRuntimeAuthority | None,
     observed_at: str,
-) -> tuple[SecretResolutionGrant, ...]:
+) -> tuple[ResolutionGrant, ...]:
     uses = required_secret_uses_for_runtime_effect(
         runtime_request,
         runtime_authority,
@@ -391,35 +392,17 @@ def _authorize_required_secrets(
 
     grants = ()
     authorization_error = False
-    for reference, intent in uses:
-        values = {
-            "workspace_id": intent_record.workspace_id,
-            "reference": reference,
-            "intent": intent,
-            "actor_subject": command.authority.worker_id,
-            "operation_id": intent_record.request_id,
-            "run_id": attempt.state.identity.run_id.value,
-            "activity_id": attempt.state.identity.activity_id,
-            "effect_id": attempt.original_start_event.event_id,
-        }
+    for use in uses:
         try:
-            authorization = AuthorizeSecretUse(
-                **values,
-                correlation_id=secret_use_correlation_for(**values),
-                requested_at=observed_at,
-                actor_scopes=command.authority.scopes,
-            )
-            grant = self._secret_use_authorizer.authorize_resolution(
-                authorization
-            )
+            authorization = secret_authorization_command(runtime_request, use,
+                actor_subject=command.authority.worker_id, requested_at=observed_at,
+                actor_scopes=command.authority.scopes)
+            grant = authorize_runtime_secret_command(self._secret_use_authorizer, authorization)
         except (
             SecretProviderAuthorizationDenied,
             SecretProviderRegistrationError,
             SecretUseAuthorizationConflict,
         ):
-            authorization_error = True
-            break
-        if type(grant) is not SecretResolutionGrant:
             authorization_error = True
             break
         grants = (*grants, grant)
@@ -436,26 +419,17 @@ def _fresh_observed_fold(
     runtime_authority: RegisteredRuntimeAuthority | None,
     observed_at: str,
 ) -> EffectAttemptFoldResult:
-    grants = ()
-    uses_pending = True
-    runtime_request = None
-    for _ in (False, True):
-        runtime_request = runtime_effect_request_for_intent(
-            intent_record.intent,
-            effect_id=attempt.original_start_event.event_id,
-            secret_resolution_grants=grants,
-        )
-        if uses_pending:
-            grants = _authorize_required_secrets(
-                self,
-                command,
-                attempt,
-                intent_record,
-                runtime_request,
-                runtime_authority,
-                observed_at,
-            )
-            uses_pending = False
+    runtime_request = runtime_effect_request_for_intent(intent_record.intent,
+        effect_id=attempt.original_start_event.event_id)
+    if not adapter_is_qualified(self._observer, runtime_request, "observe"):
+        raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
+    observer = registered_adapter(self._observer)
+    if not callable(getattr(observer, "observe", None)):
+        raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
+    grants = _authorize_required_secrets(self, command, attempt, intent_record,
+        runtime_request, runtime_authority, observed_at)
+    runtime_request = runtime_effect_request_for_intent(intent_record.intent,
+        effect_id=attempt.original_start_event.event_id, secret_resolution_grants=grants)
 
     connection_admission = None
     if runtime_authority is not None and isinstance(runtime_authority.authority, RemoteDockerTlsAuthority):
@@ -469,7 +443,7 @@ def _fresh_observed_fold(
     observation_request = RuntimeEffectObservationRequest(
         runtime_request, connection_admission=connection_admission
     )
-    observation_result = self._observer.observe(
+    observation_result = observer.observe(
         observation_request,
         runtime_authority,
     )

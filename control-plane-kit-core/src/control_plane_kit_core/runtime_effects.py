@@ -63,6 +63,10 @@ from control_plane_kit_core.secret_selections import (
     SecretSelection, SecretVersionSelection, normalize_secret_selections,
     secret_selections_from_descriptor,
 )
+from control_plane_kit_core.secret_version_grants import (
+    ResolutionGrant, SecretVersionResolutionGrant, resolution_grant_key,
+    secret_material_commitment, request_intent_commitment,
+)
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import (
     VerificationCompleted,
@@ -508,7 +512,7 @@ class RuntimeEffectRequest:
     operation: ActivityOperation
     authority_ref: RuntimeAuthorityReference | None = None
     authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
-    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = field(
+    secret_resolution_grants: tuple[ResolutionGrant, ...] = field(
         default=(),
         repr=False,
     )
@@ -572,45 +576,6 @@ class RuntimeEffectRequest:
                         "runtime authority delivery reference must match request authority"
                     )
         object.__setattr__(self, "authority_deliveries", authority_deliveries)
-        secret_resolution_grants = tuple(
-            sorted(
-                self.secret_resolution_grants,
-                key=lambda value: (
-                    value.reference.reference_id,
-                    value.intent.value,
-                    value.authorization_id,
-                ),
-            )
-        )
-        if not all(
-            isinstance(value, SecretResolutionGrant)
-            for value in secret_resolution_grants
-        ):
-            raise RuntimeEffectContractError(
-                "runtime secret resolution grants must be SecretResolutionGrant"
-            )
-        grant_uses = tuple(
-            (value.reference, value.intent)
-            for value in secret_resolution_grants
-        )
-        if len(set(grant_uses)) != len(grant_uses):
-            raise RuntimeEffectContractError(
-                "runtime secret resolution grants must be unique by reference and intent"
-            )
-        for grant in secret_resolution_grants:
-            if grant.workspace_id != self.source.workspace_id:
-                raise RuntimeEffectContractError(
-                    "runtime secret resolution grant workspace must match request"
-                )
-            if grant.effect_id is not None and grant.effect_id != self.effect_id:
-                raise RuntimeEffectContractError(
-                    "runtime secret resolution grant effect must match request"
-                )
-        object.__setattr__(
-            self,
-            "secret_resolution_grants",
-            secret_resolution_grants,
-        )
         if not isinstance(self.activity_id, ActivityId):
             raise RuntimeEffectContractError("activity_id must be ActivityId")
         if isinstance(self.operation, ReviewChange):
@@ -638,6 +603,7 @@ class RuntimeEffectRequest:
             self.authority_deliveries, self.configuration_instances,
         )
         _validate_selected_target_material(self.operation, self.products)
+        _validate_resolution_grants(self)
 
     def descriptor(self) -> dict[str, object]:
         _validate_selected_target_material(self.operation, self.products)
@@ -658,6 +624,45 @@ class RuntimeEffectRequest:
             "operation": activity_operation_descriptor(self.operation),
             "products": [value.descriptor() for value in self.products],
         }
+
+
+def _validate_resolution_grants(request):
+    valid = False
+    try:
+        grants = request.secret_resolution_grants
+        if type(grants) is not tuple:
+            raise ValueError
+        keys = tuple(resolution_grant_key(grant) for grant in grants)
+        if len(keys) != len(set(keys)):
+            raise RuntimeEffectContractError("runtime secret resolution grants must be unique by role and use")
+        consumers = tuple(grant for grant in grants if type(grant) is SecretVersionResolutionGrant)
+        if consumers:
+            if type(request.operation) not in (StartNode, ReconcileNode) or len(request.products) != 1:
+                raise ValueError
+            material = request.products[0]
+            request_fingerprint = request_intent_commitment(request.descriptor())
+            selection_fingerprint = secret_material_commitment(request.source.workspace_id, material)
+            for grant in consumers:
+                if (grant.selection not in material.secret_selections
+                        or grant.operation_id != request.source.request_id
+                        or grant.run_id != request.source.run_id.value
+                        or grant.activity_id != request.activity_id.value
+                        or grant.effect_id != request.effect_id
+                        or grant.request_fingerprint != request_fingerprint
+                        or grant.selection_fingerprint != selection_fingerprint):
+                    raise ValueError
+        for grant in grants:
+            if (grant.workspace_id != request.source.workspace_id
+                    or (grant.effect_id is not None and grant.effect_id != request.effect_id)):
+                raise ValueError
+        valid = True
+    except RuntimeEffectContractError:
+        raise
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        valid = False
+    if not valid:
+        raise RuntimeEffectContractError("runtime secret resolution grant is not admitted")
+    object.__setattr__(request, "secret_resolution_grants", tuple(sorted(grants, key=resolution_grant_key)))
 
 
 def _validate_selected_target_material(operation, products):

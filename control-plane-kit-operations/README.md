@@ -289,6 +289,45 @@ There is intentionally no upgrade, version, ledger, backfill, or compatibility
 API. Operators must deliberately reset a noncurrent owned namespace after
 separately preserving any data they value.
 
+## Exact-version consumer authorization
+
+`AuthorizeSecretVersionUse` and `AuthorizedSecretVersionUse` are independent
+from the operational command/record types. The authorization service locks the
+workspace correlation, rechecks current provider/reference admission, and
+inserts or replays one immutable version-bound record in the existing unit of
+work. Revocation blocks reuse; changed intent at the same correlation conflicts.
+Operational correlation and fingerprint recipes remain unchanged.
+
+Runtime enumeration returns `OperationalSecretUse` or an exact Core
+`SecretVersionSelection`. A delivery and a probe may share a reference/use
+without sharing authority. Cleanup does not acquire consumer resolution work.
+Both dispatch and recovery check the actual invocation arm before authorization
+or adapter IO. Composition declares each arm explicitly:
+
+```python
+registration = RuntimeAdapterRegistration(
+    adapter=adapter,
+    exact_version_execute=True,
+    exact_version_execute_with_authority=False,
+    exact_version_observe=True,
+)
+```
+
+This declaration is a trusted composition choice, not conformance evidence.
+The owning examples in
+[`test_secret_version_dispatch.py`](tests/test_secret_version_dispatch.py)
+exercise both execution arms and wrong-grant refusals. Production adapters
+must separately prove exact resolution and installation. Receipt admission,
+fold/advance acceptance, and production qualification remain subsequent gates.
+
+The current authorization schema adds a required role and three consumer-only
+columns with conditional constraints. Raw node-control signing readers require
+the operational role. Generic reads validate role and authorization identity;
+current-schema verification scans consumer records in bounded batches.
+Old namespaces are refused unchanged: this change supplies no migration,
+reset, historical relabeling, or fabricated version. Database adoption must be
+separately scoped by the consuming server deployment.
+
 ## Package Map
 
 Important modules include:
