@@ -103,7 +103,7 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
         engine.database_url, engine.connection = self.database_url, self.connection
         engine.tracker = coordinator_fixture.TrackingUnitOfWorkFactory(self.database_url)
         engine.reset_execution_request(plan=template.plan_record.plan,
-            base_graph=execution_graph("current", runtime_id="docker"),
+            base_graph=execution_graph("current", runtime_id="runtime-a"),
             desired_graph=DEFAULT_GRAPH_CODEC.decode(template.desired_graph.graph_descriptor),
             product_document=template.registered_products[0].descriptor_document)
         authority = self.authority(scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
@@ -140,7 +140,9 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
         self.assertIs(type(intent.operation), StartNode)
         self.assertEqual(intent.operation, activity.operation)
         self.assertEqual(intent.operation.target.node_id, material.node_id)
-        self.assertEqual(material.runtime_id, "docker")
+        self.assertEqual(material.runtime_id, "runtime-a")
+        self.assertEqual(material.runtime_id,
+            DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor).node("api").runtime_id)
         self.assertTrue(material.secret_selections)
         self.assertTrue(all(type(value) is SecretVersionSelection for value in material.secret_selections))
         self.assertEqual(retained.intent, intent)
