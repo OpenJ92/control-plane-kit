@@ -44,6 +44,53 @@ runtime delivery, authorize replay of historical effects, or migrate stored grap
 
 ## Language Families
 
+### Deployment-instance Secret Versions
+
+Each node records one `SecretVersionSelection(reference, intent, version_id)`
+per effective value-resolving reference/use, shared by all its delivery slots.
+Compilation explicitly records `UnselectedSecretUse` when a version is not yet
+known. Current graph descriptors require the selection array; a missing field
+does not imply permission to resolve the latest version. Reusable product
+descriptors contain delivery contracts, not instance version choices.
+
+The pure `carry_forward_secret_selections(previous_graph, desired_graph,
+explicit_choices, *, product_documents=())` transformation preserves exact known
+choices across compatible image/configuration edits. Explicit choices use a
+mapping from node ID to a tuple of `SecretVersionSelection` values. For example:
+
+```python
+successor = carry_forward_secret_selections(
+    previous_graph, authored_graph,
+    {"api": (SecretVersionSelection(reference, intent, "version-2"),)},
+    product_documents=(previous_product_document, successor_product_document),
+)
+```
+
+Changed registered product coordinates require both exact canonical documents.
+They prove pure contract compatibility, not registry admission or authority.
+An incompatible delivery remains explicitly unresolved until an explicit valid
+choice is supplied. Version-only changes produce a real graph difference and
+node reconciliation. Stops/removals need not invent historical versions.
+
+Every current StartNode/ReconcileNode request has complete target material and
+exact versions for all effective delivered secrets before dispatch. Resolution
+and installation receipts are separate bounded assertions correlated with the
+original request, complete selected slots and resource incarnations. A known
+desired version or prior container identity is never proof of its installed
+secret version. Coexisting configuration/secret receipts must agree on the
+replacement incarnations and disposition.
+
+Core supplies syntax and validation only. Operations and Interpreters must
+enforce current authorization, exact resolution, recipient verification and
+result/recovery admission before adopting this contract. Existing downstream
+production remains pinned until that compatible chain is ready; generic success
+or an older resolver cannot stand in for the required version evidence.
+
+The structural `compile_activity_plan` recognizes a version-only difference as
+ReconcileNode. Managed-update policy admission remains closed for this new
+shape; Operations #1975 and the Servers #252 composition must enable it only
+with the compatible resolution, authorization and receipt checks in place.
+
 ### Topology And Products
 
 - deployment topologies, runtimes, blocks, nodes, and graph descriptors;

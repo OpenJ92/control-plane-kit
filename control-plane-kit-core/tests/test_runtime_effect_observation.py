@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from control_plane_kit_core.secret_selections import SecretVersionSelection
+from tests.test_runtime_effects import _product_material as _complete_material
+
 from collections import UserDict
 from dataclasses import fields, replace
 import hashlib
@@ -179,6 +182,9 @@ def _grant_set(fresh: str) -> tuple[SecretResolutionGrant, ...]:
 def _grant_product() -> RuntimeProductMaterial:
     identity = ProductIdentity("openj92", "secret-using-server", 1)
     return RuntimeProductMaterial(
+        secret_selections=(SecretVersionSelection(
+            SecretReference("secret://local/workspace-a/app/token"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN, "version-1"),),
         node_id="api",
         runtime_id="docker",
         reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
@@ -253,7 +259,7 @@ def _request(
     *,
     grants: tuple[SecretResolutionGrant, ...] = (),
     effect_id: str = "event-started-a",
-    products: tuple[RuntimeProductMaterial, ...] = (),
+    products: tuple[RuntimeProductMaterial, ...] | None = None,
 ) -> RuntimeEffectRequest:
     return RuntimeEffectRequest(
         effect_id=effect_id,
@@ -273,7 +279,7 @@ def _request(
         authority_ref=RuntimeAuthorityReference("remote-docker"),
         authority_deliveries=(),
         secret_resolution_grants=grants,
-        products=products,
+        products=(_complete_material(),) if products is None else products,
     )
 
 

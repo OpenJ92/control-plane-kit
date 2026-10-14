@@ -59,6 +59,10 @@ from control_plane_kit_core.secrets import (
     SecretResolutionError,
     SecretResolutionGrant,
 )
+from control_plane_kit_core.secret_selections import (
+    SecretSelection, SecretVersionSelection, normalize_secret_selections,
+    secret_selections_from_descriptor,
+)
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import (
     VerificationCompleted,
@@ -228,6 +232,7 @@ class RuntimeProductMaterial:
     socket_environment: tuple[SocketDerivedEnvironmentBinding, ...] = ()
     pull_authority: ImagePullAuthority | None = None
     runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
+    secret_selections: tuple[SecretSelection, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "runtime_authority_deliveries",
@@ -240,6 +245,8 @@ class RuntimeProductMaterial:
             raise RuntimeEffectContractError("product must be ContainerServerProduct")
         if self.reference.identity != self.product.identity:
             raise RuntimeEffectContractError("product material identity mismatch")
+        object.__setattr__(self, "secret_selections", normalize_secret_selections(
+            self.product.runtime_contract.secret_deliveries, self.secret_selections))
         public_environment = tuple(sorted(self.public_environment))
         if not all(
             isinstance(value, PublicStaticEnvironmentBinding)
@@ -280,6 +287,8 @@ class RuntimeProductMaterial:
         return {
             "node_id": self.node_id,
             "runtime_id": self.runtime_id,
+            "secret_selections": [value.descriptor() for value in normalize_secret_selections(
+                self.product.runtime_contract.secret_deliveries, self.secret_selections)],
             **({"runtime_authority_deliveries": [value.descriptor()
                  for value in self.runtime_authority_deliveries]}
                if self.runtime_authority_deliveries else {}),
@@ -298,7 +307,7 @@ class RuntimeProductMaterial:
 
     @classmethod
     def from_descriptor(cls, value: Mapping[str, object]) -> "RuntimeProductMaterial":
-        expected_keys = _PRODUCT_MATERIAL_KEYS | (
+        expected_keys = _PRODUCT_MATERIAL_KEYS | {"secret_selections"} | (
             {"runtime_authority_deliveries"} if "runtime_authority_deliveries" in value else set()
         )
         _require_keys(value, expected_keys, "runtime product material")
@@ -308,6 +317,7 @@ class RuntimeProductMaterial:
         return cls(
             node_id=_text(value, "node_id"),
             runtime_id=_text(value, "runtime_id"),
+            secret_selections=secret_selections_from_descriptor(value.get("secret_selections")),
             reference=ProductReferenceCodec().decode(
                 _mapping(value, "reference", "runtime product material")
             ),
@@ -627,8 +637,10 @@ class RuntimeEffectRequest:
             self.kind, self.operation, self.source.workspace_id, products,
             self.authority_deliveries, self.configuration_instances,
         )
+        _validate_selected_target_material(self.operation, self.products)
 
     def descriptor(self) -> dict[str, object]:
+        _validate_selected_target_material(self.operation, self.products)
         return {
             "effect_id": self.effect_id,
             **({"configuration_instances": ConfigurationInstanceSelectionCodec().encode(self.configuration_instances)}
@@ -646,6 +658,27 @@ class RuntimeEffectRequest:
             "operation": activity_operation_descriptor(self.operation),
             "products": [value.descriptor() for value in self.products],
         }
+
+
+def _validate_selected_target_material(operation, products):
+    """All current byte-delivery requests have one exact, completely selected target."""
+    if isinstance(operation, (StartNode, ReconcileNode)) and type(operation) not in (StartNode, ReconcileNode):
+        raise RuntimeEffectContractError("runtime target operation must use the exact current variant")
+    if type(operation) not in (StartNode, ReconcileNode):
+        return
+    if len(products) != 1 or type(products[0]) is not RuntimeProductMaterial:
+        raise RuntimeEffectContractError("runtime target material is incomplete")
+    material = products[0]
+    if material.node_id != operation.target.node_id:
+        raise RuntimeEffectContractError("runtime target material does not match operation")
+    valid = True
+    try:
+        RuntimeProductMaterial.__post_init__(material)
+        valid = all(type(value) is SecretVersionSelection for value in material.secret_selections)
+    except (TypeError, ValueError):
+        valid = False
+    if not valid:
+        raise RuntimeEffectContractError("runtime target requires complete exact secret versions")
 
 
 def _validate_runtime_authority_recipient(

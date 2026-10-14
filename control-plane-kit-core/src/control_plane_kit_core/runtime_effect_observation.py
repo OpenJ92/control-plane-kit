@@ -38,6 +38,7 @@ from control_plane_kit_core.runtime_effects import (
     activity_operation_descriptor,
     _validate_runtime_authority_recipient,
     _validate_configuration_effect,
+    _validate_selected_target_material,
 )
 from control_plane_kit_core.secrets import SecretResolutionGrant, SecretUseIntent
 from control_plane_kit_core.verification import (
@@ -145,8 +146,10 @@ class RuntimeEffectIntent:
             self.kind, self.operation, self.source.workspace_id, self.products,
             self.authority_deliveries, self.configuration_instances,
         )
+        _validate_selected_target_material(self.operation, self.products)
 
     def descriptor(self) -> dict[str, object]:
+        _validate_selected_target_material(self.operation, self.products)
         return {
             **({"configuration_instances": ConfigurationInstanceSelectionCodec().encode(self.configuration_instances)}
                if self.configuration_instances is not None else {}),

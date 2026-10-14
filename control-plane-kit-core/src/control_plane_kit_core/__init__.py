@@ -940,3 +940,21 @@ __all__ += [
     "GatewayReceiverNodeControlTransitGrantVerificationResult", "verify_gateway_receiver_node_control_transit_grant",
     "ReceiverNodeControlResultProfile", "ReceiverNodeControlResult", "ReceiverNodeControlResultCodec",
 ]
+
+from control_plane_kit_core.secret_selections import (
+    SecretSelectionError, UnselectedSecretUse, SecretVersionSelection, SecretSelection,
+    secret_selection_from_descriptor,
+)
+from control_plane_kit_core.topology.secret_selection import carry_forward_secret_selections
+from control_plane_kit_core.secret_installation import (
+    SecretResolutionReceipt, SecretResolutionReceiptCodec, SecretInstallationReceipt,
+    SecretInstallationReceiptCodec, SecretInstallationDisposition,
+    secret_material_selection_fingerprint, secret_installation_receipt_for_result,
+)
+__all__ += [
+    "SecretSelectionError", "UnselectedSecretUse", "SecretVersionSelection", "SecretSelection",
+    "secret_selection_from_descriptor", "carry_forward_secret_selections",
+    "SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt",
+    "SecretInstallationReceiptCodec", "SecretInstallationDisposition",
+    "secret_material_selection_fingerprint", "secret_installation_receipt_for_result",
+]

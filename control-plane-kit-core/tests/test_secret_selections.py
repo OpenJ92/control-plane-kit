@@ -1,6 +1,6 @@
 """#1974 pure instance selection laws; no provider or installed truth is invented."""
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import replace, fields
 import importlib
 import unittest
 
@@ -166,6 +166,12 @@ class SecretSelectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             authoring.carry_forward_secret_selections(current, desired.update_node(partial_node), {},
                                                       product_documents=documents)
+        for key, malformed in (("product_identity", "example/service/01"),
+                               ("oci_image", "ghcr.io/example/service:latest")):
+            bad_node = replace(current.node("service"), metadata={**current.node("service").metadata, key: malformed})
+            unchanged_bad = current.update_node(bad_node)
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                authoring.carry_forward_secret_selections(unchanged_bad, unchanged_bad, {})
         changed_delivery = replace(delivery, target_path="/run/secrets/another-key")
         incompatible = replace(successor, runtime_contract=replace(successor.runtime_contract,
                                                                    secret_deliveries=(changed_delivery,)))
@@ -214,6 +220,41 @@ class SecretSelectionTests(unittest.TestCase):
                     with self.subTest(operation=type(operation).__name__, products=len(products)), \
                             self.assertRaises(RuntimeEffectContractError):
                         replace(value, products=products)
+
+    def test_non_nominal_operations_and_deliveries_cannot_bypass_selection(self):
+        language()
+        request = request_with_version()
+        for operation in (StartNode, ReconcileNode):
+            derived = type("DerivedOperation", (operation,), {})
+            with self.assertRaises(RuntimeEffectContractError):
+                replace(request, operation=derived(NodeTarget("api")), products=(),
+                        kind=RuntimeEffectKind.REALIZE_ACTIVITY, configuration_instances=None)
+        graph = secret_graph("database")
+        node = graph.node("service")
+        delivery = node.secret_deliveries[0]
+        derived = type("DerivedDelivery", (type(delivery),), {})
+        candidate = derived(**{field.name: getattr(delivery, field.name) for field in fields(delivery) if field.init})
+        with self.assertRaises(ValueError):
+            replace(node, secret_deliveries=(candidate,), secret_selections=())
+
+    def test_forged_nominal_request_and_intent_refuse_at_canonical_projection(self):
+        m = language()
+        request = request_with_version()
+        material = request.products[0]
+        entry = material.secret_selections[0]
+        unresolved = replace(material, secret_selections=(m.UnselectedSecretUse(entry.reference, entry.intent),))
+        for value in (request, runtime_effect_intent_for_request(request)):
+            for products in ((), (unresolved,)):
+                forged = object.__new__(type(value))
+                for field in fields(value):
+                    object.__setattr__(forged, field.name, products if field.name == "products" else getattr(value, field.name))
+                with self.assertRaises(RuntimeEffectContractError):
+                    forged.descriptor()
+                with self.assertRaises(RuntimeEffectContractError):
+                    if type(value) is type(request):
+                        runtime_effect_intent_for_request(forged)
+                    else:
+                        runtime_effect_intent_fingerprint(forged)
 
 
 if __name__ == "__main__":

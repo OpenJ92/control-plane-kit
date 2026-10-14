@@ -392,6 +392,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
             source=_source(),
             activity_id=ActivityId("activity-a"),
             operation=StartNode(NodeTarget("api")),
+            products=(_product_material(),),
         )
 
         descriptor = request.descriptor()

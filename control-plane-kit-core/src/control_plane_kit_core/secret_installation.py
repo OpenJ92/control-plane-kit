@@ -1,0 +1,168 @@
+"""Bounded version evidence syntax; only interpreters establish recipient truth."""
+from dataclasses import dataclass
+from hashlib import sha256
+import json
+import re
+
+import rfc8785
+
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition, ConfigurationInstallationReceipt,
+    configuration_installation_receipt_for_result,
+)
+from control_plane_kit_core.configuration_invocation import configuration_invocation_correlation_for_request
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_for_request, runtime_effect_intent_fingerprint, runtime_effect_result_fingerprint,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectRequest, RuntimeEffectContractError, RuntimeEffectKind, EffectResultKind,
+)
+from control_plane_kit_core.planning import StartNode, ReconcileNode
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretFileDelivery, secret_delivery_sort_key
+
+_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_DOMAIN = b"control-plane-kit.secret-material-selection.v1\x00"
+_RESOLUTION = "secret_resolution_receipt"
+_INSTALLATION = "secret_installation_receipt"
+_RESOLUTION_PROFILE = "secret-resolution-receipt.v1"
+_INSTALLATION_PROFILE = "secret-installation-receipt.v1"
+_MAX_BYTES = 1024
+SecretInstallationDisposition = ConfigurationInstallationDisposition
+
+
+def _require(condition):
+    if not condition:
+        raise RuntimeEffectContractError("secret installation evidence is malformed or incomplete")
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class SecretResolutionReceipt:
+    request_fingerprint: str
+    selection_fingerprint: str
+
+    def __post_init__(self):
+        for value in (self.request_fingerprint, self.selection_fingerprint):
+            _require(type(value) is str and _DIGEST.fullmatch(value) is not None)
+
+    def descriptor(self):
+        SecretResolutionReceipt.__post_init__(self)
+        return dict(profile=_RESOLUTION_PROFILE, request_fingerprint=self.request_fingerprint,
+                    selection_fingerprint=self.selection_fingerprint)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class SecretInstallationReceipt(ConfigurationInstallationReceipt):
+    """Same incarnation laws, a distinct assertion of private secret recipient checks."""
+
+    def descriptor(self):
+        return {**ConfigurationInstallationReceipt.descriptor(self), "profile": _INSTALLATION_PROFILE}
+
+
+class _ReceiptCodec:
+    value_type = SecretResolutionReceipt
+    profile = _RESOLUTION_PROFILE
+    fields = {"profile", "request_fingerprint", "selection_fingerprint"}
+
+    def encode(self, value):
+        _require(type(value) is self.value_type)
+        return value.descriptor()
+
+    def decode(self, document):
+        value = None
+        try:
+            _require(type(document) is dict and set(document) == self.fields)
+            _require(type(document["profile"]) is str and document["profile"] == self.profile)
+            arguments = {key: val for key, val in document.items() if key != "profile"}
+            if self.value_type is SecretInstallationReceipt:
+                _require(type(arguments["disposition"]) is str)
+                arguments["disposition"] = SecretInstallationDisposition(arguments["disposition"])
+            value = self.value_type(**arguments)
+        except (ValueError, TypeError, AttributeError, RecursionError):
+            value = None
+        _require(value is not None)
+        return value
+
+    def encode_canonical_bytes(self, value):
+        document = rfc8785.dumps(self.encode(value))
+        _require(len(document) <= _MAX_BYTES)
+        return document
+
+    def decode_canonical_bytes(self, document):
+        value = None
+        try:
+            _require(type(document) is bytes and 1 <= len(document) <= _MAX_BYTES)
+            value = self.decode(json.loads(document.decode("utf-8")))
+            _require(self.encode_canonical_bytes(value) == document)
+        except (ValueError, TypeError, RecursionError):
+            value = None
+        _require(value is not None)
+        return value
+
+
+class SecretResolutionReceiptCodec(_ReceiptCodec):
+    """Exact canonical resolution profile, without recipient claims."""
+
+
+class SecretInstallationReceiptCodec(_ReceiptCodec):
+    value_type = SecretInstallationReceipt
+    profile = _INSTALLATION_PROFILE
+    fields = _ReceiptCodec.fields | {"disposition", "prior_realization_fingerprint", "current_realization_fingerprint"}
+
+
+def secret_material_selection_fingerprint(request):
+    """Commit public effective slots and versions, never a digest of secret bytes."""
+    _require(type(request) is RuntimeEffectRequest)
+    RuntimeEffectRequest.__post_init__(request)
+    _require(type(request.operation) in (StartNode, ReconcileNode))
+    material = request.products[0]
+    descriptor = dict(workspace_id=request.source.workspace_id, runtime_id=material.runtime_id,
+        node_id=material.node_id,
+        deliveries=[value.descriptor() for value in sorted(material.product.runtime_contract.secret_deliveries,
+                    key=secret_delivery_sort_key) if type(value) in (SecretEnvironmentDelivery, SecretFileDelivery)],
+        selections=[value.descriptor() for value in material.secret_selections])
+    canonical = rfc8785.dumps(descriptor)
+    _require(len(canonical) <= 1_048_576)
+    return sha256(_DOMAIN + canonical).hexdigest()
+
+
+def secret_installation_receipt_for_result(request, result):
+    """Read complete current evidence; failure/uncertainty remains without proof."""
+    receipt = None
+    valid = False
+    try:
+        _require(type(request) is RuntimeEffectRequest)
+        RuntimeEffectRequest.__post_init__(request)
+        runtime_effect_result_fingerprint(result)
+        _require(result.effect_id == request.effect_id)
+        intent = runtime_effect_intent_for_request(request)
+        request_fingerprint = runtime_effect_intent_fingerprint(intent)
+        required = (type(request.operation) in (StartNode, ReconcileNode)
+                    and bool(request.products[0].secret_selections))
+        present = _RESOLUTION in result.evidence or _INSTALLATION in result.evidence
+        if result.kind is not EffectResultKind.SUCCEEDED:
+            _require(not present)
+        elif required or present:
+            _require(required and _RESOLUTION in result.evidence and _INSTALLATION in result.evidence)
+            resolution = SecretResolutionReceiptCodec().decode(result.evidence[_RESOLUTION])
+            receipt = SecretInstallationReceiptCodec().decode(result.evidence[_INSTALLATION])
+            commitment = secret_material_selection_fingerprint(request)
+            for value in (resolution, receipt):
+                _require(value.request_fingerprint == request_fingerprint and value.selection_fingerprint == commitment)
+            if "configuration_installation_receipt" in result.evidence:
+                _require(request.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)
+                configuration = configuration_installation_receipt_for_result(
+                    configuration_invocation_correlation_for_request(request), result)
+                _require(configuration is not None and (
+                    configuration.disposition, configuration.prior_realization_fingerprint,
+                    configuration.current_realization_fingerprint) == (
+                    receipt.disposition, receipt.prior_realization_fingerprint, receipt.current_realization_fingerprint))
+        valid = True
+    except (ValueError, TypeError, AttributeError, IndexError, RecursionError):
+        valid = False
+    _require(valid)
+    return receipt
+
+
+__all__ = ["SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt",
+           "SecretInstallationReceiptCodec", "SecretInstallationDisposition",
+           "secret_material_selection_fingerprint", "secret_installation_receipt_for_result"]

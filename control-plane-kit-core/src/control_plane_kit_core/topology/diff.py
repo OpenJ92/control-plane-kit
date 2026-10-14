@@ -7,6 +7,7 @@ import json
 from control_plane_kit_core.algebra import BlockSpec
 from control_plane_kit_core.topology.graph import DeploymentGraph, Node
 from control_plane_kit_core.topology.changes import (
+    SecretSelectionsValue,
     AddedChange,
     AmbiguityReason,
     AmbiguousChange,
@@ -278,6 +279,11 @@ def _diff_nodes(
                     SecretDeliveriesValue(after.secret_deliveries),
                 )
             )
+        if before.secret_selections != after.secret_selections:
+            changes.append(ModifiedChange(
+                FieldSubject(subject, StructuralField.SECRET_SELECTIONS),
+                SecretSelectionsValue(before.secret_selections),
+                SecretSelectionsValue(after.secret_selections)))
         if before.runtime_authority_deliveries != after.runtime_authority_deliveries:
             changes.append(ModifiedChange(
                 FieldSubject(subject, StructuralField.RUNTIME_AUTHORITY_DELIVERIES),

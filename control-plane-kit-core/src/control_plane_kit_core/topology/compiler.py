@@ -14,6 +14,7 @@ from control_plane_kit_core.algebra import (
     SocketConnection,
 )
 from control_plane_kit_core.capabilities import capability_named
+from control_plane_kit_core.secret_selections import author_secret_selections
 from control_plane_kit_core.environment import SocketDerivedEnvironmentBinding
 from control_plane_kit_core.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily
@@ -96,6 +97,7 @@ def _materialize_block(block: DeployBlock, runtime: RuntimeContext) -> Node:
         lifecycle=materialized.lifecycle,
         configuration_artifacts=materialized.configuration_artifacts,
         secret_deliveries=materialized.secret_deliveries,
+        secret_selections=author_secret_selections(materialized.secret_deliveries),
         runtime_authority_deliveries=getattr(materialized, "runtime_authority_deliveries", ()),
     )
 
