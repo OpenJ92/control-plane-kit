@@ -358,11 +358,13 @@ class PostgresEffectOutcomeStoreContractTests(
                 "tests/test_postgres_effect_outcome_schema.py",
                 "tests/test_postgres_native_connection_fold.py",
                 "tests/test_postgres_configuration_acceptance_membership.py",
+                "tests/test_postgres_secret_installation_admission.py",
             ),
         )
         self.assertEqual(
             tuple(row["internal_dependencies"]),
             (
+                "control_plane_kit_operations.postgres.activity_history",
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.probe_intents",
                 "control_plane_kit_core.runtime_effect_observation",

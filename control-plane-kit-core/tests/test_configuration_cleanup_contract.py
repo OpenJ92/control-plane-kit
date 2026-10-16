@@ -26,7 +26,7 @@ def cleanup_request(*refs):
     if not hasattr(effects.RuntimeEffectKind, "CONFIGURATION_ACTIVITY_V1"):
         raise AssertionError("missing #1918 configuration-activity.v1 capability")
     return replace(_request(complete=False), kind=effects.RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
-                   operation=cleanup(*refs))
+                   operation=cleanup(*refs), products=())
 
 
 def outcome(ref, status, reason=None):
@@ -225,7 +225,7 @@ class ConfigurationCleanupOutcomeTests(unittest.TestCase):
         base = _request(complete=False)
         effect_id = "\x01" * 512
         request = replace(base, effect_id=effect_id, kind=effects.RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
-            source=replace(base.source, workspace_id="w" * 128, intent_event_id=effect_id), operation=cleanup(*refs))
+            source=replace(base.source, workspace_id="w" * 128, intent_event_id=effect_id), operation=cleanup(*refs), products=())
         for status, reason in (("removed", None), ("already-absent", None), ("retained-in-use", "in-use"),
                                ("refused", "provenance-unproven"), ("unknown", "provider-uncertain")):
             with self.subTest(status=status):

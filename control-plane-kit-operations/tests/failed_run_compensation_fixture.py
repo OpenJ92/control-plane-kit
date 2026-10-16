@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import unittest
+from dataclasses import replace
 
 import psycopg
 
@@ -170,10 +171,44 @@ class FailedRunCompensationFixture:
         )
 
     def seed_truth(self, *, graphs=None, runtime_operation=None, node_operation=None,
-                   success_material=None, desired_owner=None,
+                   success_material=None, desired_owner=None, product_registrations=(),
                    actor_scopes=(PolicyScope.PLAN_EXECUTE,)) -> None:
         from tests.graph_lineage_fixture import execution_graph
         from tests.receiver_scope_history_fixture import admit_fixture_plan
+        default_product = None
+        default_success_material = {}
+        if graphs is None and desired_owner is None:
+            from control_plane_kit_core.products import (
+                ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
+                ProductIdentity, ProductRuntimeContract,
+            )
+            from control_plane_kit_core.runtime_effects import RuntimeProductMaterial
+            from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
+            product = ContainerServerProduct(ProductIdentity("test", "compensation-node", 1),
+                OciImageReference("ghcr.io", "test/compensation-node", "sha256:" + "a" * 64),
+                ProductRuntimeContract())
+            default_product = RegisteredProduct.from_document(workspace_id="workspace-a",
+                descriptor_document=ProductDescriptorCodec().encode_document(product),
+                source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-08-25T11:49:00Z")
+            graphs = {}
+            for key in ("graph-current", "graph-desired"):
+                graph = execution_graph(key, node_ids=("node-a",))
+                node = replace(graph.node("node-a"), metadata={
+                    "product_identity": default_product.reference.identity.key,
+                    "product_descriptor_digest": default_product.reference.descriptor_sha256.value})
+                graphs[key] = replace(graph, nodes={"node-a": node})
+            node = graphs["graph-desired"].node("node-a")
+            runtime = graphs["graph-desired"].runtimes[node.runtime_id]
+            default_success_material["start-node"] = {
+                "authority_ref": runtime.authority_ref,
+                "products": (RuntimeProductMaterial(node_id=node.node_id, runtime_id=node.runtime_id,
+                    reference=default_product.reference, product=product),),
+            }
+        elif graphs is None:
+            # The callback owns its desired product; keep the original legacy
+            # base coordinate instead of supplying an unrelated default pin.
+            graphs = {key: execution_graph(key, node_ids=("node-a",))
+                for key in ("graph-current", "graph-desired")}
         plan = ActivityPlan(
             (
                 PlannedActivity(
@@ -198,11 +233,16 @@ class FailedRunCompensationFixture:
         )
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
+            for registered in ((default_product,) if default_product is not None else ()) + tuple(product_registrations):
+                stores.registered_products.register(workspace_id="workspace-a",
+                    descriptor_document=registered.descriptor_document,
+                    source=registered.source, imported_by=registered.imported_by,
+                    imported_at=registered.imported_at)
             lineage = seed_identity_graphs(
                 stores,
                 workspace_id="workspace-a",
                 graph_ids=("graph-current",) if desired_owner else ("graph-current", "graph-desired"),
-                graphs=graphs or {key: execution_graph(key, node_ids=("node-a",)) for key in ("graph-current", "graph-desired")},
+                graphs=graphs,
             )
             stores.workspaces.set_current_graph("workspace-a", "graph-current")
             if desired_owner is None:
@@ -222,6 +262,10 @@ class FailedRunCompensationFixture:
             # The callback composes the real C2 owner before original request
             # coverage exists; it cannot manufacture receiver provenance.
             desired_owner(self)
+        # Some callers populate this mapping while introducing the desired
+        # receiver. Read overrides only after that owner has completed.
+        selected_success_material = {key: {**default_success_material.get(key, {}),
+            **(success_material or {}).get(key, {})} for key in ("start-runtime", "start-node")}
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             workspace = stores.workspaces.get("workspace-a")
@@ -289,10 +333,10 @@ class FailedRunCompensationFixture:
                 stores.execution.add_event(event)
             self._add_success(stores, "start-runtime", 3, 4,
                 operation=plan.activity(ActivityId("start-runtime")).operation,
-                **(success_material or {}).get("start-runtime", {}))
+                **selected_success_material.get("start-runtime", {}))
             self._add_success(stores, "start-node", 5, 6,
                 operation=plan.activity(ActivityId("start-node")).operation,
-                **(success_material or {}).get("start-node", {}))
+                **selected_success_material.get("start-node", {}))
             stores.execution.add_event(
                 self.event(
                     "wait-node-started",

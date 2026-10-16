@@ -111,6 +111,7 @@ class ReceiverFreshInversePermissionTests(FailedRunCompensationAttemptFixture, F
 
     def test_base_inverse_refuses_inherited_receiver_product_at_same_legacy_coordinate(self):
         from dataclasses import replace
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
         from control_plane_kit_core.planning import NodeTarget, ReconcileNode
         from control_plane_kit_core.products import (
             ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
@@ -167,7 +168,20 @@ class ReceiverFreshInversePermissionTests(FailedRunCompensationAttemptFixture, F
             self.assertEqual(step.source_effect.attempt_identity.activity_id, "start-node")
             source = uow.stores.effect_attempt_intents.get(step.source_effect.attempt_identity)
             inherited = replace(source.intent, operation=step.operation)
+            self.assertEqual(source.intent.products, material["start-node"]["products"])
+            self.assertEqual(inherited.products, source.intent.products)
+            self.assertEqual(source.intent.products[0].product.identity.name, "inverse-receiver")
             workspace = uow.stores.workspaces.get("workspace-a")
+            base = DEFAULT_GRAPH_CODEC.decode(uow.stores.graphs.get(workspace.current_graph_id).graph_descriptor)
+            base_node = base.node("node-a")
+            self.assertEqual((base_node.node_id, base_node.runtime_id), ("node-a", "runtime-a"))
+            self.assertNotIn("product_identity", base_node.metadata)
+            self.assertNotIn("product_descriptor_digest", base_node.metadata)
+            desired = DEFAULT_GRAPH_CODEC.decode(uow.stores.graphs.get(workspace.desired_graph_id).graph_descriptor)
+            self.assertEqual(desired.node("node-a").metadata["product_identity"],
+                source.intent.products[0].reference.identity.key)
+            self.assertEqual(desired.node("node-a").metadata["product_descriptor_digest"],
+                source.intent.products[0].reference.descriptor_sha256.value)
             self.assertEqual(uow.stores.graphs.receiver_bindings("workspace-a", workspace.current_graph_id,
                 workspace.current_realized_projection_id), ())
             self.assertEqual(len(uow.stores.graphs.receiver_bindings("workspace-a", workspace.desired_graph_id,
@@ -186,16 +200,36 @@ class ReceiverFreshInversePermissionTests(FailedRunCompensationAttemptFixture, F
         from control_plane_kit_core.planning import ReconcileRuntime, RuntimeTarget
         from control_plane_kit_core.policies import PolicyScope
         from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+        from control_plane_kit_core.runtime_effects import RuntimeProductMaterial
+        from control_plane_kit_core.products import (
+            ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
+            ProductIdentity, ProductRuntimeContract,
+        )
+        from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
         from tests.graph_lineage_fixture import execution_graph
         from tests.failed_run_compensation_fixture import Sequence
         graphs = {}
+        product = ContainerServerProduct(ProductIdentity("test", "inverse-authority-node", 1),
+            OciImageReference("ghcr.io", "test/inverse-authority-node", "sha256:" + "c" * 64),
+            ProductRuntimeContract())
+        registered = RegisteredProduct.from_document(workspace_id="workspace-a",
+            descriptor_document=ProductDescriptorCodec().encode_document(product),
+            source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-08-25T11:49:00Z")
+        product_material = RuntimeProductMaterial("node-a", "runtime-a", registered.reference, product)
+        base_authority = RuntimeAuthorityReference("base-authority")
         authority = RuntimeAuthorityReference("desired-authority")
-        for key, reference in (("graph-current", RuntimeAuthorityReference("base-authority")),
+        for key, reference in (("graph-current", base_authority),
                                ("graph-desired", authority)):
             graph = execution_graph(key, node_ids=("node-a",))
-            graphs[key] = replace(graph, runtimes={"runtime-a": replace(graph.runtimes["runtime-a"], authority_ref=reference)})
+            node = replace(graph.node("node-a"), metadata={
+                "product_identity": registered.reference.identity.key,
+                "product_descriptor_digest": registered.reference.descriptor_sha256.value})
+            graphs[key] = replace(graph, nodes={"node-a": node},
+                runtimes={"runtime-a": replace(graph.runtimes["runtime-a"], authority_ref=reference)})
         self.seed_truth(graphs=graphs, runtime_operation=ReconcileRuntime(RuntimeTarget("runtime-a")),
-            success_material={key: {"authority_ref": authority} for key in ("start-runtime", "start-node")},
+            success_material={"start-runtime": {"authority_ref": authority},
+                "start-node": {"authority_ref": authority, "products": (product_material,)}},
+            product_registrations=(registered,),
             actor_scopes=tuple(PolicyScope))
         self.service(Sequence("program-a", "compensation-started", "action-a")).execute(self.command())
         self.connection.execute("UPDATE cpk_execution_requests SET claimed_at='2098-01-01T00:00:00Z', "
@@ -206,6 +240,10 @@ class ReceiverFreshInversePermissionTests(FailedRunCompensationAttemptFixture, F
                 operation=step.operation) for step in program.steps)
         self.assertEqual(program.steps[0].source_effect.attempt_identity.activity_id, "start-node")
         self.assertEqual(program.steps[1].source_effect.attempt_identity.activity_id, "start-runtime")
+        self.assertEqual(intents[0].products, (product_material,))
+        self.assertEqual(tuple(intent.authority_ref for intent in intents), (authority, authority))
+        self.assertEqual(graphs["graph-current"].runtimes["runtime-a"].authority_ref, base_authority)
+        self.assertNotEqual(base_authority, authority)
         # The desired-side StopNode inverse remains lawful with inherited B.
         self.attempt_service("inverse-start-a").execute(self.start_command(intent=intents[0]))
         self.fold_bound_attempt(EffectAttemptStatus.SUCCEEDED)

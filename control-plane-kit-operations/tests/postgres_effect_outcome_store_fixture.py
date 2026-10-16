@@ -28,6 +28,7 @@ from tests.execution_lease_recovery_fixture import (
 from tests.postgres_effect_attempt_store_fixture import (
     PostgresEffectAttemptStoreFixture,
 )
+from tests.secret_installation_receipt_fixture import selected_start_success
 
 
 MODULE_NAME = "control_plane_kit_operations.postgres.effect_outcome_store"
@@ -81,6 +82,18 @@ class PostgresEffectOutcomeStoreFixture(
             if story.name == name and story.compensation is compensation
         )
 
+    def stories(self):
+        values = []
+        for story in super().stories():
+            if not story.compensation and story.status is EffectAttemptStatus.SUCCEEDED:
+                identity = story.attempt.state.identity
+                intent = self.intent_for_attempt(run_id=identity.run_id.value,
+                    activity_id=identity.activity_id)
+                story = replace(story, value=selected_start_success(intent, story.value))
+                story = replace(story, attempt=self.direct_attempt_for(story))
+            values.append(story)
+        return tuple(values)
+
     def record_for(self, story) -> EffectAttemptOutcomeRecord:
         outcome = self.outcome_for(story)
         observations = effect_outcome_observation_records(
@@ -114,6 +127,9 @@ class PostgresEffectOutcomeStoreFixture(
         value = replace(story.value, effect_id=start_event_id)
         if story.profile == "provider-observation":
             value = replace(value, request_fingerprint=request_fingerprint)
+        if story.status is EffectAttemptStatus.SUCCEEDED:
+            value = selected_start_success(self.intent_for_attempt(
+                run_id=identity.run_id.value, activity_id=identity.activity_id), value)
         indexed = replace(story, value=value)
         indexed = replace(
             indexed,

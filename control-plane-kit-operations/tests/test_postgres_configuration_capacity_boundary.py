@@ -2,6 +2,7 @@
 from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, replace
 import json
+import re
 import unittest
 from unittest import mock
 
@@ -13,6 +14,7 @@ from control_plane_kit_core.products import ProductDescriptorCodec, ProductInsta
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.topology import compile_topology
 from control_plane_kit_operations import configuration_preparation as capacity_values
+from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
 from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService, CurrentGraphAdvancementConflict
 from control_plane_kit_operations.coordinator import CoordinatorStatus, ExecutionCoordinatorConflict
 from control_plane_kit_operations.effect_attempt_start import ExistingAttempt, StartEffectAttempt
@@ -79,6 +81,69 @@ def observe_capacity(rejections):
             mock.patch.object(capacity_values, "configuration_preparation_capacity", preparation), \
             mock.patch.object(evidence_reads._EvidenceRead, "bounded_rows", rows):
         yield
+
+
+@contextmanager
+def observe_execution_capacity(harness, number):
+    """Passive snapshots only: never capture/revalidate a proof or change its ledger."""
+    stages, first_refusal = [], []
+    failed = False
+    active_stage = "coordinator"
+    original_query = evidence_reads._EvidenceRead.query
+
+    def snapshot():
+        accounting = _ACCOUNTING.get()
+        return (None if accounting is None else accounting.used,
+            len(harness.start_ids.calls), len(harness.adapter.runtime_calls))
+
+    def wrap(stage, delegate):
+        def execute(command):
+            nonlocal active_stage
+            previous, active_stage = active_stage, stage
+            before, outcome = snapshot(), "returned"
+            try:
+                return delegate(command)
+            except Exception as error:
+                outcome = type(error).__name__
+                raise
+            finally:
+                if len(stages) < 4:
+                    stages.append((stage, before, snapshot(), outcome))
+                active_stage = previous
+        return execute
+
+    def query(reader, sql, params, **kwargs):
+        before = reader.used
+        try:
+            return original_query(reader, sql, params, **kwargs)
+        except evidence_reads._Capacity:
+            if not first_refusal:
+                table = re.search(r"\b(?:FROM|INTO|UPDATE) (cpk_[a-z_]+)\b", sql)
+                reserve = capacity_values.ConfigurationEvidenceFootprint(
+                    kwargs["records"] * kwargs.get("identities", 1), kwargs["octets"],
+                    kwargs["records"] * kwargs["cells"], 1)
+                first_refusal.append(dict(stage=active_stage,
+                    role=table.group(1) if table else "statement",
+                    before=asdict(before), reserve=asdict(reserve), after=asdict(reader.used)))
+            raise
+
+    def public_snapshot(value):
+        footprint, ids, calls = value
+        return dict(footprint=None if footprint is None else asdict(footprint), start_ids=ids, adapter_calls=calls)
+
+    with mock.patch.object(harness.start, "execute", wrap("start", harness.start.execute)), \
+            mock.patch.object(harness.fold, "execute", wrap("fold", harness.fold.execute)), \
+            mock.patch.object(evidence_reads._EvidenceRead, "query", query):
+        try:
+            yield
+        except Exception:
+            failed = True
+            raise
+        finally:
+            if failed or first_refusal:
+                print("configuration-execution-capacity " + json.dumps(dict(accepted_use=number,
+                    stages=[dict(stage=stage, before=public_snapshot(before), after=public_snapshot(after), outcome=outcome)
+                        for stage, before, after, outcome in stages], first_refusal=first_refusal), sort_keys=True))
 
 
 class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
@@ -305,8 +370,7 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
             start_ids, calls = len(harness.start_ids.calls), len(harness.adapter.runtime_calls)
             start_commands = len(harness.start.commands)
             rejections = []
-            from tests.configuration_cleanup_phase_read_bounds_fixture import ordinary_start_feasibility
-            observation = ordinary_start_feasibility(self.base, "accepted-use-" + str(number)) if number >= 64 else nullcontext()
+            observation = observe_execution_capacity(harness, number) if number >= 64 else nullcontext()
             with observe_capacity(rejections), observation:
                 try:
                     result = harness.coordinator.execute(replace(self.base.engine.command(

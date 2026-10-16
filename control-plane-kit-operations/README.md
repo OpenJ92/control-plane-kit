@@ -57,6 +57,33 @@ The Postgres store bundle owns operational records for:
 
 Stores expose persistence operations but never commit independently.
 
+## Exact secret selections in desired graphs
+
+`GraphAuthoringService` accepts an injected `SecretVersionMetadataReader`.
+An explicit version change uses `SetDesiredGraphCommand.actor_scopes` containing
+`SECRET_PROVIDER_USE` and `explicit_secret_choices`, a mapping from node IDs to
+tuples of Core `SecretVersionSelection` values. Metadata lookup reads only an
+existing named version; it does not resolve secret bytes or choose latest.
+
+The service reads metadata outside the transaction, then checks the original
+graph lineage, product documents, effective deliveries and current provider and
+reference admission before committing the selected desired graph. Its private
+preparation is scoped to one service invocation and one bound transaction.
+Compatible unchanged selections carry forward without provider calls. Selection
+does not prove installation or preserve authorization after revocation.
+
+Embedding a new selected value in a graph does not implicitly request metadata
+preparation. The planning command and saved-draft selection share the admission
+checks and refuse unprepared new selections. Saved revisions remain immutable;
+historical replay validates original material rather than today's desired
+version. These entrances do not yet expose the explicit preparation workflow.
+
+Runtime translation preserves authored selections and the exact version recorded
+by active generated-ingress custody. Stop and removal do not require fresh
+generated secret lookup. Version-bound execution grants, adapter qualification
+and installation/recovery evidence are later integration steps; authoring support
+alone is not readiness to execute a versioned secret update.
+
 ## Receiver Health And History
 
 Fresh signed health preparations address stable workload and gateway receiver
@@ -261,6 +288,45 @@ mutation.
 There is intentionally no upgrade, version, ledger, backfill, or compatibility
 API. Operators must deliberately reset a noncurrent owned namespace after
 separately preserving any data they value.
+
+## Exact-version consumer authorization
+
+`AuthorizeSecretVersionUse` and `AuthorizedSecretVersionUse` are independent
+from the operational command/record types. The authorization service locks the
+workspace correlation, rechecks current provider/reference admission, and
+inserts or replays one immutable version-bound record in the existing unit of
+work. Revocation blocks reuse; changed intent at the same correlation conflicts.
+Operational correlation and fingerprint recipes remain unchanged.
+
+Runtime enumeration returns `OperationalSecretUse` or an exact Core
+`SecretVersionSelection`. A delivery and a probe may share a reference/use
+without sharing authority. Cleanup does not acquire consumer resolution work.
+Both dispatch and recovery check the actual invocation arm before authorization
+or adapter IO. Composition declares each arm explicitly:
+
+```python
+registration = RuntimeAdapterRegistration(
+    adapter=adapter,
+    exact_version_execute=True,
+    exact_version_execute_with_authority=False,
+    exact_version_observe=True,
+)
+```
+
+This declaration is a trusted composition choice, not conformance evidence.
+The owning examples in
+[`test_secret_version_dispatch.py`](tests/test_secret_version_dispatch.py)
+exercise both execution arms and wrong-grant refusals. Production adapters
+must separately prove exact resolution and installation. Receipt admission,
+fold/advance acceptance, and production qualification remain subsequent gates.
+
+The current authorization schema adds a required role and three consumer-only
+columns with conditional constraints. Raw node-control signing readers require
+the operational role. Generic reads validate role and authorization identity;
+current-schema verification scans consumer records in bounded batches.
+Old namespaces are refused unchanged: this change supplies no migration,
+reset, historical relabeling, or fabricated version. Database adoption must be
+separately scoped by the consuming server deployment.
 
 ## Package Map
 

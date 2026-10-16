@@ -198,8 +198,13 @@ class _OrdinaryStartReadBoundsOwner:
         self._context_is_current()
         _require(self._active and issued is self._issued and issued.owner is self
             and connection is self._connection and _BOUND_ORDINARY_START.get() is issued)
+        identities = {self._identity}
+        identities.update(EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+            for key, _, _ in self._transferred_roots)
+        _require(len(issued.installation_shapes) == len(identities)
+            and {shape.identity for shape in issued.installation_shapes} == identities)
 
-    def capture(self, material, request, *, transfers=(), proof_read=None):
+    def capture(self, material, request, *, prospective_intent, transfers=(), proof_read=None):
         from control_plane_kit_operations._configuration_preparation import (
             _BOUND_ORDINARY_START, _OrdinaryStartReadBounds,
         )
@@ -329,8 +334,17 @@ class _OrdinaryStartReadBoundsOwner:
             collections.append(("invocation-refs", identity, expected))
         captured_collections = tuple((role, _capture_collection(read, role, identity, expected))
             for role, identity, expected in sorted(set(collections)))
+        from .configuration_installation_proof import measure_installation_shape, measure_prospective_installation
+        shapes = {self._identity: measure_prospective_installation(read, self._identity, prospective_intent)}
+        for key in sorted(invocations):
+            identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+            selection = proof_read.sources[("cpk_effect_attempt_intents", identity)]
+            _require(identity not in shapes and bool(selection))
+            shapes[identity] = measure_installation_shape(proof_read, selection[0])
         self._transferred_roots = frozenset(roots)
-        self._issued = _OrdinaryStartReadBounds(self, transaction, points, captured_collections)
+        self._issued = _OrdinaryStartReadBounds(self, transaction, points, captured_collections,
+            tuple(shapes[key] for key in sorted(shapes, key=lambda value:
+                (value.run_id.value, value.activity_id, value.attempt))))
         return self._issued
 
     def require_transferred_roots(self, transfers):
@@ -375,6 +389,7 @@ def _ordinary_tail_budget(owner, intent, births):
     """
     from control_plane_kit_operations._configuration_preparation import _OrdinarySuffixBudget
     from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint as F
+    from .configuration_installation_proof import installation_budget
 
     zero, transaction = F(0, 0, 0, 0), F(1, 20, 1, 1)
 
@@ -410,8 +425,15 @@ def _ordinary_tail_budget(owner, intent, births):
     def count(role):
         return max(len(entry.keys) for selected, entry in owner._issued.collections if selected == role)
 
-    def collection(role):
-        declared, n = widths(role), count(role)
+    def collection(role, identity=None):
+        if identity is None:
+            declared, n = widths(role), count(role)
+        else:
+            entries = tuple(entry for selected, entry in owner._issued.collections
+                if selected == role and entry.identity == identity)
+            if len(entries) != 1:
+                raise _Unavailable
+            declared, n = entries[0].widths, len(entries[0].keys)
         k, w = len(declared), sum(declared)
         identities = 2 if role == "invocation-refs" else 1
         result = sequence(query(1, 20, 1),
@@ -483,8 +505,9 @@ def _ordinary_tail_budget(owner, intent, births):
         result = query(1, 20, 1)
         for _ in range(c):
             result = result.then(sequence(query(1, 1, 1, settled=F(0, 0, 0, 1)), pair, possible_closure))
-        for _ in owner._transferred_roots:
-            result = result.then(cold_transfer())
+        installation_seen = set()
+        for root in sorted(owner._transferred_roots):
+            result = result.then(cold_transfer(root, installation_seen))
         return result
 
     def original_intent():
@@ -497,15 +520,37 @@ def _ordinary_tail_budget(owner, intent, births):
         # release before the owner closes. Other failure needs only release.
         return sequence(query(0, 0, 0), query(1, 80032, 17, 3, cleanup=2), query(0, 0, 0))
 
-    def cold_transfer():
+    installation_shapes = {shape.identity: shape for shape in owner._issued.installation_shapes}
+    if len(installation_shapes) != len(owner._issued.installation_shapes):
+        raise _Unavailable
+
+    def installation(identity, seen):
+        if identity not in installation_shapes:
+            raise _Unavailable
+        if identity in seen:
+            return _OrdinarySuffixBudget(zero, zero)
+        seen.add(identity)
+        budget = installation_budget(installation_shapes[identity])
+        return _OrdinarySuffixBudget(budget.settled, budget.peak.plus(transaction))
+
+    def cold_transfer(root, installation_seen):
         # One cold upper per captured root conservatively covers same-pass
         # sharing without importing measured Q or cross-pass authority caches.
+        key = root[0][:3]
+        identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+        entries = tuple(entry for role, entry in owner._issued.collections
+            if role == "invocation-refs" and entry.identity == key)
+        if len(entries) != 1 or not entries[0].keys:
+            raise _Unavailable
+        if (identity not in installation_shapes or entries[0].keys != tuple((ref.artifact_id,)
+                for ref in installation_shapes[identity].configuration_instances.instances)):
+            raise _Unavailable
         result = sequence(pair, possible_closure, native(13, 1257), native(7, 730),
-            collection("invocation-refs"), source())
-        for _ in range(count("invocation-refs")):
+            collection("invocation-refs", key), source())
+        for _ in entries[0].keys:
             result = result.then(sequence(pair, possible_closure))
         result = result.then(sequence(native(22, 51200), native(6, 18776), native(6, 18776),
-            query(1, 32768, 19, 2)))
+            installation(identity, installation_seen), query(1, 32768, 19, 2)))
         for role in ("header", "receipt-action", "receipt-event", "run", "request", "plan",
                 "session", "graph", "projection"):
             result = result.then(point(role))
@@ -526,7 +571,16 @@ def _ordinary_tail_budget(owner, intent, births):
             result = result.then(source())
             seen.add(key)
         result = result.then(sequence(pair, possible_closure))
-    return result.then(query(1, 20, 1, close=False)), raw
+    result = result.then(query(1, 20, 1, close=False))
+    # Conservative future feasibility, not current work or a ledger charge.
+    # Retain the actual start's settled bound while proving room for one cold
+    # terminal traversal after it, including source, outcome, events and close.
+    future = sequence(source(), native(22, 51200), event, event,
+        installation(owner._identity, set()), query(1, 20, 1, close=False))
+    shifted = result.settled.plus(future.peak)
+    peak = F(*(max(getattr(result.peak, name), getattr(shifted, name))
+        for name in ("records", "value_octets", "scalar_markers", "statements")))
+    return _OrdinarySuffixBudget(result.settled, peak), raw
 
 
 class ConfigurationPreparationStore:
@@ -992,7 +1046,7 @@ class ConfigurationPreparationStore:
         births = tuple((value.birth.identity, value.birth.ref.artifact_id)
             if value is not None else (command.transition.identity, ref.artifact_id)
             for ref, value in zip(refs, selected, strict=True))
-        issued = owner.capture(material, request, transfers=transfers, proof_read=proof_read)
+        issued = owner.capture(material, request, prospective_intent=expected, transfers=transfers, proof_read=proof_read)
         owner._contexts.enter_context(owner.bind(issued))
         if transfers:
             # Verify the complete cold traversal under the final transport

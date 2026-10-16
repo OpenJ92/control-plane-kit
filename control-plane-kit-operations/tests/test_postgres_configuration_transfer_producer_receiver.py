@@ -4,38 +4,102 @@ Operations, admission, starts, folds, receipts and history are real. Runtime,
 ingress and health ports remain the existing explicit recording interpreters.
 No predecessor journal, configuration completion, or transfer row is seeded.
 """
+from dataclasses import replace
+from hashlib import sha256
 from unittest import mock
 
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition, ConfigurationInstallationReceipt, ConfigurationInstallationReceiptCodec,
+)
 from control_plane_kit_core.configuration_invocation import (
     ConfigurationInvocationCompletion, configuration_invocation_correlation_for_request,
     configuration_invocation_selection_fingerprint,
 )
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
-from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult
+from control_plane_kit_core.planning import StartNode, ReconcileNode
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint, runtime_effect_intent_for_request,
+)
+from control_plane_kit_core.runtime_effects import EffectResultKind, RuntimeEffectKind
+from control_plane_kit_core.secret_installation import (
+    SecretResolutionReceipt, SecretInstallationReceipt,
+    secret_installation_receipt_for_result, secret_material_selection_fingerprint,
+)
+from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant, validate_resolution_grant
+from control_plane_kit_core.secrets import SecretReference, SecretUseIntent
 from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
 from control_plane_kit_operations import advancement as advancement_module
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
+from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
 from tests import receiver_health_execution_fixture as receiver
 from tests import test_managed_application_chain as managed
 from tests import test_postgres_configuration_transfer_publication as physical
 
 
 class ProfiledRecordingRuntime(managed.RecordingRuntime):
+    """Explicit simulated exact-version recipient; no provider conformance claim."""
+
+    def _require_connector_grant(self, request, token_reference):
+        grants = tuple(grant for grant in request.secret_resolution_grants
+            if type(grant) is SecretVersionResolutionGrant
+            and grant.selection.reference == SecretReference(token_reference)
+            and grant.selection.intent is SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN)
+        self.test.assertEqual(len(grants), 1, "connector requires its generated, selected version grant")
+
     def execute_with_authority(self, request, authority):
+        # Validate complete consumer coverage before the base port mutates its
+        # simulated containers. Operational grants remain a separate role.
+        for grant in request.secret_resolution_grants:
+            validate_resolution_grant(grant)
+        selected = tuple(selection for material in request.products for selection in material.secret_selections
+            if type(request.operation) in (StartNode, ReconcileNode))
+        consumers = tuple(grant for grant in request.secret_resolution_grants
+            if type(grant) is SecretVersionResolutionGrant)
+        self.test.assertCountEqual(tuple(grant.selection for grant in consumers), selected)
+        fingerprint = runtime_effect_intent_fingerprint(runtime_effect_intent_for_request(request))
+        selection_fingerprint = secret_material_selection_fingerprint(request) if selected else None
+        for grant in consumers:
+            self.test.assertEqual((grant.workspace_id, grant.operation_id, grant.run_id,
+                grant.activity_id, grant.effect_id, grant.request_fingerprint, grant.selection_fingerprint),
+                (request.source.workspace_id, request.source.request_id, request.source.run_id.value,
+                 request.activity_id.value, request.effect_id, fingerprint, selection_fingerprint))
         result = super().execute_with_authority(request, authority)
-        if request.kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+        if result.kind is not EffectResultKind.SUCCEEDED:
             return result
-        context = configuration_invocation_correlation_for_request(request)
-        completion = ConfigurationInvocationCompletion(context.request_fingerprint,
-            configuration_invocation_selection_fingerprint(context.selection))
-        return RuntimeEffectResult.succeeded(request.effect_id, evidence={
-            "recording_provider": True, "activity_id": request.activity_id.value,
-            "configuration_invocation_completion": completion.descriptor()})
+        evidence = dict(result.evidence)
+        configuration = None
+        if request.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+            context = configuration_invocation_correlation_for_request(request)
+            configuration_selection = configuration_invocation_selection_fingerprint(context.selection)
+            evidence["configuration_invocation_completion"] = ConfigurationInvocationCompletion(
+                context.request_fingerprint, configuration_selection).descriptor()
+            if "configuration_installation_receipt" in evidence:
+                configuration = ConfigurationInstallationReceiptCodec().decode(evidence["configuration_installation_receipt"])
+            elif selected:
+                self.test.assertIs(type(request.operation), StartNode)
+                configuration = ConfigurationInstallationReceipt(fingerprint, configuration_selection,
+                    ConfigurationInstallationDisposition.CREATED, None, sha256(request.effect_id.encode()).hexdigest())
+                evidence["configuration_installation_receipt"] = configuration.descriptor()
+        if selected:
+            disposition, prior, current = (ConfigurationInstallationDisposition.CREATED, None,
+                sha256(request.effect_id.encode()).hexdigest()) if configuration is None else (
+                configuration.disposition, configuration.prior_realization_fingerprint,
+                configuration.current_realization_fingerprint)
+            evidence["secret_resolution_receipt"] = SecretResolutionReceipt(fingerprint, selection_fingerprint).descriptor()
+            evidence["secret_installation_receipt"] = SecretInstallationReceipt(fingerprint, selection_fingerprint,
+                disposition, prior, current).descriptor()
+        result = replace(result, evidence=evidence)
+        secret_installation_receipt_for_result(request, result)
+        return result
 
 
 class PostgresConfigurationTransferProducerReceiverTests(receiver.ReceiverHealthExecutionFixture):
+    def application(self):
+        return super().application(runtime_registration=RuntimeAdapterRegistration(
+            self.runtime, exact_version_execute_with_authority=True))
+
     def setUp(self):
         super().setUp()
         self.runtime = ProfiledRecordingRuntime(self)

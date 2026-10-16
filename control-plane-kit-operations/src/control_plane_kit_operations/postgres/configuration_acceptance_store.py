@@ -32,10 +32,16 @@ from .graph_store import (
 )
 from .configuration_preparation_store import _SELECT as _REF_SELECT, _decode_ref, _decode, _paired_disposition
 from .effect_outcome_store import EffectAttemptOutcomeStore
+from control_plane_kit_operations._accepted_installation_sources import (
+    _GeneratedAllocationSource, _InstallationSource, _InstallationSources,
+)
 
 
 _HEADER = ("workspace_id", "pinned_revision", "graph_id", "projection_id", "projection_digest",
     "action_id", "event_id", "run_id", "request_id", "plan_id", "slot_count", "slot_digest")
+_INSTALLATION_COLUMNS = (("installation_sources_preimage", "text", 1048576),
+    ("installation_source_count", "int", 4), ("installation_sources_digest", "text", 64))
+_INSERT_HEADER = _HEADER + tuple(name for name, _, _ in _INSTALLATION_COLUMNS)
 _ACTION = ("action_id", "session_id", "ordinal", "action_type", "actor_id", "payload", "created_at",
     "idempotency_key", "intent_fingerprint")
 _EVENT = ("event_id", "run_id", "ordinal", "event_type", "occurred_at", "payload")
@@ -151,6 +157,10 @@ class ConfigurationAcceptanceStore:
         self._publication_receiver_receipts = {}
         self._publication_transfer_dependencies = {}
         self._publication_invocation_members = {}
+        self._publication_source_closures = {}
+        self._publication_allocation_prefixes = {}
+        self._publication_source_bundles = {}
+        self._publication_verified_requests = {}
         self._publication_transfers_written = False
         self._publication_transfer_proofs = set()
         self._publication_active = True
@@ -196,6 +206,10 @@ class ConfigurationAcceptanceStore:
             self._publication_receiver_receipts = {}
             self._publication_transfer_dependencies = {}
             self._publication_invocation_members = {}
+            self._publication_source_closures = {}
+            self._publication_allocation_prefixes = {}
+            self._publication_source_bundles = {}
+            self._publication_verified_requests = {}
             self._publication_transfers_written = False
             self._publication_transfer_proofs = set()
             _PUBLICATION_SCOPE.reset(token)
@@ -281,6 +295,8 @@ class ConfigurationAcceptanceStore:
                     ("cpk_effect_attempt_outcomes", identity),
                     ("cpk_activity_events", completion.original_event_id),
                     ("cpk_activity_events", completion.direct_event_id),
+                    ("configuration-installation-proof", identity, completion.request_fingerprint,
+                        completion.original_event_id, completion.original_event_ordinal),
                     ("configuration-receipt-context", ref.workspace_id, revision),
                     ("configuration-source-plan", ref.workspace_id, plan.plan_id)))))
         read.sources[memo] = result
@@ -339,7 +355,7 @@ class ConfigurationAcceptanceStore:
         _require(family == "sources" and key[0] in (
             "cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
             "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
-            "configuration-accepted-transfer"))
+            "configuration-accepted-transfer", "configuration-installation-proof"))
         if key[0] == "configuration-accepted-transfer":
             expected = self._prospective_transfer(key)
             if expected is not None:
@@ -448,6 +464,19 @@ class ConfigurationAcceptanceStore:
         if previous is not None:
             widths = tuple(max(a, b) for a, b in zip(previous, widths, strict=True))
         self._publication_proof_shapes[(family, key)] = widths
+
+    def _observe_verified_request(self, read, identity, original):
+        """Retain verified locator relationships, never a reusable proof verdict."""
+        from .configuration_cleanup_read_ceilings import _require
+        self._require_publication(read=read)
+        plan, base, desired = original
+        value = (identity.session_id, plan.plan_id, plan.base_graph_id, base.projection_id,
+            plan.desired_graph_id, desired.projection_id)
+        bounds = None if self._issued is None else self._issued.read_bounds
+        if bounds is not None:
+            _require(dict(bounds.verified_requests).get(identity.request_id) == value)
+        else:
+            _require(self._publication_verified_requests.setdefault(identity.request_id, value) == value)
 
     def _observe_receiver_receipt(self, read, action, request, run, desired):
         from .configuration_cleanup_read_ceilings import _require
@@ -640,13 +669,22 @@ class ConfigurationAcceptanceStore:
                 if receiver not in after_ids and any(item.receiver_id == receiver for item in before):
                     widths[12:14] = (2048, max(widths[13], len(prepared.plan.session_id.encode("utf-8"))))
                 points[key] = replace(value, widths=tuple(widths))
+        from .configuration_installation_proof import measure_installation_shape
+        installation_identities = {key[1] for key in proof_keys[1] if key[0] == "configuration-installation-proof"}
+        installation_shapes = tuple(measure_installation_shape(read,
+            read.sources[("cpk_effect_attempt_intents", identity)][0])
+            for identity in sorted(installation_identities,
+                key=lambda value: (value.run_id.value, value.activity_id, value.attempt)))
         return _PublicationReadBounds(proof_keys, self._publication_transaction,
             tuple((role, value) for (role, _), value in points.items()),
             tuple((role, value) for (role, _), value in collections.items()),
             tuple((role, value, present) for (role, _), (value, present) in optional.items()),
             tuple(self._publication_candidates.values()), (),
             self._capture_native_proof_shapes(read, proof_keys), tuple(self._publication_receiver_receipts.items()),
-            self._freeze_transfer_dependencies(read, proof_keys), tuple(self._publication_invocation_members.items()), generated)
+            self._freeze_transfer_dependencies(read, proof_keys), tuple(self._publication_invocation_members.items()), generated,
+            installation_shapes, tuple(self._publication_source_closures.items()),
+            tuple(self._publication_allocation_prefixes.items()), tuple(self._publication_source_bundles.items()),
+            tuple(self._publication_verified_requests.items()))
 
     def _freeze_publication(self, prepared, event, action):
         """Bind only actual generated additions; existing bounds cannot grow."""
@@ -838,7 +876,7 @@ class ConfigurationAcceptanceStore:
                 or type(activity.operation) not in (StartNode, ReconcileNode)
                 or source.operation != activity.operation):
             raise _Unavailable
-        EffectAttemptOutcomeStore(self._connection)._configuration_success(source, read)
+        EffectAttemptOutcomeStore(self._connection)._configuration_publication_success(source, read, plan=plan, request=request)
         return evidence, birth
 
     def _original_use(self, read, row, source):
@@ -967,6 +1005,7 @@ class ConfigurationAcceptanceStore:
         receipt = self._receipt_manifest(workspace_id, revision, read)
         for row in receipt[3]:
             self._prove_use(read, row, *receipt[4:])
+        self._installation_receipt(receipt, read)
         return receipt[:3]
 
     def _latest(self, read, *, action, workspace_id):
@@ -1009,7 +1048,322 @@ class ConfigurationAcceptanceStore:
         receipt = self._current_manifest(workspace, read)
         for row in receipt[3]:
             self._prove_use(read, row, *receipt[4:])
+        if receipt[0]["pinned_revision"] is not None:
+            self._installation_receipt(receipt, read)
         return receipt
+
+    def _installation_bundle(self, header, action, event, read):
+        """Read the separate bounded commitment without widening artifact context."""
+        workspace, revision = header["workspace_id"], header["pinned_revision"]
+        expected = event.evidence.descriptor()
+        count, digest = expected["installation_source_count"], expected["installation_sources_digest"]
+        if (action.payload.get("installation_source_count"), action.payload.get("installation_sources_digest")) != (count, digest):
+            raise _Unavailable
+        rows = read.query("SELECT octet_length(installation_sources_preimage),"
+            "CASE WHEN installation_source_count BETWEEN 0 AND 1024 THEN installation_source_count END,"
+            "CASE WHEN octet_length(installation_sources_digest)=64 THEN installation_sources_digest END "
+            "FROM cpk_configuration_acceptances WHERE workspace_id=%s AND pinned_revision=%s",
+            (workspace, revision), records=1, octets=80, cells=3)
+        if (len(rows) != 1 or type(rows[0][0]) is not int or not 0 < rows[0][0] <= 1048576
+                or rows[0][1:] != (count, digest)):
+            raise _Unavailable
+        size = rows[0][0]
+        owner = _PUBLICATION_SCOPE.get()
+        if owner is self:
+            key, value = (workspace, revision), (size, count, digest)
+            if self._issued is not None and self._issued.read_bounds is not None:
+                prepared = self._issued
+                if key == (prepared.workspace.workspace_id, prepared.plan.desired_graph_revision):
+                    expected_bundle = (len(prepared.installation_sources.canonical_bytes()),
+                        len(prepared.installation_sources.bindings), prepared.installation_sources.digest)
+                else:
+                    expected_bundle = dict(prepared.read_bounds.source_bundles).get(key)
+                if value != expected_bundle:
+                    raise _Unavailable
+            elif self._publication_source_bundles.setdefault(key, value) != value:
+                raise _Unavailable
+        rows = read.query("SELECT CASE WHEN octet_length(installation_sources_preimage)=%s "
+            "AND installation_source_count=%s AND installation_sources_digest=%s THEN installation_sources_preimage END,"
+            "octet_length(installation_sources_preimage)=%s AND installation_source_count=%s "
+            "AND installation_sources_digest=%s FROM cpk_configuration_acceptances "
+            "WHERE workspace_id=%s AND pinned_revision=%s",
+            (size, count, digest, size, count, digest, workspace, revision), records=1, octets=size + 1, cells=2)
+        if len(rows) != 1 or rows[0][1] is not True:
+            raise _Unavailable
+        result = _InstallationSources.decode(rows[0][0])
+        if len(result.bindings) != count or result.digest != digest:
+            raise _Unavailable
+        return result
+
+    @staticmethod
+    def _installation_nodes(graph):
+        from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretFileDelivery
+        connectors = {value.connector_node_id for value in graph.public_ingresses}
+        return {(node.runtime_id, node.node_id): node for node in graph.nodes.values()
+            if node.node_id in connectors or any(type(value) in (SecretEnvironmentDelivery, SecretFileDelivery)
+                for value in node.secret_deliveries)}
+
+    def _installation_original(self, binding, context, graph, read):
+        """Use the existing full original/outcome readers, never latest-success search."""
+        from control_plane_kit_core.operations import EffectAttemptStatus
+        from control_plane_kit_core.secrets import secret_delivery_sort_key, SecretReferenceEnvironmentDelivery
+        from control_plane_kit_operations.effect_outcome_evidence import _require_original_installation_outcome
+        from .effect_attempt_intent_store import EffectAttemptIntentStore
+        from .effect_attempt_store import EffectAttemptStore
+        header, _, _, plan, request, run, _ = context
+        bounds = None if self._issued is None else self._issued.read_bounds
+        if _PUBLICATION_SCOPE.get() is self and bounds is not None:
+            closure = dict(bounds.source_closures).get(binding.source)
+            if closure is None:
+                raise _Unavailable
+            checked = read.query("SELECT observation_count=%s FROM cpk_effect_attempt_outcomes "
+                "WHERE run_id=%s AND activity_id=%s AND attempt=%s",
+                (closure[2], binding.source.run_id.value, binding.source.activity_id, binding.source.attempt),
+                records=1, octets=1, cells=1)
+            if len(checked) != 1 or checked[0] != (True,):
+                raise _Unavailable
+        original = EffectAttemptIntentStore(self._connection).get(binding.source)
+        attempt = EffectAttemptStore(self._connection).get(binding.source)
+        retained = EffectAttemptOutcomeStore(self._connection).get(binding.source, attempt.latest_transition_event.event_id)
+        intent, source, outcome = original.intent, original.intent.source, retained.outcome
+        activity = plan.plan.activity(ActivityId(binding.source.activity_id))
+        if (binding.source.run_id.value != run.run_id or binding.accepted_revision != header["pinned_revision"]
+                or source.workspace_id != header["workspace_id"] or source.request_id != request.identity.request_id
+                or source.plan_id != plan.plan_id or source.base_graph_id != plan.base_graph_id
+                or source.desired_graph_id != plan.desired_graph_id or intent.operation != activity.operation
+                or type(activity.operation) not in (StartNode, ReconcileNode)
+                or activity.operation.target.node_id != binding.node_id
+                or retained.attempt != attempt or attempt.state.status is not EffectAttemptStatus.SUCCEEDED
+                or original.request_fingerprint != binding.original_request_fingerprint
+                or outcome.outcome_fingerprint != binding.outcome_fingerprint):
+            raise _Unavailable
+        receipt = _require_original_installation_outcome(original, attempt, outcome,
+            original_plan=plan, request=request)
+        if receipt is None or len(intent.products) != 1:
+            raise _Unavailable
+        material, = intent.products
+        node = graph.nodes[binding.node_id]
+        if (material.runtime_id, material.node_id) != binding.key or node.runtime_id != binding.runtime_id:
+            raise _Unavailable
+        authored = tuple(sorted(node.secret_deliveries, key=secret_delivery_sort_key))
+        actual = tuple(sorted(material.product.runtime_contract.secret_deliveries, key=secret_delivery_sort_key))
+        if any(value not in actual for value in authored):
+            raise _Unavailable
+        authored_keys = {(value.reference, value.intent) for value in authored
+            if type(value) is not SecretReferenceEnvironmentDelivery}
+        if tuple(value for value in material.secret_selections
+                if (value.reference, value.intent) in authored_keys) != node.secret_selections:
+            raise _Unavailable
+        remainder = tuple(value for value in actual if value not in authored)
+        if remainder or binding.generated_allocations:
+            # Generated allocation provenance is verified by the same owner;
+            # no active resource or provider lookup can establish historical truth.
+            if self._installation_generated(binding, context, graph, original, remainder, read) != binding.generated_allocations:
+                raise _Unavailable
+        if _PUBLICATION_SCOPE.get() is self:
+            from control_plane_kit_operations.effect_outcome_evidence import ObservedEffectOutcome
+            value = (plan.plan_id, type(outcome) is ObservedEffectOutcome, len(outcome.endpoint_observations))
+            bounds = None if self._issued is None else self._issued.read_bounds
+            if bounds is not None:
+                if dict(bounds.source_closures).get(binding.source) != value:
+                    raise _Unavailable
+            elif self._publication_source_closures.setdefault(binding.source, value) != value:
+                raise _Unavailable
+        return original, outcome
+
+    @staticmethod
+    def _direct_allocation_projection(plan, events, start, terminal):
+        from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+        from control_plane_kit_core.planning.saga import SagaStepId, project_activity_journal
+        from control_plane_kit_operations.activity_journal import activity_journal_events
+        generations = (start.evidence.descriptor().get("claim_generation"),
+            terminal.evidence.descriptor().get("claim_generation"))
+        if (start.kind is not ActivityEventKind.STEP_STARTED or terminal.kind is not ActivityEventKind.STEP_SUCCEEDED
+                or any(type(value) is not int or value < 1 for value in generations)
+                or generations[0] != generations[1]):
+            raise _Unavailable
+        projected = project_activity_journal(plan, activity_journal_events(events))
+        if (projected.state.step(SagaStepId(start.activity_id)).status.value != "succeeded"
+                or projected.state.compensation_requested
+                or any(event.activity_id == start.activity_id for group in (projected.in_flight, projected.uncertain,
+                    projected.compensation_in_flight, projected.compensation_uncertain) for event in group)):
+            raise _Unavailable
+        return projected
+
+    def _installation_generated(self, binding, context, graph, original, remainder, read):
+        from control_plane_kit_core.planning import AllocatePublicIngress
+        from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+        from control_plane_kit_operations.ingress_authorities import (
+            GeneratedSecretPurpose, require_cloudflared_tunnel_token_delivery,
+        )
+        from .ingress_authority_store import GeneratedIngressSecretReferenceStore
+        if len(remainder) != 1:
+            raise _Unavailable
+        require_cloudflared_tunnel_token_delivery(remainder)
+        delivery, = remainder
+        node = graph.nodes[binding.node_id]
+        ingresses = tuple(value for value in graph.public_ingresses if value.connector_node_id == node.node_id)
+        if len(ingresses) != 1:
+            raise _Unavailable
+        ingress, = ingresses
+        generated = GeneratedIngressSecretReferenceStore(self._connection)._installation_source(
+            context[0]["workspace_id"], delivery.reference, read)
+        selections = tuple(value for value in original.intent.products[0].secret_selections
+            if value.reference == delivery.reference and value.intent == delivery.intent)
+        if (generated.purpose is not GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN
+                or len(selections) != 1 or selections[0].version_id != generated.provider_version_id):
+            raise _Unavailable
+        execution = PostgresExecutionStore(self._connection)
+        start = execution.get_event(generated.source_event_id)
+        if (start.kind is not ActivityEventKind.STEP_STARTED or start.run_id != generated.source_run_id
+                or start.activity_id != generated.source_activity_id):
+            raise _Unavailable
+        allocation_run = execution.get_run(start.run_id)
+        allocation_request = execution.get_request(allocation_run.admission.request_id)
+        allocation_plan = PostgresActivityHistoryStore(self._connection).get_plan(allocation_run.plan_id)
+        if (allocation_request.identity.workspace_id != context[0]["workspace_id"]
+                or allocation_request.identity.plan_id != allocation_plan.plan_id):
+            raise _Unavailable
+        _, _, allocation_graph = self._projection(allocation_plan.desired_graph_id,
+            allocation_plan.desired_realized_projection_id, context[0]["workspace_id"])
+        operation = allocation_plan.plan.activity(ActivityId(start.activity_id)).operation
+        if (type(operation) is not AllocatePublicIngress or operation.target.ingress_id != ingress.ingress_id
+                or ingress not in allocation_graph.public_ingresses):
+            raise _Unavailable
+        if binding.generated_allocations:
+            if len(binding.generated_allocations) != 1 or binding.generated_allocations[0].source_event_id != start.event_id:
+                raise _Unavailable
+            terminal = execution.get_event(binding.generated_allocations[0].terminal_event_id)
+        else:
+            available = execution.events_for_run(start.run_id)
+            terminals = tuple(event for event in available
+                if event.activity_id == start.activity_id and event.kind is ActivityEventKind.STEP_SUCCEEDED)
+            if (len(terminals) != 1
+                    or sum(event.activity_id == start.activity_id and event.kind is ActivityEventKind.STEP_STARTED
+                        for event in available) != 1):
+                raise _Unavailable
+            terminal, = terminals
+            self._direct_allocation_projection(allocation_plan.plan, available, start, terminal)
+        terminal_evidence = terminal.evidence.descriptor()
+        details = terminal_evidence.get("details", {})
+        if (terminal.kind is not ActivityEventKind.STEP_SUCCEEDED or terminal.run_id != start.run_id
+                or terminal.activity_id != start.activity_id or terminal.ordinal <= start.ordinal
+                or details.get("connector_material_recorded") is not True
+                or details.get("ingress_id") != ingress.ingress_id or details.get("hostname") != ingress.hostname
+                or details.get("runtime_id") != node.runtime_id or details.get("provider_kind") != "cloudflare"
+                or details.get("lifecycle") != ingress.lifecycle.value
+                or start.run_id == original.identity.run_id.value
+                    and terminal.ordinal >= original.original_start_event.ordinal):
+            raise _Unavailable
+        count_rows = read.query("SELECT count(*) FROM (SELECT ordinal FROM cpk_activity_events "
+            "WHERE run_id=%s AND ordinal<=%s ORDER BY ordinal LIMIT 8193) AS prefix",
+            (start.run_id, terminal.ordinal), records=1, octets=20, cells=1)
+        if len(count_rows) != 1 or not 1 <= count_rows[0][0] <= 8192:
+            raise _Capacity
+        bounds = None if self._issued is None else self._issued.read_bounds
+        if _PUBLICATION_SCOPE.get() is self and bounds is not None:
+            closure = dict(bounds.allocation_prefixes).get((start.event_id, terminal.event_id))
+            if closure is None or closure[3] != count_rows[0][0]:
+                raise _Unavailable
+        columns = (("event_id", "text", 2048), ("run_id", "text", 2048),
+            ("ordinal", "int", 32), ("event_type", "text", 128),
+            ("occurred_at", "time", 64), ("payload", "json", 65536))
+        rows = read.bounded_rows("cpk_activity_events", columns, "run_id=%s AND ordinal<=%s",
+            (start.run_id, terminal.ordinal), maximum=count_rows[0][0], point=False, order="ordinal")
+        events = tuple(_activity_event(row) for row in rows)
+        if (len(events) != count_rows[0][0] or events[-1] != terminal or start not in events
+                or sum(event.kind is ActivityEventKind.STEP_STARTED and event.activity_id == start.activity_id
+                    for event in events) != 1):
+            raise _Unavailable
+        self._direct_allocation_projection(allocation_plan.plan, events, start, terminal)
+        # Commit all durable payload members, including those ignored by the
+        # typed saga projection. Timestamp representation follows its decoder.
+        preimage = rfc8785.dumps([list(row[:4]) + [event.occurred_at, row[5]]
+            for row, event in zip(rows, events, strict=True)])
+        digest = sha256(b"cpk.accepted-generated-allocation-prefix.v1\0" + preimage).hexdigest()
+        if _PUBLICATION_SCOPE.get() is self:
+            key = start.event_id, terminal.event_id
+            value = (start.run_id, allocation_plan.plan_id, allocation_request.identity.request_id, len(events),
+                allocation_plan.desired_graph_id, allocation_plan.desired_realized_projection_id)
+            bounds = None if self._issued is None else self._issued.read_bounds
+            if bounds is not None:
+                if dict(bounds.allocation_prefixes).get(key) != value:
+                    raise _Unavailable
+            elif self._publication_allocation_prefixes.setdefault(key, value) != value:
+                raise _Unavailable
+        return (_GeneratedAllocationSource(start.event_id, terminal.event_id, digest),)
+
+    def _installation_receipt(self, receipt, read):
+        header, action, event, slots, plan, request, run = receipt
+        bundle = self._installation_bundle(header, action, event, read)
+        _, _, graph = self._projection(header["graph_id"], header["projection_id"], header["workspace_id"])
+        if {value.key for value in bundle.bindings} != set(self._installation_nodes(graph)):
+            raise _Unavailable
+        context = header, action, event, plan, request, run, None
+        origins = {}
+        for binding in bundle.bindings:
+            source_context, source_graph = context, graph
+            if binding.accepted_revision != header["pinned_revision"]:
+                if binding.accepted_revision > header["pinned_revision"]:
+                    raise _Unavailable
+                if binding.accepted_revision not in origins:
+                    previous = self._receipt_context(header["workspace_id"], binding.accepted_revision, read)
+                    previous_bundle = self._installation_bundle(*previous[:3], read)
+                    _, _, previous_graph = self._projection(previous[0]["graph_id"], previous[0]["projection_id"], header["workspace_id"])
+                    origins[binding.accepted_revision] = previous, previous_bundle, previous_graph
+                source_context, previous_bundle, source_graph = origins[binding.accepted_revision]
+                if (binding not in previous_bundle.bindings
+                        or source_graph.nodes.get(binding.node_id) != graph.nodes[binding.node_id]):
+                    raise _Unavailable
+            relevant = tuple(slot for slot in slots if slot[:2] == binding.key)
+            if any(slot[3:6] != (binding.source.run_id.value, binding.source.activity_id, binding.source.attempt)
+                    for slot in relevant):
+                raise _Unavailable
+            self._installation_original(binding, source_context, source_graph, read)
+        return bundle
+
+    def _prepare_installation_sources(self, current, base_graph, desired_graph, slots, plan, request, run, read):
+        if current[0]["pinned_revision"] is None:
+            carried = {}
+        else:
+            carried = {value.key: value for value in self._installation_receipt(current, read).bindings}
+        result = []
+        for key, node in sorted(self._installation_nodes(desired_graph).items()):
+            activities = tuple(activity for activity in plan.plan.activities
+                if type(activity.operation) in (StartNode, ReconcileNode) and activity.operation.target.node_id == node.node_id)
+            if not activities:
+                if key not in carried or base_graph.nodes.get(node.node_id) != node:
+                    raise _Unavailable
+                result.append(carried[key])
+                continue
+            if len(activities) != 1:
+                raise _Unavailable
+            activity, = activities
+            candidates = read.bounded_rows("cpk_effect_attempt_intents", _REF_KEY_COLUMNS[:3],
+                "run_id=%s AND activity_id=%s", (run.run_id, activity.activity_id.value), maximum=2)
+            if len(candidates) != 1:
+                raise _Unavailable
+            identity = EffectAttemptIdentity(RunId(candidates[0][0]), candidates[0][1], candidates[0][2])
+            from .effect_attempt_intent_store import EffectAttemptIntentStore
+            from .effect_attempt_store import EffectAttemptStore
+            original = EffectAttemptIntentStore(self._connection).get(identity)
+            attempt = EffectAttemptStore(self._connection).get(identity)
+            outcome = EffectAttemptOutcomeStore(self._connection).get(identity, attempt.latest_transition_event.event_id).outcome
+            binding = _InstallationSource(*key, identity, plan.desired_graph_revision,
+                original.request_fingerprint, outcome.outcome_fingerprint, ())
+            context = ({"workspace_id": request.identity.workspace_id, "pinned_revision": plan.desired_graph_revision},
+                None, None, plan, request, run, None)
+            remainder = tuple(value for value in original.intent.products[0].product.runtime_contract.secret_deliveries
+                if value not in node.secret_deliveries)
+            if remainder:
+                binding = replace(binding, generated_allocations=self._installation_generated(
+                    binding, context, desired_graph, original, remainder, read))
+            self._installation_original(binding, context, desired_graph, read)
+            relevant = tuple(slot for slot in slots if slot[:2] == key)
+            if any(slot[3:6] != candidates[0] for slot in relevant):
+                raise _Unavailable
+            result.append(binding)
+        return _InstallationSources(tuple(result))
 
     def _observed_bindings(self, receipt, rows, read):
         bindings = []
@@ -1146,7 +1500,8 @@ class ConfigurationAcceptanceStore:
             for field in ("records", "value_octets", "scalar_markers", "statements")))
         prepared = _PreparedAdvancementReceipt(stores, guard, workspace, request, run, plan,
             current_projection, desired_projection, slots=tuple(slots), evidence_read=read, proof_footprint=proof,
-            receiver_truth=receiver_truth)
+            receiver_truth=receiver_truth, installation_sources=self._prepare_installation_sources(
+                current, base_graph, desired_graph, tuple(slots), plan, request, run, read))
         self._issued = prepared
         transfers = self._prepare_transfers(prepared)
         # These reads both verify and select every existing bind-parent role.
@@ -1162,7 +1517,7 @@ class ConfigurationAcceptanceStore:
         proof_keys = (tuple(read.refs), tuple(key for key in read.sources
             if key[0] in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes", "configuration-source-plan",
                 "configuration-receipt-context", "configuration-original-slot", "cpk_activity_events",
-                "configuration-accepted-transfer")))
+                "configuration-accepted-transfer", "configuration-installation-proof")))
         bounds = self._capture_publication(prepared, proof_keys)
         prepared = replace(prepared, read_bounds=bounds)
         self._issued = prepared
@@ -1201,6 +1556,8 @@ class ConfigurationAcceptanceStore:
             sources = tuple(dict.fromkeys((("cpk_effect_attempt_intents", identity),
                 ("cpk_effect_attempt_outcomes", identity), ("cpk_activity_events", completion.original_event_id),
                 ("cpk_activity_events", completion.direct_event_id),
+                ("configuration-installation-proof", identity, completion.request_fingerprint,
+                    completion.original_event_id, completion.original_event_ordinal),
                 ("configuration-receipt-context", ref.workspace_id, revision),
                 ("configuration-source-plan", ref.workspace_id, prepared.plan.plan_id))))
             if (memo in read.sources or any(source not in read.sources for source in sources[:-2])
@@ -1277,9 +1634,11 @@ class ConfigurationAcceptanceStore:
             prepared.desired_projection.projection_id, prepared.desired_projection.projection_digest,
             prepared.action.action_id, prepared.event.event_id, prepared.run.run_id,
             prepared.request.identity.request_id, prepared.plan.plan_id, len(prepared.slots), _membership_digest(prepared.slots))
-        _EvidenceRead(self._connection).query("INSERT INTO cpk_configuration_acceptances (" + ",".join(_HEADER)
-            + ") VALUES (" + ",".join("%s" for _ in _HEADER) + ") RETURNING 1",
-            values, records=1, octets=1, cells=1)
+        installation = prepared.installation_sources
+        _EvidenceRead(self._connection).query("INSERT INTO cpk_configuration_acceptances (" + ",".join(_INSERT_HEADER)
+            + ") VALUES (" + ",".join("%s" for _ in _INSERT_HEADER) + ") RETURNING 1",
+            (*values, installation.canonical_bytes().decode("utf-8"), len(installation.bindings), installation.digest),
+            records=1, octets=1, cells=1)
         for slot in prepared.slots:
             _EvidenceRead(self._connection).query("INSERT INTO cpk_configuration_accepted_slots (workspace_id,pinned_revision,"
                 + ",".join(_SLOT) + ") VALUES (" + ",".join("%s" for _ in range(14)) + ") RETURNING 1",
@@ -1391,6 +1750,66 @@ class ConfigurationAcceptanceStore:
             return Budget(F(*(max(getattr(value.settled, field) for value in values) for field in fields)),
                 F(*(max(getattr(value.peak, field) for value in values) for field in fields)))
 
+        def source_bundle(size):
+            return chain(q(1, 80, 3), q(1, size + 1, 2))
+
+        source_closures = dict(bounds.source_closures)
+        allocation_prefixes = dict(bounds.allocation_prefixes)
+
+        def generic_installation(identity, *, captured):
+            # Both original reads remain cold. Only the same exact eligible
+            # member enforced by the generic reader may use a frozen width.
+            from .configuration_cleanup_phase_read_bounds import _publication_intent_bound
+            source_plan, observed, members = source_closures[identity]
+            intent_bound = _publication_intent_bound(bounds, identity) if captured else None
+            intent = native((2048,) * 9 + (1048576 if intent_bound is None else intent_bound.widths[9],))
+            if intent_bound is not None:
+                intent = guard.then(intent)
+            intent_event = native((128, 64, 16384))
+            event = native((2048, 2048, 32, 128, 64, 16384))
+            outcome_widths = tuple(8192 if index == 6 else 2048 for index in range(22))
+            membership = native((32, 32) + (8192,) * 11, count=members,
+                maximum=members, point=False, identities=2)
+            result = chain(intent, intent_event, native((2048,) * 21), event, event,
+                native(outcome_widths), membership, event, event, intent, intent_event)
+            if captured:
+                result = chain(q(1, 1, 1), result)
+            if observed:
+                result = result.then(point("plan", (source_plan,), captured=captured))
+            return result
+
+        def original_installation(binding, *, captured):
+            result = generic_installation(binding.source, captured=captured)
+            event = native((2048, 2048, 32, 128, 64, 16384))
+            for allocation in binding.generated_allocations:
+                allocation_run, allocation_plan, allocation_request, count, allocation_graph, allocation_projection = allocation_prefixes[
+                    (allocation.source_event_id, allocation.terminal_event_id)]
+                result = chain(result, native((2048, 128, 2048, 64, 2048, 2048, 2048, 16384)), event,
+                    point("run", (allocation_run,), captured=captured),
+                    point("request", (allocation_request,), captured=captured),
+                    point("plan", (allocation_plan,), captured=captured),
+                    point("graph", (allocation_graph,), captured=captured),
+                    point("projection", (allocation_projection,), captured=captured), event, q(1, 20, 1),
+                    native((2048, 2048, 32, 128, 64, 65536), count=count, maximum=count, point=False))
+            return result
+
+        own_bundle = source_bundle(len(prepared.installation_sources.canonical_bytes()))
+
+        def installation_readback(*, captured):
+            result = chain(own_bundle, point("graph", (prepared.plan.desired_graph_id,), captured=captured),
+                point("projection", (prepared.desired_projection.projection_id,), captured=captured))
+            origins = set()
+            for binding in prepared.installation_sources.bindings:
+                if binding.accepted_revision != revision and binding.accepted_revision not in origins:
+                    saved = read.sources[("configuration-receipt-context", workspace, binding.accepted_revision)]
+                    bundle_size = dict(bounds.source_bundles)[(workspace, binding.accepted_revision)][0]
+                    result = chain(result, context(saved[0], saved[3], captured=captured), source_bundle(bundle_size),
+                        point("graph", (saved[0]["graph_id"],), captured=captured),
+                        point("projection", (saved[0]["projection_id"],), captured=captured))
+                    origins.add(binding.accepted_revision)
+                result = result.then(original_installation(binding, captured=captured))
+            return result
+
         workspace_read = native((81920,) + (0,) * 8)
 
         def context(header, plan, *, captured):
@@ -1406,6 +1825,9 @@ class ConfigurationAcceptanceStore:
         proof_shapes = {(family, key): widths for family, key, widths in bounds.proof_shapes}
         ref_memo, source_memo, outcome_memo, event_memo = set(), set(), set(), set()
         context_memo, plan_memo, slot_memo = set(), set(), set()
+        installation_memo = set()
+        installation_shapes = {shape.identity: shape for shape in bounds.installation_shapes}
+        _require(len(installation_shapes) == len(bounds.installation_shapes))
 
         def ref_key(key):
             return EffectAttemptIdentity(RunId(key[0]), key[1], key[2]), key[3]
@@ -1429,15 +1851,24 @@ class ConfigurationAcceptanceStore:
             return chain(savepoint, joined, savepoint)
 
         def outcome_budget(identity):
-            if identity in outcome_memo:
-                return empty
-            result = native(proof_shapes[("outcome", identity)])
-            row = read.sources[("cpk_effect_attempt_outcomes", identity)][0]
-            for event_id in (row[15], row[18]):
-                if event_id not in event_memo:
-                    result = result.then(native(proof_shapes[("event", event_id)]))
-                    event_memo.add(event_id)
-            outcome_memo.add(identity)
+            from .configuration_installation_proof import installation_budget
+            # Publication selects an explicit actual profile; completion and
+            # transfer proof remain on the existing direct-only path.
+            result = q(1, 128, 1)
+            if identity in source_closures and source_closures[identity][1]:
+                return result.then(generic_installation(identity, captured=True))
+            if identity not in outcome_memo:
+                result = result.then(native(proof_shapes[("outcome", identity)]))
+                row = read.sources[("cpk_effect_attempt_outcomes", identity)][0]
+                for event_id in (row[15], row[18]):
+                    if event_id not in event_memo:
+                        result = result.then(native(proof_shapes[("event", event_id)]))
+                        event_memo.add(event_id)
+                outcome_memo.add(identity)
+            _require(identity in installation_shapes)
+            if identity not in installation_memo:
+                result = result.then(installation_budget(installation_shapes[identity]))
+                installation_memo.add(identity)
             return result
 
         transfers = {ref_key(memo[1:5]): memo for memo, _, _ in bounds.transfer_dependencies}
@@ -1521,7 +1952,8 @@ class ConfigurationAcceptanceStore:
                     future = future.then(native(proof_shapes[("original-slot", old_slot)]))
                     slot_memo.add(old_slot)
             future = future.then(outcome_budget(source.identity))
-        future = chain(workspace_read, q(2, 20520, 6), q(2, 20520, 6), future)
+        future = chain(workspace_read, q(2, 20520, 6), q(2, 20520, 6), future,
+            installation_readback(captured=False))
 
         transferred_keys = {memo[1:5] for memo, _, _ in bounds.transfer_dependencies}
 
@@ -1545,12 +1977,17 @@ class ConfigurationAcceptanceStore:
 
         current_slots = chain(*(chain(q(1, 1, 1, settled=F(0, 0, 0, 1)), publication_slot(slot))
             for slot in prepared.slots))
-        readback = chain(*(publication_slot(slot) for slot in prepared.slots))
+        readback = empty
+        for slot in prepared.slots:
+            readback = chain(readback, publication_slot(slot), q(1, 128, 1))
+            identity = ref_key(slot[3:7])[0]
+            if identity in source_closures and source_closures[identity][1]:
+                readback = readback.then(generic_installation(identity, captured=True))
         prepared_guard = chain(guard, workspace_read, point("request", (request_id,)), point("run", (run_id,)), current_slots)
         body = chain(prepared_guard, *(native((2048,)) for _ in range(3)), unit, workspace_read,
             prepared_guard, unit, prepared_guard, unit, prepared_guard, unit,
             *(unit for _ in prepared.slots), context(own_header, prepared.plan, captured=True),
-            collection("slots", (workspace, revision)), readback)
+            collection("slots", (workspace, revision)), readback, installation_readback(captured=True))
         # All old-state checks precede every write; all paired writes precede
         # any cold prospective root. The exact own receipt is already proved.
         absent = q(1, 1, 1, settled=F(0, 0, 0, 1))
@@ -1574,9 +2011,30 @@ class ConfigurationAcceptanceStore:
         if prepared.receiver_truth is not None:
             before, after, origins, scopes, original, _, evidence = prepared.receiver_truth
 
-            def verify(selected_request):
-                return chain(widest_point("session-workspace"), widest_point("plan"),
-                    widest_point("graph"), widest_point("projection"), widest_point("graph"), widest_point("projection"),
+            request_material = dict(bounds.verified_requests)
+
+            def verify(selected_request, *, history_points=None):
+                session, selected_plan, base_graph, base_projection, desired_graph, desired_projection = request_material[selected_request]
+
+                def original_point(role, identity, source_graph):
+                    # These two fixed originals() query shapes use cache=True
+                    # on one _Transport per history reader. Include its full
+                    # selector and frozen column widths; query options and
+                    # column expressions are constant for each role here.
+                    key = (role, workspace, identity, source_graph, entries[(role, identity)].widths)
+                    if history_points is not None:
+                        if key in history_points:
+                            # _phase_columns still checks the transaction on
+                            # a raw-row cache hit; decoding/scope proof repeats.
+                            return guard
+                        history_points.add(key)
+                    return point(role, identity)
+
+                return chain(point("session-workspace", (session,)), point("plan", (selected_plan,)),
+                    original_point("graph", (base_graph,), base_graph),
+                    original_point("projection", (base_projection,), base_graph),
+                    original_point("graph", (desired_graph,), desired_graph),
+                    original_point("projection", (desired_projection,), desired_graph),
                     point("scope-header", (selected_request,)), collection("scopes", (selected_request,)))
 
             def binding_material(graph_id, projection_id):
@@ -1604,9 +2062,13 @@ class ConfigurationAcceptanceStore:
                 count, width = len(rows), sum(widths) + 1
                 history = chain(history, guard, q(count + 1, (count + 1) * width, 3,
                     settled=F(count, count * width, count * 3, 1)))
+            # Build one complete cold history pass. Reusing its resulting
+            # budget twice below represents two independent empty caches.
+            history_points = set()
             for item in evidence.requests:
                 selected_request = item.request.identity.request_id
-                history = chain(history, point("request", (selected_request,)), verify(selected_request), collection("runs", (selected_request,)))
+                history = chain(history, point("request", (selected_request,)),
+                    verify(selected_request, history_points=history_points), collection("runs", (selected_request,)))
                 for run in item.runs:
                     selected_run = run.run.run_id
                     history = chain(history, collection("events", (selected_run,)), collection("attempts", (selected_run,)),
@@ -1670,7 +2132,7 @@ class ConfigurationAcceptanceStore:
         # Every failed query can leave its full reservation outstanding before
         # the one usable close. INERROR cleanup performs less work, never more.
         publication = Budget(body.settled.plus(guard.settled), body.peak.plus(guard.peak))
-        return snapshot_budget.settled, future, publication
+        return snapshot_budget.settled.plus(own_bundle.settled), future, publication
 
     def _verify_replay(self, result):
         header, action, event = self._receipt(result.workspace_id, result.desired_graph_revision)

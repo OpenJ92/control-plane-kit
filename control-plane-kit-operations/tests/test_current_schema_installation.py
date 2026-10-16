@@ -134,10 +134,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "d2c0c861f495f99ea3132ac6799172af67d5000f8741fab62a4ab6c18cb0aada"
+    "98ff2912b5bde9c53127bfdc6e541408d25ddd82fa1cff22badcb20247ffc64b"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "306683ab1e28acd545d17a98c53d7840fe03893f879137df30f2c0eac7e8d9c8"
+    "1b750bc121debb996269d4c0ee5fbf444828b6d24ec88e1e6190cd327fe12c5d"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -431,8 +431,8 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         self.assertEqual(len(contract.relations), 56)
-        self.assertEqual(len(contract.columns), 715)
-        self.assertEqual(len(contract.constraints), 631)
+        self.assertEqual(len(contract.columns), 722)
+        self.assertEqual(len(contract.constraints), 636)
         self.assertEqual(len(contract.indexes), 194)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
@@ -670,7 +670,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (56, 715, 631, 194))
+        self.assertEqual(self._catalog_counts(), (56, 722, 636, 194))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -729,6 +729,67 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                 with self.subTest(index=name, field=field):
                     self.assertEqual(observed_index[field], expected_index[field])
         postgres.install_schema(self.connection)
+
+    def test_version_authorization_schema_matches_frozen_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import current_schema_verification, schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        self.connection.execute(schema._CURRENT_SCHEMA_SQL)
+        query, separator, _ = current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
+            "\nSELECT\n  COALESCE(")
+        self.assertTrue(separator)
+        limits = tuple(len(getattr(contract, section)) + 1
+            for section in ("relations", "columns", "constraints", "indexes"))
+        relation = "cpk_secret_use_authorizations"
+        expected_names = [item.name for item in contract.constraints if item.relation == relation]
+        observed_names = [row[0] for row in self.connection.execute(
+            query + "\nSELECT conname FROM semantic_constraints WHERE relname=%s "
+            "ORDER BY conname LIMIT %s", (*limits, relation, len(expected_names) + 1)).fetchall()]
+        with self.subTest(boundary="ordered authorization constraints"):
+            self.assertEqual(observed_names, expected_names)
+
+        names = ("cpk_secret_use_authorizations_kind_check",
+            "cpk_secret_use_authorizations_role_shape_check")
+        rows = self.connection.execute(query + "\nSELECT value FROM semantic_constraints "
+            "WHERE relname=%s AND conname=ANY(%s) ORDER BY conname LIMIT 3",
+            (*limits, relation, list(names))).fetchall()
+        observed = {row[0]["name"]: row[0] for row in rows}
+        expected = {item.name: json.loads(json.dumps(dataclasses.asdict(item)))
+            for item in contract.constraints if item.relation == relation and item.name in names}
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(set(observed), set(names))
+        self.assertEqual(set(expected), set(names))
+        for name in names:
+            self.assertEqual(set(observed[name]), set(expected[name]))
+            for field, value in expected[name].items():
+                with self.subTest(constraint=name, field=field):
+                    self.assertEqual(observed[name][field], value)
+        column_names = ("authorization_kind", "selected_version_id",
+            "request_fingerprint", "selection_fingerprint")
+        rows = self.connection.execute(query + "\nSELECT value FROM semantic_columns "
+            "WHERE relname=%s AND value->>'name'=ANY(%s) ORDER BY attnum LIMIT 5",
+            (*limits, relation, list(column_names))).fetchall()
+        observed_columns = {row[0]["name"]: row[0] for row in rows}
+        expected_columns = {item.name: json.loads(json.dumps(dataclasses.asdict(item)))
+            for item in contract.columns if item.relation == relation and item.name in column_names}
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(set(observed_columns), set(column_names))
+        self.assertEqual(set(expected_columns), set(column_names))
+        for name in column_names:
+            self.assertEqual(set(observed_columns[name]), set(expected_columns[name]))
+            for field, value in expected_columns[name].items():
+                with self.subTest(column=name, field=field):
+                    self.assertEqual(observed_columns[name][field], value)
+        with self.subTest(boundary="complete schema contract"):
+            self.assertTrue(current_schema_verification.current_schema_contract_is_exact(self.connection))
+        with self.subTest(boundary="namespace adjuncts"):
+            self.assertTrue(current_schema_verification.current_namespace_adjuncts_are_exact(self.connection))
+        from control_plane_kit_operations.postgres.current_data_validation import validate_current_rows
+        with self.subTest(boundary="current rows"):
+            validate_current_rows(self.connection)
+        with self.subTest(boundary="ordinary installation verification"):
+            postgres.install_schema(self.connection)
 
     def test_configuration_protection_schema_matches_frozen_contract(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract
@@ -810,10 +871,10 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                 "INSERT INTO cpk_secret_use_authorizations "
                 "(authorization_id, workspace_id, reference_registration_id, "
                 "provider_registration_id, secret_reference, use_intent, actor_subject, "
-                "correlation_id, requested_at, intent_fingerprint) "
+                "correlation_id, requested_at, intent_fingerprint, authorization_kind) "
                 "VALUES (%s, 'workspace-a', 'reference-registration-a', "
                 "'provider-registration-a', 'secret://provider-a/signing/key', %s, "
-                "'operator-a', %s, '2026-08-11T00:00:00Z', %s)",
+                "'operator-a', %s, '2026-08-11T00:00:00Z', %s, 'operational')",
                 (f"suse_{index:064x}", intent, f"health-use-{index}", f"{index:064x}"),
             )
         before_objects, before_rows = self._object_identities(), self._authority_rows()
@@ -989,6 +1050,33 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                 normalized,
                 r"\b(create|alter|drop|truncate|insert|update|delete)\b",
             )
+
+    def test_pre_version_authorization_schema_is_refused_without_relabeling_or_repair(self):
+        postgres.install_schema(self.connection)
+        columns = {row[0] for row in self.connection.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema=%s "
+            "AND table_name='cpk_secret_use_authorizations'", (self.schema,)).fetchall()}
+        required = {"authorization_kind", "selected_version_id", "request_fingerprint", "selection_fingerprint"}
+        self.assertTrue(required <= columns, "missing current version-authorization schema")
+        self._seed_authority_vocabulary_rows()
+        # This isolated test namespace represents the previous shape; installation must not upgrade it.
+        self.connection.execute("ALTER TABLE cpk_secret_use_authorizations "
+            "DROP COLUMN authorization_kind, DROP COLUMN selected_version_id, "
+            "DROP COLUMN request_fingerprint, DROP COLUMN selection_fingerprint")
+        before_rows = self._authority_rows()
+        before_objects = self._object_identities()
+        before_constraints = self._constraint_snapshot()
+        recorder = _RecordingConnection(self.connection)
+        error = _captured_install_error(recorder)
+        self._assert_install_error(error, "operations schema reset is required")
+        self.assertEqual(self._authority_rows(), before_rows)
+        self.assertEqual(self._object_identities(), before_objects)
+        self.assertEqual(self._constraint_snapshot(), before_constraints)
+        self._assert_calls_are_read_only(recorder.calls)
+        after_columns = {row[0] for row in self.connection.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema=%s "
+            "AND table_name='cpk_secret_use_authorizations'", (self.schema,)).fetchall()}
+        self.assertEqual(after_columns, columns - required)
 
     def test_nonempty_owned_object_families_require_reset_before_effect(self) -> None:
         fixtures = (
@@ -1181,7 +1269,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (56, 715, 631, 194))
+        self.assertEqual(self._catalog_counts(), (56, 722, 636, 194))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)
@@ -1316,10 +1404,10 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                 "INSERT INTO cpk_secret_use_authorizations ("
                 "authorization_id, workspace_id, reference_registration_id, "
                 "provider_registration_id, secret_reference, use_intent, "
-                "actor_subject, correlation_id, requested_at, intent_fingerprint"
+                "actor_subject, correlation_id, requested_at, intent_fingerprint, authorization_kind"
                 ") VALUES (%s, 'workspace-a', 'reference-registration-a', "
                 "'provider-registration-a', 'secret://provider-a/signing/key', "
-                "%s, 'operator-a', %s, '2026-08-11T00:00:00Z', %s)",
+                "%s, 'operator-a', %s, '2026-08-11T00:00:00Z', %s, 'operational')",
                 (
                     f"suse_{index:064x}",
                     intent,

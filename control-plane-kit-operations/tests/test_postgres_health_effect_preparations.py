@@ -477,11 +477,13 @@ class PostgresHealthEffectPreparationTests(PostgresHealthEffectPreparationFixtur
 
     def test_nonhealth_original_intent_cannot_own_a_health_preparation(self):
         from control_plane_kit_core.planning import StartNode
+        from tests.effect_attempt_intent_fixture import product_material
         record = self.health_record()
         plan = self.health_context()[0]
         activity = next(item for item in plan.activities
             if type(item.operation) is StartNode and item.operation.target.node_id == "api")
-        intent = replace(self.health_intent.intent, activity_id=activity.activity_id, operation=activity.operation)
+        intent = replace(self.health_intent.intent, activity_id=activity.activity_id,
+            operation=activity.operation, products=(product_material(),))
         attempt, evidence = self.intent_attempt(intent=intent, activity_id=activity.activity_id.value,
             event_id="nonhealth-original", ordinal=5)
         self.persist_evidence_chain(attempt, evidence)

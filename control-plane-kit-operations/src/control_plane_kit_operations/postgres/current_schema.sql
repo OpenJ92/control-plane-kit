@@ -784,6 +784,12 @@ CREATE TABLE cpk_secret_use_authorizations (
     activity_id text,
     effect_id text,
     probe_id text,
+    authorization_kind text NOT NULL,
+    selected_version_id text,
+    request_fingerprint text,
+    selection_fingerprint text,
+    CONSTRAINT cpk_secret_use_authorizations_kind_check CHECK ((authorization_kind = ANY (ARRAY['operational'::text, 'consumer-version'::text]))),
+    CONSTRAINT cpk_secret_use_authorizations_role_shape_check CHECK ((((authorization_kind = 'operational'::text) AND (selected_version_id IS NULL) AND (request_fingerprint IS NULL) AND (selection_fingerprint IS NULL)) OR ((authorization_kind = 'consumer-version'::text) AND (selected_version_id IS NOT NULL) AND (selected_version_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND (request_fingerprint IS NOT NULL) AND (request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (selection_fingerprint IS NOT NULL) AND (selection_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (operation_id IS NOT NULL) AND (run_id IS NOT NULL) AND (activity_id IS NOT NULL) AND (effect_id IS NOT NULL) AND (probe_id IS NULL)))),
     CONSTRAINT cpk_secret_use_authorizations_activity_check CHECK (((activity_id IS NULL) OR (activity_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_actor_check CHECK ((actor_subject ~ '^[a-z][a-z0-9._-]{0,127}$'::text)),
     CONSTRAINT cpk_secret_use_authorizations_correlation_check CHECK ((correlation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
@@ -1692,7 +1698,10 @@ CREATE TABLE cpk_configuration_acceptances (
     request_id text NOT NULL,
     plan_id text NOT NULL,
     slot_count integer NOT NULL,
-    slot_digest text NOT NULL
+    slot_digest text NOT NULL,
+    installation_sources_preimage text NOT NULL,
+    installation_source_count integer NOT NULL,
+    installation_sources_digest text NOT NULL
 );
 
 ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_pkey PRIMARY KEY (workspace_id, pinned_revision);
@@ -1704,6 +1713,12 @@ ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_
 ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_revision_check CHECK ((pinned_revision >= 0));
 
 ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_count_check CHECK (((slot_count >= 0) AND (slot_count <= 256)));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_acceptance_installation_preimage_check CHECK ((octet_length(installation_sources_preimage) <= 1048576));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_acceptance_installation_count_check CHECK (((installation_source_count >= 0) AND (installation_source_count <= 1024)));
+
+ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_acceptance_installation_digest_check CHECK ((installation_sources_digest ~ '^[0-9a-f]{64}$'::text));
 
 ALTER TABLE ONLY cpk_configuration_acceptances ADD CONSTRAINT cpk_configuration_acceptances_slot_digest_check CHECK ((slot_digest ~ '^[0-9a-f]{64}$'::text));
 

@@ -17,6 +17,7 @@ from control_plane_kit_core.operations.lifecycle import ActivityEventKind, Activ
 from control_plane_kit_core.planning import ActivityPlan, RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.advancement import _require_complete_success
+from control_plane_kit_operations._accepted_installation_sources import _InstallationSources
 from control_plane_kit_operations.records import (
     ActivityEventRecord, ActivityPlanRecord, ActivityPlanStatus, ActivityRunRecord,
     AdmittedRun, ApprovalDecisionKind, ApprovalDecisionRecord, ApprovalRequestRecord,
@@ -63,7 +64,8 @@ def record_accepted_current(case):
             run_id=run.run_id, from_authored_graph_id=plan.base_graph_id,
             from_realized_projection_id=plan.base_realized_projection_id,
             to_authored_graph_id=plan.desired_graph_id, to_realized_projection_id=plan.desired_realized_projection_id,
-            to_realized_projection_digest=projection.projection_digest, desired_graph_revision=plan.desired_graph_revision))
+            to_realized_projection_digest=projection.projection_digest, desired_graph_revision=plan.desired_graph_revision,
+            **_InstallationSources(()).commitment))
         event = ActivityEventRecord("recorded-advancement-event", run.run_id, 4,
             ActivityEventKind.CURRENT_GRAPH_ADVANCED, at, evidence=evidence)
         action = OperationActionRecord("recorded-advancement-action", session,

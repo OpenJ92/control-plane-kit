@@ -485,6 +485,14 @@ consumer_kind = "production"
 consumer = "SecretReferenceStore validates replacement and revocation against complete reference history"
 
 [[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "_validate_current_version_authorization_rows"
+category = "exact-verifier"
+sql = "consumer-version filter; workspace/authorization identity keyset in C collation; LIMIT 64; byte-guarded columns; complete current-row validation"
+consumer_kind = "production"
+consumer = "current_data_validation validates all current consumer-version authorization rows"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.failed_run_compensation_store"
 selector = "FailedRunCompensationStore.successful_effects_for_run"
 category = "internal-complete"

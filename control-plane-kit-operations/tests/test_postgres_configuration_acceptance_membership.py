@@ -55,14 +55,21 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         plan = ActivityPlan(tuple(PlannedActivity(ActivityId("start-" + node), StartNode(NodeTarget(node)))
             for node in self.node_ids))
         requirement = ApprovalPolicy().requirement_for(plan)
+        # Opt-in supported authoring for selected-secret capacity witnesses.
+        # Existing fixtures retain their original direct graph setup below.
+        publisher = getattr(self, "configuration_graph_publisher", None)
+        extra_scopes = getattr(self, "configuration_extra_scopes", ())
+        if publisher is not None:
+            self.workspace = publisher(self.fixture, registered, desired)
         with self.fixture.unit_of_work() as uow:
             stores = uow.stores
-            stores.registered_products.register(workspace_id="workspace-a",
-                descriptor_document=registered.descriptor_document, source=registered.source,
-                imported_by=registered.imported_by, imported_at=registered.imported_at)
-            stores.graphs.save(GraphVersionRecord.from_graph(graph_id="graph-configured", workspace_id="workspace-a",
-                version=3, graph=desired, created_by="operator-a", created_at="2026-07-22T12:00:30Z"))
-            self.workspace = stores.workspaces.set_desired_graph("workspace-a", "graph-configured")
+            if publisher is None:
+                stores.registered_products.register(workspace_id="workspace-a",
+                    descriptor_document=registered.descriptor_document, source=registered.source,
+                    imported_by=registered.imported_by, imported_at=registered.imported_at)
+                stores.graphs.save(GraphVersionRecord.from_graph(graph_id="graph-configured", workspace_id="workspace-a",
+                    version=3, graph=desired, created_by="operator-a", created_at="2026-07-22T12:00:30Z"))
+                self.workspace = stores.workspaces.set_desired_graph("workspace-a", "graph-configured")
             stores.activity_history.add_session(OperationSessionRecord("session-config", "workspace-a", "operator-a",
                 "Install configuration", OperationSessionStatus.OPEN, "2026-07-22T12:01:00Z"))
             stores.activity_history.add_plan(ActivityPlanRecord("plan-config", "session-config",
@@ -79,7 +86,7 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
         admit_fixture_plan(self.fixture, request_id="request-config", session_id="session-config", plan_id="plan-config",
             approval_request_id="approval-config", key="admit-config",
             actor_scopes=(PolicyScope.PLAN_EXECUTE,) + ((PolicyScope.RUNTIME_AUTHORITY_USE,)
-                if getattr(self, "runtime_authority_ref", None) is not None else ()))
+                if getattr(self, "runtime_authority_ref", None) is not None else ()) + extra_scopes)
         engine = self.fixture.engine
         opened = engine.lifecycle_with_ids("run-config", "open-config", "claim-config").execute(
             ClaimAndOpenActivityRun("request-config", engine.authority(), ExecutionLeaseDuration(600), IdempotencyKey("claim-config")))
@@ -96,7 +103,8 @@ class PostgresConfigurationAcceptanceMembershipTests(unittest.TestCase):
 
         adapter = coordinator_fixture.RecordingAdapter(engine.tracker, *(installed for _ in self.node_ids))
         result = engine.coordinator(adapter).execute(replace(engine.command(generation=self.fence.generation,
-            idempotency_key="execute-config", max_effects=len(self.node_ids)), run_id="run-config"))
+            idempotency_key="execute-config", max_effects=len(self.node_ids),
+            scopes=(PolicyScope.EXECUTION_OPERATE,) + extra_scopes), run_id="run-config"))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
         self.assertEqual(adapter.calls, ["start-" + node for node in self.node_ids])
         self.assertEqual(adapter.active_during_calls, [0] * len(self.node_ids))

@@ -33,6 +33,7 @@ class _OrdinaryStartReadBounds:
     transaction_id: int
     points: tuple
     collections: tuple
+    installation_shapes: tuple = ()
 
 
 @dataclass(frozen=True)

@@ -357,16 +357,21 @@ class EffectAttemptFoldInterpreterContractTests(
                 # These closed Core values represent native refusal/uncertainty;
                 # they do not grant provider execution. Keep every other ban.
                 pure_runtime_values = "control_plane_kit_core.runtime_effects"
+                pure_observed_value = "control_plane_kit_core.runtime_effect_observation"
                 for node in ast.walk(tree):
                     if isinstance(node, ast.ImportFrom) and node.module == pure_runtime_values:
                         self.assertEqual({alias.name for alias in node.names},
                             {"RuntimeEffectResult", "RuntimeEffectFailure", "RuntimeEffectKind"})
+                    if isinstance(node, ast.ImportFrom) and node.module == pure_observed_value:
+                        self.assertEqual({alias.name for alias in node.names},
+                            {"RuntimeEffectObservedSucceeded"})
                     if isinstance(node, ast.Import):
                         self.assertNotIn(pure_runtime_values, {alias.name for alias in node.names})
+                        self.assertNotIn(pure_observed_value, {alias.name for alias in node.names})
                 self.assertTrue(
                     all(
                         fragment not in imported
-                        for imported in imports - {pure_runtime_values}
+                        for imported in imports - {pure_runtime_values, pure_observed_value}
                         for fragment in forbidden_import_fragments
                     ),
                     imports,
@@ -417,6 +422,7 @@ class EffectAttemptFoldInterpreterContractTests(
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.planning",
                 "control_plane_kit_core.policies",
+                "control_plane_kit_core.runtime_effect_observation",
                 "control_plane_kit_core.runtime_effects",
                 "control_plane_kit_core.topology",
                 "control_plane_kit_operations.effect_attempt_fold",

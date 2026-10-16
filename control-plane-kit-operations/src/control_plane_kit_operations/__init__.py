@@ -446,10 +446,14 @@ from .runtime_dispatcher_bootstrap import (
     RuntimeDispatcherBootstrapConfiguration,
     RuntimeDispatcherBootstrapError,
 )
-from .runtime_effects import runtime_effect_request_for_context
+from .runtime_effects import runtime_effect_request_for_context, OperationalSecretUse
+from .runtime_adapter_registration import RuntimeAdapterRegistration
 from .secret_providers import (
     AuthorizeSecretUse,
     AuthorizedSecretUse,
+    AuthorizeSecretVersionUse,
+    AuthorizedSecretVersionUse,
+    secret_version_use_correlation_for,
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
     RegisteredSecretProvider,
@@ -1113,6 +1117,11 @@ __all__ = [
     "RuntimeDispatcherBootstrapConfiguration",
     "RuntimeDispatcherBootstrapError",
     "AuthorizeSecretUse",
+    "AuthorizeSecretVersionUse",
+    "AuthorizedSecretVersionUse",
+    "secret_version_use_correlation_for",
+    "OperationalSecretUse",
+    "RuntimeAdapterRegistration",
     "AuthorizedSecretUse",
     "RegisterSecretProviderCommand",
     "RegisterSecretReferenceCommand",

@@ -35,6 +35,8 @@ from control_plane_kit_operations.graph_authoring import (
     SetDesiredGraphCommand,
     validate_proposed_graph_id,
     product_references_in_graph,
+    admit_graph_secret_selections,
+    original_carried_secret_graph,
 )
 from control_plane_kit_operations.products import ProductRegistrationNotFound, RegisteredProductStatus
 from control_plane_kit_operations.receiver_lifecycle import (
@@ -470,9 +472,10 @@ class DesiredGraphCommandService:
                         raise GraphAuthoringError(f"unregistered product {reference.identity.key}") from error
                     if registered.status is not RegisteredProductStatus.ACTIVE:
                         raise GraphAuthoringError(f"unregistered product {reference.identity.key}")
+                selected_graph = admit_graph_secret_selections(stores, workspace, command.graph)
                 graph = GraphVersionRecord.from_graph(
                     graph_id=command.proposed_graph_id or self._id_factory(), workspace_id=command.workspace_id,
-                    version=stores.graphs.next_version_for_workspace(command.workspace_id), graph=command.graph,
+                    version=stores.graphs.next_version_for_workspace(command.workspace_id), graph=selected_graph,
                     created_by=command.actor_id, created_at=created_at)
                 projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
                 bindings = derive_receiver_bindings(command.workspace_id, graph.graph_id,
@@ -801,8 +804,12 @@ def _desired_graph_replay(
         projection = unit_of_work.stores.realized_graphs.get(projection_id)
     except KeyError:
         raise DesiredGraphCommandError("desired graph replay material is unavailable") from None
+    try:
+        original_material = original_carried_secret_graph(unit_of_work.stores, command)
+    except (KeyError, ValueError, TypeError):
+        raise DesiredGraphCommandError("desired graph replay material is unavailable") from None
     if (graph.workspace_id != command.workspace_id or workspace_id != command.workspace_id
-            or graph.graph_descriptor != DEFAULT_GRAPH_CODEC.encode(command.graph)
+            or graph.graph_descriptor != DEFAULT_GRAPH_CODEC.encode(original_material)
             or projection != RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
             or action.payload["product_references"] != [
                 reference.descriptor() for reference in product_references_in_graph(command.graph)]

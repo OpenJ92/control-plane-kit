@@ -14,7 +14,11 @@ import rfc8785
 from control_plane_kit_core.configuration_invocation import (
     ConfigurationInvocationCorrelation, configuration_invocation_selection_fingerprint,
 )
-from control_plane_kit_core.runtime_effect_observation import runtime_effect_result_fingerprint
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectObservationEvidence, RuntimeEffectObservationResult,
+    RuntimeEffectObservedSucceeded, runtime_effect_observation_fingerprint,
+    runtime_effect_result_fingerprint,
+)
 from control_plane_kit_core.runtime_effects import (
     EffectResultKind, RuntimeEffectContractError, RuntimeEffectResult,
 )
@@ -115,6 +119,21 @@ class ConfigurationInstallationReceiptCodec:
         raise failure
 
 
+def _configuration_receipt_for_correlation(
+    context: ConfigurationInvocationCorrelation,
+    receipt: ConfigurationInstallationReceipt,
+) -> ConfigurationInstallationReceipt:
+    """Keep receipt/selection correlation independent from its real envelope."""
+    _require(type(context) is ConfigurationInvocationCorrelation)
+    ConfigurationInvocationCorrelation.__post_init__(context)
+    _require(type(receipt) is ConfigurationInstallationReceipt)
+    ConfigurationInstallationReceipt.__post_init__(receipt)
+    _require(receipt.request_fingerprint == context.request_fingerprint)
+    _require(receipt.selection_fingerprint
+        == configuration_invocation_selection_fingerprint(context.selection))
+    return receipt
+
+
 def configuration_installation_receipt_for_result(
     context: ConfigurationInvocationCorrelation,
     result: RuntimeEffectResult,
@@ -135,10 +154,32 @@ def configuration_installation_receipt_for_result(
         receipt = ConfigurationInstallationReceiptCodec().decode(result.evidence[_KEY])
         _require(result.kind is EffectResultKind.SUCCEEDED)
         _require(result.effect_id == context.effect_id)
-        _require(receipt.request_fingerprint == context.request_fingerprint)
-        _require(receipt.selection_fingerprint
-            == configuration_invocation_selection_fingerprint(context.selection))
-        return receipt
+        return _configuration_receipt_for_correlation(context, receipt)
+    except (TypeError, ValueError, AttributeError, RecursionError):
+        failure = RuntimeEffectContractError(_ERROR)
+    raise failure
+
+
+def configuration_installation_receipt_for_observation(
+    context: ConfigurationInvocationCorrelation,
+    observation: RuntimeEffectObservationResult,
+) -> ConfigurationInstallationReceipt | None:
+    """Read optional proof from the actual observation without changing its envelope."""
+    try:
+        _require(type(context) is ConfigurationInvocationCorrelation)
+        ConfigurationInvocationCorrelation.__post_init__(context)
+        runtime_effect_observation_fingerprint(observation)
+        type(observation).__post_init__(observation)
+        if observation.failure is not None:
+            type(observation.failure).__post_init__(observation.failure)
+        evidence = RuntimeEffectObservationEvidence(observation.evidence.descriptor()).descriptor()
+        if _KEY not in evidence:
+            return None
+        receipt = ConfigurationInstallationReceiptCodec().decode(evidence[_KEY])
+        _require(type(observation) is RuntimeEffectObservedSucceeded)
+        _require(observation.effect_id == context.effect_id)
+        _require(observation.request_fingerprint == context.request_fingerprint)
+        return _configuration_receipt_for_correlation(context, receipt)
     except (TypeError, ValueError, AttributeError, RecursionError):
         failure = RuntimeEffectContractError(_ERROR)
     raise failure
@@ -147,4 +188,5 @@ def configuration_installation_receipt_for_result(
 __all__ = [
     "ConfigurationInstallationDisposition", "ConfigurationInstallationReceipt",
     "ConfigurationInstallationReceiptCodec", "configuration_installation_receipt_for_result",
+    "configuration_installation_receipt_for_observation",
 ]

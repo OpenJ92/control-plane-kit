@@ -3,12 +3,14 @@ from dataclasses import replace
 import unittest
 from unittest import mock
 
+from control_plane_kit_core.operations import ActivityEventKind, EffectAttemptStatus
 from control_plane_kit_core.secrets import SecretUseIntent
 from control_plane_kit_core.receiver_identity import receiver_node_control_audience
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyNotFound, delegation_signing_key_registration_id_for,
 )
 from control_plane_kit_operations.node_control_signing_authority import _NodeControlSigningAuthorityStoreError
+from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.activity_history import PostgresActivityHistoryStore
 from control_plane_kit_operations.postgres.delegation_signing_key_store import DelegationSigningKeyStore
@@ -17,7 +19,7 @@ from control_plane_kit_operations.secret_providers import secret_use_correlation
 from tests.health_effect_preparation_fixture import forged_copy
 from tests.health_effect_start_fixture import trusted_health_context
 from tests.health_signing_authority_fixture import PostgresHealthSigningAuthorityFixture, timestamp
-from tests.postgres_effect_attempt_store_fixture import PostgresEffectAttemptStoreFixture
+from tests.effect_attempt_record_fixture import OUTCOME_FINGERPRINT
 from tests.test_node_control_signing_authority import PUBLIC_KEY_C
 
 
@@ -62,8 +64,15 @@ class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture,
             self.assert_history_unchanged(before)
 
     def test_progressed_attempt_refuses_while_historical_preparation_remains_readable(self):
-        evolved = PostgresEffectAttemptStoreFixture.transition(self, self.started.start.attempt, "succeeded",
-            event_id="health-succeeded", ordinal=self.original_event_ordinal + 1)
+        original = self.started.start.attempt
+        state = replace(original.state, status=EffectAttemptStatus.SUCCEEDED,
+            outcome_fingerprint=OUTCOME_FINGERPRINT)
+        event = self.event(state, ActivityEventKind.STEP_SUCCEEDED,
+            event_id="health-succeeded", ordinal=self.original_event_ordinal + 1,
+            occurred_at="2030-01-01T00:00:01Z")
+        evolved = EffectAttemptRecord(state, original.original_start_event, event)
+        self.assertEqual(evolved.state.request_fingerprint, self.start_value.transition.request_fingerprint)
+        self.assertEqual(evolved.original_start_event, original.original_start_event)
         with self.unit_of_work() as uow:
             uow.stores.execution.add_event(evolved.latest_transition_event)
             self.assertEqual(uow.stores.effect_attempts.compare_and_set(self.started.start.attempt, evolved), evolved)

@@ -104,6 +104,13 @@ class RegisteredProductStore:
         workspace_id: str,
         reference: ProductReference,
     ) -> RegisteredProduct:
+        return self._get(workspace_id, reference, for_update=False)
+
+    def get_for_update(self, workspace_id: str, reference: ProductReference) -> RegisteredProduct:
+        """Fence fresh admission against concurrent registration revocation."""
+        return self._get(workspace_id, reference, for_update=True)
+
+    def _get(self, workspace_id, reference, *, for_update):
         row = self._connection.execute(
             """
             SELECT
@@ -120,7 +127,7 @@ class RegisteredProductStore:
             FROM cpk_registered_products
             WHERE workspace_id = %s
               AND descriptor_sha256 = %s
-            """,
+            """ + (" FOR UPDATE" if for_update else ""),
             (workspace_id, reference.descriptor_sha256.value),
         ).fetchone()
         if row is None:

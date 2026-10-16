@@ -10,6 +10,11 @@ import re
 
 import rfc8785
 
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition, configuration_installation_receipt_for_observation,
+)
+from control_plane_kit_core.configuration_invocation import ConfigurationInvocationCorrelation
+from control_plane_kit_core.planning import ActivityId, ReconcileNode
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     EffectAttemptStatus,
@@ -36,10 +41,16 @@ from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservedSucceeded,
     RuntimeEffectObserverUnsupported,
     runtime_effect_observation_fingerprint,
+    runtime_effect_request_for_intent,
     runtime_effect_result_fingerprint,
+)
+from control_plane_kit_core.secret_installation import (
+    secret_installation_receipt_for_observation,
+    secret_installation_receipt_for_result,
 )
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectContractError,
+    RuntimeEffectKind,
     RuntimeEffectResult,
 )
 from control_plane_kit_core.types import Protocol
@@ -56,8 +67,11 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import (
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.records import (
+    ActivityPlanRecord,
+    ActivityPlanStatus,
     BoundedEvidence,
     FailureEvidence,
+    ExecutionRequestRecord,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
@@ -66,6 +80,7 @@ from control_plane_kit_operations.records import (
     ProbeOutcome,
     _validate_text,
 )
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 
 
 class EffectOutcomeProfile(StrEnum):
@@ -735,6 +750,97 @@ class NativeConnectionEffectOutcome(_EffectOutcomeValue):
 
 # Native record representation does not widen generic mutation-fold admission.
 EffectAttemptOutcome = ExecutionEffectOutcome | ObservedEffectOutcome | NativeConnectionEffectOutcome
+
+
+def _observed_configuration_candidate(original):
+    """The original operation selects plan validation, never receipt presence."""
+    return (original.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1
+        and type(original.intent.operation) is ReconcileNode)
+
+
+def _require_original_observation_plan(original, plan, *, request=None):
+    """Verify supplied immutable plan correspondence without discovering current truth."""
+    try:
+        if type(original) is not EffectAttemptIntentRecord or type(plan) is not ActivityPlanRecord:
+            raise ValueError
+        EffectAttemptIntentRecord.__post_init__(original)
+        ActivityPlanRecord.__post_init__(plan)
+        source = original.intent.source
+        if (plan.status is not ActivityPlanStatus.PLANNED
+                or (plan.plan_id, plan.base_graph_id, plan.desired_graph_id) !=
+                    (source.plan_id, source.base_graph_id, source.desired_graph_id)
+                or plan.plan.activity(ActivityId(original.identity.activity_id)).operation != original.intent.operation):
+            raise ValueError
+        if request is not None:
+            if (type(request) is not ExecutionRequestRecord
+                    or (request.identity.workspace_id, request.identity.request_id,
+                        request.identity.plan_id, request.identity.session_id) !=
+                        (original.workspace_id, original.request_id, plan.plan_id, plan.session_id)):
+                raise ValueError
+        return plan.derivation_profile is PlanDerivationProfile.MANAGED_UPDATE_V1
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        pass
+    raise OperationsRecordError("effect outcome original plan is invalid") from None
+
+
+def _require_observed_configuration_receipt(original, observation, *, original_plan=None, request=None):
+    """Keep optional configuration syntax separate from managed replacement policy."""
+    try:
+        required = False
+        if (_observed_configuration_candidate(original)
+                and type(observation) is RuntimeEffectObservedSucceeded):
+            required = _require_original_observation_plan(original, original_plan, request=request)
+        receipt = None
+        if required or "configuration_installation_receipt" in observation.evidence.descriptor():
+            intent = original.intent
+            correlation = ConfigurationInvocationCorrelation(original.request_fingerprint,
+                original.original_start_event.event_id, intent.kind, intent.source,
+                intent.operation, intent.configuration_instances)
+            receipt = configuration_installation_receipt_for_observation(correlation, observation)
+        if required and (receipt is None or receipt.disposition is not ConfigurationInstallationDisposition.REPLACED):
+            raise ValueError
+        return receipt
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        pass
+    raise OperationsRecordError("effect outcome observed configuration proof is invalid") from None
+
+
+def _require_original_installation_outcome(original, attempt, outcome, *, original_plan=None, request=None):
+    """Bind actual runtime evidence to durable original material, without IO."""
+    valid = False
+    receipt = None
+    try:
+        if (type(original) is not EffectAttemptIntentRecord
+                or type(attempt) is not EffectAttemptRecord
+                or type(outcome) not in (ExecutionEffectOutcome, ObservedEffectOutcome,
+                    NativeConnectionEffectOutcome)):
+            raise ValueError
+        EffectAttemptIntentRecord.__post_init__(original)
+        EffectAttemptRecord.__post_init__(attempt)
+        type(outcome).__post_init__(outcome)
+        if (original.identity != attempt.state.identity
+                or outcome.identity != original.identity
+                or original.original_start_event != attempt.original_start_event
+                or original.request_fingerprint != attempt.state.request_fingerprint
+                or outcome.request_fingerprint != original.request_fingerprint
+                or outcome.effect_id != original.original_start_event.event_id):
+            raise ValueError
+        # Native connection evidence retains its independent membership owner.
+        if type(outcome) is not NativeConnectionEffectOutcome:
+            runtime_request = runtime_effect_request_for_intent(original.intent,
+                effect_id=original.original_start_event.event_id)
+            receipt = (secret_installation_receipt_for_result(runtime_request, outcome.result)
+                if type(outcome) is ExecutionEffectOutcome else
+                secret_installation_receipt_for_observation(runtime_request, outcome.observation))
+            if type(outcome) is ObservedEffectOutcome:
+                _require_observed_configuration_receipt(original, outcome.observation,
+                    original_plan=original_plan, request=request)
+        valid = True
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        pass
+    if not valid:
+        raise OperationsRecordError("effect outcome original installation evidence is invalid") from None
+    return receipt
 
 
 def _require_correlated_outcome(workspace_id, outcome, attempt_value):

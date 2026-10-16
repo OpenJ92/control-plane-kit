@@ -301,6 +301,10 @@ class _ExecutionScopeStorage:
         expected = tuple((identity.request_id, identity.workspace_id, str(index), scope.scope_kind,
                           scope.runtime_id, scope.node_id) for index, scope in enumerate(derived.scopes))
         _require(rows == expected)
+        from control_plane_kit_operations._configuration_acceptance import _PUBLICATION_SCOPE
+        publication = _PUBLICATION_SCOPE.get()
+        if publication is not None:
+            publication._observe_verified_request(self.transport.configuration_read, identity, original)
         return original, derived
 
     def candidates(self, workspace_id, requested):
@@ -524,7 +528,7 @@ class _ExecutionScopeStorage:
             else:
                 _require(current.state.recovery_decision.uncertain_fingerprint == outcome.attempt.state.outcome_fingerprint)
             outcomes_owner._require_intent_membership(outcome.outcome, outcome.attempt, outcome.endpoint_observations,
-                row[3], row[4], by_intent[identity])
+                row[3], row[4], by_intent[identity], original_plan=original[0], request=request)
             outcomes.append(outcome)
         by_outcome = {outcome.attempt.state.identity: outcome for outcome in outcomes}
         for identity, attempt in by_attempt.items():

@@ -13,6 +13,7 @@ from control_plane_kit_core.algebra import (
     RequirementSocket,
 )
 from control_plane_kit_core.capabilities import CapabilityName
+from control_plane_kit_core.secret_selections import secret_selections_from_descriptor
 from control_plane_kit_core.delegation_authority import (
     DelegationAuthorityBinding,
     DelegationAuthorityError,
@@ -393,6 +394,7 @@ class GraphDescriptorCodec:
             secret_deliveries=_secret_deliveries(
                 descriptor.get("secret_deliveries", [])
             ),
+            secret_selections=secret_selections_from_descriptor(descriptor.get("secret_selections")),
             delegation_verifier_projection=_delegation_verifier_projection(
                 descriptor.get("delegation_verifier_projection")
             ),

@@ -227,10 +227,19 @@ class CurrentGraphAdvancementResult:
         _payload_positive_integer(self.action.payload, "claim_generation")
         if self.event.run_id != self.run_id:
             raise CurrentGraphAdvancementError("advancement event belongs elsewhere")
-        if self.event.evidence.descriptor() != expected:
+        evidence = self.event.evidence.descriptor()
+        count = evidence.get("installation_source_count")
+        digest = evidence.get("installation_sources_digest")
+        if (type(count) is not int or not 0 <= count <= 1024
+                or type(digest) is not str or len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+                or evidence != {**expected, "installation_source_count": count,
+                    "installation_sources_digest": digest}
+                or type(self.action.payload.get("installation_source_count")) is not int
+                or self.action.payload.get("installation_source_count") != count
+                or self.action.payload.get("installation_sources_digest") != digest):
             raise CurrentGraphAdvancementError(
-                "advancement event does not encode the claimed graph transition"
-            )
+                "advancement event does not encode the claimed graph transition")
 
     @property
     def from_graph_id(self) -> str:
@@ -363,7 +372,8 @@ class CurrentGraphAdvancementCommandService:
             events = stores.execution.events_for_run(command.run_id)
             _require_complete_success(plan.plan, run, events)
             with stores.configuration_acceptance._publication_scope(unit_of_work, guard):
-                receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard)
+                receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard,
+                    current_projection, desired_projection)
                 prepared = stores.configuration_acceptance._prepare(stores, workspace, request, run, plan, guard,
                     current_projection, desired_projection, receiver_truth=receiver_truth)
                 stores.configuration_acceptance._preflight(prepared)
@@ -382,6 +392,7 @@ class CurrentGraphAdvancementCommandService:
                             desired_projection.projection_digest
                         ),
                         "desired_graph_revision": command.expected_desired_graph_revision,
+                        **prepared.installation_sources.commitment,
                     }
                 )
                 event = ActivityEventRecord(
@@ -445,24 +456,30 @@ class CurrentGraphAdvancementCommandService:
             return _result(event, action)
 
 
-def _prepare_receiver_advancement(stores, workspace, request, run, guard):
+def _prepare_receiver_advancement(stores, workspace, request, run, guard, current_projection, desired_projection):
     from control_plane_kit_operations.receiver_lifecycle import (
         _retained_receiver_material, _receiver_origin, _validate_receiver_execution,
         _validate_receiver_execution_approval,
     )
     from control_plane_kit_operations.receiver_execution_scopes import ExecutionReceiverScope
+    from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
     try:
         before = _retained_receiver_material(stores, workspace.workspace_id,
             workspace.current_graph_id, workspace.current_realized_projection_id)
         after = _retained_receiver_material(stores, workspace.workspace_id,
             workspace.desired_graph_id, workspace.desired_realized_projection_id)
-        if not before and not after:
+        consumers = set()
+        for projection in (current_projection, desired_projection):
+            graph = DEFAULT_GRAPH_CODEC.decode(projection.graph_descriptor)
+            consumers.update(stores.configuration_acceptance._installation_nodes(graph))
+        if not before and not after and not consumers:
             return None
         _validate_receiver_execution(stores, request, guard)
         _validate_receiver_execution_approval(stores, request)
         original, derived = stores.execution._receiver_execution_material(request.identity, guard)
         scopes = tuple(set(derived.scopes) | {ExecutionReceiverScope(item.runtime_id, item.node_id)
-                                            for item in before + after})
+                                            for item in before + after}
+            | {ExecutionReceiverScope(*key) for key in consumers})
         origins = {item.receiver_id: _receiver_origin(stores, item) for item in before + after}
         evidence = stores.execution.receiver_scope_evidence(workspace.workspace_id, scopes, guard)
         if evidence.state != "complete":

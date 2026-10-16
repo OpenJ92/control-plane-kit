@@ -725,6 +725,18 @@ class GeneratedIngressSecretReferenceStore:
             raise IngressAuthorityNotFound("generated ingress secret reference is unavailable")
         return _row_to_generated_ingress_secret_reference(rows[0])
 
+    def _installation_source(self, workspace_id, secret_ref, read):
+        """Immutable custody identity, independent of today's ingress resource."""
+        columns = (("workspace_id", "text", 2048), ("purpose", "text", 128),
+            ("secret_ref", "text", 2048), ("recorded_at", "time", 64),
+            ("source_run_id", "text", 2048), ("source_activity_id", "text", 2048),
+            ("source_event_id", "text", 2048), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_generated_ingress_secret_references", columns,
+            "workspace_id=%s AND secret_ref=%s", (workspace_id, secret_ref.reference_id))
+        if len(rows) != 1:
+            raise IngressAuthorityNotFound("generated ingress secret reference is unavailable")
+        return _row_to_generated_ingress_secret_reference(rows[0])
+
     def list_for_workspace(
         self,
         workspace_id: str,

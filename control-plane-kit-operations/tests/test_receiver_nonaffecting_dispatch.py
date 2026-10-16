@@ -6,14 +6,12 @@ import unittest
 from control_plane_kit_core.operations import ActivityEventKind
 from control_plane_kit_core.planning import RemovePublicIngress
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.secrets import SecretProviderEndpointReference, SecretReference, SecretUseIntent
+from control_plane_kit_core.secrets import SecretUseIntent
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
 from control_plane_kit_operations.ingress_authorities import IngressAuthorityProviderKind, OwnedIngressResourceStatus
 from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
-from control_plane_kit_operations.secret_providers import (
-    RegisteredSecretProvider, RegisteredSecretReference, SecretProviderKind, SecretUseAuthorizationService,
-)
+from control_plane_kit_operations.secret_providers import SecretUseAuthorizationService
 from tests.postgres_effect_attempt_coordinator_fixture import RecordingRuntimeAdapter
 from tests.receiver_canonical_acceptance_fixture import ReceiverCanonicalAcceptanceFixture
 from tests.receiver_recorded_completion_fixture import retain_completion_inputs
@@ -42,21 +40,7 @@ class ReceiverNonaffectingDispatchTests(ReceiverCanonicalAcceptanceFixture, unit
             authority = uow.stores.ingress_authorities.require_active_for_hostname("workspace-a",
                 self.canonical_receiver_graph.public_ingresses[0].authority_ref,
                 self.canonical_receiver_graph.public_ingresses[0].hostname)
-            # Synthetic reference registrations authorize only the test provider
-            # stub; no secret value is read and no external provider is called.
-            uow.stores.secret_providers.register(RegisteredSecretProvider(
-                registration_id="sprov-c3-api", workspace_id="workspace-a",
-                provider_id=authority.authority.api_token_ref.provider_id,
-                provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS, display_name="Fixture API custody",
-                endpoint_reference=SecretProviderEndpointReference("c3-api"),
-                credential_reference=SecretReference("secret://bootstrap/c3-api"),
-                allowed_reference_prefixes=(authority.authority.api_token_ref,),
-                allowed_intents=(SecretUseIntent.CLOUDFLARE_API_TOKEN,), admitted_by="operator-a", admitted_at=self.now()))
-            uow.stores.secret_references.register(RegisteredSecretReference(
-                registration_id="sref-c3-api", workspace_id="workspace-a", reference=authority.authority.api_token_ref,
-                provider_registration_id="sprov-c3-api", allowed_intents=(SecretUseIntent.CLOUDFLARE_API_TOKEN,),
-                admitted_by="operator-a", admitted_at=self.now()))
-            uow.commit()
+            # Reuse the authority and API reference that authorized allocation.
         tracker = TrackingUnitOfWorkFactory(self.database_url)
         interpreter = RecordingIngressInterpreter(tracker)
         runtime = RecordingRuntimeAdapter()

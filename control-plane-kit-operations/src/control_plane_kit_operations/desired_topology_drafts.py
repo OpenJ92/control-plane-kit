@@ -12,7 +12,9 @@ from control_plane_kit_core.operations import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, validate_graph
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
-from control_plane_kit_operations.graph_authoring import product_references_in_graph
+from control_plane_kit_operations.graph_authoring import (
+    product_references_in_graph, admit_graph_secret_selections,
+)
 from control_plane_kit_operations.products import RegisteredProductStatus
 from control_plane_kit_operations.records import (GraphVersionRecord, OperationActionRecord,
     OperationSessionStatus, RealizedGraphProjectionRecord)
@@ -451,6 +453,7 @@ def _execute_reference_command(service, command):
                     raise ValueError
                 topology = DEFAULT_GRAPH_CODEC.decode(graph.graph_descriptor)
                 validate_graph(topology).require_valid()
+                admit_graph_secret_selections(uow.stores, workspace, topology, saved=True)
                 for reference in product_references_in_graph(topology):
                     registered = uow.stores.registered_products.get(context.workspace_id, reference)
                     if registered.status is not RegisteredProductStatus.ACTIVE:

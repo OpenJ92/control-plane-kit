@@ -11,6 +11,8 @@ from control_plane_kit_core.runtime_authority import (
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservationRequest,
 )
+from control_plane_kit_core.secrets import SecretResolutionGrant
+from control_plane_kit_operations.runtime_effects import OperationalSecretUse
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -136,8 +138,11 @@ class PostgresEffectAttemptReconciliationObserverFoldTests(
                         (grant.reference, grant.intent)
                         for grant in request.runtime_request.secret_resolution_grants
                     ),
-                    uses,
+                    tuple((use.reference, use.intent) for use in uses),
                 )
+                self.assertTrue(all(type(use) is OperationalSecretUse for use in uses))
+                self.assertTrue(all(type(grant) is SecretResolutionGrant
+                    for grant in request.runtime_request.secret_resolution_grants))
                 self.assertTrue(
                     all(
                         grant.actor_subject == "worker-a"
@@ -212,8 +217,11 @@ class PostgresEffectAttemptReconciliationObserverFoldTests(
         ))
         self.assertEqual(
             tuple((grant.reference, grant.intent) for grant in request.runtime_request.secret_resolution_grants),
-            uses,
+            tuple((use.reference, use.intent) for use in uses),
         )
+        self.assertTrue(all(type(use) is OperationalSecretUse for use in uses))
+        self.assertTrue(all(type(grant) is SecretResolutionGrant
+            for grant in request.runtime_request.secret_resolution_grants))
         self.assertEqual(len(recording_fold.calls), 1)
         self.assertEqual(recording_fold.calls[0].intent_record, record)
         self.assertEqual(ledger.active, 0)
