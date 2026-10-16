@@ -51,3 +51,10 @@ Core owns graph-delta and ordering laws. Recording metadata/effect ports prove
 Operations composition only; actual provider metadata and installed bytes remain
 Interpreter/Servers evidence. No source implementation, store or schema change is
 part of this test checkpoint.
+
+The shared tracking UoW in `test_ingress_realization.py` explicitly forwards
+`read_snapshot` to the actual fresh Postgres UoW and counts its active duration
+with a finally decrement. It does not enter an ordinary transaction first,
+construct snapshot records, or alter read-only/repeatable-read/rollback semantics.
+This fixes the test adapter's missing protocol method exposed by the first
+receiver-context read. That failed setup is not public-flow acceptance evidence.
