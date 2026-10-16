@@ -14,7 +14,12 @@ from control_plane_kit_core.configuration_invocation import (
     configuration_invocation_completion_for_result,
 )
 from control_plane_kit_core.planning import NodeTarget, ReconcileNode, StartNode
-from control_plane_kit_core.runtime_effect_observation import runtime_effect_result_fingerprint
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectObservationEvidence, RuntimeEffectObservationFailure,
+    RuntimeEffectObservedSucceeded, RuntimeEffectObservedFailed,
+    RuntimeEffectObservedIndeterminate, runtime_effect_observation_fingerprint,
+    runtime_effect_result_fingerprint,
+)
 from control_plane_kit_core.runtime_effects import (
     EffectResultKind, RuntimeEffectContractError, RuntimeEffectFailure, RuntimeEffectResult,
 )
@@ -55,6 +60,61 @@ def receipt_result(request, disposition="replaced"):
 
 
 class ConfigurationInstallationReceiptTests(unittest.TestCase):
+    def test_observation_reader_preserves_actual_secret_free_envelope_and_optional_absence(self):
+        request = request_fixtures.selected_request(ReconcileNode(NodeTarget("api")))
+        material = request.products[0]
+        material = replace(material, product=replace(material.product,
+            runtime_contract=replace(material.product.runtime_contract, secret_deliveries=())),
+            secret_selections=())
+        request = replace(request, products=(material,))
+        context = configuration_invocation_correlation_for_request(request)
+        self.assertEqual(request.products[0].product.runtime_contract.secret_deliveries, ())
+        self.assertEqual(request.products[0].secret_selections, ())
+        receipt = payload(request)
+        observation = RuntimeEffectObservedSucceeded(request.effect_id, context.request_fingerprint,
+            RuntimeEffectObservationEvidence({KEY: receipt}), observations=(invocation_fixtures.endpoint(),))
+        before = deepcopy(observation.descriptor())
+        fingerprint = runtime_effect_observation_fingerprint(observation)
+        reader = getattr(language(), "configuration_installation_receipt_for_observation", None)
+        self.assertTrue(callable(reader), "missing actual-observation configuration receipt reader")
+        self.assertEqual(reader(context, observation).descriptor(), receipt)
+        self.assertEqual(observation.descriptor(), before)
+        self.assertEqual(runtime_effect_observation_fingerprint(observation), fingerprint)
+        self.assertEqual(observation.observations, (invocation_fixtures.endpoint(),))
+        for variant in (RuntimeEffectObservedSucceeded, RuntimeEffectObservedFailed, RuntimeEffectObservedIndeterminate):
+            value = variant(request.effect_id, context.request_fingerprint,
+                RuntimeEffectObservationEvidence({"provider_status": "ordinary-history"}),
+                failure=None if variant is RuntimeEffectObservedSucceeded else
+                    RuntimeEffectObservationFailure("fixture.unverified", "Installation is unverified."))
+            self.assertIsNone(reader(context, value))
+
+    def test_observation_reader_rejects_foreign_malformed_and_contradictory_receipts(self):
+        request = request_fixtures.selected_request(ReconcileNode(NodeTarget("api")))
+        context = configuration_invocation_correlation_for_request(request)
+        control = RuntimeEffectObservedSucceeded(request.effect_id, context.request_fingerprint,
+            RuntimeEffectObservationEvidence({KEY: payload(request)}))
+        self.assertTrue(runtime_effect_observation_fingerprint(control))
+        reader = getattr(language(), "configuration_installation_receipt_for_observation", None)
+        self.assertTrue(callable(reader), "missing actual-observation configuration receipt reader")
+        candidates = [replace(control, effect_id="foreign-effect"),
+            replace(control, request_fingerprint="e" * 64)]
+        for field in ("request_fingerprint", "selection_fingerprint"):
+            candidates.append(replace(control, evidence=RuntimeEffectObservationEvidence(
+                {KEY: {**payload(request), field: "f" * 64}})))
+        candidates.append(replace(control, evidence=RuntimeEffectObservationEvidence(
+            {KEY: {**payload(request), "current_realization_fingerprint": "a" * 64}})))
+        candidates.append(replace(control, evidence=RuntimeEffectObservationEvidence(
+            {KEY: {**payload(request), "private_material": "private-canary"}})))
+        for variant in (RuntimeEffectObservedFailed, RuntimeEffectObservedIndeterminate):
+            candidates.append(variant(request.effect_id, context.request_fingerprint, control.evidence,
+                RuntimeEffectObservationFailure("fixture.unverified", "Installation is unverified.")))
+        for index, candidate in enumerate(candidates):
+            with self.subTest(candidate=index), self.assertRaises(RuntimeEffectContractError) as caught:
+                reader(context, candidate)
+            self.assertNotIn("private-canary", str(caught.exception))
+            self.assertIsNone(caught.exception.__cause__)
+            self.assertIsNone(caught.exception.__context__)
+
     def test_closed_value_roundtrips_canonically_and_is_frozen_detached(self):
         m = language()
         codec = m.ConfigurationInstallationReceiptCodec()

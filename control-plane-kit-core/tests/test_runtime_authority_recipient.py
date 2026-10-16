@@ -116,10 +116,14 @@ class RuntimeAuthorityRecipientTests(unittest.TestCase):
                     self.assertEqual(value.authority_deliveries, ())
                     self.assertEqual(value.products[0].runtime_authority_deliveries, (DELIVERY,))
 
-    def test_no_power_request_remains_valid_without_product_material(self):
+    def test_no_power_request_has_complete_material_without_authority_delivery(self):
         for constructor in (RuntimeEffectRequest, RuntimeEffectIntent):
-            value = effect(constructor, authority_ref=None, authority_deliveries=(), products=())
-            self.assertEqual(value.products, ())
+            no_power = material(deliveries=())
+            value = effect(constructor, authority_ref=None, authority_deliveries=(), products=(no_power,))
+            self.assertEqual(value.products, (no_power,))
+            self.assertEqual(value.authority_deliveries, ())
+            with self.assertRaises(RuntimeEffectContractError):
+                effect(constructor, authority_ref=None, authority_deliveries=(), products=())
 
     def test_observation_retains_the_committed_delegation_and_fingerprint(self):
         request = effect(RuntimeEffectRequest)

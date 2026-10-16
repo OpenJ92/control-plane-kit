@@ -9,6 +9,9 @@ from urllib.parse import urlsplit
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, RequirementSocket
 from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.secret_selections import (
+    SecretSelection, normalize_secret_selections, author_secret_selections,
+)
 from control_plane_kit_core.delegation_authority import (
     DelegationAuthorityBinding,
     DelegationVerifierProjection,
@@ -118,6 +121,7 @@ class Node:
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
+    secret_selections: tuple[SecretSelection, ...] = ()
     delegation_verifier_projection: DelegationVerifierProjection | None = None
     runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
 
@@ -185,6 +189,8 @@ class Node:
         all_environment_names = environment_names + tuple(secret_environment_names)
         if len(set(all_environment_names)) != len(all_environment_names):
             raise ValueError("node environment binding names must be unique across sources")
+        object.__setattr__(self, "secret_selections",
+                           normalize_secret_selections(self.secret_deliveries, self.secret_selections))
 
     def requirement_socket(self, name: str):
         return self.sockets.requirement(name)
@@ -208,6 +214,8 @@ class Node:
             self,
             socket_environment=self.socket_environment + environment,
             secret_deliveries=self.secret_deliveries + secret_deliveries,
+            secret_selections=author_secret_selections(
+                self.secret_deliveries + secret_deliveries, self.secret_selections),
         )
 
     def non_secret_environment(self) -> dict[str, str]:
@@ -269,6 +277,8 @@ class Node:
                     key=secret_delivery_sort_key,
                 )
             ],
+            "secret_selections": [value.descriptor() for value in
+                normalize_secret_selections(self.secret_deliveries, self.secret_selections)],
         }
         if self.delegation_verifier_projection is not None:
             descriptor["delegation_verifier_projection"] = (

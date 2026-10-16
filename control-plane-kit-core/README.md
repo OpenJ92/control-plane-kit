@@ -44,6 +44,64 @@ runtime delivery, authorize replay of historical effects, or migrate stored grap
 
 ## Language Families
 
+### Deployment-instance Secret Versions
+
+Each node records one `SecretVersionSelection(reference, intent, version_id)`
+per effective value-resolving reference/use, shared by all its delivery slots.
+Compilation explicitly records `UnselectedSecretUse` when a version is not yet
+known. Current graph descriptors require the selection array; a missing field
+does not imply permission to resolve the latest version. Reusable product
+descriptors contain delivery contracts, not instance version choices.
+
+The pure `carry_forward_secret_selections(previous_graph, desired_graph,
+explicit_choices, *, product_documents=())` transformation preserves exact known
+choices across compatible image/configuration edits. Explicit choices use a
+mapping from node ID to a tuple of `SecretVersionSelection` values. For example:
+
+```python
+successor = carry_forward_secret_selections(
+    previous_graph, authored_graph,
+    {"api": (SecretVersionSelection(reference, intent, "version-2"),)},
+    product_documents=(previous_product_document, successor_product_document),
+)
+```
+
+Changed registered product coordinates require both exact canonical documents.
+They prove pure contract compatibility, not registry admission or authority.
+An incompatible delivery remains explicitly unresolved until an explicit valid
+choice is supplied. Version-only changes produce a real graph difference and
+node reconciliation. Stops/removals need not invent historical versions.
+
+Every current StartNode/ReconcileNode request has complete target material and
+exact versions for all effective delivered secrets before dispatch. Resolution
+and installation receipts are separate bounded assertions correlated with the
+original request, complete selected slots and resource incarnations. A known
+desired version or prior container identity is never proof of its installed
+secret version. Selected configuration consumers require configuration installation
+proof as well as secret resolution and installation proof. The receipts share the
+original request commitment and must agree on replacement incarnations and
+disposition; secret-material and configuration-selection commitments each match
+their own distinct domain.
+
+`secret_installation_receipt_for_result` validates direct results, and
+`secret_installation_receipt_for_observation` validates the actual observed
+variant and its named bounded evidence against the original request. Neither
+reader changes the supplied evidence or converts an observed status into a
+direct result. Failed or uncertain evidence without success claims establishes
+no installation; contradictory partial success profiles are rejected. Ordinary
+requests without consumer secrets do not acquire installation proof implicitly.
+
+Core supplies syntax and validation only. Operations and Interpreters must
+enforce current authorization, exact resolution, recipient verification and
+result/recovery admission before adopting this contract. Existing downstream
+production remains pinned until that compatible chain is ready; generic success
+or an older resolver cannot stand in for the required version evidence.
+
+The structural `compile_activity_plan` recognizes a version-only difference as
+ReconcileNode. Managed-update policy admission remains closed for this new
+shape; Operations #1975 and the Servers #252 composition must enable it only
+with the compatible resolution, authorization and receipt checks in place.
+
 ### Topology And Products
 
 - deployment topologies, runtimes, blocks, nodes, and graph descriptors;
@@ -175,6 +233,22 @@ control_plane_kit_core.policies
 
 The package root re-exports established public values. New code may import from
 the focused modules when module ownership is useful to the reader.
+
+## Secret authorization roles
+
+`SecretResolutionGrant` authorizes operational use such as an image pull,
+health probe, or remote TLS connection. The independent
+`SecretVersionResolutionGrant` authorizes one `SecretVersionSelection` for
+one consuming effect. Its required request and complete material fingerprints
+bind the original intent, including every selected delivery slot. Neither
+grant contains secret bytes or proves recipient installation.
+
+The closed `SecretResolutionGrantCodec` encodes both roles. Request validation
+admits exact nominal values, permits the same reference/use once in each role,
+and rejects duplicates or consumer grants with mismatched commitments.
+Transient grants remain excluded from the original intent fingerprint.
+For an executable composition example, see
+[`test_secret_version_grants.py`](tests/test_secret_version_grants.py).
 
 ## Installation
 

@@ -353,7 +353,7 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
                     {finding.code for finding in result.errors},
                 )
 
-    def test_legacy_graph_descriptor_bytes_and_checksum_do_not_drift(self) -> None:
+    def test_current_graph_descriptor_bytes_and_checksum_do_not_drift(self) -> None:
         block = ApplicationBlock(
             spec=BlockSpec(role_id="hello"),
             implementation=PureImplementation(
@@ -378,7 +378,7 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
         self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
         self.assertEqual(
             hashlib.sha256(canonical).hexdigest(),
-            "1df54197127bb66cb0bcb166e0ff8ba70f4e975465f7d8c125eb1beba0ab93d8",
+            "26fb3cbefc2fb6e02b876966ecd956ba1e6b34af3d10f9c5e57d0f1857976f20",
         )
 
         explicit_empty = json.loads(canonical)

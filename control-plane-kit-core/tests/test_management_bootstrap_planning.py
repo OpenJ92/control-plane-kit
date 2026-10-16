@@ -6,6 +6,7 @@ import unittest
 
 import rfc8785
 import control_plane_kit_core as core
+from control_plane_kit_core.secret_selections import UnselectedSecretUse
 from control_plane_kit_core.algebra import (
     ApplicationBlock, BlockSockets, BlockSpec, DeploymentTopology, DockerRuntime,
     ProviderSocket, RequirementSocket, SocketConnection,
@@ -1073,7 +1074,9 @@ class ManagedConfigurationUpdateTests(unittest.TestCase):
             "external": {"lifecycle": ResourceLifecycle.external()},
             "retained-data": {"lifecycle": ResourceLifecycle.owned_with_retained_data("app-data")},
             "secret": {"secret_deliveries": (SecretEnvironmentDelivery(
-                "APPLICATION_TOKEN", SecretReference("secret://workspace/application"), SecretUseIntent.APPLICATION_CONTROL_TOKEN),)},
+                "APPLICATION_TOKEN", SecretReference("secret://workspace/application"), SecretUseIntent.APPLICATION_CONTROL_TOKEN),),
+                "secret_selections": (UnselectedSecretUse(SecretReference("secret://workspace/application"),
+                                                          SecretUseIntent.APPLICATION_CONTROL_TOKEN),)},
             "runtime-authority": {"runtime_authority_deliveries": (authority_fixtures.DELIVERY,)},
             "independent-verification": {"block_spec": replace(current.node("workload").block_spec,
                 verification=VerificationContract((HttpCheck(check_id="own", provider_socket="control", path="/health"),)))},
@@ -1217,7 +1220,9 @@ class ManagedImageUpdateTests(unittest.TestCase):
         cases = ({"lifecycle": ResourceLifecycle.external()},
             {"lifecycle": ResourceLifecycle.owned_with_retained_data("data")},
             {"secret_deliveries": (SecretEnvironmentDelivery("TOKEN", SecretReference("secret://workspace/app"),
-                SecretUseIntent.APPLICATION_CONTROL_TOKEN),)},
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN),),
+                "secret_selections": (UnselectedSecretUse(SecretReference("secret://workspace/app"),
+                                                          SecretUseIntent.APPLICATION_CONTROL_TOKEN),)},
             {"runtime_authority_deliveries": (authority_fixtures.DELIVERY,)},
             {"block_spec": replace(current.node("workload").block_spec,
                 verification=VerificationContract((HttpCheck(check_id="own", provider_socket="control", path="/health"),)))},
