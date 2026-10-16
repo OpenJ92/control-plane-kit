@@ -538,7 +538,7 @@ def original_carried_secret_graph(stores, command):
     original = SimpleNamespace(workspace_id=command.workspace_id,
         desired_graph_id=command.expected_desired_graph_id)
     return _author_secret_graph(stores, original, command.graph,
-        explicit=getattr(command, "explicit_secret_choices", {}), historical=True)[0]
+        explicit=dict(getattr(command, "explicit_secret_choices", {})), historical=True)[0]
 
 
 def product_reference_in_node(node: Node) -> ProductReference | None:
