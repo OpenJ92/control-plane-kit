@@ -37,9 +37,9 @@ class ManagedSelectedUpdateExecutionTests(chain.ManagedApplicationFixture):
 
     def authored_graph(self):
         graph, documents, registry = super().authored_graph()
-        node = graph.node("api")
-        graph = graph.update_node(replace(node, metadata={**node.metadata,
-            "oci_image": documents["api"].product.image.execution_reference}))
+        for name, node in tuple(graph.nodes.items()):
+            graph = graph.update_node(replace(node, metadata={**node.metadata,
+                "oci_image": documents[name].product.image.execution_reference}))
         # Choose the existing ordering fixture with the eventual admitted input.
         # Return it unselected; only the public metadata-backed command selects it.
         selected = graph.update_node(replace(graph.node("api"), secret_selections=(

@@ -58,3 +58,10 @@ with a finally decrement. It does not enter an ordinary transaction first,
 construct snapshot records, or alter read-only/repeatable-read/rollback semantics.
 This fixes the test adapter's missing protocol method exposed by the first
 receiver-context read. That failed setup is not public-flow acceptance evidence.
+
+The selected fixture supplies complete identity/digest/OCI coordinates for every
+product node from its actual registered document before draft creation. Whole-graph
+selection authoring checks all product coordinates, including nonconsumer gateway
+and connector nodes. The older identity/digest-only fixture metadata cannot be
+used unchanged for this path. The initial draft-select refusal exposed that test
+premise; production coordinate validation remains unchanged.
