@@ -1944,7 +1944,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         node = next(iter(graph.nodes))
         selection = SecretVersionSelection(SecretReference("secret://workspace-secrets/workspace-a/token"),
             SecretUseIntent.APPLICATION_CONTROL_TOKEN, "version-1")
-        scopes = (PolicyScope.WORKSPACE_EDIT,)
+        scopes = (PolicyScope.INSTANCE_WORKSPACE_EDIT,)
         payload = {"workspace_id": "workspace-a", "session_id": "session-a",
             "graph": DEFAULT_GRAPH_CODEC.encode(graph), "expected_desired_graph_id": None,
             "idempotency_key": "selected", "explicit_secret_choices": {node: [selection.descriptor()]},

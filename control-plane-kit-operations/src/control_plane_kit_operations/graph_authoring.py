@@ -161,6 +161,8 @@ class SetDesiredGraphCommand:
                 _selection_error()
             if len({(value.reference, value.intent) for value in values}) != len(values):
                 _selection_error()
+            for value in values:
+                SecretVersionSelection.__post_init__(value)
             choices[node_id] = tuple(sorted(values, key=lambda value: (value.reference.reference_id, value.intent.value)))
         object.__setattr__(self, "explicit_secret_choices", MappingProxyType(choices))
 
@@ -535,7 +537,8 @@ def original_carried_secret_graph(stores, command):
     from types import SimpleNamespace
     original = SimpleNamespace(workspace_id=command.workspace_id,
         desired_graph_id=command.expected_desired_graph_id)
-    return _author_secret_graph(stores, original, command.graph, historical=True)[0]
+    return _author_secret_graph(stores, original, command.graph,
+        explicit=getattr(command, "explicit_secret_choices", {}), historical=True)[0]
 
 
 def product_reference_in_node(node: Node) -> ProductReference | None:
