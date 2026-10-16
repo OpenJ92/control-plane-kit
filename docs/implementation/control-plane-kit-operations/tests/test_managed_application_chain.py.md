@@ -25,7 +25,7 @@ The fresh pull-authority refusal checks the exact mutation/attempt/protection
 boundary while allowing independently scheduled approved management reads.
 Recording ports continue to make no physical installation claim.
 
-## Selected retained consumers / #1991 (unvalidated test checkpoint)
+## Selected retained consumers / #1991
 
 The fixture also accepts optional application deliveries from the initial product
 contract. Its initial-authoring hook runs after registration and before ordinary
@@ -41,16 +41,19 @@ admit an explicit version, revise the same draft to revision2, and select that
 actual revision. Read assertions preserve the original introducing origins,
 revision1 bytes, actual revision2 bindings, fresh fences and exact choice. No
 runtime call or current advancement is allowed before approval. Version, image
-and app-content updates remain separate scenarios. These new tests are not yet
-executed; no missing-law or acceptance result is claimed.
+and app-content updates remain separate scenarios. The dd66ed07 focused run
+proved the public initial baseline and selected app-content execution/replay.
+Version cases reached actual update preparation but selected the legacy profile,
+establishing the missing Operations admission connection. Implementation green
+validation remains pending.
 
 `test_managed_selected_update_admission.py` checks the selected version/content/
 image families at the pure Operations policy boundary, active participants,
 canonical stored plans, selected effect material and malformed-candidate refusal.
 Core owns graph-delta and ordering laws. Recording metadata/effect ports prove
 Operations composition only; actual provider metadata and installed bytes remain
-Interpreter/Servers evidence. No source implementation, store or schema change is
-part of this test checkpoint.
+Interpreter/Servers evidence. Operations source now adds the bounded profile
+candidate and reuses canonical Core admission; no store or schema changes.
 
 The shared tracking UoW in `test_ingress_realization.py` explicitly forwards
 `read_snapshot` to the actual fresh Postgres UoW and counts its active duration
@@ -71,3 +74,10 @@ the existing codec before hostname choice or draft creation. Raw Node insertion
 order for artifacts/environment need not equal descriptor order. Canonical input
 preserves the exact prepared-node equality assertion without decoding a redacted
 public graph or changing any production normalization rule.
+
+After successful public image successor import, the selected fixture records
+that actual document under a distinct expected-catalog key, as the existing
+image fixture does. The original product document and strict catalog-count
+assertion remain intact. Without this bookkeeping, the recording health selector
+raises and preflight reports unsupported; that fixture failure earns no production
+image acceptance evidence. Corrected image execution is pending the green run.

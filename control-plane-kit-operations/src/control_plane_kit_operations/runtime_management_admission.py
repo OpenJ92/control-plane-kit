@@ -115,6 +115,7 @@ def runtime_management_plan_profile(
         _managed_update_candidate_shape(transition.current.graph, transition.desired.graph)
         or _managed_content_runtime(transition.current.graph, transition.desired.graph) is not None
         or _managed_image_nodes(transition.current.graph, transition.desired.graph)
+        or _managed_selection_nodes(transition.current.graph, transition.desired.graph)
     ):
         return PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
     candidate = derive_activity_plan(
@@ -260,13 +261,20 @@ def _managed_update_shape(
     *,
     registered_products: tuple[RegisteredProduct, ...],
 ) -> bool:
-    """Bind closed managed add/remove, content and image updates to registered truth.
+    """Bind closed managed add/remove and retained updates to registered truth.
 
     Core owns the generic graph delta and operation ordering. This Operations
     policy binds that algebra to active registered products and the one named
     configuration slot that the application selected for managed routing.
     """
 
+    selection_nodes = _managed_selection_nodes(current, desired)
+    if selection_nodes:
+        if len(selection_nodes) != 1:
+            return False
+        return _managed_retained_participants_are_exact(
+            current, desired, selection_nodes[0].runtime_id, registered_products,
+        )
     content_runtime = _managed_content_runtime(current, desired)
     if content_runtime is not None:
         return _managed_retained_participants_are_exact(
@@ -386,6 +394,20 @@ def _managed_update_shape(
     if retained_product.reference != changed_product.reference:
         return False
     return products[(False, gateway_id)].reference == products[(True, gateway_id)].reference
+
+
+def _managed_selection_nodes(current, desired):
+    """Locate retained selection changes; Core decides the exact supported delta.
+
+    Inspect management on both sides so removing it or moving the consumer
+    cannot turn an unsupported selection candidate into a legacy profile.
+    """
+    return tuple(node for name, node in desired.nodes.items()
+        if name in current.nodes
+        and node.secret_selections != current.nodes[name].secret_selections
+        and any(runtime is not None and runtime.management is not None
+            for runtime in (current.runtimes.get(current.nodes[name].runtime_id),
+                desired.runtimes.get(node.runtime_id))))
 
 
 def _managed_image_nodes(current, desired):

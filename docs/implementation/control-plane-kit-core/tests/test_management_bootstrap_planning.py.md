@@ -37,5 +37,6 @@ delivery/slot changes and unrelated edits remain refused. A second use distingui
 one changed version from replacing the whole selection map; two retained consumers
 cannot update their selections together. These are pure laws, not authorization
 or installed-material evidence. The initial causal-red checkpoint ran1033 tests
-with only the three legal-family readiness assertions failing; implementation
-validation remains pending.
+with only the three legal-family readiness assertions failing. The implemented
+Core gate at 57724876 passed 21 support tests and all 1035 package tests, plus
+compile/import checks. Operations and live composition require separate evidence.
