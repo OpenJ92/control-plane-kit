@@ -65,3 +65,9 @@ selection authoring checks all product coordinates, including nonconsumer gatewa
 and connector nodes. The older identity/digest-only fixture metadata cannot be
 used unchanged for this path. The initial draft-select refusal exposed that test
 premise; production coordinate validation remains unchanged.
+
+The selected fixture canonicalizes that complete locally declared graph through
+the existing codec before hostname choice or draft creation. Raw Node insertion
+order for artifacts/environment need not equal descriptor order. Canonical input
+preserves the exact prepared-node equality assertion without decoding a redacted
+public graph or changing any production normalization rule.

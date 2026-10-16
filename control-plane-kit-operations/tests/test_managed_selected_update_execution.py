@@ -40,6 +40,7 @@ class ManagedSelectedUpdateExecutionTests(chain.ManagedApplicationFixture):
         for name, node in tuple(graph.nodes.items()):
             graph = graph.update_node(replace(node, metadata={**node.metadata,
                 "oci_image": documents[name].product.image.execution_reference}))
+        graph = DEFAULT_GRAPH_CODEC.decode(DEFAULT_GRAPH_CODEC.encode(graph))
         # Choose the existing ordering fixture with the eventual admitted input.
         # Return it unselected; only the public metadata-backed command selects it.
         selected = graph.update_node(replace(graph.node("api"), secret_selections=(
