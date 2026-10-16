@@ -16,9 +16,9 @@ compiler, which accepts the closed content/add/remove union. The obsolete
 assertion that this entry point rejects valid content is intentionally replaced
 with acceptance; useful add/remove behavior and refusal laws remain.
 Graph-valid refusal controls cover provenance-only changes, wrapper/slot/extra
-material changes, wrong receiver targets, data/secret/authority consumers and
+material changes, wrong receiver targets, data/unresolved-secret/authority consumers and
 independent verification. The active socket-secret case uses ordinary topology
-compilation to prove that effective delivered material is excluded too.
+compilation to prove that unresolved effective delivered material is excluded too.
 These are pure planner laws, not admission, installation or provider evidence.
 
 #1865 restores node-suppression coverage independently of the existing
@@ -28,3 +28,15 @@ exists. The suppressed node gains neither StartNode nor WaitForHealthy, and
 its missing structural start excludes fresh GATEWAY_INGRESS_READY refinement.
 Existing GATEWAY_LOCAL_READY and AUTHENTICATED_MANAGEMENT_PATH obligations remain;
 their presence is not observed success, adoption, or execution authority.
+
+`ManagedSelectedConsumerUpdateTests` adds #1991's three separate selected-consumer
+families: one selected version, immutable image, or existing app-file content.
+It preserves deterministic plans, roundtrip, no-op, one disruptive reconcile and
+the established desired-health ordering. Missing selection, combined edits,
+delivery/slot changes and unrelated edits remain refused. A second use distinguishes
+one changed version from replacing the whole selection map; two retained consumers
+cannot update their selections together. These are pure laws, not authorization
+or installed-material evidence. The initial causal-red checkpoint ran1033 tests
+with only the three legal-family readiness assertions failing. The implemented
+Core gate at 57724876 passed 21 support tests and all 1035 package tests, plus
+compile/import checks. Operations and live composition require separate evidence.

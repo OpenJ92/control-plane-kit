@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import StrEnum
 import os
@@ -124,6 +125,16 @@ class TrackingUnitOfWork:
     def commit(self) -> None:
         self._factory.committed += 1
         self._inner.commit()
+
+    @contextmanager
+    def read_snapshot(self):
+        self._factory.entered += 1
+        self._factory.active += 1
+        try:
+            with self._inner.read_snapshot() as snapshot:
+                yield snapshot
+        finally:
+            self._factory.active -= 1
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         try:

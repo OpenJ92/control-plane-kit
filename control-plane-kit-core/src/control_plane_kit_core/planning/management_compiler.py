@@ -25,6 +25,7 @@ from control_plane_kit_core.products import OciImageReference, ProductDescriptor
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
 )
+from control_plane_kit_core.secret_selections import SecretVersionSelection, normalize_secret_selections
 from control_plane_kit_core.topology.changes import (
     AddedChange, FieldSubject, ModifiedChange, RemovedChange, StructuralField,
 )
@@ -272,11 +273,17 @@ def _retained_update_wrapper(current, desired, node_id):
             or _independent_verification(after)
             or after.lifecycle.ownership is not ResourceOwnership.OWNED
             or after.lifecycle.compute is not ResourcePersistence.EPHEMERAL
-            or after.lifecycle.data or after.secret_deliveries
+            or after.lifecycle.data
             or after.runtime_authority_deliveries):
         return None
     # Compiled Node.secret_deliveries includes active socket-derived deliveries.
+    if before.secret_deliveries != after.secret_deliveries:
+        return None
     try:
+        for node in (before, after):
+            selections = normalize_secret_selections(node.secret_deliveries, node.secret_selections)
+            if any(type(value) is not SecretVersionSelection for value in selections):
+                return None
         _, gateway, connector, _, _ = _pin_path(desired, after.runtime_id, PlanGraphSide.DESIRED_GRAPH)
         if node_id in (gateway.node_id, connector.node_id):
             return None
@@ -371,6 +378,27 @@ def _managed_image_update_shape(current, desired, diff):
     return _retained_update_wrapper(current, desired, node_id) is not None
 
 
+def _managed_secret_selection_update_shape(current, desired, diff):
+    """One existing selected use changes version; all other graph values agree."""
+    if len(diff.changes) != 1:
+        return False
+    change = diff.changes[0]
+    if (not isinstance(change, ModifiedChange)
+            or not isinstance(change.subject, FieldSubject)
+            or change.subject.field is not StructuralField.SECRET_SELECTIONS
+            or not isinstance(change.subject.owner, NodeSubject)):
+        return False
+    node_id = change.subject.owner.node_id
+    before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
+    if desired.graph.update_node(replace(after, secret_selections=before.secret_selections)) != current.graph:
+        return False
+    if _retained_update_wrapper(current, desired, node_id) is None:
+        return False
+    # Canonical total coverage and equal deliveries fix the use keys and order.
+    return sum(left != right for left, right in zip(
+        before.secret_selections, after.secret_selections, strict=True)) == 1
+
+
 def _review_blocked(plan, diff):
     if not diff.changes:
         return plan
@@ -387,12 +415,13 @@ def _matching_activity(plan, operation_type, predicate):
 
 
 def compile_managed_update_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
-    """Derive closed add/remove, public-content or image updates, without authority."""
+    """Derive closed add/remove, content, image or selected-version updates."""
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
     base = compile_graph_activity_plan(current, desired)
     if (not diff.changes or _managed_configuration_update_shape(current, desired, diff)
-            or _managed_image_update_shape(current, desired, diff)):
+            or _managed_image_update_shape(current, desired, diff)
+            or _managed_secret_selection_update_shape(current, desired, diff)):
         return base
     shape = _managed_update_shape(current, desired, diff)
     if shape is None or not base.ready_for_execution:

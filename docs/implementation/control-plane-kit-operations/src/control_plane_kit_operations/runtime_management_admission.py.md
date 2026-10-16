@@ -10,7 +10,7 @@ existing no-op exception without trusting a supplied plan or execution policy.
 Managed-update profile selection is a narrow opt-in. A structural prefilter
 recognizes only the retained single managed runtime/gateway family with exactly
 one node introduced or removed and no non-artifact gateway change, or a retained
-workload content or immutable-image candidate. The common Core compiler owns the
+workload content, immutable-image or secret-selection candidate. The common Core compiler owns the
 exact closed union; the retained-update prefilters only locate affected nodes or
 runtimes. Recognized
 candidates must then satisfy the complete registered-product, lifecycle,
@@ -20,13 +20,26 @@ management updates outside these closed laws retain
 `management-graph-pair-v1` planning and its existing execution guard. Equal and
 name-only pairs likewise retain their canonical empty legacy plan.
 
-For retained content or image updates, all nodes in the affected Docker runtime must match an
+For retained content, image or selected-version updates, all nodes in the affected Docker runtime must match an
 active exact registered product, including gateway, connector and every retained
 receiver. The complete configured route set must equal the scoped expected set.
 No workload count or same-product X/Y condition is imposed on this relation.
 Unrelated runtimes do not contribute routes or effects to the retained update.
 Current plan selection and independent execution admission both enforce these
 facts; the supplied plan must equal the ready canonical current derivation.
+
+The selection prefilter inspects retained nodes and management on both graph
+sides, including malformed candidates that move the consumer or remove
+management. It does not admit a shape by itself. Core must produce a ready plan
+for exactly one selected-version change with the complete delivery contract,
+image, configuration, receiver, routes and all other graph values unchanged.
+Operations then binds the one affected runtime to active exact participants and
+complete routes through the same retained-update predicate used by image/content
+updates. Unresolved, combined or multiple-consumer candidates refuse instead of
+falling back to the legacy profile. No-op selection equality retains the existing
+empty-plan behavior. Explicit selection, current grants/revocation, correlated
+receipts, immutable replay/history and graph advancement remain with their
+existing owners; this pure policy adds no I/O or new authority.
 
 Immutable image authority comes from the active descriptor selected by product
 identity and descriptor digest. For the closed image-update family, both exact

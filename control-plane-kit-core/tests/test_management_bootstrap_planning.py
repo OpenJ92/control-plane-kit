@@ -1110,13 +1110,14 @@ class ManagedConfigurationUpdateTests(unittest.TestCase):
 class ManagedImageUpdateTests(unittest.TestCase):
     """#1972: immutable image successor, with receiving identity unchanged."""
 
-    def pair(self):
+    def pair(self, *, secret_deliveries=()):
         configured, _ = ManagedConfigurationUpdateTests().pair()
         node = configured.node("workload")
         contract = ProductRuntimeContract(sockets=node.sockets,
             provider_ports=(ProviderRuntimePort("control", 8000),),
             capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
-            configuration_artifacts=node.configuration_artifacts, public_environment=node.public_environment)
+            configuration_artifacts=node.configuration_artifacts, public_environment=node.public_environment,
+            secret_deliveries=secret_deliveries)
         before = ContainerServerProduct(ProductIdentity("examples", "receiver", 1),
             OciImageReference("registry.example.invalid", "apps/receiver", "sha256:" + "a" * 64), contract)
         after = replace(before, identity=replace(before.identity, contract_revision=2),
@@ -1241,6 +1242,133 @@ class ManagedImageUpdateTests(unittest.TestCase):
                 pair = [current.update_node(replace(current.node(node_id),
                     metadata=graph.node("workload").metadata)) for graph in (current, desired)]
                 self.refused(*pair)
+
+
+class ManagedSelectedConsumerUpdateTests(unittest.TestCase):
+    """#1991: three separate retained updates over a complete selected use."""
+
+    def pair(self, family):
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        delivery = SecretEnvironmentDelivery("APPLICATION_TOKEN",
+            SecretReference("secret://workspace/application"), SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        current, image, _, _ = ManagedImageUpdateTests().pair(secret_deliveries=(delivery,))
+        selection = SecretVersionSelection(delivery.reference, delivery.intent, "version-1")
+        current, image = tuple(value.update_node(replace(value.node("workload"),
+            secret_selections=(selection,))) for value in (current, image))
+        node = current.node("workload")
+        if family == "version":
+            desired = current.update_node(replace(node,
+                secret_selections=(replace(selection, version_id="version-2"),)))
+        elif family == "image":
+            desired = image
+        else:
+            desired = current.update_node(replace(node, configuration_artifacts=tuple(
+                replace(value, content='{"mode":"green"}', source_digest=None)
+                if value.artifact_id == "application" else value
+                for value in node.configuration_artifacts)))
+        return current, desired
+
+    compile = ManagedImageUpdateTests.compile
+    refused = ManagedImageUpdateTests.refused
+
+    def test_each_family_has_one_disruptive_reconcile_then_desired_health(self):
+        for family in ("version", "image", "content"):
+            with self.subTest(family=family):
+                current, desired = self.pair(family)
+                codec = GraphDescriptorCodec()
+                original = codec.encode(current), codec.encode(desired)
+                plan = self.compile(current, desired)
+                self.assertTrue(plan.ready_for_execution)
+                self.assertEqual(plan, self.compile(*(codec.decode(value) for value in original)))
+                reconcile, = (value for value in plan.activities if isinstance(value.operation, ReconcileNode))
+                self.assertEqual(reconcile.operation.target.node_id, "workload")
+                self.assertEqual(reconcile.impact.value, "disruptive")
+                health, = (value for value in plan.activities if isinstance(value.operation, core.ObserveNodeHealth))
+                self.assertIn(reconcile.activity_id, predecessors(plan, health))
+                self.assertIs(health.operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
+                stages = {value.operation.stage: value for value in plan.activities
+                    if isinstance(value.operation, core.ObserveManagementBootstrap)}
+                chain = [stages[stage] for stage in (core.ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+                    core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+                    core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)] + [health]
+                for before, after in zip(chain, chain[1:]):
+                    self.assertIn(before.activity_id, predecessors(plan, after))
+                self.assertFalse(any(isinstance(value.operation, (StartNode, StartRuntime,
+                    AllocatePublicIngress, StopNode, RemoveNodeResource, ReconcileRuntime)) for value in plan.activities))
+                self.assertEqual(self.compile(desired, desired).activities, ())
+                self.assertEqual((codec.encode(current), codec.encode(desired)), original)
+
+    def test_unresolved_before_or_after_is_not_an_eligible_retained_consumer(self):
+        for family in ("version", "image", "content"):
+            for side in (0, 1):
+                with self.subTest(family=family, side=side):
+                    pair = list(self.pair(family))
+                    node = pair[side].node("workload")
+                    selection = node.secret_selections[0]
+                    pair[side] = pair[side].update_node(replace(node,
+                        secret_selections=(UnselectedSecretUse(selection.reference, selection.intent),)))
+                    self.refused(*pair)
+
+    def test_combined_edits_and_delivery_slot_changes_are_refused(self):
+        current, version = self.pair("version")
+        _, image = self.pair("image")
+        _, content = self.pair("content")
+        node = version.node("workload")
+        for changed in (
+            replace(node, metadata=image.node("workload").metadata),
+            replace(node, configuration_artifacts=content.node("workload").configuration_artifacts),
+            replace(image.node("workload"), configuration_artifacts=content.node("workload").configuration_artifacts),
+            replace(node, secret_deliveries=(replace(node.secret_deliveries[0], environment_name="OTHER_TOKEN"),)),
+            replace(node, secret_deliveries=(), secret_selections=()),
+            replace(node, configuration_artifacts=node.configuration_artifacts[:-1]),
+        ):
+            with self.subTest(changed=changed.secret_selections):
+                self.refused(current, current.update_node(changed))
+        self.refused(current, version.update_node(replace(version.node("connector"), metadata={"changed": True})))
+
+    def test_one_version_changes_while_another_use_stays_selected(self):
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        current, desired = self.pair("version")
+        second = SecretEnvironmentDelivery("SECOND_TOKEN", SecretReference("secret://workspace/second"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        selection = SecretVersionSelection(second.reference, second.intent, "second-1")
+        current, desired = tuple(graph.update_node(replace(graph.node("workload"),
+            secret_deliveries=(*graph.node("workload").secret_deliveries, second),
+            secret_selections=(*graph.node("workload").secret_selections, selection)))
+            for graph in (current, desired))
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
+        node = desired.node("workload")
+        combined = desired.update_node(replace(node, secret_selections=tuple(
+            replace(value, version_id="second-2") if value.reference == second.reference else value
+            for value in node.secret_selections)))
+        self.refused(current, combined)
+
+    def test_two_retained_consumers_cannot_change_selection_together(self):
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        _, current, _ = managed_update_graphs()
+        node_ids = tuple(name for name in current.nodes if name not in ("gateway", "connector"))
+        self.assertEqual(len(node_ids), 2)
+        configured = self.pair("version")[0].node("workload")
+        for name in node_ids:
+            delivery = SecretEnvironmentDelivery("TOKEN", SecretReference("secret://workspace/" + name),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+            artifacts = {value.artifact_id: value for value in configured.configuration_artifacts}
+            wrapper, application = artifacts["receiver"], artifacts["application"]
+            document = json.loads(wrapper.content)
+            document["target"]["node_id"] = name
+            document["target"]["receiver_id"] = ("a" if name == "workload" else "b") * 32
+            wrapper = replace(wrapper, content=json.dumps(document), source_digest=None)
+            current = current.update_node(replace(current.node(name), secret_deliveries=(delivery,),
+                configuration_artifacts=tuple(sorted((wrapper, application))),
+                public_environment=configured.public_environment,
+                secret_selections=(SecretVersionSelection(delivery.reference, delivery.intent, "version-1"),)))
+        desired = current
+        for name in node_ids:
+            node = desired.node(name)
+            updated = replace(node, secret_selections=(replace(node.secret_selections[0], version_id="version-2"),))
+            self.assertTrue(self.compile(current, current.update_node(updated)).ready_for_execution)
+            desired = desired.update_node(updated)
+        self.refused(current, desired)
 
 
 if __name__ == "__main__":
