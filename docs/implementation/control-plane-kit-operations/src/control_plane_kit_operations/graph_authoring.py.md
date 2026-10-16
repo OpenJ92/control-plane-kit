@@ -1,6 +1,14 @@
 Source: [graph_authoring.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/graph_authoring.py).
 Maintain this companion alongside its source.
 
+The public action owner now reuses this module's private metadata preparation
+machinery (#1989). Preparation remains tied to its issuing GraphAuthoringService
+instance and exact final UoW, consumable once. This does not expose a public token
+or let Servers use the action-free writer. Shared command admission snapshots
+choices and revalidates closed Core selections. `original_carried_secret_graph`
+also applies explicit choices against original historical lineage for action
+replay; it performs no current provider authorization or metadata read.
+
 Desired-graph authoring retains its existing caller-owned transaction, revision
 checks, registered product requirements and authored/realized graph records.
 

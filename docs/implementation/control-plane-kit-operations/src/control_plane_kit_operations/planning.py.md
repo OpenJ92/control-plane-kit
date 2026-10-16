@@ -1,6 +1,25 @@
 Source: [planning.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/planning.py).
 Maintain this companion alongside its source.
 
+Public explicit secret selection (#1989): `SetDesiredGraph` carries immutable
+canonical `explicit_secret_choices` and authenticated `actor_scopes`.
+`DesiredGraphCommandService(..., secret_metadata_reader=...)` privately reuses
+GraphAuthoring's preparation owner; it never calls that owner's graph writer.
+A short initial transaction returns original action replay before metadata.
+Fresh metadata is read outside all UoWs. The owner-bound final UoW checks the
+captured session/idempotency coordinate and original intent before lookup, then
+rechecks a concurrent winner before fresh lineage/authority fences. Only the
+matching one-use preparation can reach the existing atomic graph, projection,
+receiver, action and pointer writes. No-choice edits retain one transaction.
+
+Canonical explicit choices enter durable intent; scopes remain fresh authority,
+not historical intent. Replay reconstructs exact explicit/carry-forward material
+from the original lineage and immutable documents without current metadata.
+Preparation failure rolls back/no-ops durable publication; it does not authorize
+provider mutation or automatic retry. Tests in PublicSecretSelectionCommandTests
+exercise outside-UoW IO, exact replay, changed choice, current revocation,
+concurrent winner and action-key substitution, alongside existing planning laws.
+
 `SetDesiredGraph.proposed_graph_id` optionally supplies a new immutable authored
 graph name. It is validated under the shared public graph-reference law, then
 included in the command descriptor and full graph-bearing intent fingerprint

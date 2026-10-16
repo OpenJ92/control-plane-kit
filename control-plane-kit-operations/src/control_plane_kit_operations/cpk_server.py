@@ -25,6 +25,9 @@ from control_plane_kit_core.runtime_effects import GatewayTargetId
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.secret_selections import (
+    SecretVersionSelection, secret_selections_from_descriptor,
+)
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDeliveryCodec,
@@ -863,6 +866,8 @@ class CpkServerPlanningService:
                     workspace_id=_workspace_id(payload),
                     actor_id=context.actor_id,
                     graph=graph,
+                    actor_scopes=tuple(sorted(context.granted_scopes, key=lambda scope: scope.value)),
+                    explicit_secret_choices=_explicit_secret_choices(payload, graph),
                     proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
                     receiver_lifecycle=_receiver_expectation(payload),
                     expected_desired_graph_id=_optional_text(
@@ -1775,6 +1780,26 @@ def _workload_verifier_purposes(
     except ValueError:
         pass
     raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+
+
+def _explicit_secret_choices(payload, graph):
+    """Decode existing selected values; authority comes only from trusted context."""
+    try:
+        document = payload.get("explicit_secret_choices", {})
+        if not isinstance(document, Mapping) or len(document) > 1024:
+            raise ValueError
+        choices = {}
+        for node_id, descriptors in document.items():
+            if type(node_id) is not str or node_id not in graph.nodes:
+                raise ValueError
+            values = secret_selections_from_descriptor(descriptors)
+            if (not values or any(type(value) is not SecretVersionSelection for value in values)
+                    or len({(value.reference, value.intent) for value in values}) != len(values)):
+                raise ValueError
+            choices[node_id] = values
+        return choices
+    except (ValueError, TypeError, AttributeError):
+        raise CpkServerApplicationError(400, "explicit secret choices are malformed") from None
 
 
 def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:

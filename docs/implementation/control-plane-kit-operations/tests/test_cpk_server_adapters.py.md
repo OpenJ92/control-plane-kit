@@ -1,6 +1,13 @@
 Source: [test_cpk_server_adapters.py](../../../../control-plane-kit-operations/tests/test_cpk_server_adapters.py).
 Maintain this companion alongside its source.
 
+For #1989, `test_public_secret_choices_*` proves HTTP/MCP selection descriptor
+translation and authenticated scope propagation. Body-supplied scope claims do
+not enter command authority; malformed, duplicate, null-version and unknown-node
+choices refuse before dispatch. These tests observe commands, not duplicate
+Operations' transaction/replay state machine, which has real-store coverage in
+test_secret_selection_preparation.py.
+
 The existing suite owns Operations route-to-command adaptation and policy
 boundaries, with recording ports or real services as appropriate. #1875 adds
 HTTP and MCP propagation of proposed_graph_id through desired-graph.set and

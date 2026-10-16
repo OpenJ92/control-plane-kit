@@ -1,6 +1,14 @@
 Source: [cpk_server.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py).
 Maintain this companion alongside its source.
 
+`command.desired-graph.set` accepts optional `explicit_secret_choices`, mapping
+node IDs to arrays of the existing Core selection descriptor
+`{reference_id, intent, version_id}`. Unselected, duplicate, malformed, oversized
+and unknown-node values refuse before dispatch. Authenticated context supplies
+`actor_scopes`; a body authority claim cannot grant permission. HTTP and MCP use
+this same translation. The injected DesiredGraphCommandService owns metadata
+preparation, current fences, atomic writes and original replay, not this route.
+
 Operations adapters map authenticated HTTP/MCP protocol values to their owning
 application commands. `command.desired-graph.set` and inline
 `command.deployment.prepare` forward optional `proposed_graph_id` without

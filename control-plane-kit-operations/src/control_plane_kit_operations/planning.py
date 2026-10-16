@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.planning import (
     ActivityPlan,
     InvalidActivityPlan,
@@ -32,7 +35,10 @@ from control_plane_kit_operations.deployment_transitions import (
 )
 from control_plane_kit_operations.graph_authoring import (
     GraphAuthoringError,
+    GraphAuthoringService,
+    SecretVersionMetadataReader,
     SetDesiredGraphCommand,
+    _consume_secret_preparation,
     validate_proposed_graph_id,
     product_references_in_graph,
     admit_graph_secret_selections,
@@ -140,6 +146,9 @@ class SetDesiredGraph:
     expected_desired_graph_revision: int = 0
     proposed_graph_id: str | None = None
     receiver_lifecycle: ReceiverLifecycleExpectation | None = field(default=None, kw_only=True)
+    actor_scopes: tuple[PolicyScope, ...] = field(default=(), kw_only=True)
+    explicit_secret_choices: Mapping[str, tuple[SecretVersionSelection, ...]] = field(
+        default_factory=dict, kw_only=True)
 
     def __post_init__(self) -> None:
         _required_text(self.session_id, "session_id")
@@ -165,6 +174,11 @@ class SetDesiredGraph:
                 "expected_desired_graph_revision must be nonnegative"
             )
         _require_idempotency_key(self.idempotency_key)
+        try:
+            admitted = _secret_authoring_command(self)
+        except GraphAuthoringError:
+            raise InvalidOperationCommand("desired graph secret choices are malformed") from None
+        object.__setattr__(self, "explicit_secret_choices", admitted.explicit_secret_choices)
         if self.proposed_graph_id is not None:
             invalid_proposal = False
             try:
@@ -193,6 +207,7 @@ class SetDesiredGraph:
         if self.proposed_graph_id is not None:
             result["proposed_graph_id"] = self.proposed_graph_id
         result.update(_expectation_member(self.receiver_lifecycle))
+        result.update(_explicit_secret_choice_member(self))
         return result
 
 
@@ -418,10 +433,14 @@ class DesiredGraphCommandService:
         *,
         clock: Callable[[], str],
         id_factory: Callable[[], str],
+        secret_metadata_reader: SecretVersionMetadataReader | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
         self._id_factory = id_factory
+        # Reuse the existing private preparation owner, never its action-free writer.
+        self._secret_preparation = GraphAuthoringService(unit_of_work_factory,
+            graph_id_factory=id_factory, clock=clock, secret_metadata_reader=secret_metadata_reader)
 
     def _retained_child_action(self, session_id, idempotency_key):
         """Exact immutable receipt lookup for the owning preparation composition."""
@@ -430,16 +449,15 @@ class DesiredGraphCommandService:
 
     def execute(self, command: SetDesiredGraph) -> DesiredGraphEditResult:
         fingerprint = _desired_graph_fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work:
+        coordinate = (command.session_id, command.idempotency_key.value)
+        with self._command_unit_of_work(command, fingerprint, coordinate) as (unit_of_work, prepared):
+            # The intent digest excludes the action key. Bind both before lookup/replay.
+            if (coordinate != (command.session_id, command.idempotency_key.value)
+                    or fingerprint != _desired_graph_fingerprint(command)):
+                raise DesiredGraphCommandError("desired graph intent changed during preparation")
             history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            existing = history.action_for_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
+            history.lock_action_idempotency(*coordinate)
+            existing = history.action_for_idempotency(*coordinate)
             if existing is not None:
                 result = _desired_graph_replay(unit_of_work, existing, fingerprint, command)
                 unit_of_work.commit()
@@ -472,7 +490,12 @@ class DesiredGraphCommandService:
                         raise GraphAuthoringError(f"unregistered product {reference.identity.key}") from error
                     if registered.status is not RegisteredProductStatus.ACTIVE:
                         raise GraphAuthoringError(f"unregistered product {reference.identity.key}")
-                selected_graph = admit_graph_secret_selections(stores, workspace, command.graph)
+                selected_input = command.graph
+                if prepared is not None:
+                    _consume_secret_preparation(unit_of_work, prepared.command, prepared)
+                    selected_input = prepared.command.graph
+                selected_graph = admit_graph_secret_selections(stores, workspace, selected_input,
+                    prepared=prepared)
                 graph = GraphVersionRecord.from_graph(
                     graph_id=command.proposed_graph_id or self._id_factory(), workspace_id=command.workspace_id,
                     version=stores.graphs.next_version_for_workspace(command.workspace_id), graph=selected_graph,
@@ -544,6 +567,40 @@ class DesiredGraphCommandService:
                 ),
                 desired_graph_revision=updated.desired_graph_revision,
             )
+
+    @contextmanager
+    def _command_unit_of_work(self, command, fingerprint, coordinate):
+        if not command.explicit_secret_choices:
+            with self._unit_of_work_factory() as uow:
+                yield uow, None
+            return
+        # Exact history wins before fresh authority/metadata. Keep replay on this UoW.
+        with self._unit_of_work_factory() as uow:
+            history = uow.stores.activity_history
+            history.lock_action_idempotency(*coordinate)
+            existing = history.action_for_idempotency(*coordinate)
+            if existing is not None:
+                _desired_graph_replay(uow, existing, fingerprint, command)
+                yield uow, None
+                return
+            session = _desired_session(uow, command)
+            if session.status is not OperationSessionStatus.OPEN:
+                raise DesiredGraphSessionConflict("operation session is not open")
+            try:
+                workspace = uow.stores.workspaces.get(command.workspace_id)
+            except KeyError:
+                raise DesiredGraphWorkspaceNotFound("workspace was not found") from None
+            if (workspace.desired_graph_id, workspace.desired_realized_projection_id,
+                    workspace.desired_graph_revision) != (command.expected_desired_graph_id,
+                    command.expected_desired_realized_projection_id, command.expected_desired_graph_revision):
+                raise StaleDesiredGraph("stale desired graph pointer")
+        try:
+            authoring = _secret_authoring_command(command)
+            with self._secret_preparation._prepare_secret_selections(authoring) as prepared:
+                with self._secret_preparation._secret_selection_unit_of_work(prepared) as uow:
+                    yield uow, prepared
+        except GraphAuthoringError:
+            raise DesiredGraphCommandError("secret selection preparation is invalid or unavailable") from None
 
 
 class ActivityPlanningCommandService:
@@ -1034,6 +1091,21 @@ def _planning_evidence_matches(
     )
 
 
+def _secret_authoring_command(command):
+    return SetDesiredGraphCommand(command.workspace_id, command.actor_id, command.graph,
+        command.expected_desired_graph_id, command.expected_desired_realized_projection_id,
+        command.expected_desired_graph_revision, actor_scopes=command.actor_scopes,
+        explicit_secret_choices=command.explicit_secret_choices)
+
+
+def _explicit_secret_choice_member(command):
+    if not command.explicit_secret_choices:
+        return {}
+    return {"explicit_secret_choices": {
+        node_id: [selection.descriptor() for selection in values]
+        for node_id, values in sorted(command.explicit_secret_choices.items())}}
+
+
 def _desired_graph_fingerprint(command: SetDesiredGraph) -> str:
     intent = {
         "command": OperatorCommandKind.SET_DESIRED_GRAPH.value,
@@ -1050,6 +1122,7 @@ def _desired_graph_fingerprint(command: SetDesiredGraph) -> str:
     if command.proposed_graph_id is not None:
         intent["proposed_graph_id"] = command.proposed_graph_id
     intent.update(_expectation_member(command.receiver_lifecycle))
+    intent.update(_explicit_secret_choice_member(command))
     return _fingerprint(intent)
 
 

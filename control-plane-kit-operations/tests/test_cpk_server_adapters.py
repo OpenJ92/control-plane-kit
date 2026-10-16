@@ -27,6 +27,8 @@ from control_plane_kit_core.probe_intents import (
     ProbeOutcome,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secrets import SecretReference, SecretUseIntent
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -1934,6 +1936,46 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     )
                 self.assertEqual(raised.exception.status, 403)
         self.assertEqual(program.commands, [])
+
+    def test_public_secret_choices_use_authenticated_scopes_on_http_and_mcp(self):
+        desired = RecordingService()
+        service = CpkServerPlanningService(RecordingService(), desired_graphs=desired)
+        graph = self.graph_from_document(self.product("selected"))
+        node = next(iter(graph.nodes))
+        selection = SecretVersionSelection(SecretReference("secret://workspace-secrets/workspace-a/token"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN, "version-1")
+        scopes = (PolicyScope.INSTANCE_WORKSPACE_EDIT,)
+        payload = {"workspace_id": "workspace-a", "session_id": "session-a",
+            "graph": DEFAULT_GRAPH_CODEC.encode(graph), "expected_desired_graph_id": None,
+            "idempotency_key": "selected", "explicit_secret_choices": {node: [selection.descriptor()]},
+            "actor_scopes": [PolicyScope.SECRET_PROVIDER_USE.value]}
+        for surface in ("http", "mcp"):
+            service.handle(RouteRequest(surface=surface, route_id="command.desired-graph.set",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={} if surface == "mcp" else {"workspace_id": "workspace-a"},
+                payload=payload, principal=operator_principal(scopes=scopes)))
+        for command in desired.commands:
+            self.assertEqual(getattr(command, "explicit_secret_choices", None), {node: (selection,)})
+            self.assertEqual(command.actor_scopes, scopes)
+
+    def test_public_secret_choices_malformed_or_unselected_refuse_before_dispatch(self):
+        desired = RecordingService()
+        service = CpkServerPlanningService(RecordingService(), desired_graphs=desired)
+        graph = self.graph_from_document(self.product("selected"))
+        node = next(iter(graph.nodes))
+        selection = {"reference_id": "secret://workspace-secrets/workspace-a/token",
+            "intent": SecretUseIntent.APPLICATION_CONTROL_TOKEN.value, "version_id": "version-1"}
+        for choices in ([], {node: [{**selection, "version_id": None}]},
+                {node: [selection, selection]}, {"absent-node": [selection]}):
+            with self.subTest(choices=choices):
+                with self.assertRaises(CpkServerApplicationError):
+                    service.handle(RouteRequest(surface="mcp", route_id="command.desired-graph.set",
+                        service_role=ControlPlaneServiceRole.PLANNING, path_parameters={},
+                        payload={"workspace_id": "workspace-a", "session_id": "session-a",
+                            "graph": DEFAULT_GRAPH_CODEC.encode(graph),
+                            "expected_desired_graph_id": None, "idempotency_key": "invalid",
+                            "explicit_secret_choices": choices}))
+        self.assertEqual(desired.commands, [])
 
     def test_proposed_identity_is_forwarded_by_http_and_mcp_desired_graph_commands(self):
         desired = RecordingService()
