@@ -199,6 +199,7 @@ class ManagedSelectedUpdateExecutionTests(chain.ManagedApplicationFixture):
         await self.invoke("command.product.import", ControlPlaneServiceRole.PLANNING,
             path={"workspace_id": "workspace-a"}, payload={"descriptor_document": json.loads(document.content),
                 "imported_at": chain.now(), "idempotency_key": "consumer-image"})
+        self.documents["api-image-successor"] = document
         return self.graph.update_node(replace(self.graph.node("api"), metadata={
             "product_identity": successor.identity.key, "product_descriptor_digest": document.content_digest,
             "oci_image": successor.image.execution_reference}))
