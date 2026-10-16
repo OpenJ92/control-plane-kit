@@ -15,7 +15,10 @@ from control_plane_kit_core.secrets import SecretFileDelivery, SecretReference, 
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_operations import graph_authoring
 from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProductStatus
-from control_plane_kit_operations.planning import DesiredGraphCommandService, SetDesiredGraph
+from control_plane_kit_operations.planning import (
+    DesiredGraphCommandService, SetDesiredGraph, DesiredGraphCommandError,
+    DesiredGraphIdempotencyConflict,
+)
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.secret_providers import (
     RegisteredSecretReferenceStatus, RevokeSecretReferenceCommand, SecretProviderRegistrationService,
@@ -133,6 +136,132 @@ class SecretSelectionPreparationFixture(DraftSelectionFixture):
                 revoked_by="operator-a", revoked_at=NOW,
                 actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)))
         self.assertIs(revoked.status, RegisteredSecretReferenceStatus.REVOKED)
+
+
+class PublicSecretSelectionCommandTests(SecretSelectionPreparationFixture, unittest.TestCase):
+    """Public action ownership joins the existing preparation laws (#1989)."""
+
+    def public_command(self, *, key="public-selection", version="version-1", scopes=None):
+        self.assertIn("explicit_secret_choices", {item.name for item in fields(SetDesiredGraph)},
+            "public action command must accept explicit version choices")
+        source = self.command(version=version, actor_scopes=scopes)
+        return SetDesiredGraph(session_id=self.sessions["workspace-a"],
+            idempotency_key=IdempotencyKey(key), **{
+                name: getattr(source, name) for name in (
+                    "workspace_id", "actor_id", "graph", "expected_desired_graph_id",
+                    "expected_desired_realized_projection_id", "expected_desired_graph_revision",
+                    "actor_scopes", "explicit_secret_choices")})
+
+    def public_service(self, *, reader=True):
+        return DesiredGraphCommandService(self.observed_unit_of_work,
+            clock=lambda: NOW, id_factory=lambda: uuid.uuid4().hex,
+            secret_metadata_reader=self.reader if reader else None)
+
+    def selected_version(self, result):
+        with self.unit_of_work() as uow:
+            record = uow.stores.graphs.get(result.graph_version_id)
+            graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
+            action = uow.stores.activity_history.action_for_idempotency(
+                result.action.session_id, result.action.idempotency_key)
+            self.assertEqual(action, result.action)
+        return next(iter(graph.nodes.values())).secret_selections[0].version_id
+
+    def test_public_explicit_choice_commits_action_after_metadata_outside_uow(self):
+        self.prepare_fixture(repeated_delivery=True)
+        command = self.public_command()
+        original = command.graph.descriptor()
+        result = self.public_service().execute(command)
+        self.assertEqual(len(self.reader.calls), 1)
+        self.assertEqual(self.selected_version(result), "version-1")
+        self.assertEqual(self.workspace().desired_graph_id, result.graph_version_id)
+        self.assertEqual(command.graph.descriptor(), original)
+        self.assertEqual(self.open_units, 0)
+
+    def test_public_missing_scope_or_reader_refuses_without_io_or_writes(self):
+        self.prepare_fixture()
+        for scopes, reader in (((), True), ((PolicyScope.SECRET_PROVIDER_USE,), False)):
+            with self.subTest(scopes=scopes, reader=reader):
+                command = self.public_command(scopes=scopes)
+                before = self.truth()
+                with self.assertRaises(DesiredGraphCommandError):
+                    self.public_service(reader=reader).execute(command)
+                self.assertEqual(self.reader.calls, [])
+                self.assertEqual(self.truth(), before)
+
+    def test_public_original_explicit_replay_survives_later_change_and_revocation(self):
+        self.prepare_fixture()
+        command = self.public_command()
+        service = self.public_service()
+        first = service.execute(command)
+        second = service.execute(self.public_command(key="second", version="version-2"))
+        self.revoke_authoring_admission()
+        self.reader.calls.clear()
+        before = self.truth()
+        replay = service.execute(replace(command, actor_scopes=()))
+        self.assertEqual(replay, replace(first, replayed=True))
+        self.assertEqual(self.selected_version(replay), "version-1")
+        self.assertEqual(self.workspace().desired_graph_id, second.graph_version_id)
+        self.assertEqual(self.truth(), before)
+        self.assertEqual(self.reader.calls, [])
+        node = next(iter(command.explicit_secret_choices))
+        changed = replace(command, explicit_secret_choices={node: (
+            SecretVersionSelection(self.reference, self.intent, "version-3"),)})
+        with self.assertRaises(DesiredGraphIdempotencyConflict):
+            service.execute(changed)
+        self.assertEqual(self.reader.calls, [])
+
+    def test_public_reference_race_refuses_without_partial_action(self):
+        self.prepare_fixture()
+        command = self.public_command()
+        before = self.truth()
+        def observed(request):
+            response = self.metadata(request)
+            SecretProviderRegistrationService(self.unit_of_work).revoke_reference(
+                RevokeSecretReferenceCommand(workspace_id="workspace-a",
+                    registration_id=self.registered_reference.registration_id,
+                    revoked_by="operator-a", revoked_at=NOW,
+                    actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)))
+            return response
+        self.reader.observe = observed
+        with self.assertRaises(DesiredGraphCommandError):
+            self.public_service().execute(command)
+        self.assertEqual(len(self.reader.calls), 1)
+        self.assertEqual(self.truth(), before)
+
+    def test_public_concurrent_same_key_winner_is_replayed_before_fresh_fences(self):
+        self.prepare_fixture()
+        command = self.public_command()
+        service = self.public_service()
+        winners = []
+        def observed(request):
+            response = self.metadata(request)
+            self.reader.observe = self.metadata
+            winners.append(service.execute(command))
+            return response
+        self.reader.observe = observed
+        result = service.execute(command)
+        self.assertEqual(result, replace(winners[0], replayed=True))
+        self.assertEqual(self.selected_version(result), "version-1")
+        self.assertEqual(self.workspace().desired_graph_revision,
+            command.expected_desired_graph_revision + 1)
+        self.assertEqual(len(self.reader.calls), 2)
+
+    def test_public_metadata_callback_cannot_substitute_action_key(self):
+        self.prepare_fixture()
+        command = self.public_command()
+        before = self.truth()
+        def observed(request):
+            response = self.metadata(request)
+            object.__setattr__(command, "idempotency_key", IdempotencyKey("substituted"))
+            return response
+        self.reader.observe = observed
+        with self.assertRaises(DesiredGraphCommandError):
+            self.public_service().execute(command)
+        self.assertEqual(self.truth(), before)
+        with self.unit_of_work() as uow:
+            for key in ("public-selection", "substituted"):
+                self.assertIsNone(uow.stores.activity_history.action_for_idempotency(
+                    command.session_id, key))
 
 
 class SecretSelectionPreparationTests(SecretSelectionPreparationFixture, unittest.TestCase):
