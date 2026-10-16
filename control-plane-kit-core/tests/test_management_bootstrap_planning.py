@@ -1352,13 +1352,14 @@ class ManagedSelectedConsumerUpdateTests(unittest.TestCase):
         for name in node_ids:
             delivery = SecretEnvironmentDelivery("TOKEN", SecretReference("secret://workspace/" + name),
                 SecretUseIntent.APPLICATION_CONTROL_TOKEN)
-            wrapper, application = configured.configuration_artifacts
+            artifacts = {value.artifact_id: value for value in configured.configuration_artifacts}
+            wrapper, application = artifacts["receiver"], artifacts["application"]
             document = json.loads(wrapper.content)
             document["target"]["node_id"] = name
             document["target"]["receiver_id"] = ("a" if name == "workload" else "b") * 32
             wrapper = replace(wrapper, content=json.dumps(document), source_digest=None)
             current = current.update_node(replace(current.node(name), secret_deliveries=(delivery,),
-                configuration_artifacts=(wrapper, application),
+                configuration_artifacts=tuple(sorted((wrapper, application))),
                 public_environment=configured.public_environment,
                 secret_selections=(SecretVersionSelection(delivery.reference, delivery.intent, "version-1"),)))
         desired = current
