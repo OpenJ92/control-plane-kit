@@ -1326,6 +1326,49 @@ class ManagedSelectedConsumerUpdateTests(unittest.TestCase):
                 self.refused(current, current.update_node(changed))
         self.refused(current, version.update_node(replace(version.node("connector"), metadata={"changed": True})))
 
+    def test_one_version_changes_while_another_use_stays_selected(self):
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        current, desired = self.pair("version")
+        second = SecretEnvironmentDelivery("SECOND_TOKEN", SecretReference("secret://workspace/second"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        selection = SecretVersionSelection(second.reference, second.intent, "second-1")
+        current, desired = tuple(graph.update_node(replace(graph.node("workload"),
+            secret_deliveries=(*graph.node("workload").secret_deliveries, second),
+            secret_selections=(*graph.node("workload").secret_selections, selection)))
+            for graph in (current, desired))
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
+        node = desired.node("workload")
+        combined = desired.update_node(replace(node, secret_selections=tuple(
+            replace(value, version_id="second-2") if value.reference == second.reference else value
+            for value in node.secret_selections)))
+        self.refused(current, combined)
+
+    def test_two_retained_consumers_cannot_change_selection_together(self):
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        _, current, _ = managed_update_graphs()
+        node_ids = tuple(name for name in current.nodes if name not in ("gateway", "connector"))
+        self.assertEqual(len(node_ids), 2)
+        configured = self.pair("version")[0].node("workload")
+        for name in node_ids:
+            delivery = SecretEnvironmentDelivery("TOKEN", SecretReference("secret://workspace/" + name),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+            wrapper, application = configured.configuration_artifacts
+            document = json.loads(wrapper.content)
+            document["target"]["node_id"] = name
+            document["target"]["receiver_id"] = ("a" if name == "workload" else "b") * 32
+            wrapper = replace(wrapper, content=json.dumps(document), source_digest=None)
+            current = current.update_node(replace(current.node(name), secret_deliveries=(delivery,),
+                configuration_artifacts=(wrapper, application),
+                public_environment=configured.public_environment,
+                secret_selections=(SecretVersionSelection(delivery.reference, delivery.intent, "version-1"),)))
+        desired = current
+        for name in node_ids:
+            node = desired.node(name)
+            updated = replace(node, secret_selections=(replace(node.secret_selections[0], version_id="version-2"),))
+            self.assertTrue(self.compile(current, current.update_node(updated)).ready_for_execution)
+            desired = desired.update_node(updated)
+        self.refused(current, desired)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -139,8 +139,8 @@ health dependency. It adds no ordering algorithm or operation. The unchanged
 gateway-local -> connected -> authenticated-path chain still precedes health;
 no retained infrastructure start, allocation or replacement is introduced.
 
-The workload must be owned ephemeral compute with no data, effective secret
-deliveries (including those compiled from connected sockets), runtime-authority
+The workload must be owned ephemeral compute with no data, unresolved effective
+secret uses (including those compiled from connected sockets), runtime-authority
 deliveries or unsupported independent verification. A unique readiness surface
 and unchanged managed runtime are required. Gateway/connector updates, missing
 or wrong-target wrappers, provenance-only deltas and every other graph change
@@ -150,8 +150,8 @@ current compiler; the superseded content-only public API is removed without an a
 This pure relation grants no permission and proves no installation. Operations
 #1971 independently admits registered product/authority facts using the current
 managed-update profile. It owns original attempts, installation evidence and advancement.
-Secret-version, verifier and declaration updates retain their later separate
-contracts. No provider, persistence or network dependency is added.
+Verifier and declaration updates retain their later separate contracts.
+No provider, persistence or network dependency is added.
 
 The same entry point also recognizes the #1972 immutable-image relation. One
 eligible workload changes exactly `product_identity`, `product_descriptor_digest`
@@ -173,3 +173,18 @@ validate both active registered descriptors, actual runtime-contract equality,
 current successor authority and durable execution evidence. Servers #251 owns
 the real Docker public-client experiment; neither publication nor image pull
 authority follows from this pure relation.
+
+#1991 qualifies retained image/content updates with the same delivery contract
+on both sides and complete canonical selected resolving uses. Reference-only
+deliveries add no resolving use. Missing coverage is invalid; unresolved values
+remain refused. Image/content restoration already requires exact selections to
+remain equal, including versions. The retained wrapper and all existing
+readiness, lifecycle, authority and graph restrictions remain in force.
+
+The new version-only relation requires exactly one SECRET_SELECTIONS field
+change on one retained eligible workload. Restoring that field must recover the
+whole current graph. Canonical coverage and unchanged delivery contracts fix the
+use keys; exactly one selected version may differ. It reuses the generic diff,
+disruptive reconciliation and managed health ordering. Combined version/image/
+content edits, two version changes, multiple consumers and changed slots do not
+acquire support. Recognition grants neither selection nor execution authority.
