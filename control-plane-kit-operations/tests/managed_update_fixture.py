@@ -19,6 +19,7 @@ from control_plane_kit_core.products import (
     ProviderRuntimePort,
 )
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.secret_selections import author_secret_selections
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.receiver_management_routes import (
     ReceiverManagementRouteBinding,
@@ -48,6 +49,7 @@ def managed_update_graphs(
     workload_ids=("api-x", "api-y"),
     route_aliases=None,
     application_artifacts=(),
+    application_deliveries=(),
 ):
     """Return accepted A/B/C projections plus their exact active products."""
 
@@ -128,6 +130,8 @@ def managed_update_graphs(
     )
     renamed[x_id] = replace(
         renamed[x_id],
+        secret_deliveries=application_deliveries,
+        secret_selections=author_secret_selections(application_deliveries),
         configuration_artifacts=(configured[x_id], *application_artifacts),
         public_environment=(*renamed[x_id].public_environment,
             PublicStaticEnvironmentBinding(
@@ -157,6 +161,7 @@ def managed_update_graphs(
             lifecycle=node.lifecycle,
             control_surfaces=node.block_spec.control_surfaces,
             gateway_transit=node.block_spec.gateway_transit,
+            secret_deliveries=node.secret_deliveries,
         )
         product = ContainerServerProduct(
             ProductIdentity("test", f"{product_prefix}-{name}", 1),

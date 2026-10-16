@@ -69,6 +69,7 @@ from control_plane_kit_core.secret_installation import (
 from control_plane_kit_core.secret_version_grants import (
     SecretVersionResolutionGrant, validate_resolution_grant,
 )
+from control_plane_kit_core.secret_selections import author_secret_selections
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference, SecretProviderId, SecretReference, SecretUseIntent,
 )
@@ -110,6 +111,7 @@ from control_plane_kit_operations.products import ProductRegistrationService
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
 from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftCommandService
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
 from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_execution_is_unsupported,
@@ -348,6 +350,7 @@ class RecordingManagedHealth:
 
 class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
     application_artifacts = ()
+    application_deliveries = ()
 
     def setUp(self):
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
@@ -365,7 +368,7 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         self.ingress = RecordingIngressInterpreter(self.tracker)
         self.ids = {name: GeneratedIds("chain-" + name) for name in (
             "workspace", "plan", "desired", "approval", "admission", "lifecycle",
-            "session", "execution", "effect-start", "effect-fold", "advance")}
+            "session", "execution", "effect-start", "effect-fold", "advance", "draft")}
         # This is the injected owner's first ID, also pinned in authored receiver bytes.
         self.authored_revision = "chain-desired-1"
         self.graph, self.documents, self.registry = self.authored_graph()
@@ -433,12 +436,15 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                     provider_ports=tuple(ProviderRuntimePort(socket.name, 8000) for socket in node.sockets.providers),
                     capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
                     gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=chosen,
+                    secret_deliveries=self.application_deliveries if name == "api" else node.secret_deliveries,
                     public_environment=(*node.public_environment, *environment)
                     if "workload" in families else node.public_environment))
             document = ProductDescriptorCodec().encode_document(product)
             documents[name] = document
             reference = ProductReference.from_document(document)
             nodes[name] = replace(node, configuration_artifacts=chosen,
+                secret_deliveries=product.runtime_contract.secret_deliveries,
+                secret_selections=author_secret_selections(product.runtime_contract.secret_deliveries),
                 public_environment=product.runtime_contract.public_environment, metadata={
                 "product_identity": reference.identity.key,
                 "product_descriptor_digest": reference.descriptor_sha256.value})
@@ -548,7 +554,9 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
             planning=ActivityPlanningCommandService(uow, clock=now, id_factory=self.ids["plan"]),
             workspaces=WorkspaceCommandService(uow, clock=now, id_factory=self.ids["workspace"]),
             products=ProductRegistrationService(uow),
-            desired_graphs=DesiredGraphCommandService(uow, clock=now, id_factory=self.ids["desired"]),
+            desired_graphs=DesiredGraphCommandService(uow, clock=now, id_factory=self.ids["desired"],
+                secret_metadata_reader=getattr(self, "metadata_reader", None)),
+            desired_topology_drafts=DesiredTopologyDraftCommandService(uow, clock=now, id_factory=self.ids["draft"]),
             approval=ApprovalCommandService(uow, clock=now, id_factory=self.ids["approval"]),
             admission=ExecutionAdmissionCommandService(uow, clock=now, id_factory=self.ids["admission"]),
             lifecycle=lifecycle, operations=OperationCommandService(uow, clock=now,
@@ -638,6 +646,12 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                 records.append((intent, attempt, outcome))
         return tuple(records)
 
+    async def author_initial_desired(self):
+        return None
+
+    def check_initial_prepared(self):
+        self.assertEqual(self.plan_descriptor["desired_graph_id"], self.authored_revision)
+
     async def prepare_and_start(self):
         self.require_managed_interface()
         self.app = self.application()
@@ -653,18 +667,19 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                 "cpk_effect_attempts", "cpk_effect_attempt_outcomes", "cpk_secret_use_authorizations"):
             self.assertEqual(self.rows(name), (), name)
         self.assertEqual(self.effects(), ((), (), (), (), ()))
+        expected_desired = await self.author_initial_desired()
         prepared = await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
             path={"workspace_id": "workspace-a"}, payload={"desired_graph": DEFAULT_GRAPH_CODEC.encode(self.graph),
                 "expected_current": {"authored_graph_id": self.workspace["current_graph_id"],
                     "realized_projection_id": self.workspace["current_realized_projection_id"]},
-                "expected_desired": None, "expected_desired_graph_revision": self.workspace["desired_graph_revision"],
+                "expected_desired": expected_desired, "expected_desired_graph_revision": self.workspace["desired_graph_revision"],
                 "title": "Managed Hello", "idempotency_key": "prepare"})
         self.assertEqual(prepared["status"], "approval-required")
         self.plan_id = prepared["plan_id"]
         detail = await self.invoke("read.plan-detail", ControlPlaneServiceRole.READS,
             path={"workspace_id": "workspace-a", "plan_id": self.plan_id})
         self.plan_descriptor = detail["plan"]
-        self.assertEqual(self.plan_descriptor["desired_graph_id"], self.authored_revision)
+        self.check_initial_prepared()
         with self.unit_of_work() as uow:
             self.plan = uow.stores.activity_history.get_plan(self.plan_id).plan
         native, = (activity for activity in self.plan.activities

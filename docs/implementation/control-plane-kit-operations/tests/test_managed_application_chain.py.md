@@ -24,3 +24,30 @@ protected health and explicit advancement. Missing receipt remains uncertain.
 The fresh pull-authority refusal checks the exact mutation/attempt/protection
 boundary while allowing independently scheduled approved management reads.
 Recording ports continue to make no physical installation claim.
+
+## Selected retained consumers / #1991 (unvalidated test checkpoint)
+
+The fixture also accepts optional application deliveries from the initial product
+contract. Its initial-authoring hook runs after registration and before ordinary
+preparation. Default scenarios keep their original graph and first-revision
+assertion. The selected-consumer case supplies the existing metadata observation
+port and draft service, then checks authoritative prepared coordinates instead
+of predicting a graph ID.
+
+`test_managed_selected_update_execution.py` reuses the existing preparation,
+approval, execution, replay and initial-advancement helpers. Its consumer is
+present from the outset. Public commands create/select an unselected revision1,
+admit an explicit version, revise the same draft to revision2, and select that
+actual revision. Read assertions preserve the original introducing origins,
+revision1 bytes, actual revision2 bindings, fresh fences and exact choice. No
+runtime call or current advancement is allowed before approval. Version, image
+and app-content updates remain separate scenarios. These new tests are not yet
+executed; no missing-law or acceptance result is claimed.
+
+`test_managed_selected_update_admission.py` checks the selected version/content/
+image families at the pure Operations policy boundary, active participants,
+canonical stored plans, selected effect material and malformed-candidate refusal.
+Core owns graph-delta and ordering laws. Recording metadata/effect ports prove
+Operations composition only; actual provider metadata and installed bytes remain
+Interpreter/Servers evidence. No source implementation, store or schema change is
+part of this test checkpoint.
