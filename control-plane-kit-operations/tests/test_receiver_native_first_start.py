@@ -35,9 +35,10 @@ class ReceiverNativeFirstStartTests(ReceiverCanonicalAcceptanceFixture, unittest
             self.execution_command(claimed, "native"))
         position = next(index for index, activity in enumerate(plan.plan.activities)
             if type(activity.operation) is StartNode and activity.operation.target.node_id == "api")
-        # Predecessor health/ingress/runtime completion is assumed. The node's
-        # own first start below enters the actual public permission owner.
-        retain_completion_inputs(self, context, activities=plan.plan.activities[:position])
+        # Health/runtime completion is assumed; ingress uses its actual owner.
+        # The node's first start below enters the public permission owner.
+        retain_completion_inputs(self, context, activities=plan.plan.activities[:position],
+            allocate_ingress=self.allocate_ingress)
         return self.native_start_command(claimed, "native",
             activity_id=plan.plan.activities[position].activity_id.value)
 

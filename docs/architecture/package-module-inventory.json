@@ -2,6 +2,22 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations._accepted_installation_sources",
+      "destination": "control_plane_kit_operations._accepted_installation_sources",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_accepted_installation_sources.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "validation"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": ["control_plane_kit_core.operations", "control_plane_kit_core.runtime_effect_observation", "control_plane_kit_operations.records"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.configuration_acceptance_store"],
+      "optional_external_dependencies": ["rfc8785"],
+      "protecting_tests": ["tests/test_accepted_installation_sources.py", "tests/test_postgres_accepted_installation_sources.py"],
+      "motivation": "Private immutable source commitments owned by graph acceptance; no independent mutation authority."
+    },
+    {
       "module": "control_plane_kit_core.secret_version_grants",
       "destination": "control_plane_kit_core.secret_version_grants",
       "source": "control-plane-kit-core/src/control_plane_kit_core/secret_version_grants.py",
@@ -36,6 +52,39 @@
         "tests/test_secret_installation_correlation.py"
       ],
       "motivation": "Closed operational and exact consumer-version authority roles with pure original-request and material commitments."
+    },
+    {
+      "module": "control_plane_kit_operations.runtime_adapter_registration",
+      "destination": "control_plane_kit_operations.runtime_adapter_registration",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_adapter_registration.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+        "RuntimeAdapterRegistration"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.planning"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "tests/test_secret_version_dispatch.py",
+        "tests/test_postgres_effect_attempt_reconciliation_authority_grants.py"
+      ],
+      "motivation": "Explicit per-arm composition qualification before consumer authorization or adapter IO; does not establish provider conformance."
     },
     {
       "module": "control_plane_kit_core.secret_selections",
@@ -776,6 +825,46 @@
         "tests/test_configuration_preparation_capacity.py"
       ],
       "motivation": "Bounded owner-declared SQL transport, outstanding reservations and UoW-local evidence caches."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.configuration_installation_proof",
+      "destination": "control_plane_kit_operations.postgres.configuration_installation_proof",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_installation_proof.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration_instances",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secret_installation",
+        "control_plane_kit_core.secret_selections",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_operations._configuration_acceptance",
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.configuration_preparation",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
+        "control_plane_kit_operations.postgres.configuration_evidence"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_configuration_installation_proof.py",
+        "tests/test_postgres_configuration_installation_capacity.py",
+        "tests/test_postgres_configuration_completion.py",
+        "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
+        "tests/test_postgres_configuration_cleanup_retained_phase_bounds.py"
+      ],
+      "motivation": "Guarded original installation fragments and finite phase shapes; Core owns receipt semantics and the existing command ledger owns all actual transport."
     },
     {
       "module": "control_plane_kit_operations.postgres.configuration_source",
@@ -10547,7 +10636,6 @@
         "control_plane_kit_core.probe_intents",
         "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_core.runtime_effects",
-        "control_plane_kit_core.secrets",
         "control_plane_kit_core.topology",
         "control_plane_kit_core.types",
         "control_plane_kit_operations.activity_journal",
@@ -10572,7 +10660,9 @@
         "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.runtime_management_targets",
         "control_plane_kit_operations.secret_providers",
-        "control_plane_kit_operations.workflows"
+        "control_plane_kit_operations.workflows",
+        "control_plane_kit_operations.runtime_adapter_registration",
+        "control_plane_kit_core.secret_installation"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
@@ -10594,7 +10684,9 @@
         "tests/test_postgres_effect_attempt_coordinator_first_replay.py",
         "tests/test_managed_application_chain.py",
         "tests/test_managed_health_boundaries.py",
-        "tests/test_managed_reobservation_admission.py"
+        "tests/test_managed_reobservation_admission.py",
+        "tests/test_secret_installation_admission.py",
+        "tests/test_postgres_secret_installation_admission.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10610,6 +10702,7 @@
       ],
       "destination": "control_plane_kit_operations.runtime_effects",
       "internal_dependencies": [
+        "control_plane_kit_core.secret_selections",
         "control_plane_kit_core.configuration",
         "control_plane_kit_core.environment",
         "control_plane_kit_core.operations",
@@ -10629,7 +10722,9 @@
         "control_plane_kit_operations.products",
         "control_plane_kit_operations.runtime_authorities",
         "control_plane_kit_operations.runtime_management_admission",
-        "control_plane_kit_operations.workflows"
+        "control_plane_kit_operations.workflows",
+        "control_plane_kit_core.secret_installation",
+        "control_plane_kit_operations.secret_providers"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.coordinator",
@@ -10739,13 +10834,18 @@
       ],
       "destination": "control_plane_kit_operations.effect_outcome_evidence",
       "internal_dependencies": [
+        "control_plane_kit_core.configuration_installation",
+        "control_plane_kit_core.configuration_invocation",
+        "control_plane_kit_core.planning",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.probe_intents",
         "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_core.runtime_effects",
         "control_plane_kit_core.types",
         "control_plane_kit_operations.effect_attempts",
-        "control_plane_kit_operations.records"
+        "control_plane_kit_operations.records",
+        "control_plane_kit_core.secret_installation",
+        "control_plane_kit_operations.plan_derivation"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
@@ -10762,7 +10862,8 @@
       "owner": "operation",
       "protecting_tests": [
         "tests/test_effect_outcome_evidence_contract.py",
-        "tests/test_effect_outcome_record_contract.py"
+        "tests/test_effect_outcome_record_contract.py",
+        "tests/test_postgres_secret_installation_admission.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10968,6 +11069,7 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_operations.effect_run_prefix",
         "control_plane_kit_core.approval_subjects",
@@ -11007,7 +11109,8 @@
         "tests/test_postgres_guarded_observed_effect_fold_concurrency.py",
         "tests/test_postgres_guarded_observed_effect_fold_first_replay.py",
         "tests/test_postgres_guarded_observed_effect_fold_rollback.py",
-        "tests/test_postgres_native_connection_fold.py"
+        "tests/test_postgres_native_connection_fold.py",
+        "tests/test_postgres_secret_installation_admission.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -11061,13 +11164,13 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.policies",
         "control_plane_kit_core.runtime_authority",
         "control_plane_kit_core.runtime_effect_observation",
-        "control_plane_kit_core.secrets",
         "control_plane_kit_operations.effect_attempt_fold",
         "control_plane_kit_operations.effect_attempt_intent_evidence",
         "control_plane_kit_operations.effect_attempt_reconciliation",
@@ -11077,7 +11180,10 @@
         "control_plane_kit_operations.runtime_authorities",
         "control_plane_kit_operations.runtime_effects",
         "control_plane_kit_operations.secret_providers",
-        "control_plane_kit_operations.workflows"
+        "control_plane_kit_operations.workflows",
+        "control_plane_kit_core.secret_version_grants",
+        "control_plane_kit_operations.runtime_adapter_registration",
+        "control_plane_kit_core.secret_installation"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations"
@@ -11094,7 +11200,8 @@
         "tests/test_postgres_effect_attempt_reconciliation_concurrency.py",
         "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
         "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
-        "tests/test_postgres_effect_attempt_reconciliation_rollback.py"
+        "tests/test_postgres_effect_attempt_reconciliation_rollback.py",
+        "tests/test_postgres_secret_installation_admission.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -11189,6 +11296,7 @@
       ],
       "destination": "control_plane_kit_operations.postgres.effect_outcome_store",
       "internal_dependencies": [
+        "control_plane_kit_operations.postgres.activity_history",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.probe_intents",
         "control_plane_kit_core.runtime_effect_observation",
@@ -11221,7 +11329,8 @@
         "tests/test_postgres_effect_outcome_store.py",
         "tests/test_postgres_effect_outcome_schema.py",
         "tests/test_postgres_native_connection_fold.py",
-        "tests/test_postgres_configuration_acceptance_membership.py"
+        "tests/test_postgres_configuration_acceptance_membership.py",
+        "tests/test_postgres_secret_installation_admission.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [

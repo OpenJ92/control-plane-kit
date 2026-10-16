@@ -38,6 +38,7 @@ from tests.postgres_effect_outcome_store_fixture import (
     PostgresEffectOutcomeStoreFixture,
     store_module,
 )
+from tests.secret_installation_receipt_fixture import selected_start_success
 
 
 OUTCOME = "cpk_effect_attempt_outcomes"
@@ -157,6 +158,7 @@ class PostgresEffectOutcomeStoreTests(
             "event-start",
             observations=(completion,),
         )
+        result = selected_start_success(intent, result)
         story = replace(self.story_named("execution-succeeded"), value=result)
         attempt = self.direct_attempt_for(
             story,
@@ -518,7 +520,7 @@ class PostgresEffectOutcomeStoreTests(
             finite_story,
             value=RuntimeEffectResult.succeeded(
                 finite_story.value.effect_id,
-                evidence={"finite-number": 1.5},
+                evidence={**finite_story.value.evidence, "finite-number": 1.5},
                 observations=finite_story.value.observations,
             ),
         )
@@ -751,7 +753,9 @@ class PostgresEffectOutcomeStoreTests(
     def test_exact_8192_byte_preimage_roundtrips_and_workspace_is_derived(self) -> None:
         self.require_store()
         story = self.story_named("execution-succeeded")
-        bounded = replace(story, value=self.live_result_for_size(8_192))
+        bounded = replace(story, value=self.live_result_for_size(8_192,
+            extra_evidence={key: value for key, value in story.value.evidence.items()
+                if key in ("secret_resolution_receipt", "secret_installation_receipt")}))
         bounded = replace(bounded, attempt=self.direct_attempt_for(bounded))
         record = self.record_for(bounded)
         self.assertEqual(len(self.preimage_for(record)), 8_192)

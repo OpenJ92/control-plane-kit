@@ -65,7 +65,7 @@ class ConfigurationInstanceIntentTests(EffectAttemptIntentFixture, unittest.Test
     def test_cleanup_preimage_preserves_original_candidates_without_current_products(self):
         activity = configuration_cleanup_activity()
         self.assertTrue(hasattr(RuntimeEffectKind, "CONFIGURATION_ACTIVITY_V1"))
-        intent = replace(self.intent(products=(), process_delivery=False),
+        intent = self.intent(products=(), process_delivery=False,
             kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, operation=activity.operation)
         self.assertEqual(_decode_runtime_effect_intent(_encode_runtime_effect_intent(intent)), intent)
         self.assertNotIn("configuration_instances", intent.descriptor())
@@ -135,8 +135,8 @@ class ConfigurationCleanupOutcomeCapacityTests(EffectOutcomeEvidenceFixture, uni
             runtime_id="r" * 128, node_id="n" * 128, artifact_id="a" * 63,
             target_path="/" + "/".join(["a" * 127] * 4)) for i in range(3))
         operation = type(activity.operation)(instances=refs)
-        intent = replace(EffectAttemptIntentFixture.intent(self, products=(), process_delivery=False,
-            activity_id="activity-a"),
+        intent = EffectAttemptIntentFixture.intent(self, products=(), process_delivery=False,
+            activity_id="activity-a",
             kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, operation=operation)
         # Four UTF-8 bytes per character exercises maximal non-control event text
         # accepted by the actual durable owner; Core reserves even larger escaping.

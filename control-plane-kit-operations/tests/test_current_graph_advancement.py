@@ -31,6 +31,7 @@ from control_plane_kit_core.planning import PlannedActivity, StartNode
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_operations._accepted_installation_sources import _InstallationSources
 from control_plane_kit_operations.advancement import (
     AdvanceCurrentGraph,
     CurrentGraphAdvancementCommandService,
@@ -144,6 +145,7 @@ def _contract_result(
             "to_realized_projection_id": "projection-desired",
             "to_realized_projection_digest": "a" * 64,
             "desired_graph_revision": 1,
+            **_InstallationSources(()).commitment,
         }
     )
     event = ActivityEventRecord(
@@ -488,6 +490,7 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
                     self.desired_projection.projection_digest
                 ),
                 "desired_graph_revision": self.desired_graph_revision,
+                **_InstallationSources(()).commitment,
             },
         )
         self.assertIs(result.event.kind, ActivityEventKind.CURRENT_GRAPH_ADVANCED)

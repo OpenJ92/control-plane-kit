@@ -283,6 +283,8 @@ def validate_current_rows(connection: _Connection) -> None:
         validate_health_preparations(connection)
         validate_receiver_rows(connection)
         validate_execution_scope_rows(connection)
+        from .secret_provider_store import _validate_current_version_authorization_rows
+        _validate_current_version_authorization_rows(connection)
         from .configuration_cleanup_store import validate_cleanup_rows
         validate_cleanup_rows(connection)
         from .configuration_cleanup_ownership_store import validate_cleanup_ownership_rows

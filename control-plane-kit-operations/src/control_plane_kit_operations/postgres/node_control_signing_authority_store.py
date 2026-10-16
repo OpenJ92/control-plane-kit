@@ -160,6 +160,7 @@ class _NodeControlSigningAuthorityStore:
             JOIN cpk_secret_use_authorizations AS workload_auth
               ON workload_auth.authorization_id=%s
              AND workload_auth.workspace_id=transit_auth.workspace_id
+             AND workload_auth.authorization_kind='operational'
             JOIN cpk_secret_references AS workload_ref
               ON workload_ref.registration_id=workload_auth.reference_registration_id
              AND workload_ref.workspace_id=workload_auth.workspace_id
@@ -172,6 +173,7 @@ class _NodeControlSigningAuthorityStore:
              AND workload_provider.status='active'
             WHERE transit_auth.authorization_id=%s
               AND transit_auth.workspace_id=%s
+              AND transit_auth.authorization_kind='operational'
             FOR SHARE OF transit_auth, transit_ref, transit_provider,
                          workload_auth, workload_ref, workload_provider
             """,

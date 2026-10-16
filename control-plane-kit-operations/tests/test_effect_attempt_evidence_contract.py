@@ -75,13 +75,15 @@ class EffectAttemptEvidenceContractTests(
         self.assertNotEqual(actual[2], actual[6])
         self.assertEqual(
             actual[0],
-            "43337b1a401cc0c12b659ba606b728cdce876717d28891bff9f961d053420fc4",
+            "a53382df6827252d22241492f5781a8e5fa70878a942ddb9a81a43200802c6bb",
         )
-        # Preserve the selected-only historical commitment as raw evidence.
+        # Preserve the historical commitment before authority deliveries and
+        # exact secret selections were included in product material.
         # It is not a valid current typed intent or a replay/adoption input.
         historical_intent = self.intent_for_attempt().descriptor()
         for product in historical_intent["products"]:
             del product["runtime_authority_deliveries"]
+            del product["secret_selections"]
         historical_request_fingerprint = hashlib.sha256(
             b"control-plane-kit.runtime-effect-intent.v1\x00"
             + rfc8785.dumps(historical_intent)

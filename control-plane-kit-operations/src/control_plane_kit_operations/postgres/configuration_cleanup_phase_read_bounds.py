@@ -102,6 +102,57 @@ def _bound(connection, role, identity):
     return matched
 
 
+def _installation_shape(read, shape, selection=None):
+    """Require the exact original under each closed phase's transport contract."""
+    from dataclasses import replace
+    from .configuration_installation_proof import _InstallationShape, installation_budget
+    from control_plane_kit_operations.configuration_preparation import ConfigurationSourceProjection
+    issued = _phase_context(read.connection, read=read)
+    if issued is None:
+        return
+    _require(type(issued) in (_OrdinaryStartReadBounds, _PublicationReadBounds, _CleanupPhaseReadBounds)
+        and type(shape) in (_InstallationShape, ConfigurationSourceProjection))
+    matches = tuple(value for value in issued.installation_shapes if value.identity == shape.identity)
+    if type(issued) is _CleanupPhaseReadBounds:
+        identity = (shape.identity.run_id.value, shape.identity.activity_id, shape.identity.attempt)
+        if not any(entry.identity == identity for entry in issued.invocation_refs):
+            # Only an unrelated direct read keeps ordinary defaults. A stray
+            # captured shape is inconsistent and cannot authorize fallback.
+            _require(not matches)
+            return
+    _require(len(matches) == 1)
+    expected = matches[0]
+    installation_budget(expected)
+    if type(shape) is ConfigurationSourceProjection:
+        # Before a cold probe, reject a missing or foreign issued identity and
+        # full selection using the captured widths. After probing, require the
+        # actual measured shape too; neither call mutates the issued value.
+        shape = _InstallationShape(shape.identity, shape.request_fingerprint,
+            shape.original_event_id, shape.original_event_ordinal, shape.source,
+            shape.kind, shape.operation, selection, expected.widths, expected.empty)
+    if expected.original_event_id is None:
+        _require(type(issued) is _OrdinaryStartReadBounds and expected.original_event_ordinal is None)
+        # Bind only a local comparison value after a retained source has supplied
+        # real event coordinates. The issued tuple is never mutated.
+        expected = replace(expected, original_event_id=shape.original_event_id,
+            original_event_ordinal=shape.original_event_ordinal)
+    _require(expected == shape)
+
+
+def _capture_installations(read, invocation_sets):
+    """Finite complete originals already established by the owning traversal."""
+    from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+    from .configuration_installation_proof import measure_installation_shape
+    shapes = []
+    for key, expected in sorted(invocation_sets.items()):
+        identity = EffectAttemptIdentity(RunId(key[0]), key[1], key[2])
+        members = read.sources.get(("cpk_effect_attempt_intents", identity))
+        _require(type(members) is tuple and bool(members)
+            and tuple((value.ref.artifact_id,) for value in members) == expected)
+        shapes.append(measure_installation_shape(read, members[0]))
+    return tuple(shapes)
+
+
 def _contains(issued, role, identity):
     if type(issued) in (_OrdinaryStartReadBounds, _PublicationReadBounds):
         return any(entry.identity == identity for entry in _entries(issued, role))
@@ -152,6 +203,49 @@ def _phase_columns(connection, role, identity, columns):
     _require(type(bound) is _PhasePoint and len(columns) == len(bound.widths))
     return tuple((name, kind, min(cap, width))
         for (name, kind, cap), width in zip(columns, bound.widths, strict=True))
+
+
+def _publication_intent_bound(issued, identity):
+    """Pure optional narrowing for a verified original in captured history.
+
+    Original receipt closure can extend beyond selected receiver history. An
+    absent run keeps native costs; a present complete run cannot hide a foreign
+    member. Valid unrelated generic reads receive no source-proof discount.
+    """
+    _require(type(issued) is _PublicationReadBounds)
+    matches = tuple(entry for role, entry in issued.collections
+        if role == "intents" and entry.identity == (identity.run_id.value,))
+    if not matches:
+        return None
+    _require(len(matches) == 1)
+    bound, = matches
+    _, columns, _, _, _, _, _ = _shape("intents")
+    _require(type(bound) is _PhaseCollection and len(columns) == len(bound.widths) == 10
+        and columns[9][:2] == ("preimage", "bytes")
+        and all(type(width) is int and 0 <= width <= cap
+            for width, (_, _, cap) in zip(bound.widths, columns, strict=True)))
+    _require((identity.run_id.value, identity.activity_id, str(identity.attempt)) in bound.keys)
+    if identity not in dict(issued.source_closures):
+        return None
+    return bound
+
+
+def _publication_intent_columns(read, identity, columns):
+    if _PUBLICATION_SCOPE.get() is None:
+        return columns
+    issued = _phase_context(read.connection, read=read)
+    if issued is None:
+        return columns
+    bound = _publication_intent_bound(issued, identity)
+    if bound is None:
+        return columns
+    from .effect_attempt_intent_store import _COLUMN_NAMES
+    _require(tuple(name for name, _, _ in columns) == _COLUMN_NAMES
+        and len(columns) == 10 and columns[9][1] == "bytes")
+    # Membership/shape refusals precede SQL. Every eligible cold entrance still
+    # pays the existing transaction guard, then probes and fetches the full row.
+    _require(_bound(read.connection, "intents", (identity.run_id.value,)) is bound)
+    return columns[:9] + ((columns[9][0], columns[9][1], min(columns[9][2], bound.widths[9])),)
 
 
 def _cleanup_transfer_dependencies(read, key, ref, revision):
@@ -556,7 +650,8 @@ class _CleanupPhaseReadBoundsOwner:
             collections("advancement-actions", action_sets), collections("bindings", binding_sets),
             collections("slots", slots), collections("allocation-refs", allocation_sets),
             collections("allocation-claims", allocation_sets), collections("invocation-refs", invocation_sets),
-            collections("outstanding-allocation-refs", active_sets), collections("outstanding-allocation-claims", active_sets))
+            collections("outstanding-allocation-refs", active_sets), collections("outstanding-allocation-claims", active_sets),
+            installation_shapes=_capture_installations(fresh, invocation_sets))
         self._issued = issued
         self._require(issued, self._connection)
         return issued
@@ -615,7 +710,9 @@ class _CleanupPhaseReadBoundsOwner:
             raw_graphs=(), raw_projections=(), introductions=(), origin_actions=(), acceptance_actions=(),
             scopes=(), run_histories=(), event_histories=(), advancement_actions=(), bindings=(), slots=(),
             allocation_refs=(), allocation_claims=(),
-            invocation_refs=tuple(sorted(invocations, key=lambda entry: entry.identity)), **parents)
+            invocation_refs=tuple(sorted(invocations, key=lambda entry: entry.identity)),
+            installation_shapes=_capture_installations(fresh,
+                {entry.identity: entry.keys for entry in invocations}), **parents)
         self._issued = issued
         self._require(issued, self._connection)
         return issued

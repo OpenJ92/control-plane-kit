@@ -33,6 +33,7 @@ from control_plane_kit_core.configuration_installation import (
     configuration_installation_receipt_for_result,
 )
 from control_plane_kit_core.configuration_invocation import ConfigurationInvocationCorrelation
+from control_plane_kit_core.runtime_effect_observation import RuntimeEffectObservedSucceeded
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectResult,
@@ -70,6 +71,8 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     NativeConnectionObservation,
     NativeConnectionRefused,
     ObservedEffectOutcome,
+    _observed_configuration_candidate,
+    _require_original_installation_outcome,
     _legacy_effect_outcome_failure,
     effect_outcome_failure,
     effect_outcome_observation_records,
@@ -391,7 +394,7 @@ def _execute_fold_once(
                             if stores.configuration_cleanup_ownership.get(identity) is None:
                                 raise OperationsRecordError(_INVALID_TRUTH_ERROR)
                         else:
-                            stores.configuration_completions.get(identity)
+                            stores.configuration_completions._get_for_original(original)
                     result = ExistingFold(attempt, outcome_record)
                 except OperationsRecordError:
                     replay_error = _INVALID_TRUTH_ERROR
@@ -407,6 +410,19 @@ def _execute_fold_once(
             intent_record = (located_health_intent if health is not None else
                 _read_fold_intent(stores, command, attempt, guarded, None))
             invalid_truth = intent_record is None
+            if not invalid_truth and command.outcome is not None:
+                try:
+                    original_plan = None
+                    if (type(command.outcome) is ObservedEffectOutcome
+                            and type(command.outcome.observation) is RuntimeEffectObservedSucceeded
+                            and _observed_configuration_candidate(intent_record)):
+                        from .postgres.configuration_evidence import _joined_read
+                        with _joined_read(stores.connection):
+                            original_plan = stores.activity_history.get_plan(intent_record.intent.source.plan_id)
+                    _require_original_installation_outcome(intent_record, attempt, command.outcome,
+                        original_plan=original_plan, request=request)
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR) from None
             if (
                 not invalid_truth
                 and type(command.outcome) is ExecutionEffectOutcome

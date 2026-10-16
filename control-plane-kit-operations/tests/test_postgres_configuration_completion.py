@@ -136,6 +136,76 @@ class PostgresConfigurationCompletionTests(ConfigurationPreparationFixture, unit
                 self.assertEqual(self.admitted(identity), record)
                 self.assertEqual(self.durable_snapshot(), before)
 
+    def test_exact_replay_reuses_full_original_but_independent_completion_get_proves_material(self):
+        from tests.test_postgres_secret_installation_admission import ProofReadObserver
+        from tests.test_postgres_configuration_installation_proof import proof_sql
+        original, started = self.started()
+        command = self.fold_command(original, started)
+        folded = self.fold(command)
+        identity = started.attempt.state.identity
+        with self.unit_of_work() as uow:
+            owner = type(self.completion_store(uow.stores))
+            retained = uow.stores.effect_attempt_intents.get(identity)
+        shortcut = getattr(owner, "_get_for_original", None)
+        self.assertTrue(callable(shortcut), "missing full-original completion replay entrance")
+        before, forwarded = self.durable_snapshot(), []
+        observer = ProofReadObserver(psycopg.connect(self.database_url))
+        def reuse(store, actual_original):
+            self.assertEqual(actual_original, retained)
+            observer.enabled = True
+            try:
+                result = shortcut(store, actual_original)
+            finally:
+                observer.enabled = False
+            forwarded.append(actual_original)
+            return result
+        ids = Sequence("must-not-be-used")
+        with mock.patch.object(owner, "_get_for_original", reuse):
+            replay = self.fold(command, factory=lambda: PostgresUnitOfWork(lambda: observer), ids=ids)
+        self.assertIsInstance(replay, ExistingFold)
+        self.assertEqual(replay.outcome_record, folded.outcome_record)
+        self.assertEqual(forwarded, [retained])
+        self.assertEqual(ids.calls, [])
+        self.assertFalse(any(proof_sql(query) for query in observer.queries))
+        # A new public reader cannot spend an earlier full-original proof for free.
+        observer = ProofReadObserver(psycopg.connect(self.database_url))
+        with PostgresUnitOfWork(lambda: observer) as uow:
+            observer.enabled = True
+            completion = self.completion_store(uow.stores).get(identity)
+            observer.enabled = False
+        self.assertIsNotNone(completion)
+        self.assertTrue(any(proof_sql(query) for query in observer.queries))
+        self.assertEqual(self.durable_snapshot(), before)
+
+    def test_full_original_completion_shortcut_refuses_foreign_or_mutated_original(self):
+        from copy import deepcopy
+        from control_plane_kit_core.configuration_instances import ConfigurationInstanceSelection
+        original, started = self.started()
+        self.fold(self.fold_command(original, started))
+        with self.unit_of_work() as uow:
+            store = self.completion_store(uow.stores)
+            retained = uow.stores.effect_attempt_intents.get(started.attempt.state.identity)
+            shortcut = getattr(store, "_get_for_original", None)
+            self.assertTrue(callable(shortcut), "missing full-original completion replay entrance")
+            self.assertIsNotNone(shortcut(retained))
+            foreign = replace(retained, original_start_event=replace(
+                retained.original_start_event, event_id="foreign-original-event"))
+            missing = deepcopy(retained)
+            object.__setattr__(missing.intent, "products", ())
+            smaller = deepcopy(retained)
+            self.assertGreater(len(smaller.intent.configuration_instances.instances), 1)
+            object.__setattr__(smaller.intent, "configuration_instances",
+                ConfigurationInstanceSelection(smaller.intent.configuration_instances.instances[:1]))
+            before = self.durable_snapshot()
+            for name, candidate in (("foreign-event", foreign), ("mutated-material", missing),
+                                    ("smaller-selection", smaller)):
+                with self.subTest(original=name), self.assertRaises(OperationsRecordError) as caught:
+                    shortcut(candidate)
+                self.assertLessEqual(len(str(caught.exception).encode()), 256)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+            self.assertEqual(self.durable_snapshot(), before)
+
     def test_unprofiled_terminal_outcomes_remain_unadmitted(self):
         for status in ("succeeded", "failed", "uncertain", "unsupported"):
             with self.subTest(status=status):

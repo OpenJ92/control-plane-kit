@@ -8,6 +8,7 @@ from control_plane_kit_core.lifecycle import ResourcePersistence
 from control_plane_kit_core.algebra import BlockSpec
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
 from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference, SecretUseIntent
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_operations.deployment_transitions import Deploy
 from control_plane_kit_operations.plan_derivation import derive_activity_plan
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
@@ -77,7 +78,9 @@ class ManagedTeardownAdmissionTests(unittest.TestCase):
             ConfigurationMediaType.JSON, '{"audit":true}'),)
         for slots in ((), (historical,)):
             base = replace(current, nodes={**current.nodes, "connector": replace(current.node("connector"),
-                secret_deliveries=slots, configuration_artifacts=configuration)})
+                secret_deliveries=slots, configuration_artifacts=configuration,
+                secret_selections=tuple(SecretVersionSelection(value.reference, value.intent,
+                    "historical-version") for value in slots))})
             selected = derive_activity_plan(Deploy(validate_graph(base), validate_graph(desired)), profile=PROFILE)
             for kind in (StopNode, RemoveNodeResource):
                 activity = next(value for value in selected.activities if isinstance(value.operation, kind)

@@ -7,7 +7,6 @@ from control_plane_kit_core.planning import StartNode, ReconcileNode
 from control_plane_kit_core.operations import EffectAttemptStatus, fold_effect_attempt
 from control_plane_kit_core.operations.lifecycle import ExecutionRequestStatus, ActivityRunStatus
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
-from control_plane_kit_core.verification import VerificationCompleted
 from control_plane_kit_operations._configuration_completion import _PreparedConfigurationCompletion
 from control_plane_kit_operations.configuration_completion import ConfigurationInvocationCompletionRecord
 from control_plane_kit_operations.configuration_preparation import (
@@ -58,7 +57,25 @@ class ConfigurationCompletionStore:
             return result
         raise OperationsRecordError(_ERROR)
 
-    def _get(self, identity, read):
+    def _get_for_original(self, original):
+        """Exact fold replay forwards its already charged complete original."""
+        from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
+        result = None
+        valid = False
+        try:
+            if type(original) is not EffectAttemptIntentRecord:
+                raise ValueError
+            EffectAttemptIntentRecord.__post_init__(original)
+            with _joined_read(self._connection) as read:
+                result = self._get(original.identity, read, original=original)
+            valid = True
+        except (ValueError, TypeError, KeyError, AttributeError):
+            pass
+        if not valid:
+            raise OperationsRecordError(_ERROR)
+        return result
+
+    def _get(self, identity, read, *, original=None):
         from .configuration_cleanup_phase_read_bounds import _phase_context
         _phase_context(self._connection, read=read)
         rows = read.bounded_rows(_TABLE, _COLUMNS, "run_id=%s AND activity_id=%s AND attempt=%s", _key(identity))
@@ -80,11 +97,11 @@ class ConfigurationCompletionStore:
         for value, claim in zip(refs, evidence, strict=True):
             _paired_disposition(read, tuple(value[:4]), claim.ref)
         source = evidence[0].source
-        original = read_original_selection(self._connection, identity, evidence[0].ref, read=read)
-        selection = ConfigurationInstanceSelection(tuple(value.ref for value in original))
+        projections = read_original_selection(self._connection, identity, evidence[0].ref, read=read)
+        selection = ConfigurationInstanceSelection(tuple(value.ref for value in projections))
         if tuple(value.ref for value in evidence) != selection.instances:
             raise _Unavailable
-        outcome, attempt = EffectAttemptOutcomeStore(self._connection)._configuration_terminal(source, read)
+        outcome, attempt = EffectAttemptOutcomeStore(self._connection)._configuration_terminal(source, read, original=original)
         context = ConfigurationInvocationCorrelation(source.request_fingerprint, source.original_event_id,
             source.kind, source.source, source.operation, selection)
         completion = configuration_invocation_completion_for_result(context, outcome.result)
@@ -146,13 +163,11 @@ class ConfigurationCompletionStore:
         # persisted four-owner correspondence(4), link(1). Value caps are the
         # existing SQL declarations: 21 + 40 + 1 + 200 + 1 + 1 bytes.
         future = ConfigurationEvidenceFootprint(11, 264, 8, 8)
-        if any(type(value) is VerificationCompleted for value in outcome.endpoint_observations):
-            # Generic membership re-reads the ten-column original intent and
-            # three-column original event, each via length and guarded value
-            # fetch. Include full supported caps, both validity Booleans and
-            # every length cell; do not drop legitimate verification evidence.
-            future = future.plus(ConfigurationEvidenceFootprint(4,
-                1048576 + 9 * 2048 + 128 + 64 + 16384 + 13 * 12 + 2, 28, 4))
+        # Every generic outcome insertion now admits its original material,
+        # including outcomes without endpoint-verification observations. Count
+        # the intent and original event length/guarded fetches exactly once.
+        future = future.plus(ConfigurationEvidenceFootprint(4,
+            1048576 + 9 * 2048 + 128 + 64 + 16384 + 13 * 12 + 2, 28, 4))
         # Existing generic outcome insertion fetches the already-proved
         # run/request ownership tuple outside _EvidenceRead. Charge its exact
         # known identity bytes and two owners. Its INSERT and each observation

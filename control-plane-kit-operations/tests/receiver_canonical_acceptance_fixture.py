@@ -1,18 +1,37 @@
-"""Canonical receiver plans; retained execution is a premise, not health proof."""
+"""Canonical receiver plans; real ingress allocation, other retained premises.
 
+Recording ingress effects establish original allocation history, not live
+provider conformance. Retained runtime/native/health completion is still a premise.
+"""
+
+import asyncio
 from dataclasses import replace
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from hashlib import sha256
 
 from control_plane_kit_core.products import (
     ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
     ProductIdentity, ProductRuntimeContract, ProviderRuntimePort,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.planning import AllocatePublicIngress
+from control_plane_kit_core.secrets import (
+    SecretProviderEndpointReference, SecretReference, SecretUseIntent,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations.approvals import ApprovalCommandService, DecideApproval, RequestApproval
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService
 from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.coordinator import (
+    ActivityExecutionDispatcher, ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator,
+)
+from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
+from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
+from control_plane_kit_operations.health_signing_authority import HealthSigningAuthorityReloadService
+from control_plane_kit_operations.ingress_authorities import IngressAuthorityProviderKind
+from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
 from control_plane_kit_operations.planning import ActivityPlanningCommandService, RequestActivityPlan
 from control_plane_kit_operations.postgres.temporal import decode_postgres_timestamp
@@ -20,14 +39,23 @@ from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.records import ApprovalDecisionKind
 from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
-from control_plane_kit_operations.lifecycle import CompleteActivityRun
+from control_plane_kit_operations.lifecycle import CompleteActivityRun, RunLifecycleCommandService
+from control_plane_kit_operations.secret_providers import (
+    RegisterSecretProviderCommand, RegisterSecretReferenceCommand,
+    SecretProviderKind, SecretProviderRegistrationService, SecretUseAuthorizationService,
+)
 from control_plane_kit_operations.advancement import _require_complete_success
 from control_plane_kit_operations.workflows import IdempotencyKey
-from tests.managed_teardown_fixture import managed_teardown, seed_owned_ingress
+from tests.managed_teardown_fixture import managed_teardown
+from tests.health_effect_start_fixture import HEALTH_SCOPES, trusted_health_context
 from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
 from tests.receiver_recorded_completion_fixture import retain_completion_inputs
 from tests.receiver_fresh_execution_fixture import ReceiverFreshExecutionFixture, load_execution_context
 from tests.test_execution_admission import Sequence
+from tests.test_ingress_realization import RecordingIngressInterpreter, TrackingUnitOfWorkFactory
+from tests.test_managed_application_chain import RecordingManagedHealth
+from tests.postgres_effect_attempt_reconciliation_fixture import FailIfObserver
+from tests.test_runtime_effect_translation import _registered_ingress_authority
 
 
 class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
@@ -63,8 +91,79 @@ class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
             validate_graph(self.canonical_receiver_graph).require_valid()
             # Keep the actual WorkspaceCommandService empty origin and receipt.
             # Receiver acceptance itself is still produced by real advancement.
-            seed_owned_ingress(uow.stores, self.canonical_receiver_graph)
             uow.commit()
+        self.register_ingress_authority()
+
+    def register_ingress_authority(self):
+        # Register authority only. The real allocation owner creates custody,
+        # resource coordinates and their original journal in the admitted run.
+        authority = _registered_ingress_authority().authority
+        service = SecretProviderRegistrationService(self.unit_of_work)
+        for reference, intent in (
+            (authority.api_token_ref, SecretUseIntent.CLOUDFLARE_API_TOKEN),
+            (authority.generated_secret_reference_prefix, SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN),
+        ):
+            provider = service.register_provider(RegisterSecretProviderCommand(
+                workspace_id="workspace-a", provider_id=reference.provider_id,
+                provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
+                display_name="Canonical ingress authority",
+                endpoint_reference=SecretProviderEndpointReference("workspace-secrets"),
+                credential_reference=SecretReference("secret://bootstrap/provider-token"),
+                allowed_reference_prefixes=(reference,), allowed_intents=(intent,),
+                admitted_by="operator-a", admitted_at=self.now(),
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
+            if intent is SecretUseIntent.CLOUDFLARE_API_TOKEN:
+                service.register_reference(RegisterSecretReferenceCommand(
+                    workspace_id="workspace-a", reference=reference,
+                    provider_registration_id=provider.registration_id, allowed_intents=(intent,),
+                    admitted_by="operator-a", admitted_at=self.now(),
+                    actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
+            else:
+                authority = replace(authority, generated_secret_provider_registration_id=provider.registration_id)
+        with self.unit_of_work() as uow:
+            uow.stores.ingress_authorities.register(workspace_id="workspace-a",
+                authority_ref=self.canonical_receiver_graph.public_ingresses[0].authority_ref,
+                authority=authority, admitted_by="operator-a", admitted_at=self.now())
+            uow.commit()
+
+    def allocate_ingress(self, context, activity):
+        self.assertIs(type(activity.operation), AllocatePublicIngress)
+        suffix = "allocation-" + sha256(
+            (context.run.run_id + "\0" + activity.activity_id.value).encode()).hexdigest()
+        scopes = (PolicyScope.EXECUTION_OPERATE, *HEALTH_SCOPES)
+        command = ExecuteActivityRun(context.run.run_id,
+            replace(context.authority, scopes=scopes), context.fence,
+            IdempotencyKey(suffix), max_effects=1)
+        tracker = TrackingUnitOfWorkFactory(self.database_url)
+        provider = RecordingIngressInterpreter(tracker)
+        runtime = RecordingRuntimeAdapter()
+        health = RecordingManagedHealth(self)
+        ids = GeneratedIds(suffix)
+        fold = EffectAttemptFoldService(tracker, id_factory=ids)
+        ingress = IngressRealizationAdapter(tracker,
+            {IngressAuthorityProviderKind.CLOUDFLARE: provider}, self.now,
+            SecretUseAuthorizationService(tracker))
+        coordinator = ExecutionCoordinator(tracker,
+            lifecycle=RunLifecycleCommandService(tracker, clock=self.now, id_factory=ids),
+            adapter=ActivityExecutionDispatcher(runtime, ingress),
+            start_service=EffectAttemptStartService(tracker, id_factory=ids), fold_service=fold,
+            reconciliation_service=EffectAttemptReconciliationService(tracker, FailIfObserver(), fold),
+            clock=self.now, id_factory=ids, managed_health=health,
+            health_signing_authority=HealthSigningAuthorityReloadService(tracker))
+        actual = load_execution_context(coordinator, command)
+        self.assertTrue(actual.schedule.ready)
+        self.assertEqual(actual.schedule.ready[0].activity_id, activity.activity_id)
+        self.documents = tuple(product.descriptor_document for product in actual.registered_products)
+        result = asyncio.run(coordinator.execute_managed(ExecuteManagedActivityRun(command,
+            trusted_health_context(actor=command.authority.worker_id,
+                workspace=context.request.identity.workspace_id, scopes=scopes))))
+        self.assertEqual((result.status.value, result.effects_attempted), ("progressed", 1))
+        self.assertEqual(provider.create_active_counts, [0])
+        self.assertEqual(runtime.runtime_calls, [])
+        self.assertEqual(runtime.legacy_calls, [])
+        self.assertEqual(health.native_reads, [])
+        self.assertEqual(health.signed_reads, [])
+        self.assertEqual(tracker.active, 0)
 
     @staticmethod
     def now():
@@ -129,7 +228,7 @@ class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
         command = self.execution_command(claimed, suffix)
         context = load_execution_context(
             self.coordinator(self.unit_of_work, RecordingRuntimeAdapter(), suffix), command)
-        retain_completion_inputs(self, context)
+        retain_completion_inputs(self, context, allocate_ingress=self.allocate_ingress)
         completed = self.lifecycle("complete-event-" + suffix, "complete-action-" + suffix).execute(
             CompleteActivityRun(claimed.run.run_id, command.authority, command.fence,
                 IdempotencyKey("complete-" + suffix)))

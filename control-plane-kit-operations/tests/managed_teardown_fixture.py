@@ -69,31 +69,57 @@ def seed_owned_ingress(stores, graph):
 
 
 def prepare_recorded_managed_origin(case, current, desired, teardown_plan, products):
-    """Accept a recorded bootstrap journal, then prepare the real teardown.
+    """Accept owner-produced runtime/allocation history, then prepare teardown.
 
-    The canonical bootstrap's step successes are explicit fixture premises,
-    including native waits. They are not provider, signed-health or deployment
-    evidence. Creation, admission, completion and original acceptance use real
-    owners; no accepted pointer, receipt/header, refs or claims are fabricated.
+    Recording ports simulate runtime/ingress effects through the real owners.
+    Native/health completions remain recorded premises, not health conformance.
+    Completion and original acceptance use real owners; no accepted pointer,
+    receipt/header, refs or claims are fabricated.
     """
+    import asyncio
+    from hashlib import sha256
     from itertools import count
-    from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+    from types import MethodType
+    from control_plane_kit_core.planning import ObserveManagementBootstrap, ObserveNodeHealth, StartNode, StartRuntime
     from control_plane_kit_core.policies import PolicyScope
+    from control_plane_kit_core.secrets import SecretProviderEndpointReference, SecretReference, SecretUseIntent
     from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
     from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, RequestPlanExecution
     from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService
     from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval
+    from control_plane_kit_operations.coordinator import (
+        ActivityExecutionDispatcher, ExecuteActivityRun, ExecuteManagedActivityRun,
+        ExecutionCoordinator, RuntimeInterpreterDispatcher,
+    )
+    from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
+    from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+    from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
     from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+    from control_plane_kit_operations.health_signing_authority import HealthSigningAuthorityReloadService
+    from control_plane_kit_operations.ingress_authorities import IngressAuthorityProviderKind
+    from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
     from control_plane_kit_operations.lifecycle import (
         ClaimAndOpenActivityRun, CompleteActivityRun, ExecutionLeaseDuration, RunLifecycleCommandService, StartActivityRun,
     )
     from control_plane_kit_operations.records import (
-        ActivityEventRecord, ActivityPlanRecord, ActivityPlanStatus, ApprovalDecisionKind,
-        BoundedEvidence, GraphVersionRecord, OperationSessionRecord, OperationSessionStatus,
+        ActivityPlanRecord, ActivityPlanStatus, ApprovalDecisionKind,
+        GraphVersionRecord, OperationSessionRecord, OperationSessionStatus,
     )
+    from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
     from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+    from control_plane_kit_operations.secret_providers import (
+        RegisterSecretProviderCommand, RegisterSecretReferenceCommand,
+        SecretProviderKind, SecretProviderRegistrationService, SecretUseAuthorizationService,
+    )
     from control_plane_kit_operations.workflows import IdempotencyKey
     from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+    from tests.health_effect_start_fixture import HEALTH_SCOPES, trusted_health_context
+    from tests.postgres_effect_attempt_reconciliation_fixture import FailIfObserver
+    from tests.receiver_fresh_execution_fixture import load_execution_context
+    from tests.receiver_recorded_completion_fixture import retain_completion_inputs
+    from tests.test_ingress_realization import RecordingIngressInterpreter
+    from tests.test_managed_application_chain import ManagedApplicationFixture, RecordingManagedHealth, RecordingRuntime
+    from tests.test_runtime_effect_translation import _registered_ingress_authority
 
     case.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
     case.ids = type(case.ids)()
@@ -113,7 +139,6 @@ def prepare_recorded_managed_origin(case, current, desired, teardown_plan, produ
         stores.runtime_authorities.register(workspace_id="workspace-a", authority_ref=current.runtimes["docker"].authority_ref,
             runtime_kind=current.runtimes["docker"].kind, authority=LocalDockerSocketAuthority(),
             admitted_by="operator-a", admitted_at="2026-07-22T10:00:00Z")
-        seed_owned_ingress(stores, current)
         stores.graphs.save(GraphVersionRecord.from_graph(graph_id="graph-current", workspace_id="workspace-a",
             version=stores.graphs.next_version_for_workspace("workspace-a"), graph=current,
             created_by="operator-a", created_at="2026-07-22T10:00:30Z"))
@@ -125,6 +150,35 @@ def prepare_recorded_managed_origin(case, current, desired, teardown_plan, produ
             base_realized_projection_id=pinned.current_realized_projection_id,
             desired_realized_projection_id=pinned.desired_realized_projection_id,
             derivation_profile=PROFILE, desired_graph_revision=pinned.desired_graph_revision))
+        uow.commit()
+    # Register authority only: the real allocation creates custody and history.
+    authority = _registered_ingress_authority().authority
+    registration = SecretProviderRegistrationService(case.unit_of_work)
+    for reference, intent in (
+        (authority.api_token_ref, SecretUseIntent.CLOUDFLARE_API_TOKEN),
+        (authority.generated_secret_reference_prefix, SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN),
+    ):
+        provider = registration.register_provider(RegisterSecretProviderCommand(
+            workspace_id="workspace-a", provider_id=reference.provider_id,
+            provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
+            display_name="Managed origin authority",
+            endpoint_reference=SecretProviderEndpointReference("workspace-secrets"),
+            credential_reference=SecretReference("secret://bootstrap/provider-token"),
+            allowed_reference_prefixes=(reference,), allowed_intents=(intent,),
+            admitted_by="operator-a", admitted_at=clock(),
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
+        if intent is SecretUseIntent.CLOUDFLARE_API_TOKEN:
+            registration.register_reference(RegisterSecretReferenceCommand(
+                workspace_id="workspace-a", reference=reference,
+                provider_registration_id=provider.registration_id, allowed_intents=(intent,),
+                admitted_by="operator-a", admitted_at=clock(),
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
+        else:
+            authority = replace(authority, generated_secret_provider_registration_id=provider.registration_id)
+    with case.unit_of_work() as uow:
+        uow.stores.ingress_authorities.register(workspace_id="workspace-a",
+            authority_ref=current.public_ingresses[0].authority_ref, authority=authority,
+            admitted_by="operator-a", admitted_at=clock())
         uow.commit()
     approvals = ApprovalCommandService(case.unit_of_work, clock=clock, id_factory=origin_id)
     approval = approvals.execute(RequestApproval("managed-origin-session", "managed-origin-plan", "operator-a",
@@ -141,18 +195,50 @@ def prepare_recorded_managed_origin(case, current, desired, teardown_plan, produ
     run_id = opened.run.run_id
     fence = ExecutionLeaseFence(opened.request.claim.worker_id, opened.request.claim.generation)
     lifecycle.execute(StartActivityRun(run_id, case.authority(), fence, IdempotencyKey("managed-origin-start")))
-    with case.unit_of_work() as uow:
-        stores = uow.stores
-        ordinal = stores.execution.next_event_ordinal(run_id)
-        # ActivityPlan owns this dependency order. Advancement's production
-        # journal projector/scheduler verifies exact complete coverage below.
-        for activity in bootstrap.activities:
-            for kind in (ActivityEventKind.STEP_STARTED, ActivityEventKind.STEP_SUCCEEDED):
-                stores.execution.add_event(ActivityEventRecord(origin_id(), run_id, ordinal, kind, clock(),
-                    activity_id=activity.activity_id.value,
-                    evidence=BoundedEvidence.from_mapping({"fixture_premise": "recorded-managed-bootstrap"})))
-                ordinal += 1
-        uow.commit()
+    # Explicit inputs for the existing recording ports; no second fixture setup.
+    case.now = clock
+    case.documents = tuple(product.descriptor_document for product in products)
+    case.rows = MethodType(ManagedApplicationFixture.rows, case)
+    case.effect_order = []
+    case.health = RecordingManagedHealth(case)
+    case.runtime = RecordingRuntime(case)
+    ingress = RecordingIngressInterpreter(case.tracker)
+    authorizer = SecretUseAuthorizationService(case.unit_of_work)
+    fold = EffectAttemptFoldService(case.unit_of_work, id_factory=origin_id)
+    coordinator = ExecutionCoordinator(case.unit_of_work, lifecycle=lifecycle,
+        adapter=ActivityExecutionDispatcher(
+            RuntimeInterpreterDispatcher({current.runtimes["docker"].kind:
+                RuntimeAdapterRegistration(case.runtime, exact_version_execute_with_authority=True)}, authorizer),
+            IngressRealizationAdapter(case.unit_of_work,
+                {IngressAuthorityProviderKind.CLOUDFLARE: ingress}, clock, authorizer)),
+        start_service=EffectAttemptStartService(case.unit_of_work, id_factory=origin_id),
+        fold_service=fold,
+        reconciliation_service=EffectAttemptReconciliationService(case.unit_of_work, FailIfObserver(), fold),
+        clock=clock, id_factory=origin_id, managed_health=case.health,
+        health_signing_authority=HealthSigningAuthorityReloadService(case.unit_of_work))
+    scopes = (PolicyScope.EXECUTION_OPERATE, *HEALTH_SCOPES)
+    for activity in bootstrap.activities:
+        suffix = sha256((run_id + "\0" + activity.activity_id.value).encode()).hexdigest()
+        command = ExecuteActivityRun(run_id, case.authority(scopes=scopes), fence,
+            IdempotencyKey("managed-origin-" + suffix), max_effects=1)
+        context = load_execution_context(coordinator, command)
+        case.assertTrue(context.schedule.ready)
+        case.assertEqual(context.schedule.ready[0].activity_id, activity.activity_id)
+        if type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+            # These are explicit recorded native/health premises only.
+            retain_completion_inputs(case, context, activities=(activity,))
+        else:
+            result = asyncio.run(coordinator.execute_managed(ExecuteManagedActivityRun(command,
+                trusted_health_context(actor=command.authority.worker_id,
+                    workspace="workspace-a", scopes=scopes))))
+            case.assertEqual((result.status.value, result.effects_attempted), ("progressed", 1))
+    case.assertCountEqual([request.activity_id for request in case.runtime.calls],
+        [activity.activity_id for activity in bootstrap.activities
+            if type(activity.operation) in (StartRuntime, StartNode)])
+    case.assertEqual(ingress.create_active_counts, [0])
+    case.assertEqual(case.health.native_reads, [])
+    case.assertEqual(case.health.signed_reads, [])
+    case.assertEqual(case.tracker.active, 0)
     lifecycle.execute(CompleteActivityRun(run_id, case.authority(), fence, IdempotencyKey("managed-origin-complete")))
     CurrentGraphAdvancementCommandService(case.unit_of_work, clock=clock, id_factory=origin_id).execute(
         AdvanceCurrentGraph("workspace-a", run_id, "managed-origin-plan", pinned.current_graph_id,

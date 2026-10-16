@@ -4,6 +4,8 @@ Native/health records are synthetic premises for the advancement/C1 consumer
 contracts, per #1904 comment 5904298267. Configured node installation uses real
 B1 preparation/start/fold owners with a simulated success. Neither establishes
 provider effects or successor health; acceptance remains the real owner's job.
+Canonical callers supply actual ingress allocation through an explicit callback;
+other callers retain their existing recorded premises.
 """
 
 from control_plane_kit_core.operations import (
@@ -38,17 +40,21 @@ from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_
 from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
+from tests.secret_installation_receipt_fixture import selected_start_success
 
 
 LEGACY_EVENT_ONLY = (AddSocketConnection, SwitchSocketConnection, RemoveSocketConnection,
                      AllocatePublicIngress, RemovePublicIngress)
 
 
-def retain_completion_inputs(case, context, *, activities=None):
-    """Retain only the selected prefix/all of the plan, never target current truth."""
+def retain_completion_inputs(case, context, *, activities=None, allocate_ingress=None):
+    """Retain the selected prefix/all; canonical ingress uses its actual owner."""
     selected = context.plan.activities if activities is None else activities
     desired = DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
     for activity in selected:
+        if type(activity.operation) is AllocatePublicIngress and allocate_ingress is not None:
+            allocate_ingress(context, activity)
+            continue
         if (type(activity.operation) in (StartNode, ReconcileNode)
                 and desired.node(activity.operation.target.node_id).configuration_artifacts):
             # Each preceding recorded activity has committed before the real
@@ -128,9 +134,15 @@ def _retain_recorded_completion_inputs(case, context, selected):
                             sample_start=started_at, sample_end=ended_at, ready_connections=1,
                             connector_id="11111111-2222-3333-4444-555555555555"))
                 else:
+                    result = RuntimeEffectResult.succeeded(event_id,
+                        evidence={"fixture_premise": "assumed-completion"})
+                    # The generated connector token is selected material too.
+                    # This is still a synthetic retained-history premise.
+                    if (type(activity.operation) is StartNode
+                            and any(product.secret_selections for product in intent.products)):
+                        result = selected_start_success(intent, result)
                     outcome = ExecutionEffectOutcome(identity, fingerprint,
-                        RuntimeEffectResult.succeeded(event_id,
-                            evidence={"fixture_premise": "assumed-completion"}))
+                        result)
                 terminal = fold_effect_attempt(state, effect_outcome_transition(outcome), fence=fence)
                 end = state_event(terminal, event_id + "-success", ordinal + 1,
                     ActivityEventKind.STEP_SUCCEEDED, ended_at)

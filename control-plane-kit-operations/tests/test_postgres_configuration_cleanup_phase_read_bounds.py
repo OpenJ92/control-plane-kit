@@ -12,6 +12,9 @@ from control_plane_kit_operations.postgres.configuration_evidence import _Capaci
 from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from tests.configuration_cleanup_phase_read_bounds_fixture import ConfigurationCleanupPhaseReadBoundsFixture
+from tests.test_postgres_configuration_installation_capacity import (
+    assert_installation_shapes, assert_cold_installation_reads, trace_installation_queries,
+)
 
 
 class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhaseReadBoundsFixture, unittest.TestCase):
@@ -795,11 +798,12 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
     def test_phase_binding_reaches_independent_cold_proof_readers(self):
         self.prepare_ceiling_premise()
         before = self.ceiling_truth()
-        with self.phase_premise() as (uow, guard, prefix, read, observed):
+        with trace_installation_queries(), self.phase_premise() as (uow, guard, prefix, read, observed):
             self.read_chain(uow, guard, prefix, read, observed)
             owner = self.phase_owner(uow)
             capture_prefix, offset = read.used, len(observed["queries"])
             issued = self.capture_phase(owner, guard, prefix)
+            assert_installation_shapes(self, issued, (self.configuration_source,), self.connection)
             segment = observed["queries"][offset:]
             physical = sum(256 + sum(128 + 16*len(row) + sum(row) for row in q["widths"]) for q in segment)
             self.assertGreaterEqual(read.used.accounted_bytes - capture_prefix.accounted_bytes, physical)
@@ -823,6 +827,27 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                 self.assertLessEqual(max(peaks), 16*1024*1024)
                 print("#1941 start application", dict(prefix=_components(application_prefix), used=_components(read.used),
                     physical_weighted_bytes=physical, maximum_reservation_bytes=max(peaks)))
+                from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+                for _ in range(2):
+                    prior, offset = read.used, len(observed["queries"])
+                    independent = _EvidenceRead(uow.stores.connection)
+                    self.assertIs(independent.accounting, read.accounting)
+                    self.assertEqual((independent.sources, independent.refs), ({}, {}))
+                    self.assertEqual(uow.stores.configuration_completions._get(self.source_identity, independent),
+                        self.completion)
+                    segment = observed["queries"][offset:]
+                    assert_cold_installation_reads(self, segment, (self.configuration_source,))
+                    self.assertEqual(read.used.statements - prior.statements, len(segment))
+                    rows = [widths for q in segment for widths in q["widths"]]
+                    self.assertEqual(read.used.value_octets - prior.value_octets, sum(map(sum, rows)))
+                    self.assertEqual(read.used.scalar_markers - prior.scalar_markers, sum(map(len, rows)))
+                    self.assertGreaterEqual(read.used.records - prior.records,
+                        sum(len(q["widths"]) for q in segment))
+                    self.assertLessEqual(read.used.accounted_bytes, 16*1024*1024)
+                    for q in segment:
+                        r, b, c, s = q["peak"]
+                        self.assertLessEqual(r, 4096)
+                        self.assertLessEqual(b + 128*r + 16*c + 256*s, 16*1024*1024)
         self.assertEqual(self.ceiling_truth(), before)
 
     def test_raw_material_growth_is_rejected_before_full_transport(self):

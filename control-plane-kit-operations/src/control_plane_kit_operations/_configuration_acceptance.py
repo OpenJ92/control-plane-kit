@@ -24,6 +24,11 @@ class _PublicationReadBounds:
     transfer_dependencies: tuple = ()
     invocation_members: tuple = ()
     generated_widths: tuple = ()
+    installation_shapes: tuple = ()
+    source_closures: tuple = ()
+    allocation_prefixes: tuple = ()
+    source_bundles: tuple = ()
+    verified_requests: tuple = ()
 
 
 @dataclass(frozen=True, repr=False)
@@ -83,6 +88,7 @@ class _PreparedAdvancementReceipt:
     read_bounds: object = None
     receiver_truth: object = None
     transfers: tuple = ()
+    installation_sources: object = None
 
     def with_records(self, event, action):
         return self.stores.configuration_acceptance._bind_records(self, event, action)

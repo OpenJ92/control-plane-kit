@@ -148,6 +148,21 @@ class _CleanupTail:
             transfers = owner.record.accepted_transfers
         self.k, self.d, self.u = len(members), len(claims), len(completions)
         self.t = len(transfers)
+        self.transfers = transfers
+        self.installation_shapes = {value.identity: value for value in self.phase.installation_shapes}
+        from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable
+        originals = {value.identity for value in (*completions, *transfers)}
+        if (len(self.installation_shapes) != len(self.phase.installation_shapes)
+                or set(self.installation_shapes) != originals):
+            raise _Unavailable
+        for identity in originals:
+            key = (identity.run_id.value, identity.activity_id, identity.attempt)
+            entries = tuple(entry for entry in self.phase.invocation_refs if entry.identity == key)
+            expected = tuple((ref.artifact_id,)
+                for ref in self.installation_shapes[identity].configuration_instances.instances)
+            if len(entries) != 1 or not expected or entries[0].keys != expected:
+                raise _Unavailable
+        self.completion_identities = tuple(value.identity for value in completions)
         self.invocations = {(value.identity.run_id.value, value.identity.activity_id, value.identity.attempt)
             for value in completions}
         self.s = sum(len(entry.keys) for entry in self.phase.invocation_refs if entry.identity in self.invocations)
@@ -212,8 +227,10 @@ class _CleanupTail:
     def fresh(self):
         # Cold F starts with an empty immutable evidence cache. Original
         # source/terminal sharing within F is the existing read owner contract.
-        original_invocations = _times(_sum(_SOURCE, _b(21, 43008),
-            _times(_COMPACT_EVENT, 2), _TERMINAL), self.u)
+        installation_seen = set()
+        original_invocations = _sum(_times(_sum(_SOURCE, _b(21, 43008),
+            _times(_COMPACT_EVENT, 2), _TERMINAL), self.u),
+            *(self.installation(identity, installation_seen) for identity in self.completion_identities))
         if self.v2:
             return _sum(_T, self.prefix(), _REQUEST, self.points("plan"), _APPROVALS,
                 _ACK, _b(9, 90304), _SESSION, _WORKSPACE, self.manifest(),
@@ -226,7 +243,8 @@ class _CleanupTail:
                 # the explicit transfer projection in _fresh_start. Cold T's
                 # own D1/S is additional below. No cross-pass discount.
                 _times(_DISPOSED_PAIR, 5 * self.k + 2 * self.d + 3 * self.s + self.t),
-                _times(self.cold_transfer(), self.t), _times(_ACK, 2 * self.k + self.u + self.d))
+                *(self.cold_transfer(transfer, installation_seen) for transfer in self.transfers),
+                _times(_ACK, 2 * self.k + self.u + self.d))
         d1 = _sum(_times(_b(7, 730), self.u), self.collections("invocation-refs"),
             _times(_PAIR, self.d))
         return _sum(_T, self.prefix(), _REQUEST, self.points("plan"), _APPROVALS,
@@ -235,11 +253,31 @@ class _CleanupTail:
             original_invocations, _times(_PAIR, self.d), d1,
             _times(_ACK, 2 * self.k + self.u + self.d), _times(_PAIR, self.d))
 
-    def cold_transfer(self):
+    def installation(self, identity, seen):
+        from control_plane_kit_operations.postgres.configuration_installation_proof import installation_budget
+        from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable
+        if identity not in self.installation_shapes:
+            raise _Unavailable
+        if identity in seen:
+            return _Footprint(0, 0, 0, 0)
+        seen.add(identity)
+        # Cleanup's existing F envelope conservatively bounds settled and peak.
+        return installation_budget(self.installation_shapes[identity]).peak
+
+    def cold_transfer(self, transfer, installation_seen):
         """One cold T body; entry pair checks are counted at every call site."""
-        largest_selection = max((len(entry.keys) for entry in self.phase.invocation_refs), default=0)
-        return _sum(_b(13, 1257), _b(7, 730), self.largest_collection("invocation-refs"),
-            _SOURCE, _times(_DISPOSED_PAIR, largest_selection), _TERMINAL, _REF,
+        from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable
+        identity = transfer.identity
+        key = (identity.run_id.value, identity.activity_id, identity.attempt)
+        entries = tuple(entry for entry in self.phase.invocation_refs if entry.identity == key)
+        if len(entries) != 1 or not entries[0].keys or identity not in self.installation_shapes:
+            raise _Unavailable
+        if entries[0].keys != tuple((value.artifact_id,)
+                for value in self.installation_shapes[identity].configuration_instances.instances):
+            raise _Unavailable
+        return _sum(_b(13, 1257), _b(7, 730), self.collections("invocation-refs", {key}),
+            _SOURCE, _times(_DISPOSED_PAIR, len(entries[0].keys)), _TERMINAL,
+            self.installation(identity, installation_seen), _REF,
             *(self.points(role) for role in ("header", "receipt-action", "receipt-event", "run", "request",
                 "plan", "session", "graph", "projection")), _b(12, 24576))
 
@@ -274,19 +312,21 @@ class _CleanupTail:
         # All B rowsets and native root/claim readers remain complete. A fresh
         # final proof first compares its prepared identities; retained C only
         # narrows the complete invocation-ref reader.
+        installation_seen = set()
         value = _sum(self.pending(), self.intent(), _ATTEMPT, _REQUEST, _RUN,
             self.points("plan"), _APPROVALS, _SESSION,
             _times(_sum(self.points("graph"), self.points("projection")), 2), _ACK,
             _times(_REF, (3 * self.k + self.d + self.t) if self.v2 else self.k + self.d), _times(_SOURCE, self.u),
             _times(_DISPOSED_PAIR, 2 * self.k + self.d + self.s + self.t) if self.v2 else _times(_CLOSED_PAIR, 2 * self.d),
             _times(_b(7, 730), self.u), self.collections("invocation-refs", self.invocations),
-            _times(_TERMINAL, self.u), _b(1, 2048))
+            _times(_TERMINAL, self.u),
+            *(self.installation(identity, installation_seen) for identity in self.completion_identities), _b(1, 2048))
         if self.v2:
-            value = _sum(value, _times(self.cold_transfer(), self.t))
+            value = _sum(value, *(self.cold_transfer(transfer, installation_seen) for transfer in self.transfers))
         if folded:
             count = len(self.owner.issued.outcome.endpoint_observations)
             value = _sum(value, _b(22, 51200), _v(13, 11 * 8192 + 64, count, 2),
-                _times(_COMPACT_EVENT, 2))
+                _times(_COMPACT_EVENT, 2), self.intent())
         return value
 
 
@@ -320,5 +360,7 @@ def _preflight_fold(prepared):
         + len(owner.record.workspace_id.encode()), 2, 2 + 2 * observations)
     future = _sum(_ACK, _T, _times(_T, 2), _ACK, raw, _q(1, 200, 1), _q(1, 1, 1, 8),
         tail.pending(), _times(_CLOSED_PAIR, tail.d),
-        _times(_ACK, tail.k if owner.outcomes is not None else 0), tail.retained(folded=True))
+        # Generic outcome insertion and retained readback each independently
+        # admit original material. The readback is counted inside retained().
+        tail.intent(), _times(_ACK, tail.k if owner.outcomes is not None else 0), tail.retained(folded=True))
     _admit_tail(owner, future, raw)

@@ -337,11 +337,14 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
 
     def test_nearby_legal_metadata_widths_fit_settled_but_refuse_publication_peak(self):
         # Exact accounted B/B+1 predicate laws live in the isolated preflight
-        # tests. The first pre-ID gate retains +5 prior/+2 publication bytes
-        # per metadata byte: its suffix includes the desired-graph bind reread.
+        # tests. Each metadata byte contributes five prior bytes and three
+        # publication bytes: bind-parent, receipt-context and installation-
+        # manifest graph rereads. The last remains required for empty bindings.
         # Fresh database timestamps/txids can also change actual widths. Start
         # calibration lower because generated caps are now admitted before IDs.
         limit, calibration_width = 16 * 1024 * 1024, 500000
+        prior_slope, publication_slope = 5, 3
+        total_slope = prior_slope + publication_slope
         prior_variation, publication_variation, margin = 874, 105, 1000
         self.assertGreater(margin, prior_variation + publication_variation)
         def build(width, *, refuses=False):
@@ -353,9 +356,10 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
         def total(case, phase):
             return case["prior"].plus(getattr(case["publication"], phase))
         gap = total(calibration, "peak").accounted_bytes - total(calibration, "settled").accounted_bytes
-        self.assertGreater(gap, margin + prior_variation + publication_variation + 5)
-        fit_width = calibration_width + (limit - margin - total(calibration, "peak").accounted_bytes) // 7
-        refuse_width = calibration_width + (limit + margin - total(calibration, "peak").accounted_bytes + 6) // 7
+        self.assertGreaterEqual(gap, margin + prior_variation + publication_variation + total_slope - 1)
+        fit_width = calibration_width + (limit - margin - total(calibration, "peak").accounted_bytes) // total_slope
+        refuse_width = calibration_width + (
+            limit + margin - total(calibration, "peak").accounted_bytes + total_slope - 1) // total_slope
         self.assertGreater(fit_width, calibration_width)
         self.assertGreater(refuse_width, fit_width)
         fits = build(fit_width)
@@ -364,13 +368,14 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             delta = width - calibration_width
             self.assertEqual(case["ref_bytes"], calibration["ref_bytes"])
             self.assertEqual(case["graph"], calibration["graph"])
-            self.assertLessEqual(abs(case["prior"].value_octets - calibration["prior"].value_octets - 5 * delta),
+            self.assertLessEqual(abs(case["prior"].value_octets - calibration["prior"].value_octets - prior_slope * delta),
                 prior_variation)
             for field in ("records", "scalar_markers", "statements"):
                 self.assertEqual(getattr(case["prior"], field), getattr(calibration["prior"], field))
             for phase in ("settled", "peak"):
                 actual, original = getattr(case["publication"], phase), getattr(calibration["publication"], phase)
-                self.assertLessEqual(abs(actual.value_octets - original.value_octets - 2 * delta), publication_variation)
+                self.assertLessEqual(abs(actual.value_octets - original.value_octets - publication_slope * delta),
+                    publication_variation)
                 for field in ("records", "scalar_markers", "statements"):
                     self.assertEqual(getattr(actual, field), getattr(original, field))
             self.assertEqual(total(case, "peak").accounted_bytes - total(case, "settled").accounted_bytes, gap)
@@ -383,8 +388,8 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             "prior_plus_settled_bytes": total(case, "settled").accounted_bytes,
             "prior_plus_peak_bytes": total(case, "peak").accounted_bytes,
             "prior_plus_peak_records": total(case, "peak").records,
-            "nonmetadata_prior_delta": case["prior"].value_octets - calibration["prior"].value_octets - 5 * (width - calibration_width),
-            "nonmetadata_publication_delta": case["publication"].peak.value_octets - calibration["publication"].peak.value_octets - 2 * (width - calibration_width),
+            "nonmetadata_prior_delta": case["prior"].value_octets - calibration["prior"].value_octets - prior_slope * (width - calibration_width),
+            "nonmetadata_publication_delta": case["publication"].peak.value_octets - calibration["publication"].peak.value_octets - publication_slope * (width - calibration_width),
             "peak_minus_settled_bytes": gap,
             "input_selection_margin": margin,
         } for label, case, width in (("calibration", calibration, calibration_width),

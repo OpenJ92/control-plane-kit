@@ -230,6 +230,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 "control_plane_kit_operations.records",
                 "configuration_evidence",
+                "configuration_cleanup_phase_read_bounds",
                 "configuration_cleanup_read_ceilings",
                 "configuration_preparation_store",
                 "configuration_source",

@@ -13,9 +13,94 @@ from control_plane_kit_operations.postgres.configuration_cleanup_phase_read_boun
 from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead, _joined_read, _Unavailable, _Capacity
 from tests.configuration_cleanup_history_fixture import ConfigurationCleanupHistoryFixture, key
 from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection, _components
+from tests.test_postgres_configuration_installation_capacity import (
+    assert_installation_shapes, assert_cold_installation_reads, trace_installation_queries,
+)
 
 
 class PostgresConfigurationCleanupRetainedPhaseBoundsTests(ConfigurationCleanupHistoryFixture, unittest.TestCase):
+    def test_distinct_originals_and_complete_siblings_are_measured_in_each_cold_retained_phase(self):
+        from control_plane_kit_core.planning import NodeTarget, RemoveNodeResource
+        from tests.configuration_transfer_fixture import historical_transfer_prefix
+        # Historical v1 outstanding-claim premise: suppress only transfer
+        # insertion during these two publications, restoring it afterward.
+        # This exercises retained readers, not current transfer production.
+        with historical_transfer_prefix(self):
+            self.member.advance()
+        command, _ = self.later_use("installation-second")
+        operator = self.carry_operator()
+        with historical_transfer_prefix(self):
+            operator.advance(command)
+        runtime = replace(operator.graph.runtimes["runtime-a"], children=())
+        departed = replace(operator.graph, nodes={}, runtimes={"runtime-a": runtime})
+        departure = operator.prepare("installation-depart", "graph-installation-departed",
+            RemoveNodeResource(NodeTarget("api")), graph=departed,
+            expected_claims=self.member.protective_claims())
+        operator.advance(departure)
+        self.retain_cleanup()
+        expected = self.read_retained()
+        with self.unit_of_work() as uow:
+            originals = tuple(uow.stores.effect_attempt_intents.get(completion.identity)
+                for completion in expected.completions)
+        self.assertGreaterEqual(len(originals), 2)
+        self.assertTrue(all(len(original.intent.configuration_instances.instances) > 1 for original in originals))
+        before_truth = self.cleanup_snapshot()
+        with trace_installation_queries(), self.retained_premise() as (uow, guard, prefix, read, observed):
+            owner = _CleanupPhaseReadBoundsOwner(uow)
+            before, offset = read.used, len(observed["queries"])
+            issued = self.capture_retained(owner, guard, prefix)
+            assert_installation_shapes(self, issued, originals, self.connection)
+            self.measure(read, observed, "installation-shape-capture", before, offset)
+            with owner.bind(issued):
+                for phase in range(2):
+                    before, offset = read.used, len(observed["queries"])
+                    self.assertEqual(self.cold_retained(uow), expected)
+                    segment = observed["queries"][offset:]
+                    assert_cold_installation_reads(self, segment, originals)
+                    rows = [widths for q in segment for widths in q["widths"]]
+                    self.assertEqual(read.used.value_octets - before.value_octets, sum(map(sum, rows)))
+                    self.assertEqual(read.used.scalar_markers - before.scalar_markers, sum(map(len, rows)))
+                    self.measure(read, observed, "installation-cold-retained-" + str(phase), before, offset)
+                    # Independent public completions cannot borrow the retained
+                    # reader's proof cache, even though all use one ledger.
+                    for completion, original in zip(expected.completions, originals, strict=True):
+                        prior, offset = read.used, len(observed["queries"])
+                        self.assertEqual(uow.stores.configuration_completions._get(completion.identity,
+                            _EvidenceRead(uow.stores.connection)), completion)
+                        assert_cold_installation_reads(self, observed["queries"][offset:], (original,))
+                        rows = [widths for q in observed["queries"][offset:] for widths in q["widths"]]
+                        self.assertEqual(read.used.value_octets - prior.value_octets, sum(map(sum, rows)))
+                        self.assertEqual(read.used.scalar_markers - prior.scalar_markers, sum(map(len, rows)))
+                        self.measure(read, observed, "installation-independent-completion", prior, offset)
+                # Fault only the owner-issued value, preserving its authority
+                # and restoring it after each case. No malformed shape may
+                # reach the compact original proof transport.
+                from control_plane_kit_operations.postgres.configuration_installation_proof import _PROBE, _FETCH
+                completion = expected.completions[0]
+                shapes, invocation_refs = issued.installation_shapes, issued.invocation_refs
+                selected = next(shape for shape in shapes if shape.identity == completion.identity)
+                corruptions = (
+                    ("missing", tuple(shape for shape in shapes if shape is not selected), invocation_refs),
+                    ("duplicate", (*shapes, selected), invocation_refs),
+                    ("stray", shapes, tuple(entry for entry in invocation_refs
+                        if entry.identity != key(completion.identity))),
+                )
+                for label, corrupted_shapes, corrupted_refs in corruptions:
+                    with self.subTest(installation_shape=label):
+                        offset = len(observed["queries"])
+                        try:
+                            object.__setattr__(issued, "installation_shapes", corrupted_shapes)
+                            object.__setattr__(issued, "invocation_refs", corrupted_refs)
+                            with self.assertRaises(_Unavailable):
+                                uow.stores.configuration_completions._get(completion.identity,
+                                    _EvidenceRead(uow.stores.connection))
+                            self.assertFalse(any(query["sql"] in (_PROBE, _FETCH)
+                                for query in observed["queries"][offset:]))
+                        finally:
+                            object.__setattr__(issued, "installation_shapes", shapes)
+                            object.__setattr__(issued, "invocation_refs", invocation_refs)
+        self.assertEqual(self.cleanup_snapshot(), before_truth)
+
     def foreign_completion(self):
         from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
         from control_plane_kit_core.operations import EffectAttemptIdentity, RunId

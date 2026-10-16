@@ -7,15 +7,17 @@ import unittest
 from unittest import mock
 
 import psycopg
+import rfc8785
 
 from control_plane_kit_operations import configuration_preparation as values
 from control_plane_kit_operations import effect_attempt_start_interpreter as start_owner
-from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _BOUND_ORDINARY_START
 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint as Footprint
 from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartConflict, NewlyStarted
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection, _components
 from tests.configuration_preparation_fixture import ConfigurationPreparationFixture
+from tests.test_postgres_configuration_installation_capacity import installation_widths
 
 
 class PostgresConfigurationStartTailTests(ConfigurationPreparationFixture, unittest.TestCase):
@@ -87,6 +89,15 @@ class PostgresConfigurationStartTailTests(ConfigurationPreparationFixture, unitt
             accounting = _ACCOUNTING.get()
             self.assertEqual(kwargs["current"], accounting.used)
             if not calls:
+                shapes = getattr(_BOUND_ORDINARY_START.get(), "installation_shapes", None)
+                self.assertIsNotNone(shapes, "start peak omitted prospective installation proof")
+                self.assertEqual(len(shapes), 1)
+                shape, = shapes
+                self.assertEqual((shape.identity, shape.request_fingerprint),
+                    (command.transition.identity, command.transition.request_fingerprint))
+                self.assertEqual((shape.original_event_id, shape.original_event_ordinal), (None, None))
+                self.assertEqual(shape.widths, installation_widths(self.connection,
+                    rfc8785.dumps(command.intent.descriptor())))
                 future = kwargs["reserved_future"]
                 if component == "records":
                     extra = 4096 - accounting.used.records - future.records

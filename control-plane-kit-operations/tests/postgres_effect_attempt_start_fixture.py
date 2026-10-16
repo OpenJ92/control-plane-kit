@@ -17,6 +17,7 @@ from control_plane_kit_core.planning import (
 from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
 )
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_operations.activity_run_retry_interpreter import (
     ActivityRunRetryCommandService,
 )
@@ -105,6 +106,8 @@ class PostgresEffectAttemptStartFixture(
         activity_id: str = "start-runtime",
         products=None,
         process_delivery: bool = False,
+        operation=None,
+        kind: RuntimeEffectKind = RuntimeEffectKind.REALIZE_ACTIVITY,
     ):
         value = EffectAttemptStartFixture.intent(
             self,
@@ -114,6 +117,12 @@ class PostgresEffectAttemptStartFixture(
             activity_id=activity_id,
             products=products,
             process_delivery=process_delivery,
+            operation=operation if operation is not None else (
+                StopRuntime(RuntimeTarget("runtime-a"))
+                if compensation
+                else StartRuntime(RuntimeTarget("runtime-a"))
+            ),
+            kind=kind,
         )
         return replace(
             value,
@@ -124,11 +133,6 @@ class PostgresEffectAttemptStartFixture(
                 plan_id=plan_id,
                 base_graph_id="graph-current",
                 desired_graph_id="graph-desired",
-            ),
-            operation=(
-                StopRuntime(RuntimeTarget("runtime-a"))
-                if compensation
-                else StartRuntime(RuntimeTarget("runtime-a"))
             ),
         )
 

@@ -173,6 +173,8 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
             expected_sources = {
                 ("cpk_effect_attempt_intents", identity),
                 ("cpk_effect_attempt_outcomes", identity),
+                ("configuration-installation-proof", identity, self.original.request_fingerprint,
+                    self.completion.original_event_id, self.completion.original_event_ordinal),
                 ("cpk_activity_events", self.completion.original_event_id),
                 ("cpk_activity_events", self.completion.direct_event_id),
                 ("configuration-receipt-context", "workspace-a", self.revision),
@@ -219,8 +221,8 @@ class PostgresConfigurationTransferPublicationTests(ConfigurationTransferredCons
             return result
         with mock.patch.object(ConfigurationAcceptanceStore, "_preflight", preflight):
             self.advance(command)
-        self.assertEqual([phase for phase, _ in visited], ["pre_id"] * 8 + ["bound"] * 8)
-        self.assertEqual([key for _, key in visited[:8]], [key for _, key in visited[8:]])
+        self.assertEqual([phase for phase, _ in visited], ["pre_id"] * 9 + ["bound"] * 9)
+        self.assertEqual([key for _, key in visited[:9]], [key for _, key in visited[9:]])
         self.assertEqual(self.transfer_snapshot(), before)
 
     def fetch_failure_snapshot(self):

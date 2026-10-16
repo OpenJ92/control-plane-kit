@@ -23,6 +23,7 @@ from control_plane_kit_core.configuration_installation import (
     ConfigurationInstallationReceipt,
 )
 from control_plane_kit_core.configuration_invocation import (
+    ConfigurationInvocationCompletion,
     configuration_invocation_correlation_for_request,
     configuration_invocation_selection_fingerprint,
 )
@@ -57,7 +58,17 @@ from control_plane_kit_core.products import (
     ProductIdentity, ProductReference, ProductRuntimeContract, ProviderRuntimePort,
 )
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint, runtime_effect_intent_for_request,
+)
+from control_plane_kit_core.secret_installation import (
+    SecretInstallationReceipt, SecretResolutionReceipt,
+    secret_material_selection_fingerprint,
+)
+from control_plane_kit_core.secret_version_grants import (
+    SecretVersionResolutionGrant, validate_resolution_grant,
+)
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference, SecretProviderId, SecretReference, SecretUseIntent,
 )
@@ -97,6 +108,7 @@ from control_plane_kit_operations.planning import ActivityPlanningCommandService
 from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.products import ProductRegistrationService
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
 from control_plane_kit_operations.deployment_transitions import Deploy
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
 from control_plane_kit_operations.runtime_management_admission import (
@@ -155,7 +167,7 @@ class ForbiddenRecovery:
 
 
 class RecordingRuntime:
-    """Provider-boundary state only; never writes Operations records."""
+    """Simulated exact-version recipient; never writes Operations records."""
 
     def __init__(self, test):
         self.test = test
@@ -166,6 +178,13 @@ class RecordingRuntime:
 
     def execute(self, request):
         raise AssertionError("the managed runtime must use registered authority")
+
+    def _require_connector_grant(self, request, token_reference):
+        grants = tuple(grant for grant in request.secret_resolution_grants
+            if type(grant) is SecretVersionResolutionGrant
+            and grant.selection.reference == SecretReference(token_reference)
+            and grant.selection.intent is SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN)
+        self.test.assertEqual(len(grants), 1, "connector creation requires the actually generated token grant")
 
     def execute_with_authority(self, request, authority):
         test = self.test
@@ -178,35 +197,77 @@ class RecordingRuntime:
         test.assertIsInstance(request.operation, (
             StartRuntime, StartNode, ReconcileNode, ReconcileRuntime, StopNode, RemoveNodeResource,
         ))
+        # Validate the whole selected consumer authority before simulated effects.
+        # Operational grants remain a separate role and cannot satisfy coverage.
+        for grant in request.secret_resolution_grants:
+            validate_resolution_grant(grant)
+        selected = tuple(selection for material in request.products
+            for selection in material.secret_selections
+            if type(request.operation) in (StartNode, ReconcileNode))
+        consumers = tuple(grant for grant in request.secret_resolution_grants
+            if type(grant) is SecretVersionResolutionGrant)
+        test.assertCountEqual(tuple(grant.selection for grant in consumers), selected)
+        fingerprint = runtime_effect_intent_fingerprint(runtime_effect_intent_for_request(request))
+        selection_fingerprint = secret_material_selection_fingerprint(request) if selected else None
+        for grant in consumers:
+            test.assertEqual((grant.workspace_id, grant.operation_id, grant.run_id,
+                grant.activity_id, grant.effect_id, grant.request_fingerprint, grant.selection_fingerprint),
+                (request.source.workspace_id, request.source.request_id, request.source.run_id.value,
+                 request.activity_id.value, request.effect_id, fingerprint, selection_fingerprint))
         self.calls.append(request)
         test.effect_order.append(request.activity_id.value)
         if type(request.operation) is StartNode:
             node_id = request.operation.target.node_id
             test.assertNotIn(node_id, self.containers, "a container was allocated twice")
-            self.containers[node_id] = hashlib.sha256(request.effect_id.encode()).hexdigest()
             if node_id == "connector":
                 generated = test.rows("cpk_generated_ingress_secret_references")
                 test.assertEqual(len(generated), 1)
                 token_reference = generated[0][2]
-                grants = tuple(grant for grant in request.secret_resolution_grants
-                    if grant.permits(SecretReference(token_reference), SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN))
-                test.assertEqual(len(grants), 1, "connector creation requires the actually generated token grant")
+                self._require_connector_grant(request, token_reference)
+            self.containers[node_id] = hashlib.sha256(request.effect_id.encode()).hexdigest()
         elif type(request.operation) is RemoveNodeResource:
             self.containers.pop(request.operation.target.node_id, None)
         evidence = {"recording_provider": True, "activity_id": request.activity_id.value}
+        configuration = None
         if (type(request.operation) is ReconcileNode
                 and self.installation_disposition is not None):
             correlation = configuration_invocation_correlation_for_request(request)
-            evidence["configuration_installation_receipt"] = (
-                ConfigurationInstallationReceipt(
+            configuration = ConfigurationInstallationReceipt(
                     correlation.request_fingerprint,
                     self.installation_selection_fingerprint
                     or configuration_invocation_selection_fingerprint(correlation.selection),
                     self.installation_disposition,
                     "1" * 64,
                     "2" * 64,
-                ).descriptor()
-            )
+                )
+            evidence["configuration_installation_receipt"] = configuration.descriptor()
+        if request.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+            context = configuration_invocation_correlation_for_request(request)
+            configuration_selection = configuration_invocation_selection_fingerprint(context.selection)
+            evidence["configuration_invocation_completion"] = ConfigurationInvocationCompletion(
+                context.request_fingerprint, configuration_selection).descriptor()
+            if type(request.operation) is StartNode and selected:
+                configuration = ConfigurationInstallationReceipt(fingerprint, configuration_selection,
+                    ConfigurationInstallationDisposition.CREATED, None,
+                    self.containers[request.operation.target.node_id])
+                evidence["configuration_installation_receipt"] = configuration.descriptor()
+        if selected:
+            evidence["secret_resolution_receipt"] = SecretResolutionReceipt(
+                fingerprint, selection_fingerprint).descriptor()
+            # A deliberately missing replacement receipt stays missing. Likewise,
+            # preserve a supplied wrong configuration fingerprint for admission
+            # to reject; this port must not validate or repair its negative output.
+            if configuration is not None:
+                disposition, prior, current = (configuration.disposition,
+                    configuration.prior_realization_fingerprint,
+                    configuration.current_realization_fingerprint)
+            elif request.kind is RuntimeEffectKind.REALIZE_ACTIVITY:
+                disposition, prior, current = (ConfigurationInstallationDisposition.CREATED,
+                    None, self.containers[request.operation.target.node_id])
+            else:
+                return RuntimeEffectResult.succeeded(request.effect_id, evidence=evidence)
+            evidence["secret_installation_receipt"] = SecretInstallationReceipt(
+                fingerprint, selection_fingerprint, disposition, prior, current).descriptor()
         return RuntimeEffectResult.succeeded(request.effect_id, evidence=evidence)
 
 
@@ -425,7 +486,7 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                 return candidate
         self.fail("bounded authored hostnames did not provide native-before-PATH fixture ordering")
 
-    def application(self):
+    def application(self, *, runtime_registration=None):
         uow = self.unit_of_work
         lifecycle = RunLifecycleCommandService(uow, clock=now, id_factory=self.ids["lifecycle"])
         fold = EffectAttemptFoldService(uow, id_factory=self.ids["effect-fold"])
@@ -444,6 +505,9 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                         not fixture.forged_managed_fold_refused
                         and type(outcome) is ExecutionEffectOutcome
                         and receipt_key in outcome.result.evidence
+                        and any(type(request.operation) is ReconcileNode
+                            and request.effect_id == outcome.result.effect_id
+                            for request in fixture.runtime.calls)
                     ):
                         forged_result = RuntimeEffectResult.succeeded(
                             outcome.result.effect_id,
@@ -468,7 +532,9 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
             fold = ForgedManagedFoldProbe()
         authorizer = SecretUseAuthorizationService(uow)
         adapter = ActivityExecutionDispatcher(
-            runtime=RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: self.runtime}, authorizer),
+            runtime=RuntimeInterpreterDispatcher({RuntimeKind.DOCKER:
+                RuntimeAdapterRegistration(self.runtime, exact_version_execute_with_authority=True)
+                if runtime_registration is None else runtime_registration}, authorizer),
             ingress=IngressRealizationAdapter(uow,
                 {IngressAuthorityProviderKind.CLOUDFLARE: self.ingress}, now, authorizer))
         execution = ExecutionCoordinator(uow, lifecycle=lifecycle, adapter=adapter,

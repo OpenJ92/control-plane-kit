@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import dataclasses
 import inspect
 import json
@@ -316,7 +317,7 @@ EXACT_INTERPRETER_CALLS = (
             "control_plane_kit_core.topology.validate_graph",
             "control_plane_kit_operations._configuration_preparation._ACCOUNTING.get",
             "control_plane_kit_operations._configuration_preparation._configuration_accounting",
-            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldConflict",) * 39,
+            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldConflict",) * 40,
             *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldDenied",) * 15,
             *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldNotFound",) * 3,
             "control_plane_kit_operations.effect_attempt_fold.ExistingFold",
@@ -374,7 +375,7 @@ EXACT_INTERPRETER_CALLS = (
             "stores.configuration_completions._bind",
             "stores.configuration_completions._insert",
             "stores.configuration_completions._prepare",
-            "stores.configuration_completions.get",
+            "stores.configuration_completions._get_for_original",
             "stores.configuration_preparation._configure_run",
             "stores.configuration_preparation._require_original",
             "stores.effect_attempt_intents.get",
@@ -410,6 +411,25 @@ EXACT_INTERPRETER_CALLS = (
         )
     ),
 )
+
+
+# Existing original-installation admission plus candidate-only bounded plan read.
+EXACT_INTERPRETER_IMPORTS = tuple(sorted((*EXACT_INTERPRETER_IMPORTS,
+    *(architecture_testing.ImportSurfaceEntry(module, name, None) for module, name in (
+        ("control_plane_kit_operations.effect_outcome_evidence", "_require_original_installation_outcome"),
+        ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectObservedSucceeded"),
+        ("control_plane_kit_operations.effect_outcome_evidence", "_observed_configuration_candidate"),
+        (".postgres.configuration_evidence", "_joined_read"),
+    ))), key=lambda item: (item.module, item.imported_name or "", item.alias_name or "")))
+EXACT_INTERPRETER_CALLS = tuple(sorted((*EXACT_INTERPRETER_CALLS,
+    *(architecture_testing.ResolvedCallTarget(name) for name in (
+        "control_plane_kit_operations.effect_outcome_evidence._require_original_installation_outcome",
+        "type", "type",
+        "stores.activity_history.get_plan",
+        ".postgres.configuration_evidence._joined_read",
+        "control_plane_kit_operations.effect_outcome_evidence._observed_configuration_candidate",
+    ))), key=lambda item: (0, "") if type(item) is architecture_testing.UnresolvedCallTarget
+    else (1, item.qualified_name)))
 
 
 class FailIfUnitOfWork:
@@ -812,7 +832,14 @@ class AtomicEffectAttemptFoldContractTests(
                 ),
             ),
         )
-        self.assertEqual(findings, ())
+        actual_calls = Counter(call.target for call in facts.calls)
+        expected_calls = Counter(EXACT_INTERPRETER_CALLS)
+        self.assertEqual(findings, (), msg=repr({
+            "unexpected_calls": tuple((repr(target), count)
+                for target, count in (actual_calls - expected_calls).items()),
+            "missing_calls": tuple((repr(target), count)
+                for target, count in (expected_calls - actual_calls).items()),
+        }))
 
     def test_root_and_inventory_publish_the_atomic_dependent_sum(self) -> None:
         expected_exports = {
@@ -897,6 +924,7 @@ class AtomicEffectAttemptFoldContractTests(
                     "control_plane_kit_core.operations",
                     "control_plane_kit_core.planning",
                     "control_plane_kit_core.policies",
+                    "control_plane_kit_core.runtime_effect_observation",
                     "control_plane_kit_core.runtime_effects",
                     "control_plane_kit_core.topology",
                     "control_plane_kit_operations._configuration_preparation",

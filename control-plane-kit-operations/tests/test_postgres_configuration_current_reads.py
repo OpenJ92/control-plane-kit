@@ -45,9 +45,13 @@ class PostgresConfigurationCurrentReadTests(unittest.TestCase):
             def execute(self, query, parameters=None):
                 statements.append(str(query))
                 if source_queries is not None:
+                    from control_plane_kit_operations.postgres.configuration_installation_proof import _PROBE, _FETCH
+                    # The compact proof prefixes its identity with three
+                    # correlation parameters; ordinary source SQL does not.
                     for table in ("cpk_effect_attempt_intents", "cpk_effect_attempt_outcomes"):
                         if table in str(query):
-                            source_queries.append((table, tuple(parameters[:3])))
+                            identity = parameters[3:6] if str(query) in (_PROBE, _FETCH) else parameters[:3]
+                            source_queries.append((table, tuple(identity)))
                 return self.connection.execute(query, parameters)
 
         def connection():

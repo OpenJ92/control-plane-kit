@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 import psycopg
+import rfc8785
 
 from control_plane_kit_core.planning import NodeTarget, ReconcileNode
 from control_plane_kit_operations import configuration_preparation as values
@@ -18,6 +19,9 @@ from control_plane_kit_operations.postgres.configuration_acceptance_store import
 from tests.configuration_transfer_fixture import ConfigurationTransferredConsumerFixture
 from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection
 from tests import postgres_effect_attempt_coordinator_fixture as coordinator_fixture
+from tests.test_postgres_configuration_installation_capacity import (
+    assert_cold_installation_reads, installation_widths, trace_installation_queries,
+)
 
 
 Footprint = values.ConfigurationEvidenceFootprint
@@ -333,7 +337,7 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
             declared.append(Footprint(kwargs["records"] * kwargs.get("identities", 1),
                 kwargs["octets"], kwargs["records"] * kwargs["cells"], 1))
             return actual_query(read, statement, params, **kwargs)
-        with _configuration_accounting() as accounting:
+        with trace_installation_queries(), _configuration_accounting() as accounting:
             observed = dict(bytes=0, rows=0, largest_cell=0, statements=0,
                 queries=[], accounting=accounting, role_label=query_role)
             factory = lambda: _PhaseConnection(psycopg.connect(self.base.database_url), observed)
@@ -352,6 +356,7 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
                 self.assertGreaterEqual(cold.records, observed["rows"] - physical["rows"])
                 self.assertGreaterEqual(cold.accounted_bytes, observed["bytes"] - physical["bytes"])
                 transported = observed["queries"][offset:]
+                assert_cold_installation_reads(self, transported, (self.original,))
                 self.assertEqual(cold.scalar_markers,
                     sum(len(widths) for entry in transported for widths in entry["widths"]))
                 self.assertEqual(cold.records, sum(len(entry["widths"]) * IDENTITIES[entry["role"]]
@@ -364,7 +369,9 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
                 for entry in observed["queries"][offset:]:
                     if not entry["widths"]:
                         self.assertIn(entry["sql"], ("SAVEPOINT cpk_configuration_source_read",
-                            "RELEASE SAVEPOINT cpk_configuration_source_read"))
+                            "RELEASE SAVEPOINT cpk_configuration_source_read",
+                            "SAVEPOINT cpk_configuration_installation_read",
+                            "RELEASE SAVEPOINT cpk_configuration_installation_read"))
                     self.assertLessEqual(Footprint(*entry["peak"]).accounted_bytes, 16 * 1024 * 1024)
                 warm_start = read.used
                 warm_offset = len(observed["queries"])
@@ -409,6 +416,17 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
             return MeasuredUnitOfWork(lambda: _PhaseConnection(psycopg.connect(self.base.database_url), observed))
         def check(store, prepared):
             proofs, readers = [], []
+            proof_offset = len(observed["queries"])
+            shapes = getattr(_BOUND_ORDINARY_START.get(), "installation_shapes", None)
+            self.assertIsNotNone(shapes, "transfer start omitted finite original proof shapes")
+            self.assertEqual({shape.identity for shape in shapes}, {self.original.identity, prepared.identity})
+            self.assertEqual(len(shapes), 2)
+            retained = next(shape for shape in shapes if shape.identity == self.original.identity)
+            self.assertEqual((retained.request_fingerprint, retained.original_event_id, retained.original_event_ordinal),
+                (self.original.request_fingerprint, self.original.original_start_event.event_id,
+                    self.original.original_start_event.ordinal))
+            self.assertEqual(retained.widths, installation_widths(self.connection,
+                rfc8785.dumps(self.original.intent.descriptor())))
             accounting = _ACCOUNTING.get()
             self.assertTrue(ledgers, "issued check must follow capacity admission")
             self.assertIs(accounting, ledgers[0])
@@ -429,6 +447,7 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
                 return result
             with mock.patch.object(ConfigurationAcceptanceStore, "_accepted_transfer", proof):
                 actual_check(store, prepared)
+            assert_cold_installation_reads(self, observed["queries"][proof_offset:], (self.original,))
             self.assertEqual([key for key, _ in proofs], [self.key(ref) for ref in self.refs])
             self.assertTrue(all(read is readers[0] for read in readers))
             measured = Footprint(0, 0, 0, 0)
@@ -452,7 +471,8 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
         harness = coordinator_fixture.PostgresEffectAttemptCoordinatorFixture.coordinator_harness(self.base)
         with mock.patch.object(ConfigurationPreparationStore, "_require_current", check), \
                 mock.patch.object(values, "configuration_preparation_capacity", capacity), \
-                mock.patch.object(harness.start.inner, "_unit_of_work_factory", factory):
+                mock.patch.object(harness.start.inner, "_unit_of_work_factory", factory), \
+                trace_installation_queries():
             result = harness.coordinator.execute(replace(self.base.engine.command(generation=command.fence.generation,
                 idempotency_key="execute-reuse"), run_id=command.run_id))
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)

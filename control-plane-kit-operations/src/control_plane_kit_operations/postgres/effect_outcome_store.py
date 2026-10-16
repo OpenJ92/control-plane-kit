@@ -54,6 +54,7 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     NativeConnectionObservation,
     NativeConnectionOutcome,
     ObservedEffectOutcome,
+    _observed_configuration_candidate,
     effect_outcome_observation_records,
 )
 from control_plane_kit_operations.postgres.effect_attempt_intent_store import (
@@ -262,10 +263,64 @@ class EffectAttemptOutcomeStore:
             raise _Unavailable
         return outcome, attempt
 
-    def _configuration_terminal(self, source, read):
+    def _configuration_publication_success(self, source, read, *, plan, request):
+        """Actual installed success may be observed; direct completion stays separate."""
+        from control_plane_kit_core.operations import EffectAttemptStatus
+        from control_plane_kit_operations._configuration_acceptance import _PUBLICATION_SCOPE
+        from control_plane_kit_operations.effect_outcome_evidence import (
+            ObservedEffectOutcome, _require_original_installation_outcome,
+        )
+        from .effect_attempt_store import EffectAttemptStore
+        from .configuration_installation_proof import _selection
+        from .configuration_evidence import _Unavailable
+        identity = source.identity
+        rows = read.query("SELECT CASE WHEN octet_length(profile)<=128 THEN profile END "
+            "FROM cpk_effect_attempt_outcomes WHERE run_id=%s AND activity_id=%s AND attempt=%s",
+            (identity.run_id.value, identity.activity_id, identity.attempt), records=1, octets=128, cells=1)
+        if len(rows) != 1:
+            raise _Unavailable
+        if rows[0][0] == "execution-result":
+            return self._configuration_success(source, read)
+        if rows[0][0] != "provider-observation":
+            raise _Unavailable
+        owner = _PUBLICATION_SCOPE.get()
+        bounds = None if owner is None or owner._issued is None else owner._issued.read_bounds
+        if bounds is not None:
+            closure = dict(bounds.source_closures).get(identity)
+            if closure is None or closure[:2] != (plan.plan_id, True):
+                raise _Unavailable
+            rows = read.query("SELECT observation_count=%s FROM cpk_effect_attempt_outcomes "
+                "WHERE run_id=%s AND activity_id=%s AND attempt=%s",
+                (closure[2], identity.run_id.value, identity.activity_id, identity.attempt),
+                records=1, octets=1, cells=1)
+            if len(rows) != 1 or rows[0][0] is not True:
+                raise _Unavailable
+        original = EffectAttemptIntentStore(self._connection).get(identity)
+        attempt = EffectAttemptStore(self._connection).get(identity)
+        retained = self.get(identity, attempt.latest_transition_event.event_id)
+        outcome, intent = retained.outcome, original.intent
+        if (type(outcome) is not ObservedEffectOutcome or retained.attempt != attempt
+                or attempt.state.status is not EffectAttemptStatus.SUCCEEDED
+                or (intent.kind, intent.source, intent.operation, intent.configuration_instances) !=
+                    (source.kind, source.source, source.operation, _selection(read, source))
+                or original.request_fingerprint != source.request_fingerprint
+                or (original.original_start_event.event_id, original.original_start_event.ordinal) !=
+                    (source.original_event_id, source.original_event_ordinal)):
+            raise _Unavailable
+        _require_original_installation_outcome(original, attempt, outcome, original_plan=plan, request=request)
+        if owner is not None:
+            value = (plan.plan_id, True, len(outcome.endpoint_observations))
+            if bounds is not None:
+                if dict(bounds.source_closures).get(identity) != value:
+                    raise _Unavailable
+            elif owner._publication_source_closures.setdefault(identity, value) != value:
+                raise _Unavailable
+        return outcome, attempt
+
+    def _configuration_terminal(self, source, read, *, original=None):
         """Complete direct result/correlation proof; no observation-membership projection."""
         from control_plane_kit_operations.effect_outcome_evidence import _require_correlated_outcome
-        from .configuration_evidence import _Unavailable
+        from .configuration_evidence import _Unavailable, _Capacity
         identity = source.identity
         cache_key = ("cpk_effect_attempt_outcomes", identity)
         from control_plane_kit_operations._configuration_acceptance import _require_publication_proof
@@ -296,6 +351,46 @@ class EffectAttemptOutcomeStore:
                 source.source.workspace_id, source.source.request_id, source.request_fingerprint,
                 source.original_event_id, source.original_event_ordinal)
                 or attempt.state.identity != identity):
+            raise _Unavailable
+        valid = False
+        try:
+            # A warm outcome is still an actual result, not a cached decision.
+            # Reconstruct its complete row/event correspondence before receipt
+            # interpretation, including coherent changes to all cached values.
+            decoded = _outcome_from_events(row, _decode_preimage(row[6], row[5]),
+                _configuration_event(read, row[15]), _configuration_event(read, row[18]))
+            if decoded != (outcome, attempt) or type(outcome) is not ExecutionEffectOutcome:
+                raise ValueError
+            _require_correlated_outcome(row[3], outcome, attempt)
+            if original is not None:
+                from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
+                from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+                from control_plane_kit_operations.effect_outcome_evidence import _require_original_installation_outcome
+                from .configuration_installation_proof import _selection
+                if type(original) is not EffectAttemptIntentRecord:
+                    raise ValueError
+                EffectAttemptIntentRecord.__post_init__(original)
+                intent = original.intent
+                if (original.identity != identity
+                        or runtime_effect_intent_fingerprint(intent) != source.request_fingerprint
+                        or original.original_start_event != attempt.original_start_event
+                        or (intent.kind, intent.source, intent.operation, intent.configuration_instances) !=
+                            (source.kind, source.source, source.operation, _selection(read, source))):
+                    raise ValueError
+                _require_original_installation_outcome(original, attempt, outcome)
+            elif (attempt.state.status is EffectAttemptStatus.SUCCEEDED or any(name in outcome.result.evidence
+                    for name in ("secret_resolution_receipt", "secret_installation_receipt",
+                        "configuration_installation_receipt"))):
+                from control_plane_kit_core.secret_installation import secret_installation_receipt_for_correlated_result
+                from .configuration_installation_proof import read_installation_proof
+                proof = read_installation_proof(read, source)
+                secret_installation_receipt_for_correlated_result(proof.correlation, outcome.result)
+            valid = True
+        except _Capacity:
+            raise
+        except (ValueError, TypeError, AttributeError, KeyError, IndexError, RecursionError):
+            pass
+        if not valid:
             raise _Unavailable
         return outcome, attempt
 
@@ -525,19 +620,21 @@ def _require_verification_membership(
     request_id: object,
     error_message: str,
 ) -> None:
-    native = (type(outcome) is NativeConnectionEffectOutcome
-        or attempt.original_start_event.kind.value == "step_observation_restarted")
-    if not native and not any(
-        type(item) is VerificationCompleted
-        for item in outcome.endpoint_observations
-    ):
-        return
     valid = False
     try:
         intent_record = EffectAttemptIntentStore(connection).get(
             attempt.state.identity
         )
-        _require_intent_membership(outcome, attempt, observations, workspace_id, request_id, intent_record)
+        original_plan = None
+        if (type(outcome) is ObservedEffectOutcome
+                and type(outcome.observation) is RuntimeEffectObservedSucceeded
+                and _observed_configuration_candidate(intent_record)):
+            from .configuration_evidence import _joined_read
+            from .activity_history import PostgresActivityHistoryStore
+            with _joined_read(connection):
+                original_plan = PostgresActivityHistoryStore(connection).get_plan(intent_record.intent.source.plan_id)
+        _require_intent_membership(outcome, attempt, observations, workspace_id, request_id, intent_record,
+            original_plan=original_plan)
         valid = True
     except (KeyError, RuntimeEffectContractError, OperationsRecordError, ValueError):
         pass
@@ -545,8 +642,14 @@ def _require_verification_membership(
         raise OperationsRecordError(error_message) from None
 
 
-def _require_intent_membership(outcome, attempt, observations, workspace_id, request_id, intent_record):
+def _require_intent_membership(outcome, attempt, observations, workspace_id, request_id, intent_record,
+        *, original_plan=None, request=None):
     """Pure original-intent membership law shared with bounded history reads."""
+    from control_plane_kit_operations.effect_outcome_evidence import _require_original_installation_outcome
+    if (intent_record.workspace_id != workspace_id or intent_record.request_id != request_id):
+        raise OperationsRecordError("effect attempt outcome membership is invalid")
+    _require_original_installation_outcome(intent_record, attempt, outcome,
+        original_plan=original_plan, request=request)
     native = (type(outcome) is NativeConnectionEffectOutcome
               or attempt.original_start_event.kind.value == "step_observation_restarted")
     if not native and not any(type(item) is VerificationCompleted for item in outcome.endpoint_observations):

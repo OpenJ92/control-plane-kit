@@ -9,10 +9,14 @@ from control_plane_kit_core.operations.lifecycle import ExecutionRequestStatus
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RemoteDockerTlsConnectionAdmission
 from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectObservationEvidence,
+    RuntimeEffectObservationFailure,
     RuntimeEffectObservationRequest,
+    RuntimeEffectObservedIndeterminate,
     runtime_effect_request_for_intent,
 )
-from control_plane_kit_core.secrets import SecretResolutionGrant
+from control_plane_kit_core.secret_installation import secret_installation_receipt_for_observation
+from control_plane_kit_core.secret_version_grants import ResolutionGrant
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -38,6 +42,9 @@ from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     ObservedEffectOutcome,
+    _observed_configuration_candidate,
+    _require_original_observation_plan,
+    _require_observed_configuration_receipt,
     effect_outcome_failure,
     effect_outcome_transition,
 )
@@ -54,15 +61,16 @@ from control_plane_kit_operations.runtime_authorities import (
 )
 from control_plane_kit_operations.runtime_effects import (
     required_secret_uses_for_runtime_effect,
+    secret_authorization_command,
 )
 from control_plane_kit_operations.secret_providers import (
-    AuthorizeSecretUse,
     SecretProviderAuthorizationDenied,
     SecretProviderRegistrationError,
     SecretUseAuthorizationConflict,
     SecretUseAuthorizationService,
-    secret_use_correlation_for,
+    authorize_runtime_secret_command,
 )
+from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration, adapter_is_qualified, registered_adapter
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
@@ -78,7 +86,7 @@ class EffectAttemptReconciliationService:
     def __init__(
         self,
         unit_of_work_factory: Callable[[], Any],
-        observer: RuntimeEffectObserver,
+        observer: RuntimeEffectObserver | RuntimeAdapterRegistration,
         fold_service: Any,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -210,6 +218,15 @@ class EffectAttemptReconciliationService:
                 raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR)
             if denied:
                 raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
+            original_plan = None
+            if _observed_configuration_candidate(intent_record):
+                try:
+                    from .postgres.configuration_evidence import _joined_read
+                    with _joined_read(stores.connection):
+                        original_plan = stores.activity_history.get_plan(intent_record.intent.source.plan_id)
+                    _require_original_observation_plan(intent_record, original_plan, request=request)
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR) from None
 
         return _fresh_observed_fold(
             self,
@@ -218,6 +235,7 @@ class EffectAttemptReconciliationService:
             intent_record,
             runtime_authority,
             observation.observed_at,
+            original_plan,
         )
 
 
@@ -379,7 +397,7 @@ def _authorize_required_secrets(
     runtime_request: Any,
     runtime_authority: RegisteredRuntimeAuthority | None,
     observed_at: str,
-) -> tuple[SecretResolutionGrant, ...]:
+) -> tuple[ResolutionGrant, ...]:
     uses = required_secret_uses_for_runtime_effect(
         runtime_request,
         runtime_authority,
@@ -391,35 +409,17 @@ def _authorize_required_secrets(
 
     grants = ()
     authorization_error = False
-    for reference, intent in uses:
-        values = {
-            "workspace_id": intent_record.workspace_id,
-            "reference": reference,
-            "intent": intent,
-            "actor_subject": command.authority.worker_id,
-            "operation_id": intent_record.request_id,
-            "run_id": attempt.state.identity.run_id.value,
-            "activity_id": attempt.state.identity.activity_id,
-            "effect_id": attempt.original_start_event.event_id,
-        }
+    for use in uses:
         try:
-            authorization = AuthorizeSecretUse(
-                **values,
-                correlation_id=secret_use_correlation_for(**values),
-                requested_at=observed_at,
-                actor_scopes=command.authority.scopes,
-            )
-            grant = self._secret_use_authorizer.authorize_resolution(
-                authorization
-            )
+            authorization = secret_authorization_command(runtime_request, use,
+                actor_subject=command.authority.worker_id, requested_at=observed_at,
+                actor_scopes=command.authority.scopes)
+            grant = authorize_runtime_secret_command(self._secret_use_authorizer, authorization)
         except (
             SecretProviderAuthorizationDenied,
             SecretProviderRegistrationError,
             SecretUseAuthorizationConflict,
         ):
-            authorization_error = True
-            break
-        if type(grant) is not SecretResolutionGrant:
             authorization_error = True
             break
         grants = (*grants, grant)
@@ -435,27 +435,19 @@ def _fresh_observed_fold(
     intent_record: EffectAttemptIntentRecord,
     runtime_authority: RegisteredRuntimeAuthority | None,
     observed_at: str,
+    original_plan,
 ) -> EffectAttemptFoldResult:
-    grants = ()
-    uses_pending = True
-    runtime_request = None
-    for _ in (False, True):
-        runtime_request = runtime_effect_request_for_intent(
-            intent_record.intent,
-            effect_id=attempt.original_start_event.event_id,
-            secret_resolution_grants=grants,
-        )
-        if uses_pending:
-            grants = _authorize_required_secrets(
-                self,
-                command,
-                attempt,
-                intent_record,
-                runtime_request,
-                runtime_authority,
-                observed_at,
-            )
-            uses_pending = False
+    runtime_request = runtime_effect_request_for_intent(intent_record.intent,
+        effect_id=attempt.original_start_event.event_id)
+    if not adapter_is_qualified(self._observer, runtime_request, "observe"):
+        raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
+    observer = registered_adapter(self._observer)
+    if not callable(getattr(observer, "observe", None)):
+        raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
+    grants = _authorize_required_secrets(self, command, attempt, intent_record,
+        runtime_request, runtime_authority, observed_at)
+    runtime_request = runtime_effect_request_for_intent(intent_record.intent,
+        effect_id=attempt.original_start_event.event_id, secret_resolution_grants=grants)
 
     connection_admission = None
     if runtime_authority is not None and isinstance(runtime_authority.authority, RemoteDockerTlsAuthority):
@@ -469,7 +461,7 @@ def _fresh_observed_fold(
     observation_request = RuntimeEffectObservationRequest(
         runtime_request, connection_admission=connection_admission
     )
-    observation_result = self._observer.observe(
+    observation_result = observer.observe(
         observation_request,
         runtime_authority,
     )
@@ -490,6 +482,25 @@ def _fresh_observed_fold(
             != intent_record.request_fingerprint
         )
     if not invalid_truth:
+        try:
+            secret_installation_receipt_for_observation(runtime_request, outcome.observation)
+        except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
+            # This records our admission uncertainty after the external read,
+            # not a provider assertion or permission to execute again.
+            outcome = ObservedEffectOutcome(command.identity, RuntimeEffectObservedIndeterminate(
+                attempt.original_start_event.event_id, intent_record.request_fingerprint,
+                RuntimeEffectObservationEvidence({"admission_boundary": "secret-installation"}),
+                RuntimeEffectObservationFailure("runtime.secret-installation-proof-unavailable",
+                    "Secret installation proof is unavailable.")))
+        try:
+            _require_observed_configuration_receipt(intent_record, outcome.observation,
+                original_plan=original_plan)
+        except OperationsRecordError:
+            outcome = ObservedEffectOutcome(command.identity, RuntimeEffectObservedIndeterminate(
+                attempt.original_start_event.event_id, intent_record.request_fingerprint,
+                RuntimeEffectObservationEvidence({"admission_boundary": "configuration-installation"}),
+                RuntimeEffectObservationFailure("runtime.configuration-installation-proof-unavailable",
+                    "Configuration installation proof is unavailable.")))
         try:
             transition = effect_outcome_transition(outcome)
             failure = effect_outcome_failure(outcome)
