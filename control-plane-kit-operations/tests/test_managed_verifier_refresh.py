@@ -258,7 +258,7 @@ class ManagedVerifierRefreshTests(chain.ManagedApplicationFixture):
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
                 self.before_update.current_graph_id)
-        with self.assertRaises(CpkServerApplicationError):
+        with self.assertRaises(chain.CurrentGraphAdvancementIncomplete):
             await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
                 path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
                 payload={"plan_id": self.record.plan_id,
