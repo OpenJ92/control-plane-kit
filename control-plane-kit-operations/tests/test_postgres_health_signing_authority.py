@@ -7,7 +7,7 @@ from control_plane_kit_core.operations import ActivityEventKind, EffectAttemptSt
 from control_plane_kit_core.secrets import SecretUseIntent
 from control_plane_kit_core.receiver_identity import receiver_node_control_audience
 from control_plane_kit_operations.delegation_signing_keys import (
-    DelegationSigningKeyNotFound, delegation_signing_key_registration_id_for,
+    DelegationSigningKeyNotFound, RegisteredDelegationSigningKey, delegation_signing_key_registration_id_for,
 )
 from control_plane_kit_operations.node_control_signing_authority import _NodeControlSigningAuthorityStoreError
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
@@ -33,6 +33,34 @@ def pair_for_request(record, request):
 
 
 class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture, unittest.TestCase):
+    def test_refresh_compatible_verify_only_addition_keeps_original_grant_intervals(self):
+        original = self.keys["workload"]
+        fields = dict(workspace_id=original.workspace_id, purpose=original.purpose,
+            issuer=original.issuer,
+            public_key=replace(original.public_key, key_id="compatible-added", public_key_pem=PUBLIC_KEY_C),
+            private_key_reference=original.private_key_reference)
+        added = RegisteredDelegationSigningKey(
+            registration_id=delegation_signing_key_registration_id_for(**fields), **fields,
+            admitted_by="operator-a", admitted_at="2030-01-01T00:00:00Z")
+        with self.unit_of_work() as uow:
+            uow.stores.delegation_signing_keys.register(added)
+            uow.commit()
+        before = self.health_snapshot()
+        with self.observed_time(timestamp(self.current_time)):
+            reloaded = self.reload()
+        self.assertEqual(reloaded.preparation, self.preparation)
+        self.assertEqual(reloaded.preparation.workload_grant, self.preparation.workload_grant)
+        self.assertEqual(reloaded.preparation.transit_grant, self.preparation.transit_grant)
+        self.assert_history_unchanged(before)
+        with self.unit_of_work() as uow:
+            uow.stores.delegation_signing_keys.revoke(original.workspace_id, original.purpose,
+                original.issuer, original.key_id, revoked_by="operator-a", revoked_at="2030-01-01T00:00:00Z")
+            uow.commit()
+        before = self.health_snapshot()
+        with self.observed_time(timestamp(self.current_time)), self.assertRaises(DelegationSigningKeyNotFound):
+            self.reload()
+        self.assert_history_unchanged(before)
+
     def test_complete_exact_pair_repeated_reload_preserves_original_history(self):
         before = self.health_snapshot()
         with self.observed_time(timestamp(self.current_time)) as observations:
