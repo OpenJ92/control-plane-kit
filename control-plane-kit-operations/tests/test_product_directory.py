@@ -66,6 +66,17 @@ class ProductDirectoryBoundaryTests(unittest.TestCase):
                 with self.assertRaises(CpkServerApplicationError) as caught:CpkServerReadService(factory).handle(request)
                 self.assertEqual(caught.exception.status,400);self.assertEqual(calls,[])
 
+    def test_invalid_limits_and_noncanonical_cursor_rejected_before_uow(self):
+        cursor = {'format_version':1,'collection':'registered-products',
+                  'scope':{'workspace_id':'workspace-a'},'position':{'item_id':'A'*64}}
+        for payload in ({'limit':0}, {'limit':101}, {'limit':True}, {'after':cursor}, {'unknown':1}):
+            with self.subTest(payload=payload):
+                def factory():
+                    raise AssertionError('must not acquire')
+                with self.assertRaises(CpkServerApplicationError) as caught:
+                    CpkServerReadService(factory).handle(Request(payload=payload))
+                self.assertEqual(caught.exception.status,400)
+
 
 class ProductDirectoryStoreTests(unittest.TestCase):
     def setUp(self):
@@ -97,6 +108,8 @@ class ProductDirectoryStoreTests(unittest.TestCase):
     def test_detail_preserves_reference_and_omits_values(self):
         record=self.records[0];body=self.detail(record.reference.descriptor_sha256.value)
         product=body['product'];self.assertEqual(product['reference'],record.reference.descriptor())
+        self.assertEqual(body,self.app.handle(Request(route_id='read.product-detail',surface='mcp',path_parameters={},
+            payload={'workspace_id':'workspace-a','descriptor_sha256':record.reference.descriptor_sha256.value})))
         self.assertEqual(product['projection_kind'],'noncanonical-product-display')
         self.assertEqual(product['contract']['providers'][0]['name'],'http')
         self.assertEqual(product['contract']['requirements'][0]['env_names'],['DATABASE_URL'])
@@ -119,6 +132,25 @@ class ProductDirectoryStoreTests(unittest.TestCase):
         self.assertEqual(caught.exception.status,403)
         with self.assertRaises(CpkServerApplicationError) as caught:self.detail('0'*64)
         self.assertEqual(caught.exception.status,404)
+
+    def test_authorized_empty_workspace_and_missing_admission(self):
+        both = AuthenticatedPrincipal(principal().identity, (
+            WorkspaceGrant('workspace-a',(PolicyScope.INSTANCE_WORKSPACE_READ,)),
+            WorkspaceGrant('workspace-b',(PolicyScope.INSTANCE_WORKSPACE_READ,)),
+        ))
+        result = self.app.handle(Request(path_parameters={'workspace_id':'workspace-b'},principal=both))
+        self.assertEqual(result['items'],[])
+        self.assertIsNone(result['next_cursor'])
+        with self.assertRaises(CpkServerApplicationError) as caught:
+            self.app.handle(Request(route_id='read.product-detail',path_parameters={
+                'workspace_id':'workspace-b','descriptor_sha256':self.records[0].reference.descriptor_sha256.value},principal=both))
+        self.assertEqual(caught.exception.status,404)
+
+    def test_summary_does_not_hydrate_contract_or_registration_metadata(self):
+        self.connection.execute("UPDATE cpk_registered_products SET descriptor_document=jsonb_set(descriptor_document,'{product,runtime_contract}',to_jsonb(%s::text)), metadata=jsonb_build_object('private',%s::text)",('private-content'*100000,'private-metadata'*100000))
+        result = self.app.handle(Request())
+        self.assertEqual(len(result['items']),3)
+        self.assertNotIn('private-',json.dumps(result))
 
     def test_summary_rejects_malformed_oversize_without_returning_payload(self):
         self.connection.execute("UPDATE cpk_registered_products SET descriptor_document=jsonb_set(descriptor_document,'{product,description}',to_jsonb(%s::text)) WHERE registration_id=%s",('x'*2000,self.records[0].registration_id))
