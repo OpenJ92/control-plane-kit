@@ -21,6 +21,7 @@ _EXPECTED_MODULES = {
     "observations",
     "operations_history",
     "operator_overview",
+    "product_directory",
     "protocols",
     "receiver_authoring_context",
     "revision_history",

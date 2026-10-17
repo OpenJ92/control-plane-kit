@@ -123,4 +123,5 @@ class ProductDirectoryStoreTests(unittest.TestCase):
     def test_summary_rejects_malformed_oversize_without_returning_payload(self):
         self.connection.execute("UPDATE cpk_registered_products SET descriptor_document=jsonb_set(descriptor_document,'{product,description}',to_jsonb(%s::text)) WHERE registration_id=%s",('x'*2000,self.records[0].registration_id))
         with self.assertRaises(CpkServerApplicationError) as caught:self.app.handle(Request())
+        self.assertEqual(caught.exception.status,400)
         self.assertNotIn('x'*100,str(caught.exception))

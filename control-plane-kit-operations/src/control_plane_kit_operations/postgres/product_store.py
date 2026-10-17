@@ -10,6 +10,7 @@ from psycopg.types.json import Jsonb
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
     ProductDescriptorDocument,
+    ProductDescriptorDigest,
     ProductReference,
     ProductReferenceCodec,
 )
@@ -25,6 +26,10 @@ from control_plane_kit_operations.products import (
     ProductRegistrationNotFound,
     RegisteredProduct,
     RegisteredProductStatus,
+)
+from control_plane_kit_operations.read_pages import (
+    IdentityReadCursor, ReadCollection, ReadPage, ReadPageCandidate,
+    ReadPageError, ReadPageRequest, WorkspaceReadScope,
 )
 
 
@@ -159,6 +164,76 @@ class RegisteredProductStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_registered(row) for row in rows)
+
+    def directory_page(self, request: ReadPageRequest) -> ReadPage[dict[str, object]]:
+        """Seek bounded active summaries without retrieving descriptor bodies."""
+        if not isinstance(request, ReadPageRequest) or request.collection is not ReadCollection.REGISTERED_PRODUCTS:
+            raise ReadPageError("product directory request is malformed")
+        after = request.cursor.item_id if request.cursor is not None else None
+        rows = self._connection.execute(
+            """
+            SELECT descriptor_sha256,
+              CASE WHEN octet_length(product_reference::text) <= 8192
+                AND octet_length(registration_id) <= 2048
+                AND product_reference->>'descriptor_sha256' = descriptor_sha256
+                AND descriptor_document->'product'->'identity' = product_reference->'identity'
+                AND jsonb_typeof(descriptor_document->'product') = 'object'
+                AND descriptor_document->'product'->>'product_family' IN ('server', 'data-service')
+                AND (descriptor_document->'product'->'display_name' = 'null'::jsonb
+                     OR (jsonb_typeof(descriptor_document->'product'->'display_name') = 'string'
+                         AND length(descriptor_document->'product'->>'display_name') <= 128))
+                AND (descriptor_document->'product'->'description' = 'null'::jsonb
+                     OR (jsonb_typeof(descriptor_document->'product'->'description') = 'string'
+                         AND length(descriptor_document->'product'->>'description') <= 1024))
+              THEN jsonb_build_object(
+                'registration_id', registration_id, 'reference', product_reference,
+                'status', status,
+                'display_name', descriptor_document->'product'->'display_name',
+                'description', descriptor_document->'product'->'description',
+                'product_family', descriptor_document->'product'->'product_family')
+              ELSE NULL END
+            FROM cpk_registered_products
+            WHERE workspace_id = %s AND status = 'active'
+              AND (%s::text IS NULL OR descriptor_sha256 > %s)
+            ORDER BY descriptor_sha256 ASC LIMIT %s
+            """,
+            (request.scope.workspace_id, after, after, request.limit + 1),
+        ).fetchall()
+        if any(row[1] is None for row in rows):
+            raise ReadPageError("product directory record is malformed or oversized")
+        return ReadPage.from_candidates(request, tuple(
+            ReadPageCandidate(row[1], IdentityReadCursor(request.collection, request.scope, row[0]))
+            for row in rows
+        ))
+
+    def directory_detail(self, workspace_id: str, digest: str) -> RegisteredProduct:
+        """Read one canonical descriptor with bounded transport and no metadata."""
+        WorkspaceReadScope(workspace_id)
+        ProductDescriptorDigest(digest)
+        row = self._connection.execute(
+            """
+            SELECT
+              CASE WHEN octet_length(registration_id) <= 2048 THEN registration_id END,
+              workspace_id,
+              CASE WHEN octet_length(product_reference::text) <= 8192 THEN product_reference END,
+              NULL,
+              CASE WHEN octet_length(descriptor_content) <= 262144 THEN descriptor_content END,
+              CASE WHEN octet_length(source::text) <= 8192 THEN source END,
+              CASE WHEN octet_length(imported_by) <= 2048 THEN imported_by END,
+              imported_at, status, '{}'::jsonb
+            FROM cpk_registered_products
+            WHERE workspace_id = %s AND descriptor_sha256 = %s
+            """, (workspace_id, digest),
+        ).fetchone()
+        if row is None:
+            raise ProductRegistrationNotFound("registered product was not found")
+        try:
+            product = _row_to_registered(row)
+            if product.reference.descriptor_sha256.value != digest:
+                raise ValueError
+            return product
+        except (ValueError, TypeError, KeyError, AttributeError, UnicodeError):
+            raise ReadPageError("product directory record is malformed or oversized") from None
 
     def _configuration_product(self, workspace_id, reference, read):
         columns = (("registration_id", "text", 2048), ("workspace_id", "text", 2048),

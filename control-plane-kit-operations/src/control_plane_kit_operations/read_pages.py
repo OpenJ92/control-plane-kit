@@ -50,6 +50,7 @@ class ReadCollection(StrEnum):
     RUNTIME_AUTHORITIES = "runtime-authorities"
     RUNTIME_AUTHORITY_DELIVERIES = "runtime-authority-deliveries"
     INGRESS_AUTHORITIES = "ingress-authorities"
+    REGISTERED_PRODUCTS = "registered-products"
     SECRET_PROVIDERS = "secret-providers"
     SECRET_REFERENCES = "secret-references"
     DELEGATION_SIGNING_KEYS = "delegation-signing-keys"
@@ -222,6 +223,8 @@ class IdentityReadCursor:
     def __post_init__(self) -> None:
         _cursor_header(self.collection, self.scope, type(self))
         _general_identifier(self.item_id)
+        if self.collection is ReadCollection.REGISTERED_PRODUCTS and re.fullmatch(r"[0-9a-f]{64}", self.item_id) is None:
+            raise ReadPageError("product directory cursor digest is malformed")
 
     def descriptor(self) -> dict[str, object]:
         return _cursor_descriptor(
@@ -296,6 +299,7 @@ READ_COLLECTION_SPECS = (
     ReadCollectionSpec(ReadCollection.RUNTIME_AUTHORITIES, "read.runtime-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
     ReadCollectionSpec(ReadCollection.RUNTIME_AUTHORITY_DELIVERIES, "read.runtime-authority-deliveries", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
     ReadCollectionSpec(ReadCollection.INGRESS_AUTHORITIES, "read.ingress-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
+    ReadCollectionSpec(ReadCollection.REGISTERED_PRODUCTS, "read.products", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("descriptor_sha256",)),
     ReadCollectionSpec(ReadCollection.SECRET_PROVIDERS, "read.secret-providers", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("provider_id",)),
     ReadCollectionSpec(ReadCollection.SECRET_REFERENCES, "read.secret-references", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("registration_id",)),
     ReadCollectionSpec(ReadCollection.DELEGATION_SIGNING_KEYS, "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
