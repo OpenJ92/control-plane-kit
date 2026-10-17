@@ -311,12 +311,15 @@ class LargeReadRouteParityTests(unittest.TestCase):
         self.assertNotIn(None, {collection for _, collection in revision}, "missing revision history collections")
         legacy = {(case.route_id, case.collection) for case in cases}
         self.assertFalse(legacy & revision)
+        # The product owner's 201-row fixture proves direct/HTTP/MCP traversal.
+        products = {("read.products", ReadCollection.REGISTERED_PRODUCTS)}
+        self.assertFalse((legacy | revision) & products)
         self.assertEqual(
-            legacy | revision,
+            legacy | revision | products,
             {(spec.route_id, spec.collection) for spec in READ_COLLECTION_SPECS},
         )
-        self.assertEqual(len(READ_COLLECTION_SPECS), 20)
-        self.assertEqual({collection for _, collection in legacy | revision}, set(ReadCollection))
+        self.assertEqual(len(READ_COLLECTION_SPECS), 21)
+        self.assertEqual({collection for _, collection in legacy | revision | products}, set(ReadCollection))
         for case in cases:
             self.assertTrue(callable(getattr(InstanceReadService, case.direct_method)))
 

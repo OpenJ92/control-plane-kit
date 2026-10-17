@@ -315,6 +315,8 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                     True,
                 ),
+                ("read.product-detail", ReadProjectionKind.REGISTERED_PRODUCT_DETAIL, "RegisteredProductDetailReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, True, False),
+                ("read.products", ReadProjectionKind.REGISTERED_PRODUCTS, "RegisteredProductsReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, True, True),
                 (
                     "read.receiver-authoring-context",
                     getattr(ReadProjectionKind, "RECEIVER_AUTHORING_CONTEXT", None),
