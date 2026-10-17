@@ -83,7 +83,13 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
     def test_security_parity_covers_read_and_command_operations(self) -> None:
         parity = _security_parity()
 
-        self.assertEqual(len(parity.operations), 77)
+        self.assertEqual(len(parity.operations), 79)
+        for operation_id in ("read.products", "read.product-detail"):
+            directory = parity.operation(operation_id)
+            self.assertEqual(directory.auth_scope, HttpAuthScope.READ)
+            self.assertEqual(directory.safety, HttpOperationSafety.READ_ONLY)
+            self.assertEqual(directory.activity_history, ActivityHistoryPolicy.NOT_RECORDED)
+            self.assertEqual(directory.error_disclosure, ErrorDisclosurePolicy.BOUNDED_REDACTED)
         authoring = parity.operation("read.receiver-authoring-context")
         self.assertEqual(authoring.auth_scope, HttpAuthScope.READ)
         self.assertEqual(authoring.safety, HttpOperationSafety.READ_ONLY)
