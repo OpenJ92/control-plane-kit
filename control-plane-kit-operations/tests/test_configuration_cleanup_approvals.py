@@ -330,7 +330,7 @@ class ConfigurationCleanupApprovalTests(ConfigurationCleanupPostgresFixture, uni
             if ("FROM cpk_configuration_claims WHERE workspace_id" in sql
                     and params == (last_ref.workspace_id, last_ref.allocation_id) and not injected):
                 injected.append(True)
-                reader.used = ConfigurationEvidenceFootprint(4095, 0, 0, 0)
+                reader.used = ConfigurationEvidenceFootprint(8191, 0, 0, 0)
             return rows
 
         before = self.truth()

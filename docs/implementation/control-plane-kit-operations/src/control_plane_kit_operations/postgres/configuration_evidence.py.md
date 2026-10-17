@@ -20,4 +20,5 @@ multiplicity and intersects the result with the unchanged 16 MiB byte budget.
 Length/fetch reservations, failed-query charges and cache lifetimes are
 unchanged. Exact exhaustion refuses before SQL. Real PostgreSQL target tests
 exercise prior records above 4096 and the 8192 boundary; injected prior work is
-not evidence of a naturally large history. Full validation is pending.
+not evidence of a naturally large history. Focused owner validation passed at
+`1dacbc4a`; full validation is pending.

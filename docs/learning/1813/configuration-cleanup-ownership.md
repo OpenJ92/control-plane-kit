@@ -4949,3 +4949,14 @@ pin propagation remain pending. Final acceptance still requires the unchanged
 Servers initial + three edits + history/replay/no-op + public desired-empty
 cleanup workload. Earlier 4096 observations in this document remain historical
 measurements, not claims about the new policy.
+
+Focused green at `1dacbc4adf4e00e086dd796e704debf7325c0f9e` completed with exit 0:
+26 selected tests in 399.145 seconds, compilation and clean import passed.
+This includes literal policy/byte/snapshot edges, both real transport paths,
+selected publication edges, late-history rollback and unchanged native scope
+limits. Log SHA256 `fc968a3c11b7e22f00b5036e37a38afc05af6582981da33324c0fb0d75c69ef3`.
+Independent review found two missed cleanup planning/approval exhaustion
+injections at 4095; they are translated to 8191 without changing their refusal,
+pre-clock/ID or durable-truth assertions. Their two existing focused methods
+are the next validation on the corrected checkpoint. No production change was
+needed after the first focused green.

@@ -30,5 +30,5 @@ The accounted-byte law remains `value_octets + 128*records + 16*scalar_markers +
 3 MiB. Doubling records can increase SQL/CPU work; these limits do not establish
 latency or process-memory guarantees. Larger retained histories can still
 refuse. No authority, transaction, history freshness or retry semantics change.
-The source checkpoint is awaiting focused green and full owning validation;
+Focused owner validation passed at `1dacbc4a`; full owning validation is pending.
 Servers #252 acceptance remains separately required after dependency adoption.

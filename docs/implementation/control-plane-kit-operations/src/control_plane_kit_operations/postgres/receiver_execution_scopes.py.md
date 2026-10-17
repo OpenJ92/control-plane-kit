@@ -22,4 +22,4 @@ existing capacity owner. This is distinct from the unchanged native
 The query still intersects native cardinality, remaining transport bytes and
 prior shared accounting before SQL. A filled shortened prefix still refuses
 before request deduplication; no history read or freshness check is removed.
-Focused and full owning validation are pending at this source checkpoint.
+Focused owner validation passed at `1dacbc4a`; full validation is pending.
