@@ -98,3 +98,10 @@ suite: 21 support passed; 1048 Core tests produced four intended managed-readine
 assertion failures and zero errors. Actual base-plan readiness passed. Deeper
 assertions after managed readiness earned no red credit. The subsequent bounded
 implementation preserves these tests; candidate green validation is pending.
+
+Independent source review added one route-size boundary regression. Both supplied
+route documents strictly decode; current canonical material is exactly 131072
+bytes, and the implied declaration-only successor would exceed that limit.
+Desired material fits only by removing an unrelated route, so the public planner
+must return review-blocked instead of raising during an intermediate aggregate
+construction. The fixture proves its strict-valid and oversized controls first.

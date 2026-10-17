@@ -1720,6 +1720,44 @@ class ManagedDeclarationUpdateTests(unittest.TestCase):
                     configuration_artifacts=tuple(sorted((*node.configuration_artifacts, decoy)))))
             self.refused(*pair)
 
+    def test_route_limit_refuses_unrelated_shortening_without_constructing_oversized_intermediate(self):
+        current, desired = self.pair()
+        routes = self.routes(current)
+        peer, = [value for value in routes.targets if value.target_id == "peer-alias"]
+        socket = NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, "s" * 128)
+        declaration = replace(peer.declaration, surface=replace(peer.declaration.surface, provider_socket_name=socket))
+        origin = "http://" + ".".join(("a" * 63, "b" * 63, "c" * 63, "d" * 61)) + ":8080"
+        document = routes.descriptor()
+        for index in range(125):
+            document["targets"].append(core.ReceiverManagementRouteBinding(
+                f"t{index:03}" + "a" * 124,
+                replace(peer.target, node_id=NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, "n" * 128),
+                    provider_socket_name=socket, receiver_id=f"{index:032x}"), declaration, origin).descriptor())
+        encoded = lambda: json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+        excess = len(encoded()) - 131072
+        self.assertGreater(excess, 0)
+        for entry in document["targets"][3:]:
+            for container, key in ((entry, "target_id"), (entry["target"], "node_id")):
+                reduction = min(excess, len(container[key]) - 4)
+                if reduction:
+                    container[key] = container[key][:-reduction]
+                    excess -= reduction
+        self.assertEqual(excess, 0)
+        self.assertEqual(len(encoded()), 131072)
+        original = self.routes_codec.decode_bytes(encoded())
+        updated = self.routes(desired)
+        changed, = [value for value in updated.targets if value.target_id == "retained-alias"]
+        implied = tuple(changed if value.target_id == changed.target_id else value for value in original.targets)
+        with self.assertRaises(core.ReceiverManagementRoutesError):
+            replace(original, targets=implied)
+        # Removing an unrelated route makes the supplied desired document valid,
+        # but cannot turn this into the closed declaration-only transition.
+        successor = replace(original, targets=tuple(value for value in implied if value.target_id != "peer-alias"))
+        current, desired = self.with_routes(current, original), self.with_routes(desired, successor)
+        self.assertEqual(self.routes(current), original)
+        self.assertEqual(self.routes(desired), successor)
+        self.refused(current, desired)
+
     def test_actual_wrapper_and_route_material_and_slots_are_required(self):
         current, desired = self.pair()
         for side in (0, 1):

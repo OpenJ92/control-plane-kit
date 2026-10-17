@@ -258,3 +258,8 @@ this pure plan supplies no approval, execution, atomicity, rollback or successfu
 health evidence. Operations #1979 and Servers #254 own authoritative admission,
 original-attempt correlation, partial failure/history and actual installed proof.
 No new public type, operation, schema, export, provider or dependency is added.
+
+Route comparison operates on normalized binding tuples, without constructing a
+hypothetical aggregate. This preserves bounded refusal when actual current and
+desired documents each fit the route limit but an implied declaration-only
+intermediate would exceed it; unrelated shortening remains unsupported.

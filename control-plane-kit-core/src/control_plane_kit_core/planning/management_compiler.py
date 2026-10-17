@@ -563,9 +563,11 @@ def _managed_declaration_update_shape(current, desired, diff):
     bindings = [value for value in old_value.targets if value.target == original.target]
     if len(bindings) != 1 or bindings[0].declaration != original.declaration:
         return None
-    expected = replace(old_value, targets=tuple(
-        replace(value, declaration=updated.declaration) if value == bindings[0] else value for value in old_value.targets))
-    if new_value != expected:
+    # Compare existing normalized bindings without constructing a hypothetical
+    # aggregate that could exceed the route codec's independent byte bound.
+    expected = tuple(replace(value, declaration=updated.declaration) if value == bindings[0] else value
+        for value in old_value.targets)
+    if new_value.targets != expected:
         return None
     restored_gateway = replace(new_gateway, configuration_artifacts=tuple(
         old_artifact if item.artifact_id == new_artifact.artifact_id else item
