@@ -8,7 +8,7 @@ from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcom
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.planning import ObserveNodeHealth, ReconcileNode, StartNode
 from control_plane_kit_core.products import ProductReference
-from control_plane_kit_core.topology import validate_graph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations.cpk_server import CpkServerApplicationError
 from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
 from control_plane_kit_operations.deployment_transitions import Deploy
@@ -33,8 +33,9 @@ class ManagedDeclarationUpdateExecutionTests(chain.ManagedApplicationFixture):
     def authored_graph(self):
         graph, documents, registry = super().authored_graph()
         node = graph.node("api")
-        return graph.update_node(replace(node, metadata={**node.metadata,
-            "oci_image": documents["api"].product.image.execution_reference})), documents, registry
+        graph = graph.update_node(replace(node, metadata={**node.metadata,
+            "oci_image": documents["api"].product.image.execution_reference}))
+        return DEFAULT_GRAPH_CODEC.decode(DEFAULT_GRAPH_CODEC.encode(graph)), documents, registry
 
     async def desired_update(self):
         _, configured = selected_wrapper(self.graph.node("api"))
