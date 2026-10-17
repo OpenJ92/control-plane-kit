@@ -282,7 +282,7 @@ class PostgresConfigurationCleanupEvidenceTests(ConfigurationCleanupPostgresFixt
         self.assertGreater(observed["rows"], 0)
         # Explicit fault injection proves global-budget exhaustion is retained
         # across the next helper. It is not a claim of natural producer capacity.
-        for exhausted in (ConfigurationEvidenceFootprint(4096, 0, 0, 0),
+        for exhausted in (ConfigurationEvidenceFootprint(8192, 0, 0, 0),
                           ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024, 0, 0)):
             entered = []
 

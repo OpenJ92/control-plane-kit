@@ -4909,3 +4909,43 @@ test resources were verified absent. Retained growth observed 264 closed and
 The subsequent automatic full gates remain required before C acceptance.
 There is no new security surface, credential handling, provider call or durable
 production mutation in this correction.
+
+## #1993 approved cumulative-record policy validation
+
+The four-node, three-receiver Servers #252 witness at `50dcd39` completed initial
+selected deployment, version and image replacements, and content execution.
+Content advancement refused before IDs/CAS: prior 2003 plus settled publication
+2225 equaled 4228 records (peak 4229), exceeding 4096. Bytes and the 3 MiB snapshot
+were within their separate limits. Exact owned failure cleanup passed. This is
+cumulative transported evidence, not unique durable rows. Repeated history
+reads bracket real writes; removing forecast terms would undercount actual work.
+The bounded cache audit found no demonstrated correction sufficient to close
+the 132-record gap. The client execution-status misclassification remains a
+separate reporting defect; completed effects must not be replayed blindly.
+
+The user approved evaluating 8192 shared records on #1993, with the 16 MiB
+weighted-byte cap, 3 MiB snapshot, native candidate/event/run/claim limits and
+fresh authority/history checks unchanged. The finite allowance doubles and
+provides 3963 records above the observed peak; that does not prove the remaining
+scenario fits or that larger history is supported. This policy affects all
+joined configuration operations, including read/start/transfer/cleanup. It is
+not an advancement-only exception, an authority grant, or a query/CPU/latency or
+process-memory guarantee. If the candidate fails resource review or the full
+workload, stop for a policy decision rather than increase it again.
+
+One constant in `configuration_preparation.py` feeds the predicate and the two
+remaining-record calculations in `postgres/configuration_evidence.py` and
+`postgres/receiver_execution_scopes.py`. No schema, cache or SQL-shape change is
+made. Boundary fixtures translate only shared exhaustion and exact/one-over
+values; native limits and stronger small-fixture upper bounds remain intact.
+
+Causal-red checkpoint `ff3463449d5dc33ee10c71ea355f31bcf5032ccf` ran three focused
+owning Docker tests: literal 8192 policy fit failed; both actual PostgreSQL
+transport paths refused above the old allowance. Integrity and collection
+passed. Log SHA256 `8bcbe2cd8210a94f817d77be1518b1848ff09476c28e87e76c6b0713bc4d52d7`.
+This separates policy causality from apparatus and from product acceptance.
+Focused green, independent review, full package/backend evidence and accepted
+pin propagation remain pending. Final acceptance still requires the unchanged
+Servers initial + three edits + history/replay/no-op + public desired-empty
+cleanup workload. Earlier 4096 observations in this document remain historical
+measurements, not claims about the new policy.

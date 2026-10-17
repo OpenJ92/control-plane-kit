@@ -721,7 +721,7 @@ class PostgresConfigurationInstallationProofTests(ConfigurationEvidenceHistoryFi
             self.assertEqual(self.terminal(uow, source, read), (outcome, attempt))
             key, = self.proof_keys(read)
             del read.sources[key]
-            read.used = read.used.plus(Footprint(4096 - read.used.records, 0, 0, 0))
+            read.used = read.used.plus(Footprint(8192 - read.used.records, 0, 0, 0))
             prior, statements = read.used, len(observer.queries)
             with self.assertRaises(_Capacity):
                 self.terminal(uow, source, read)

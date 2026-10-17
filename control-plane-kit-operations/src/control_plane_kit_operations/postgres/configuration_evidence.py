@@ -7,6 +7,7 @@ from contextvars import ContextVar
 import json
 
 from control_plane_kit_operations.configuration_preparation import (
+    MAX_CONFIGURATION_EVIDENCE_RECORDS,
     ConfigurationCapacityDecision, ConfigurationEvidenceFootprint,
     configuration_evidence_capacity,
 )
@@ -157,7 +158,7 @@ class _EvidenceRead:
         if order:
             suffix += " ORDER BY " + order
         nominal = maximum if point else maximum + 1
-        limit = min(nominal, (4096 - self.used.records) // identities,
+        limit = min(nominal, (MAX_CONFIGURATION_EVIDENCE_RECORDS - self.used.records) // identities,
             max(0, (16 * 1024 * 1024 - self.used.accounted_bytes - 256) // (128 * identities + 28 * len(columns))))
         if limit <= 0:
             raise _Capacity

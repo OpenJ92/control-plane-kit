@@ -362,11 +362,11 @@ class PostgresConfigurationCleanupOwnershipTests(ConfigurationCleanupHistoryFixt
         with self.unit_of_work() as uow:
             with _joined_read(uow.stores.connection) as read:
                 accounting = read.accounting
-                read.used = ConfigurationEvidenceFootprint(4095, 0, 0, 0)
+                read.used = ConfigurationEvidenceFootprint(8191, 0, 0, 0)
                 with self.assertRaises(OperationsRecordError):
                     self.ownership(uow.stores).get(self.retained_intent.identity)
                 self.assertIs(read.accounting, accounting)
-                self.assertGreaterEqual(read.used.records, 4095)
+                self.assertGreaterEqual(read.used.records, 8191)
         self.assertEqual(self.cleanup_snapshot(), before)
 
     def test_same_uow_reservation_invalidates_issued_ordinary_start(self):

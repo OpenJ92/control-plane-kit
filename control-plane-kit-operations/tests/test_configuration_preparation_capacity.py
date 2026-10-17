@@ -126,7 +126,7 @@ class ConfigurationPreparationCapacityTests(unittest.TestCase):
     def test_preflight_validates_shapes_before_reporting_claim_or_byte_capacity(self):
         module = self.language()
         value = module.ConfigurationEvidenceFootprint
-        arguments = dict(current=value(4097, 16_777_217, 0, 0), reserved_future=value(0, 0, 0, 0),
+        arguments = dict(current=value(8193, 16_777_217, 0, 0), reserved_future=value(0, 0, 0, 0),
             existing_claim_keys=(self.key(0),), proposed_claim_key=self.key(1), existing_total_claims=1)
         for changes in (
                 {"existing_claim_keys": (self.key(0), self.key(0)), "existing_total_claims": 2},

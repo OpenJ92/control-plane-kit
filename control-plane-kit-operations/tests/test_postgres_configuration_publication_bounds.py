@@ -960,7 +960,7 @@ class PostgresConfigurationPublicationBudgetTests(unittest.TestCase):
         def exercise(store, prepared, preflight, budgets, prior):
             snapshot, future, publication = budgets
             # Synthetic, well-formed forecast; no claim of natural exhaustion.
-            for dimension, limit in (("records", 4096), ("value_octets", 16 * 1024 * 1024)):
+            for dimension, limit in (("records", 8192), ("value_octets", 16 * 1024 * 1024)):
                 settled = future.settled
                 peak = replace(future.peak, **{dimension: limit})
                 if dimension == "value_octets":
@@ -979,7 +979,7 @@ class PostgresConfigurationPublicationBudgetTests(unittest.TestCase):
     def test_publication_peak_edges_include_all_prior_work(self):
         def exercise(store, prepared, preflight, budgets, prior):
             snapshot, future, publication = budgets
-            for dimension, limit in (("records", 4096), ("value_octets", 16 * 1024 * 1024)):
+            for dimension, limit in (("records", 8192), ("value_octets", 16 * 1024 * 1024)):
                 used = prior.plus(publication.peak)
                 remaining = limit - (used.records if dimension == "records" else used.accounted_bytes)
                 self.assertGreaterEqual(remaining, 0)

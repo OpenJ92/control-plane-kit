@@ -100,10 +100,10 @@ class PostgresConfigurationStartTailTests(ConfigurationPreparationFixture, unitt
                     rfc8785.dumps(command.intent.descriptor())))
                 future = kwargs["reserved_future"]
                 if component == "records":
-                    extra = 4096 - accounting.used.records - future.records
+                    extra = 8192 - accounting.used.records - future.records
                     self.assertGreater(extra, 0)
                     accounting.used = accounting.used.plus(Footprint(extra, 0, 0, 0))
-                    self.assertEqual(accounting.used.plus(future).records, 4096)
+                    self.assertEqual(accounting.used.plus(future).records, 8192)
                 else:
                     extra = 16 * 1024 * 1024 - accounting.used.plus(future).accounted_bytes
                     self.assertGreater(extra, 0)

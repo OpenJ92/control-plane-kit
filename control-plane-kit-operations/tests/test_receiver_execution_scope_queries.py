@@ -94,7 +94,7 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
         self.admit()
         # Explicit local ledger boundaries, not evidence of a naturally huge
         # application history. Actual candidate reads still use PostgreSQL.
-        for used in (ConfigurationEvidenceFootprint(4096, 0, 0, 0),
+        for used in (ConfigurationEvidenceFootprint(8192, 0, 0, 0),
                      ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024, 0, 0)):
             with self.subTest(used=used), _configuration_accounting("candidate-query"):
                 recording = QueryRecorder(self.connection)
@@ -112,7 +112,7 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
         # Two scope rows share one real admitted request. Both independent
         # reservation ceilings shorten the page to two, which cannot prove
         # exhaustion even though deduplication would yield only one request.
-        for used in (ConfigurationEvidenceFootprint(4094, 0, 0, 0),
+        for used in (ConfigurationEvidenceFootprint(8190, 0, 0, 0),
                      ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024 - 8800, 0, 0)):
             with self.subTest(used=used), _configuration_accounting("candidate-query"):
                 recording = QueryRecorder(self.connection)
@@ -124,7 +124,7 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                 self.assertEqual(len(recording.calls), 1)
                 self.assertEqual(recording.calls[0][1][-1], 2)
                 self.assertEqual(read.used.records, used.records + 2)
-                self.assertLessEqual(read.used.records, 4096)
+                self.assertLessEqual(read.used.records, 8192)
                 self.assertLessEqual(read.used.accounted_bytes, 16 * 1024 * 1024)
 
     def seed_fanout(self, *, groups, nodes, copies):

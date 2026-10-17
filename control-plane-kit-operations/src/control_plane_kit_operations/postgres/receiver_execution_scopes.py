@@ -344,13 +344,15 @@ class _ExecutionScopeStorage:
             if kind != "all-nodes":
                 limit = min(limit, MAX_REQUESTS + 1)
             if self.transport.configuration_read is not None:
-                from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+                from control_plane_kit_operations.configuration_preparation import (
+                    MAX_CONFIGURATION_EVIDENCE_RECORDS, ConfigurationEvidenceFootprint,
+                )
                 used = self.transport.configuration_read.used
                 row_bytes = ConfigurationEvidenceFootprint(1, row_octets, 3, 0).accounted_bytes
                 statement_bytes = ConfigurationEvidenceFootprint(0, 0, 0, 1).accounted_bytes
                 # The same ledger reserves markers/records as well as values.
                 # A full shortened prefix still refuses below, before dedup.
-                limit = min(limit, max(0, 4096 - used.records),
+                limit = min(limit, max(0, MAX_CONFIGURATION_EVIDENCE_RECORDS - used.records),
                     max(0, (16 * 1024 * 1024 - used.accounted_bytes - statement_bytes) // row_bytes))
             _capacity(limit > 0)
             reserved = limit * row_octets
