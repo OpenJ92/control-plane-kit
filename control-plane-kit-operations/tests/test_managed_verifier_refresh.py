@@ -1,9 +1,12 @@
 """Fresh verifier authority over the existing real Operations update fixture."""
 
 from dataclasses import replace
+from contextlib import nullcontext
+from unittest import mock
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
 from control_plane_kit_core.planning import ObserveNodeHealth, ReconcileNode, StartNode
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
@@ -18,7 +21,7 @@ from control_plane_kit_operations.deployment_transitions import Deploy
 from control_plane_kit_operations.plan_derivation import derive_activity_plan, PlanDerivationProfile
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests import test_managed_application_chain as chain
-from tests.test_managed_configuration_update_execution import ManagedConfigurationUpdateExecutionTests
+from tests import test_managed_configuration_update_execution as content
 from tests.test_managed_configuration_update_admission import APPLICATION
 from tests.health_receiver_trust_fixture import PUBLIC_KEY_C
 
@@ -26,8 +29,8 @@ from tests.health_receiver_trust_fixture import PUBLIC_KEY_C
 class ManagedVerifierRefreshTests(chain.ManagedApplicationFixture):
     application_artifacts = (APPLICATION,)
     complete_initial = chain.ManagedUpdateExecutionTests.complete_initial
-    prepare_content = ManagedConfigurationUpdateExecutionTests.prepare_content
-    execute_content = ManagedConfigurationUpdateExecutionTests.execute_content
+    prepare_content = content.ManagedConfigurationUpdateExecutionTests.prepare_content
+    execute_content = content.ManagedConfigurationUpdateExecutionTests.execute_content
 
     def selected(self, graph):
         node = graph.node("api")
@@ -102,27 +105,79 @@ class ManagedVerifierRefreshTests(chain.ManagedApplicationFixture):
                     family = replace(family, public_keys=(self.overlap.public_key,))
                 families.append(family)
             candidate = self.with_families(desired, tuple(families))
-            plan = derive_activity_plan(Deploy(validate_graph(self.graph), validate_graph(candidate)),
-                profile=PlanDerivationProfile.MANAGED_UPDATE_V1)
-            self.assertTrue(plan.ready_for_execution, "negative must reach authority, not Core refusal")
-            before = self.rows("cpk_activity_plans"), self.effects()
-            with self.subTest(case=case), self.assertRaises(CpkServerApplicationError):
-                await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
-                    path={"workspace_id": "workspace-a"}, payload=self.prepare_payload(candidate, "bad-" + case))
-            self.assertEqual((self.rows("cpk_activity_plans"), self.effects()), before)
+            with self.subTest(case=case):
+                await self.assert_plan_refused(candidate, "bad-" + case)
+
+    async def assert_plan_refused(self, candidate, key):
+        plan = derive_activity_plan(Deploy(validate_graph(self.graph), validate_graph(candidate)),
+            profile=PlanDerivationProfile.MANAGED_UPDATE_V1)
+        self.assertTrue(plan.ready_for_execution, "negative must reach authority, not Core refusal")
+        before = self.rows("cpk_activity_plans"), self.effects()
+        with self.assertRaises(CpkServerApplicationError):
+            await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
+                path={"workspace_id": "workspace-a"}, payload=self.prepare_payload(candidate, key))
+        self.assertTrue((self.rows("cpk_activity_plans"), self.effects()) == before,
+            "refused refresh changed plans or effects")
+
+    async def test_same_key_id_with_different_public_material_refuses(self):
+        await self.complete_initial()
+        desired = await self.desired_update()
+        _, configured = self.selected(desired)
+        families = tuple(replace(family, public_keys=tuple(
+            replace(key, public_key_pem=self.keys["transit"].public_key.public_key_pem)
+            if key.key_id == self.keys["workload"].key_id else key for key in family.public_keys))
+            if family.purpose is self.overlap.purpose else family for family in configured.verifiers)
+        await self.assert_plan_refused(self.with_families(desired, families), "wrong-public-material")
+
+    async def test_revoked_verify_only_member_refuses_with_current_signer_unchanged(self):
+        await self.complete_initial()
+        desired = await self.desired_update()
+        with self.unit_of_work() as uow:
+            store = uow.stores.delegation_signing_keys
+            store.revoke("workspace-a", self.overlap.purpose, self.overlap.issuer,
+                self.overlap.key_id, revoked_by="operator-a", revoked_at=chain.now())
+            self.assertEqual(store.require_unambiguous_active("workspace-a", self.overlap.purpose),
+                self.keys["workload"])
+            uow.commit()
+        await self.assert_plan_refused(desired, "revoked-overlap")
 
     async def test_changed_snapshot_before_start_refuses_without_replacement(self):
+        await self.assert_changed_snapshot_refused(at_start=False)
+
+    async def test_drift_after_proposal_is_rechecked_by_locked_first_start(self):
+        await self.assert_changed_snapshot_refused(at_start=True)
+
+    async def assert_changed_snapshot_refused(self, *, at_start):
         await self.prepare_content()
         # The extra member is compatible with the current signer, but changes
         # the complete snapshot approved for this not-yet-started installation.
-        self.register_public(self.overlap.purpose,
-            replace(self.overlap.public_key, key_id="added-after-approval",
-                public_key_pem=self.keys["transit"].public_key.public_key_pem))
+        def change_snapshot():
+            self.assertEqual(self.tracker.active, 0)
+            self.register_public(self.overlap.purpose,
+                replace(self.overlap.public_key, key_id="added-after-approval",
+                    public_key_pem=self.keys["transit"].public_key.public_key_pem))
+        original_start = chain.EffectAttemptStartService.execute
+        proposals = []
+        def start_after_drift(service, command):
+            if type(command.intent.operation) is ReconcileNode:
+                self.assertFalse(proposals)
+                proposals.append(command.intent)
+                change_snapshot()
+            return original_start(service, command)
+        if not at_start:
+            change_snapshot()
         before = self.rows("cpk_effect_configuration_refs"), self.rows("cpk_configuration_claims")
-        with self.assertRaises((CpkServerApplicationError, InvalidOperationCommand, ExecutionCoordinatorConflict)):
+        # The hook changes real owner truth only after the genuine optimistic
+        # proposal exists. The ordinary public first-start owner still runs.
+        hook = mock.patch.object(chain.EffectAttemptStartService, "execute", start_after_drift) if at_start else nullcontext()
+        with hook, self.assertRaises((CpkServerApplicationError, InvalidOperationCommand, ExecutionCoordinatorConflict)):
             await self.execute_content()
+        if at_start:
+            self.assertEqual(len(proposals), 1)
         self.assertEqual(tuple(self.runtime.calls), self.origin_calls)
         self.assertEqual((self.rows("cpk_effect_configuration_refs"), self.rows("cpk_configuration_claims")), before)
+        # Births live in the same complete ref rows under is_birth, not in a
+        # separate allocation table; full equality includes every birth.
         reconcile, = (item for item in self.record.plan.activities if type(item.operation) is ReconcileNode)
         self.assertFalse(any(row[0] == self.update_run and row[1] == reconcile.activity_id.value
             for row in self.rows("cpk_effect_attempts")))
@@ -165,4 +220,51 @@ class ManagedVerifierRefreshTests(chain.ManagedApplicationFixture):
         self.assertEqual(advanced["to_graph_id"], self.update_plan["desired_graph_id"])
 
     test_missing_refresh_receipt_preserves_uncertainty = (
-        ManagedConfigurationUpdateExecutionTests.test_missing_replacement_receipt_preserves_uncertainty_and_original_retry)
+        content.ManagedConfigurationUpdateExecutionTests.test_missing_replacement_receipt_preserves_uncertainty_and_original_retry)
+
+    async def test_failed_health_preserves_actual_replacement_without_advancement(self):
+        await self.prepare_content()
+        original_read = self.health.observe_signed
+        async def failed_desired_health(realization, request, authority):
+            result = await original_read(realization, request, authority)
+            if (type(request.operation) is ObserveNodeHealth and request.operation.node_id == "api"
+                    and request.source.run_id.value == self.update_run):
+                result = replace(result, outcome=NodeHealthReadOutcome.UNHEALTHY)
+                self.health.signed_reads[-1] = (request, authority.preparation, result)
+            return result
+        self.health.observe_signed = failed_desired_health
+        for number in range(len(self.record.plan.activities) + 2):
+            payload = {"claim_generation": self.update_generation,
+                "idempotency_key": f"failed-refresh-{number}", "max_effects": 1}
+            result = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker, payload=payload)
+            if result["coordinator_status"] == "failed":
+                break
+            self.assertEqual(result["coordinator_status"], "progressed", result)
+        else:
+            self.fail("desired health did not fail")
+        update, = self.runtime.calls[len(self.origin_calls):]
+        records = self.mutation_records((update,))
+        _, _, outcome = records[0]
+        self.assertEqual(outcome.outcome.result.evidence["configuration_installation_receipt"]["disposition"], "replaced")
+        before = self.durable_snapshot(), self.effects()
+        replay = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+            path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
+            payload=payload, app=self.application())
+        self.assertEqual(replay, result)
+        self.assertTrue((self.durable_snapshot(), self.effects()) == before)
+        self.assertEqual(self.mutation_records((update,)), records)
+        self.assertEqual(self.history(), self.origin_history)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
+                self.before_update.current_graph_id)
+        with self.assertRaises(CpkServerApplicationError):
+            await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+                path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
+                payload={"plan_id": self.record.plan_id,
+                    "expected_current_graph_id": self.before_update.current_graph_id,
+                    "expected_current_realized_projection_id": self.before_update.current_realized_projection_id,
+                    "desired_graph_id": self.update_plan["desired_graph_id"],
+                    "desired_realized_projection_id": self.update_plan["desired_realized_projection_id"],
+                    "expected_desired_graph_revision": self.update_plan["desired_graph_revision"],
+                    "claim_generation": self.update_generation, "idempotency_key": "reject-failed-refresh"})
