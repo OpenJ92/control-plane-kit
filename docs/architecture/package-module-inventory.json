@@ -18,7 +18,8 @@
         "control_plane_kit_operations.products",
         "control_plane_kit_operations.read_pages",
         "control_plane_kit_operations.read_services._redaction",
-        "control_plane_kit_operations.read_services.errors"
+        "control_plane_kit_operations.read_services.errors",
+        "control_plane_kit_operations.read_services.protocols"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.read_services.instance"
