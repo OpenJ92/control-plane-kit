@@ -62,3 +62,25 @@ sorting and produced seven fixture errors; it is not causal red. Corrected
 subcases failing at ready_for_execution, no errors; 21 support tests and integrity
 passed. Production implementation follows that causal evidence. Final green and
 review belong in the issue/PR record; test count is not independent law count.
+## #1978 coupled declaration and route targets
+
+ManagedDeclarationUpdateTests exercises the existing public compiler with a
+same-image, same-family product revision/descriptor successor, strict health-only
+wrapper declaration and its exact gateway route. Fully constructed input graphs
+are codec-normalized; artifact content remains opaque. Both health-kind directions
+retain readiness. A positive case keeps complete selected secrets on both
+replacement recipients. Gateway self and an unrelated peer/alias/origin stay fixed.
+
+The positive plan is compared to the actual base graph compiler's activities,
+IDs, operations, impact/risk and dependency sets. Its only added edge must order
+workload reconciliation before gateway reconciliation, with the existing desired
+local/connected/path/workload-health chain and no stale-route health ancestor.
+Strict codecs, immutable inputs and plan roundtrip remain owner laws, not a fake
+executor. Negatives cover incomplete coupling, exact targets and slots, unchanged
+route decoys on either side, unrelated bindings/material, product metadata/image,
+health-only readiness and eligibility of both replacement recipients.
+
+These seven target methods are tests-first under #1978 plan6235493179,
+clarification6235526740 and North release6235539397. Missing-relation/order red
+must come from the unchanged owning Core Docker gate; setup errors earn no causal
+credit. No production implementation or runtime acceptance is included here.
