@@ -818,6 +818,12 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.receiver-authoring-context",
+        "read.receiver-authoring-context",
+        "get_receiver_authoring_context",
+        "ReceiverAuthoringContextReadResponse",
+    ),
+    (
         "read.delegation-keys",
         "read.delegation-keys",
         "list_delegation_keys",
@@ -828,6 +834,12 @@ _OPERATOR_READ_PROJECTIONS = (
         "read.gateway-verifier-configuration",
         "get_gateway_verifier_configuration",
         "GatewayVerifierConfigurationReadResponse",
+    ),
+    (
+        "read.workload-verifier-configuration",
+        "read.workload-verifier-configuration",
+        "get_workload_verifier_configuration",
+        "WorkloadVerifierConfigurationReadResponse",
     ),
     (
         "read.gateway-probe-detail",
@@ -1355,6 +1367,15 @@ _OPERATOR_COMMANDS = (
         "execute_deployment",
         ControlPlaneServiceRole.EXECUTION,
         "ExecuteDeploymentRequest",
+        "ExecutionRunResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+    ),
+    (
+        "deployment.reobserve-connector",
+        "command.deployment.reobserve-connector",
+        "reobserve_connector_connection",
+        ControlPlaneServiceRole.EXECUTION,
+        "ReobserveConnectorConnectionRequest",
         "ExecutionRunResponse",
         ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
     ),

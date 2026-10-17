@@ -709,6 +709,7 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
                 "workspace_id",
                 "gateway_node_id",
             ),
+            "workload_verifier_configuration": ("self", "workspace_id", "purposes"),
         }
         self.assertEqual(
             {name for name in vars(owner) if not name.startswith("_")},

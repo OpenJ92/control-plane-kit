@@ -12,6 +12,7 @@ from control_plane_kit_core.secrets import (
     SecretReference,
     SecretUseIntent,
 )
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
@@ -27,6 +28,9 @@ from control_plane_kit_operations.read_pages import (
 )
 from control_plane_kit_operations.secret_providers import (
     AuthorizedSecretUse,
+    AuthorizedSecretVersionUse,
+    validate_authorized_secret_use,
+    SecretProviderRegistrationError,
     RegisteredSecretProvider,
     RegisteredSecretProviderStatus,
     RegisteredSecretReference,
@@ -720,9 +724,11 @@ class SecretUseAuthorizationStore:
             f"secret-use:{workspace_id}:{correlation_id}",
         )
 
-    def add(self, authorized: AuthorizedSecretUse) -> None:
-        if not isinstance(authorized, AuthorizedSecretUse):
-            raise TypeError("secret use store requires AuthorizedSecretUse")
+    def add(self, authorized: AuthorizedSecretUse | AuthorizedSecretVersionUse) -> None:
+        validate_authorized_secret_use(authorized)
+        consumer = type(authorized) is AuthorizedSecretVersionUse
+        reference = authorized.selection.reference if consumer else authorized.reference
+        intent = authorized.selection.intent if consumer else authorized.intent
         encoded_requested_at = encode_postgres_timestamp(authorized.requested_at)
         self._connection.execute(
             """
@@ -742,11 +748,12 @@ class SecretUseAuthorizationStore:
               run_id,
               activity_id,
               effect_id,
-              probe_id
+              probe_id, authorization_kind, selected_version_id, request_fingerprint, selection_fingerprint
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s
             )
             """,
             (
@@ -754,8 +761,8 @@ class SecretUseAuthorizationStore:
                 authorized.workspace_id,
                 authorized.reference_registration_id,
                 authorized.provider_registration_id,
-                authorized.reference.reference_id,
-                authorized.intent.value,
+                reference.reference_id,
+                intent.value,
                 authorized.actor_subject,
                 authorized.correlation_id,
                 encoded_requested_at,
@@ -765,7 +772,11 @@ class SecretUseAuthorizationStore:
                 authorized.run_id,
                 authorized.activity_id,
                 authorized.effect_id,
-                authorized.probe_id,
+                None if consumer else authorized.probe_id,
+                "consumer-version" if consumer else "operational",
+                authorized.selection.version_id if consumer else None,
+                authorized.request_fingerprint if consumer else None,
+                authorized.selection_fingerprint if consumer else None,
             ),
         )
 
@@ -773,7 +784,7 @@ class SecretUseAuthorizationStore:
         self,
         workspace_id: str,
         authorization_id: str,
-    ) -> AuthorizedSecretUse:
+    ) -> AuthorizedSecretUse | AuthorizedSecretVersionUse:
         row = self._connection.execute(
             f"""
             {_SECRET_USE_SELECT}
@@ -792,7 +803,7 @@ class SecretUseAuthorizationStore:
         self,
         workspace_id: str,
         correlation_id: str,
-    ) -> AuthorizedSecretUse | None:
+    ) -> AuthorizedSecretUse | AuthorizedSecretVersionUse | None:
         row = self._connection.execute(
             f"""
             {_SECRET_USE_SELECT}
@@ -842,26 +853,37 @@ SELECT
 FROM cpk_secret_references
 """
 
-_SECRET_USE_SELECT = """
-SELECT
-  authorization_id,
-  workspace_id,
-  reference_registration_id,
-  provider_registration_id,
-  secret_reference,
-  use_intent,
-  actor_subject,
-  correlation_id,
-  requested_at,
-  intent_fingerprint,
-  operation_id,
-  session_id,
-  run_id,
-  activity_id,
-  effect_id,
-  probe_id
-FROM cpk_secret_use_authorizations
-"""
+_SECRET_USE_COLUMNS = ("authorization_id", "workspace_id", "reference_registration_id",
+    "provider_registration_id", "secret_reference", "use_intent", "actor_subject", "correlation_id",
+    "requested_at", "intent_fingerprint", "operation_id", "session_id", "run_id", "activity_id",
+    "effect_id", "probe_id", "authorization_kind", "selected_version_id", "request_fingerprint", "selection_fingerprint")
+_SECRET_USE_SELECT = "SELECT " + ",".join(
+    name if name == "requested_at" else
+    f"CASE WHEN {name} IS NULL OR octet_length({name})<=2048 THEN {name} END"
+    for name in _SECRET_USE_COLUMNS) + ", (" + " AND ".join(
+        f"({name} IS NULL OR octet_length({name})<=2048)"
+        for name in _SECRET_USE_COLUMNS if name != "requested_at") + ") FROM cpk_secret_use_authorizations"
+
+
+def _validate_current_version_authorization_rows(connection: PostgresConnection) -> None:
+    """Bound transport and memory while validating the current consumer record shape."""
+    cursor = ("", "")
+    while True:
+        # Valid identifiers are ASCII; keep SQL and Python progress ordering
+        # identical even when the database default collation is not C.
+        rows = connection.execute(_SECRET_USE_SELECT +
+            " WHERE authorization_kind='consumer-version' "
+            'AND (workspace_id COLLATE "C",authorization_id COLLATE "C")>(%s,%s) '
+            'ORDER BY workspace_id COLLATE "C",authorization_id COLLATE "C" LIMIT 64', cursor).fetchall()
+        if not rows:
+            return
+        if len(rows) > 64:
+            raise SecretProviderRegistrationError("secret authorization batch is malformed")
+        for row in rows:
+            value = _row_to_authorized_use(row)
+            if type(value) is not AuthorizedSecretVersionUse or (value.workspace_id, value.authorization_id) <= cursor:
+                raise SecretProviderRegistrationError("secret authorization scan is malformed")
+            cursor = (value.workspace_id, value.authorization_id)
 
 
 def _lock_transaction_key(
@@ -914,25 +936,33 @@ def _row_to_reference(row: tuple[Any, ...]) -> RegisteredSecretReference:
     )
 
 
-def _row_to_authorized_use(row: tuple[Any, ...]) -> AuthorizedSecretUse:
-    return AuthorizedSecretUse(
-        authorization_id=row[0],
-        workspace_id=row[1],
-        reference_registration_id=row[2],
-        provider_registration_id=row[3],
-        reference=SecretReference(row[4]),
-        intent=SecretUseIntent(row[5]),
-        actor_subject=row[6],
-        correlation_id=row[7],
-        requested_at=decode_postgres_timestamp(row[8]),
-        intent_fingerprint=row[9],
-        operation_id=row[10],
-        session_id=row[11],
-        run_id=row[12],
-        activity_id=row[13],
-        effect_id=row[14],
-        probe_id=row[15],
-    )
+def _row_to_authorized_use(row: tuple[Any, ...]) -> AuthorizedSecretUse | AuthorizedSecretVersionUse:
+    result = None
+    try:
+        if len(row) != 21 or row[20] is not True or row[16] not in ("operational", "consumer-version"):
+            raise ValueError
+        common = dict(authorization_id=row[0], workspace_id=row[1],
+            reference_registration_id=row[2], provider_registration_id=row[3],
+            actor_subject=row[6], correlation_id=row[7], requested_at=decode_postgres_timestamp(row[8]),
+            intent_fingerprint=row[9], operation_id=row[10], session_id=row[11],
+            run_id=row[12], activity_id=row[13], effect_id=row[14])
+        reference, intent = SecretReference(row[4]), SecretUseIntent(row[5])
+        if row[16] == "consumer-version":
+            if row[15] is not None:
+                raise ValueError
+            result = AuthorizedSecretVersionUse(**common,
+                selection=SecretVersionSelection(reference, intent, row[17]),
+                request_fingerprint=row[18], selection_fingerprint=row[19])
+        else:
+            if any(value is not None for value in row[17:20]):
+                raise ValueError
+            result = AuthorizedSecretUse(**common, reference=reference, intent=intent, probe_id=row[15])
+        validate_authorized_secret_use(result)
+    except (ValueError, TypeError, AttributeError, IndexError):
+        result = None
+    if result is None:
+        raise SecretProviderRegistrationError("stored secret authorization is malformed")
+    return result
 
 
 def _decode_optional_timestamp(value: object) -> str | None:

@@ -22,6 +22,7 @@ from control_plane_kit_operations.delegation_key_generation import (
     AdmitGeneratedDelegationSigningKey,
     DelegationKeyGenerationAuthorizationDenied,
     DelegationKeyGenerationConflict,
+    DelegationKeyGenerationError,
     DelegationKeyGenerationEvidence,
     DelegationKeyGenerationService,
     GenerateDelegationSigningKey,
@@ -142,6 +143,38 @@ class DelegationKeyGenerationTests(unittest.TestCase):
         )
         self.assertNotIn("private", repr(grant).lower())
         self.assertNotIn("token-value", repr(grant).lower())
+
+    def test_health_generation_is_refused_before_unit_of_work(self) -> None:
+        calls = []
+
+        def counted_unit_of_work():
+            calls.append("entered")
+            return self.unit_of_work()
+
+        service = DelegationKeyGenerationService(counted_unit_of_work)
+        for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+                        DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT):
+            with self.subTest(purpose=purpose):
+                with self.assertRaisesRegex(DelegationKeyGenerationError,
+                                            "^generation purpose is unsupported$") as raised:
+                    service.prepare(replace(self.generate_command(), purpose=purpose))
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertIsNone(raised.exception.__context__)
+                self.assertEqual(calls, [])
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.secret_references.list_active("workspace-a"), ())
+            self.assertEqual(uow.stores.delegation_signing_keys.list_workspace("workspace-a"), ())
+
+    def test_direct_health_generation_grant_cannot_relabel_probe_custody(self) -> None:
+        grant = self.service().prepare(self.generate_command())
+        for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+                        DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT):
+            with self.subTest(purpose=purpose):
+                with self.assertRaisesRegex(DelegationKeyGenerationError,
+                                            "^generation purpose is unsupported$") as raised:
+                    replace(grant, purpose=purpose)
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertIsNone(raised.exception.__context__)
 
     def test_fold_atomically_admits_reference_and_public_identity(self) -> None:
         grant = self.service().prepare(self.generate_command())

@@ -281,13 +281,14 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
                     )
         raise AssertionError(f"cannot construct {target}-byte endpoint evidence")
 
-    def live_result_for_size(self, target: int) -> RuntimeEffectResult:
+    def live_result_for_size(self, target: int, *, extra_evidence=None) -> RuntimeEffectResult:
         observations = (self.endpoint("z"), self.endpoint("a"))
         for full_fields in range(32):
             evidence = {
                 f"padding-{index:02d}": "x" * ENDPOINT_TEXT_MAX
                 for index in range(full_fields)
             }
+            evidence.update(extra_evidence or {})
             evidence["tail"] = ""
             seed = RuntimeEffectResult.succeeded(
                 "event-start",

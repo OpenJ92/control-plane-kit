@@ -133,7 +133,11 @@ EXACT_INTERPRETER_IMPORTS = tuple(
             "runtime_effect_request_for_intent",
             None,
         ),
-        ("control_plane_kit_core.secrets", "SecretResolutionGrant", None),
+        ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectObservationEvidence", None),
+        ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectObservationFailure", None),
+        ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectObservedIndeterminate", None),
+        ("control_plane_kit_core.secret_installation", "secret_installation_receipt_for_observation", None),
+        ("control_plane_kit_core.secret_version_grants", "ResolutionGrant", None),
         (
             "control_plane_kit_operations.effect_attempt_fold",
             "EffectAttemptFoldConflict",
@@ -251,8 +255,8 @@ EXACT_INTERPRETER_IMPORTS = tuple(
             None,
         ),
         (
-            "control_plane_kit_operations.secret_providers",
-            "AuthorizeSecretUse",
+            "control_plane_kit_operations.runtime_effects",
+            "secret_authorization_command",
             None,
         ),
         (
@@ -277,7 +281,7 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ),
         (
             "control_plane_kit_operations.secret_providers",
-            "secret_use_correlation_for",
+            "authorize_runtime_secret_command",
             None,
         ),
         (
@@ -287,6 +291,9 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ),
         ("typing", "Any", None),
         ("typing", "Callable", None),
+        ("control_plane_kit_operations.runtime_adapter_registration", "RuntimeAdapterRegistration", None),
+        ("control_plane_kit_operations.runtime_adapter_registration", "adapter_is_qualified", None),
+        ("control_plane_kit_operations.runtime_adapter_registration", "registered_adapter", None),
     )
 )
 EXACT_INTERPRETER_CALLS = tuple(
@@ -303,6 +310,11 @@ EXACT_INTERPRETER_CALLS = tuple(
         "control_plane_kit_core.runtime_authority.RemoteDockerTlsConnectionAdmission",
         "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservationRequest",
         "control_plane_kit_core.runtime_effect_observation.runtime_effect_request_for_intent",
+        "control_plane_kit_core.runtime_effect_observation.runtime_effect_request_for_intent",
+        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservationEvidence",
+        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservationFailure",
+        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservedIndeterminate",
+        "control_plane_kit_core.secret_installation.secret_installation_receipt_for_observation",
         "control_plane_kit_operations.effect_attempt_fold.ExistingFold",
         "control_plane_kit_operations.effect_attempt_fold.FoldEffectAttempt",
         "control_plane_kit_operations.effect_attempt_fold.GuardedObservedEffectFold",
@@ -313,24 +325,28 @@ EXACT_INTERPRETER_CALLS = tuple(
         *((
             "control_plane_kit_operations.effect_attempt_reconciliation."
             "EffectAttemptReconciliationDenied",
-        ) * 6),
+        ) * 8),
         *((
             "control_plane_kit_operations.effect_attempt_reconciliation."
             "EffectAttemptReconciliationNotFound",
         ) * 3),
         "control_plane_kit_operations.effect_attempt_reconciliation._valid_reconcile_command",
         "control_plane_kit_operations.effect_outcome_evidence.ObservedEffectOutcome",
+        "control_plane_kit_operations.effect_outcome_evidence.ObservedEffectOutcome",
         "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_failure",
         "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_transition",
         "control_plane_kit_operations.runtime_effects.required_secret_uses_for_runtime_effect",
-        "control_plane_kit_operations.secret_providers.AuthorizeSecretUse",
+        "control_plane_kit_operations.runtime_effects.secret_authorization_command",
         "control_plane_kit_operations.secret_providers.SecretUseAuthorizationService",
-        "control_plane_kit_operations.secret_providers.secret_use_correlation_for",
+        "control_plane_kit_operations.secret_providers.authorize_runtime_secret_command",
+        "control_plane_kit_operations.runtime_adapter_registration.adapter_is_qualified",
+        "control_plane_kit_operations.runtime_adapter_registration.registered_adapter",
         "control_plane_kit_operations.workflows.InvalidOperationCommand",
+        "callable",
+        "getattr",
         "isinstance",
         "self._fold_service.execute_observed",
-        "self._observer.observe",
-        "self._secret_use_authorizer.authorize_resolution",
+        "observer.observe",
         "self._unit_of_work_factory",
         "stores.effect_attempt_intents.get",
         "stores.effect_attempts.get_for_update",
@@ -339,9 +355,57 @@ EXACT_INTERPRETER_CALLS = tuple(
         "stores.execution.get_run_for_request_for_update",
         "stores.execution.observe_request_lease_for_update",
         "stores.runtime_authorities.get_active_for_update",
-        *("type",) * 14,
+        *("type",) * 13,
     )
 )
+
+
+# B1 adds only same-command accounting around the existing observer transaction.
+EXACT_INTERPRETER_IMPORTS = tuple(sorted((*EXACT_INTERPRETER_IMPORTS,
+    architecture_testing.ImportSurfaceEntry("control_plane_kit_core.planning", "CleanupConfigurationInstances", None),
+    architecture_testing.ImportSurfaceEntry("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
+    architecture_testing.ImportSurfaceEntry("control_plane_kit_operations._configuration_preparation", "_ACCOUNTING", None)),
+    key=lambda item: (item.module, item.imported_name or "", item.alias_name or "")))
+EXACT_INTERPRETER_CALLS = tuple(sorted((*EXACT_INTERPRETER_CALLS, *(architecture_testing.ResolvedCallTarget(name) for name in (
+    # #1936 bounded terminal routing and exact original cleanup proof only.
+    "stores.configuration_preparation._configure_run",
+    "stores.effect_attempt_intents.get",
+    "stores.configuration_cleanup_ownership.get",
+    "control_plane_kit_operations.records.OperationsRecordError",
+    "control_plane_kit_operations.records.OperationsRecordError",
+    "control_plane_kit_operations.effect_attempt_reconciliation.EffectAttemptReconciliationConflict",
+    "control_plane_kit_operations.effect_attempt_reconciliation.EffectAttemptReconciliationConflict",
+    "type", "type",
+    "control_plane_kit_operations.effect_attempt_reconciliation._valid_reconcile_command",
+    "control_plane_kit_operations.workflows.InvalidOperationCommand",
+    "control_plane_kit_operations._configuration_preparation._configuration_accounting",
+    "self._execute",
+    "control_plane_kit_operations._configuration_preparation._ACCOUNTING.get",
+    "stores.configuration_preparation._configure_run",
+))), key=lambda item: item.qualified_name))
+
+
+# Managed observation admission: bounded original-plan read and pure proof check.
+EXACT_INTERPRETER_IMPORTS = tuple(sorted((*EXACT_INTERPRETER_IMPORTS,
+    *(architecture_testing.ImportSurfaceEntry(module, name, None) for module, name in (
+        (".postgres.configuration_evidence", "_joined_read"),
+        ("control_plane_kit_operations.effect_outcome_evidence", "_observed_configuration_candidate"),
+        ("control_plane_kit_operations.effect_outcome_evidence", "_require_original_observation_plan"),
+        ("control_plane_kit_operations.effect_outcome_evidence", "_require_observed_configuration_receipt"),
+    ))), key=lambda item: (item.module, item.imported_name or "", item.alias_name or "")))
+EXACT_INTERPRETER_CALLS = tuple(sorted((*EXACT_INTERPRETER_CALLS,
+    *(architecture_testing.ResolvedCallTarget(name) for name in (
+        ".postgres.configuration_evidence._joined_read",
+        "stores.activity_history.get_plan",
+        "control_plane_kit_operations.effect_outcome_evidence._observed_configuration_candidate",
+        "control_plane_kit_operations.effect_outcome_evidence._require_original_observation_plan",
+        "control_plane_kit_operations.effect_outcome_evidence._require_observed_configuration_receipt",
+        "control_plane_kit_operations.effect_attempt_reconciliation.EffectAttemptReconciliationConflict",
+        "control_plane_kit_operations.effect_outcome_evidence.ObservedEffectOutcome",
+        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservedIndeterminate",
+        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservationEvidence",
+        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservationFailure",
+    ))), key=lambda item: item.qualified_name))
 
 
 class FailIfUnitOfWork:
@@ -376,6 +440,8 @@ class EffectAttemptReconciliationInterpreterContractTests(
     RuntimeEffectReconciliationFixture,
     unittest.TestCase,
 ):
+    maxDiff = None
+
     def service(self, unit_of_work_factory, observer=None, fold_service=None):
         self.require_service()
         return EffectAttemptReconciliationService(

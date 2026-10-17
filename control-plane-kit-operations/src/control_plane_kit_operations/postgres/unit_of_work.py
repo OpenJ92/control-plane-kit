@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import contextmanager
 from typing import Protocol, Self
+
+from psycopg.pq import TransactionStatus
 
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
@@ -35,6 +38,7 @@ class PostgresUnitOfWork:
         self._stores: PostgresStoreBundle | None = None
         self._commit_requested = False
         self._finished = False
+        self._entered = False
 
     @property
     def stores(self) -> PostgresStoreBundle:
@@ -48,10 +52,46 @@ class PostgresUnitOfWork:
         if self._connection is not None:
             raise UnitOfWorkStateError("unit of work cannot be re-entered")
         self._connection = self._connection_factory()
+        self._entered = True
         self._stores = PostgresStoreBundle(self._connection)
         self._commit_requested = False
         self._finished = False
         return self
+
+    @contextmanager
+    def read_snapshot(self):
+        """Fresh, one-use receiver read transaction; ordinary UoWs are unchanged."""
+        with self._read_snapshot() as stores:
+            yield stores.graphs.receiver_authoring_snapshot()
+
+    @contextmanager
+    def configuration_cleanup_snapshot(self):
+        """A fresh read-only snapshot exposing only cleanup inspection."""
+        from .configuration_cleanup_store import ConfigurationCleanupSnapshot
+        with self._read_snapshot() as stores:
+            yield ConfigurationCleanupSnapshot(stores)
+
+    @contextmanager
+    def _read_snapshot(self):
+        if self._entered or self._connection is not None:
+            raise UnitOfWorkStateError("snapshot requires a fresh unit of work")
+        self._entered = True
+        try:
+            self._connection = self._connection_factory()
+            if self._connection.info.transaction_status != TransactionStatus.IDLE:
+                raise UnitOfWorkStateError("snapshot requires an unused transaction")
+            self._connection.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            self._stores = PostgresStoreBundle(self._connection)
+            yield self._stores
+        finally:
+            # __enter__ failures also reach this cleanup. Read snapshots never
+            # request a physical commit, including after successful projection.
+            try:
+                if self._connection is not None:
+                    self._connection.rollback()
+            finally:
+                self._finished = True
+                self.close()
 
     def commit(self) -> None:
         """Request commit when the complete command exits successfully."""

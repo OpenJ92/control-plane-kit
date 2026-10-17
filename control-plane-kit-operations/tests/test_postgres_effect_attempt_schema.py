@@ -58,7 +58,7 @@ EXPECTED_CHECKS = {
     "cpk_effect_attempts_state_check": (
         "((status = ANY (ARRAY['started'::text, 'succeeded'::text, "
         "'failed'::text, 'unsupported'::text, 'uncertain'::text, "
-        "'abandoned'::text])) AND (((status = 'started'::text) AND "
+        "'not_ready'::text, 'abandoned'::text])) AND (((status = 'started'::text) AND "
         "(outcome_fingerprint IS NULL)) OR ((status <> 'started'::text) "
         "AND (outcome_fingerprint IS NOT NULL))))"
     ),
@@ -128,7 +128,7 @@ class PostgresEffectAttemptSchemaTests(
                 )
                 self.add_record_events(stores, record)
                 self.add_record_intent(stores, record)
-                self.assertEqual(stores.effect_attempts.insert_absent(record), record)
+                self.assertEqual(stores.effect_attempts._insert_absent(record), record)
             unit_of_work.commit()
 
         target = "page-129-start"

@@ -9,6 +9,21 @@ ARCHITECTURE_TESTING_ROOT="${CPK_ARCHITECTURE_TESTING_ROOT:-$REPO_ROOT/../contro
 NETWORK_NAME="${CPK_OPERATIONS_TEST_NETWORK_NAME:-cpk-operations-test}"
 POSTGRES_CONTAINER="${CPK_OPERATIONS_TEST_POSTGRES_CONTAINER:-cpk-operations-test-postgres}"
 
+validate_test_selection() {
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" != "-k" ] || [ "$#" -lt 2 ] || [ -z "$2" ]; then
+      echo "Usage: $0 [-k unittest-name-pattern] ..." >&2
+      return 2
+    fi
+    shift 2
+  done
+}
+
+validate_test_selection "$@"
+if [ "$#" -gt 0 ]; then
+  echo "Focused Operations evidence (-k selection); not full package acceptance."
+fi
+
 if [ ! -d "$ARCHITECTURE_TESTING_ROOT" ]; then
   echo "Architecture testing checkout is missing" >&2
   exit 1
@@ -98,7 +113,7 @@ if docker run --rm \
   -e CPK_READ_INTERFACES_DOCUMENT=/read-interfaces.md \
   -e CPK_OPERATIONS_TEST_DATABASE_URL=postgresql://cpk:cpk@"$POSTGRES_CONTAINER":5432/cpk \
   "$IMAGE" \
-  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && python -m unittest discover -s tests'; then
+  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && python -m unittest discover -s tests -v "$@"' cpk-operations-unittest "$@"; then
   :
 else
   test_status=$?

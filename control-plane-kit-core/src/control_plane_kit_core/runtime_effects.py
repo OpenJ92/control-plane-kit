@@ -13,6 +13,14 @@ import re
 from typing import Mapping
 from urllib.parse import urlsplit
 
+import rfc8785
+
+from control_plane_kit_core.configuration_instances import (
+    ConfigurationCleanupOutcomeSet, ConfigurationCleanupOutcomeSetCodec,
+    ConfigurationCleanupStatus, ConfigurationInstanceSelection,
+    ConfigurationInstanceSelectionCodec, _maximum_cleanup_outcomes,
+)
+
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -21,7 +29,7 @@ from control_plane_kit_core.environment import (
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityOperation, ReconcileNode, ReviewChange, StartNode,
+    ActivityId, ActivityOperation, CleanupConfigurationInstances, ReconcileNode, ReviewChange, StartNode,
 )
 from control_plane_kit_core.planning.codec import (
     ActivityPlanDescriptorError,
@@ -51,6 +59,14 @@ from control_plane_kit_core.secrets import (
     SecretResolutionError,
     SecretResolutionGrant,
 )
+from control_plane_kit_core.secret_selections import (
+    SecretSelection, SecretVersionSelection, normalize_secret_selections,
+    secret_selections_from_descriptor,
+)
+from control_plane_kit_core.secret_version_grants import (
+    ResolutionGrant, SecretVersionResolutionGrant, resolution_grant_key,
+    secret_material_commitment, request_intent_commitment,
+)
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import (
     VerificationCompleted,
@@ -76,6 +92,11 @@ class RuntimeEffectKind(StrEnum):
     """Closed runtime-effect intents interpreters can execute."""
 
     REALIZE_ACTIVITY = "realize-activity"
+    CONFIGURATION_ACTIVITY_V1 = "configuration-activity.v1"
+
+
+class ConfigurationCleanupCapacityError(RuntimeEffectContractError):
+    """A valid whole cleanup selection cannot fit every durable result."""
 
 
 @dataclass(frozen=True, order=True)
@@ -215,6 +236,7 @@ class RuntimeProductMaterial:
     socket_environment: tuple[SocketDerivedEnvironmentBinding, ...] = ()
     pull_authority: ImagePullAuthority | None = None
     runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
+    secret_selections: tuple[SecretSelection, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "runtime_authority_deliveries",
@@ -227,6 +249,8 @@ class RuntimeProductMaterial:
             raise RuntimeEffectContractError("product must be ContainerServerProduct")
         if self.reference.identity != self.product.identity:
             raise RuntimeEffectContractError("product material identity mismatch")
+        object.__setattr__(self, "secret_selections", normalize_secret_selections(
+            self.product.runtime_contract.secret_deliveries, self.secret_selections))
         public_environment = tuple(sorted(self.public_environment))
         if not all(
             isinstance(value, PublicStaticEnvironmentBinding)
@@ -267,6 +291,8 @@ class RuntimeProductMaterial:
         return {
             "node_id": self.node_id,
             "runtime_id": self.runtime_id,
+            "secret_selections": [value.descriptor() for value in normalize_secret_selections(
+                self.product.runtime_contract.secret_deliveries, self.secret_selections)],
             **({"runtime_authority_deliveries": [value.descriptor()
                  for value in self.runtime_authority_deliveries]}
                if self.runtime_authority_deliveries else {}),
@@ -285,7 +311,7 @@ class RuntimeProductMaterial:
 
     @classmethod
     def from_descriptor(cls, value: Mapping[str, object]) -> "RuntimeProductMaterial":
-        expected_keys = _PRODUCT_MATERIAL_KEYS | (
+        expected_keys = _PRODUCT_MATERIAL_KEYS | {"secret_selections"} | (
             {"runtime_authority_deliveries"} if "runtime_authority_deliveries" in value else set()
         )
         _require_keys(value, expected_keys, "runtime product material")
@@ -295,6 +321,7 @@ class RuntimeProductMaterial:
         return cls(
             node_id=_text(value, "node_id"),
             runtime_id=_text(value, "runtime_id"),
+            secret_selections=secret_selections_from_descriptor(value.get("secret_selections")),
             reference=ProductReferenceCodec().decode(
                 _mapping(value, "reference", "runtime product material")
             ),
@@ -485,11 +512,12 @@ class RuntimeEffectRequest:
     operation: ActivityOperation
     authority_ref: RuntimeAuthorityReference | None = None
     authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
-    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = field(
+    secret_resolution_grants: tuple[ResolutionGrant, ...] = field(
         default=(),
         repr=False,
     )
     products: tuple[RuntimeProductMaterial, ...] = ()
+    configuration_instances: ConfigurationInstanceSelection | None = None
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
@@ -548,45 +576,6 @@ class RuntimeEffectRequest:
                         "runtime authority delivery reference must match request authority"
                     )
         object.__setattr__(self, "authority_deliveries", authority_deliveries)
-        secret_resolution_grants = tuple(
-            sorted(
-                self.secret_resolution_grants,
-                key=lambda value: (
-                    value.reference.reference_id,
-                    value.intent.value,
-                    value.authorization_id,
-                ),
-            )
-        )
-        if not all(
-            isinstance(value, SecretResolutionGrant)
-            for value in secret_resolution_grants
-        ):
-            raise RuntimeEffectContractError(
-                "runtime secret resolution grants must be SecretResolutionGrant"
-            )
-        grant_uses = tuple(
-            (value.reference, value.intent)
-            for value in secret_resolution_grants
-        )
-        if len(set(grant_uses)) != len(grant_uses):
-            raise RuntimeEffectContractError(
-                "runtime secret resolution grants must be unique by reference and intent"
-            )
-        for grant in secret_resolution_grants:
-            if grant.workspace_id != self.source.workspace_id:
-                raise RuntimeEffectContractError(
-                    "runtime secret resolution grant workspace must match request"
-                )
-            if grant.effect_id is not None and grant.effect_id != self.effect_id:
-                raise RuntimeEffectContractError(
-                    "runtime secret resolution grant effect must match request"
-                )
-        object.__setattr__(
-            self,
-            "secret_resolution_grants",
-            secret_resolution_grants,
-        )
         if not isinstance(self.activity_id, ActivityId):
             raise RuntimeEffectContractError("activity_id must be ActivityId")
         if isinstance(self.operation, ReviewChange):
@@ -609,10 +598,19 @@ class RuntimeEffectRequest:
         _validate_runtime_authority_recipient(
             self.operation, self.authority_ref, self.authority_deliveries, products
         )
+        _validate_configuration_effect(
+            self.kind, self.operation, self.source.workspace_id, products,
+            self.authority_deliveries, self.configuration_instances,
+        )
+        _validate_selected_target_material(self.operation, self.products)
+        _validate_resolution_grants(self)
 
     def descriptor(self) -> dict[str, object]:
+        _validate_selected_target_material(self.operation, self.products)
         return {
             "effect_id": self.effect_id,
+            **({"configuration_instances": ConfigurationInstanceSelectionCodec().encode(self.configuration_instances)}
+               if self.configuration_instances is not None else {}),
             "kind": self.kind.value,
             "runtime_kind": self.runtime_kind.value,
             "authority_ref": None
@@ -626,6 +624,66 @@ class RuntimeEffectRequest:
             "operation": activity_operation_descriptor(self.operation),
             "products": [value.descriptor() for value in self.products],
         }
+
+
+def _validate_resolution_grants(request):
+    valid = False
+    try:
+        grants = request.secret_resolution_grants
+        if type(grants) is not tuple:
+            raise ValueError
+        keys = tuple(resolution_grant_key(grant) for grant in grants)
+        if len(keys) != len(set(keys)):
+            raise RuntimeEffectContractError("runtime secret resolution grants must be unique by role and use")
+        consumers = tuple(grant for grant in grants if type(grant) is SecretVersionResolutionGrant)
+        if consumers:
+            if type(request.operation) not in (StartNode, ReconcileNode) or len(request.products) != 1:
+                raise ValueError
+            material = request.products[0]
+            request_fingerprint = request_intent_commitment(request.descriptor())
+            selection_fingerprint = secret_material_commitment(request.source.workspace_id, material)
+            for grant in consumers:
+                if (grant.selection not in material.secret_selections
+                        or grant.operation_id != request.source.request_id
+                        or grant.run_id != request.source.run_id.value
+                        or grant.activity_id != request.activity_id.value
+                        or grant.effect_id != request.effect_id
+                        or grant.request_fingerprint != request_fingerprint
+                        or grant.selection_fingerprint != selection_fingerprint):
+                    raise ValueError
+        for grant in grants:
+            if (grant.workspace_id != request.source.workspace_id
+                    or (grant.effect_id is not None and grant.effect_id != request.effect_id)):
+                raise ValueError
+        valid = True
+    except RuntimeEffectContractError:
+        raise
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        valid = False
+    if not valid:
+        raise RuntimeEffectContractError("runtime secret resolution grant is not admitted")
+    object.__setattr__(request, "secret_resolution_grants", tuple(sorted(grants, key=resolution_grant_key)))
+
+
+def _validate_selected_target_material(operation, products):
+    """All current byte-delivery requests have one exact, completely selected target."""
+    if isinstance(operation, (StartNode, ReconcileNode)) and type(operation) not in (StartNode, ReconcileNode):
+        raise RuntimeEffectContractError("runtime target operation must use the exact current variant")
+    if type(operation) not in (StartNode, ReconcileNode):
+        return
+    if len(products) != 1 or type(products[0]) is not RuntimeProductMaterial:
+        raise RuntimeEffectContractError("runtime target material is incomplete")
+    material = products[0]
+    if material.node_id != operation.target.node_id:
+        raise RuntimeEffectContractError("runtime target material does not match operation")
+    valid = True
+    try:
+        RuntimeProductMaterial.__post_init__(material)
+        valid = all(type(value) is SecretVersionSelection for value in material.secret_selections)
+    except (TypeError, ValueError):
+        valid = False
+    if not valid:
+        raise RuntimeEffectContractError("runtime target requires complete exact secret versions")
 
 
 def _validate_runtime_authority_recipient(
@@ -1239,3 +1297,151 @@ def _validate_repository_scope(value: str) -> None:
         raise RuntimeEffectContractError(
             "repository must be a bounded lowercase OCI path"
         )
+
+
+# Full RuntimeEffectResult capacity, shared with the existing fingerprint/store
+# contract. This is distinct from read-only observation evidence capacity.
+_CONFIGURATION_RESULT_MAX_BYTES = 8_192
+
+
+def _validate_configuration_effect(
+    kind: RuntimeEffectKind,
+    operation: object,
+    workspace_id: str,
+    products: tuple[RuntimeProductMaterial, ...],
+    deliveries: tuple[RuntimeAuthorityAccessDelivery, ...],
+    selection: ConfigurationInstanceSelection | None,
+) -> None:
+    if kind is RuntimeEffectKind.REALIZE_ACTIVITY:
+        if selection is not None or isinstance(operation, CleanupConfigurationInstances):
+            raise RuntimeEffectContractError("configuration material requires configuration-activity.v1")
+        return
+    if kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
+        raise RuntimeEffectContractError("configuration effect kind is malformed")
+    if type(operation) is CleanupConfigurationInstances:
+        if selection is not None or products or deliveries:
+            raise RuntimeEffectContractError("configuration cleanup has one candidate source")
+        require_configuration_cleanup_capacity(operation)
+        if any(ref.workspace_id != workspace_id for ref in operation.instances):
+            raise RuntimeEffectContractError("configuration cleanup workspace must match source")
+        return
+    if type(operation) not in (StartNode, ReconcileNode):
+        raise RuntimeEffectContractError("operation does not support configuration instances")
+    if type(selection) is not ConfigurationInstanceSelection:
+        raise RuntimeEffectContractError("configuration effect requires exact selection")
+    invalid = False
+    try:
+        ConfigurationInstanceSelectionCodec().encode(selection)
+    except (TypeError, ValueError):
+        invalid = True
+    if invalid:
+        raise RuntimeEffectContractError("configuration effect selection is malformed")
+    if len(products) != 1 or products[0].node_id != operation.target.node_id:
+        raise RuntimeEffectContractError("configuration effect requires exact target material")
+    material = products[0]
+    if any((ref.workspace_id, ref.runtime_id, ref.node_id) !=
+           (workspace_id, material.runtime_id, material.node_id) for ref in selection.instances):
+        raise RuntimeEffectContractError("configuration selection scope must match target")
+    selected = {(ref.artifact_id, ref.target_path, ref.media_type, ref.file_mode, ref.content_digest)
+                for ref in selection.instances}
+    artifacts = material.product.runtime_contract.configuration_artifacts
+    expected = {(artifact.artifact_id, artifact.target_path, artifact.media_type,
+                 artifact.file_mode, artifact.content_digest) for artifact in artifacts}
+    if len(selection.instances) != len(artifacts) or selected != expected:
+        raise RuntimeEffectContractError("configuration selection must match all selected artifacts")
+
+
+def _cleanup_result_envelope(
+    effect_id: str, outcomes: ConfigurationCleanupOutcomeSet, kind: EffectResultKind,
+) -> RuntimeEffectResult:
+    """One actual envelope constructor for capacity and conserved results."""
+    failure = None
+    if kind is EffectResultKind.UNCERTAIN:
+        failure = RuntimeEffectFailure("configuration.cleanup-uncertain",
+            "Configuration cleanup outcome is uncertain.")
+    elif kind is EffectResultKind.FAILED:
+        failure = RuntimeEffectFailure("configuration.cleanup-incomplete",
+            "Configuration cleanup is incomplete.")
+    return RuntimeEffectResult(effect_id=effect_id, kind=kind,
+        evidence={"configuration_cleanup": ConfigurationCleanupOutcomeSetCodec().encode(outcomes)},
+        failure=failure, observations=())
+
+
+def _require_cleanup_result_size(result: RuntimeEffectResult) -> None:
+    document = b""
+    try:
+        document = rfc8785.dumps(result.descriptor())
+    except (TypeError, ValueError, RecursionError):
+        pass
+    if not document:
+        raise RuntimeEffectContractError("configuration cleanup result is malformed")
+    if len(document) > _CONFIGURATION_RESULT_MAX_BYTES:
+        raise ConfigurationCleanupCapacityError("configuration cleanup result exceeds durable capacity")
+
+
+def require_configuration_cleanup_capacity(operation: CleanupConfigurationInstances) -> None:
+    """Require representability of every total result before allocating IDs.
+
+    Malformed inputs remain contract errors. Only a structurally valid whole
+    selection exceeding the durable result bound is a capacity refusal.
+    """
+    if type(operation) is not CleanupConfigurationInstances:
+        raise RuntimeEffectContractError("configuration cleanup requires exact operation")
+    valid = True
+    try:
+        CleanupConfigurationInstances.__post_init__(operation)
+    except (TypeError, ValueError, AttributeError):
+        valid = False
+    if not valid:
+        raise RuntimeEffectContractError("configuration cleanup operation is malformed")
+    # Preserve every full original ref. The longest legal row and every outer
+    # aggregate deliberately overestimate, including maximal event-id escaping.
+    outcomes = _maximum_cleanup_outcomes(operation.instances)
+    for kind in (EffectResultKind.SUCCEEDED, EffectResultKind.FAILED, EffectResultKind.UNCERTAIN):
+        _require_cleanup_result_size(_cleanup_result_envelope("\x01" * 512, outcomes, kind))
+
+
+def configuration_cleanup_result(
+    request: RuntimeEffectRequest, outcomes: ConfigurationCleanupOutcomeSet,
+) -> RuntimeEffectResult:
+    """Conserve original candidates and derive correlation and aggregate truth.
+
+    This validates reported structure, not ownership or provider deletion.
+    """
+    if (type(request) is not RuntimeEffectRequest
+            or type(request.operation) is not CleanupConfigurationInstances
+            or request.kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1):
+        raise RuntimeEffectContractError("configuration cleanup requires exact request")
+    RuntimeEffectRequest.__post_init__(request)
+    if type(outcomes) is not ConfigurationCleanupOutcomeSet:
+        raise RuntimeEffectContractError("configuration cleanup outcomes are malformed")
+    ConfigurationCleanupOutcomeSetCodec().encode(outcomes)
+    if tuple(row.ref for row in outcomes.outcomes) != request.operation.instances:
+        raise RuntimeEffectContractError("configuration cleanup outcomes must conserve candidates")
+    statuses = {row.status for row in outcomes.outcomes}
+    if ConfigurationCleanupStatus.UNKNOWN in statuses:
+        kind = EffectResultKind.UNCERTAIN
+    elif statuses <= {ConfigurationCleanupStatus.REMOVED, ConfigurationCleanupStatus.ALREADY_ABSENT}:
+        kind = EffectResultKind.SUCCEEDED
+    else:
+        kind = EffectResultKind.FAILED
+    result = _cleanup_result_envelope(request.effect_id, outcomes, kind)
+    _require_cleanup_result_size(result)
+    return result
+
+
+def configuration_cleanup_outcomes(
+    request: RuntimeEffectRequest, result: RuntimeEffectResult,
+) -> ConfigurationCleanupOutcomeSet:
+    """Read only an exact total outcome set correlated to the original request."""
+    if type(result) is not RuntimeEffectResult:
+        raise RuntimeEffectContractError("configuration cleanup result is malformed")
+    RuntimeEffectResult.__post_init__(result)
+    if set(result.evidence) != {"configuration_cleanup"}:
+        raise RuntimeEffectContractError("configuration cleanup evidence is malformed")
+    outcomes = ConfigurationCleanupOutcomeSetCodec().decode(result.evidence["configuration_cleanup"])
+    expected = configuration_cleanup_result(request, outcomes)
+    if result.descriptor() != expected.descriptor():
+        raise RuntimeEffectContractError("configuration cleanup result does not match conserved outcomes")
+    _require_cleanup_result_size(result)
+    return outcomes

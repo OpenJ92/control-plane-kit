@@ -97,7 +97,8 @@ class PostgresAtomicEffectAttemptFoldTests(
             result = self.fold_service("direct-intent-read").execute(command)
 
         self.assertIsInstance(result, NewlyFolded)
-        self.assertEqual(lookups, [current.state.identity])
+        # Fold admission and outcome membership independently read this identity.
+        self.assertEqual(lookups, [current.state.identity, current.state.identity])
 
     def test_direct_fold_rejects_intent_drift_before_observation_persistence(
         self,

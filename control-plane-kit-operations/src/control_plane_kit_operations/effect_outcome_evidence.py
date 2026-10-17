@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 import hashlib
+import re
 
 import rfc8785
 
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition, configuration_installation_receipt_for_observation,
+)
+from control_plane_kit_core.configuration_invocation import ConfigurationInvocationCorrelation
+from control_plane_kit_core.planning import ActivityId, ReconcileNode
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     EffectAttemptStatus,
@@ -34,10 +41,16 @@ from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservedSucceeded,
     RuntimeEffectObserverUnsupported,
     runtime_effect_observation_fingerprint,
+    runtime_effect_request_for_intent,
     runtime_effect_result_fingerprint,
+)
+from control_plane_kit_core.secret_installation import (
+    secret_installation_receipt_for_observation,
+    secret_installation_receipt_for_result,
 )
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectContractError,
+    RuntimeEffectKind,
     RuntimeEffectResult,
 )
 from control_plane_kit_core.types import Protocol
@@ -54,15 +67,20 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import (
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.records import (
+    ActivityPlanRecord,
+    ActivityPlanStatus,
     BoundedEvidence,
     FailureEvidence,
+    ExecutionRequestRecord,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
     OperationsRecordError,
     ProbeKind,
     ProbeOutcome,
+    _validate_text,
 )
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 
 
 class EffectOutcomeProfile(StrEnum):
@@ -70,6 +88,7 @@ class EffectOutcomeProfile(StrEnum):
 
     EXECUTION_RESULT = "execution-result"
     PROVIDER_OBSERVATION = "provider-observation"
+    NATIVE_CONNECTION = "native-connection"
 
 
 class _OutcomeError(StrEnum):
@@ -554,7 +573,373 @@ class ObservedEffectOutcome(_EffectOutcomeValue):
         return self._descriptor
 
 
-EffectAttemptOutcome = ExecutionEffectOutcome | ObservedEffectOutcome
+class NativeConnectionOutcome(StrEnum):
+    """A completed correlated read; selector refusal is a different result."""
+
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class NativeConnectionRefused:
+    """The native reader cannot select this request; no completed sample."""
+
+
+@dataclass(frozen=True)
+class NativeConnectionReadFailure:
+    """The read boundary failed without a correlated sample; no error payload."""
+
+
+def _native_timestamp_ns(value: object) -> int:
+    # Preserve the reader's nanoseconds. datetime's microsecond conversion must
+    # not round a sample across the ten-second acceptance boundary.
+    if type(value) is not str:
+        raise OperationsRecordError("native sample timestamp is invalid")
+    matched = re.fullmatch(
+        r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+        r"(?:\.([0-9]{1,9}))?(Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value)
+    if matched is None:
+        raise OperationsRecordError("native sample timestamp is invalid")
+    local, fraction, offset = matched.groups()
+    parsed = datetime.fromisoformat(local)
+    offset_seconds = 0 if offset == "Z" else (int(offset[1:3]) * 60 + int(offset[4:])) * 60
+    if offset[0] == "-":
+        offset_seconds = -offset_seconds
+    return ((parsed.toordinal() * 86400 + parsed.hour * 3600 + parsed.minute * 60 + parsed.second)
+        * 1_000_000_000 + int((fraction or "").ljust(9, "0")) - offset_seconds * 1_000_000_000)
+
+
+@dataclass(frozen=True)
+class NativeConnectionObservation:
+    """Bounded original passive evidence with no provider body or token."""
+
+    outcome: NativeConnectionOutcome
+    effect_id: str
+    activity_id: str
+    container_id: str | None = None
+    sample_start: str | None = None
+    sample_end: str | None = None
+    ready_connections: int | None = None
+    connector_id: str | None = None
+
+    def __post_init__(self):
+        if type(self.outcome) is not NativeConnectionOutcome:
+            raise OperationsRecordError("native observation disposition is invalid")
+        for value, bound in ((self.effect_id, 512), (self.activity_id, 200)):
+            _validate_text(value, "native observation correlation")
+            if (type(value) is not str or len(value) > bound
+                    or any(0xD800 <= ord(character) <= 0xDFFF for character in value)):
+                raise OperationsRecordError("native observation correlation is invalid")
+        if self.container_id is not None and (type(self.container_id) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", self.container_id) is None):
+            raise OperationsRecordError("native observation container identity is invalid")
+        if self.connector_id is not None and (type(self.connector_id) is not str
+                or re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", self.connector_id) is None
+                or self.connector_id == "00000000-0000-0000-0000-000000000000"):
+            raise OperationsRecordError("native observation connector identity is invalid")
+        if self.ready_connections is not None and (type(self.ready_connections) is not int
+                or not 0 <= self.ready_connections <= 2**64 - 1):
+            raise OperationsRecordError("native observation ready count is invalid")
+        samples = (self.container_id, self.sample_start, self.sample_end)
+        if any(value is not None for value in samples):
+            if any(value is None for value in samples):
+                raise OperationsRecordError("native observation sample is incomplete")
+            if _native_timestamp_ns(self.sample_start) > _native_timestamp_ns(self.sample_end):
+                raise OperationsRecordError("native observation sample order is invalid")
+        if self.outcome is NativeConnectionOutcome.CONNECTED and (
+                self.sample_end is None or self.connector_id is None
+                or self.ready_connections is None or self.ready_connections < 1):
+            raise OperationsRecordError("connected native observation is incomplete")
+        if self.outcome is NativeConnectionOutcome.DISCONNECTED and (
+                self.sample_end is None or self.ready_connections != 0 or self.connector_id is None):
+            raise OperationsRecordError("disconnected native observation is contradictory")
+        if self.outcome is NativeConnectionOutcome.UNKNOWN and (
+                self.ready_connections is not None or self.connector_id is not None):
+            raise OperationsRecordError("unknown native observation is contradictory")
+
+    def descriptor(self):
+        return {"effect_id": self.effect_id, "activity_id": self.activity_id,
+            "container_id": self.container_id, "sample_start": self.sample_start, "sample_end": self.sample_end,
+            # Reader-v1 uses uint64; JCS numeric values cannot preserve its full
+            # domain. Keep the actual value typed and fingerprint exact decimal.
+            "ready_connections": None if self.ready_connections is None else str(self.ready_connections),
+            "connector_id": self.connector_id, "outcome": self.outcome.value}
+
+
+def _native_acceptance_reason(observation, accepted_at):
+    if type(observation) is not NativeConnectionObservation:
+        raise OperationsRecordError("native observation must be typed")
+    observation.__post_init__()
+    accepted = _native_timestamp_ns(accepted_at)
+    if observation.sample_end is not None:
+        age = accepted - _native_timestamp_ns(observation.sample_end)
+        if age < 0:
+            raise OperationsRecordError("native sample is in the acceptance future")
+        if age > 10_000_000_000:
+            return "stale-at-acceptance"
+    return observation.outcome.value
+
+
+@dataclass(frozen=True)
+class NativeConnectionEffectOutcome(_EffectOutcomeValue):
+    """Original sample and the immutable decision made at database acceptance."""
+
+    identity: EffectAttemptIdentity
+    request_fingerprint: str
+    observation: NativeConnectionObservation = field(repr=False)
+    accepted_at: str
+    acceptance_reason: str
+
+    def __post_init__(self):
+        if not self._admitted:
+            _OutcomeError.EVIDENCE.raised
+
+    @classmethod
+    def from_observation(cls, *, identity, request_fingerprint, observation, accepted_at):
+        return cls(identity, request_fingerprint, observation, accepted_at,
+            _native_acceptance_reason(observation, accepted_at))
+
+    @property
+    def _admitted(self):
+        try:
+            if (type(self) is not NativeConnectionEffectOutcome or type(self.identity) is not EffectAttemptIdentity
+                    or type(self.observation) is not NativeConnectionObservation
+                    or type(self.acceptance_reason) is not str):
+                return False
+            self.identity.__post_init__()
+            return (type(self.request_fingerprint) is str
+                and re.fullmatch(r"[0-9a-f]{64}", self.request_fingerprint) is not None
+                and self.observation.activity_id == self.identity.activity_id
+                and self.acceptance_reason == _native_acceptance_reason(self.observation, self.accepted_at))
+        except (ValueError, TypeError, AttributeError, OverflowError):
+            return False
+
+    @property
+    def profile(self):
+        return EffectOutcomeProfile.NATIVE_CONNECTION
+
+    @property
+    def outcome_fingerprint(self):
+        return hashlib.sha256(b"control-plane-kit.native-connection-acceptance.v1\0"
+            + rfc8785.dumps(self.acceptance_descriptor())).hexdigest()
+
+    def acceptance_descriptor(self):
+        return {"observation": self.observation.descriptor(), "accepted_at": self.accepted_at,
+            "acceptance_reason": self.acceptance_reason}
+
+    @property
+    def endpoint_observations(self):
+        return ()
+
+    @property
+    def status(self):
+        return EffectAttemptStatus.SUCCEEDED if self.acceptance_reason == "connected" else EffectAttemptStatus.NOT_READY
+
+    @property
+    def transition_kind(self):
+        return EffectAttemptTransitionKind.SUCCEEDED if self.acceptance_reason == "connected" else EffectAttemptTransitionKind.NOT_READY
+
+    @property
+    def failure_row(self):
+        return None
+
+    def descriptor(self):
+        return self._descriptor | {"accepted_at": self.accepted_at, "acceptance_reason": self.acceptance_reason}
+
+
+# Native record representation does not widen generic mutation-fold admission.
+EffectAttemptOutcome = ExecutionEffectOutcome | ObservedEffectOutcome | NativeConnectionEffectOutcome
+
+
+def _observed_configuration_candidate(original):
+    """The original operation selects plan validation, never receipt presence."""
+    return (original.intent.kind is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1
+        and type(original.intent.operation) is ReconcileNode)
+
+
+def _require_original_observation_plan(original, plan, *, request=None):
+    """Verify supplied immutable plan correspondence without discovering current truth."""
+    try:
+        if type(original) is not EffectAttemptIntentRecord or type(plan) is not ActivityPlanRecord:
+            raise ValueError
+        EffectAttemptIntentRecord.__post_init__(original)
+        ActivityPlanRecord.__post_init__(plan)
+        source = original.intent.source
+        if (plan.status is not ActivityPlanStatus.PLANNED
+                or (plan.plan_id, plan.base_graph_id, plan.desired_graph_id) !=
+                    (source.plan_id, source.base_graph_id, source.desired_graph_id)
+                or plan.plan.activity(ActivityId(original.identity.activity_id)).operation != original.intent.operation):
+            raise ValueError
+        if request is not None:
+            if (type(request) is not ExecutionRequestRecord
+                    or (request.identity.workspace_id, request.identity.request_id,
+                        request.identity.plan_id, request.identity.session_id) !=
+                        (original.workspace_id, original.request_id, plan.plan_id, plan.session_id)):
+                raise ValueError
+        return plan.derivation_profile is PlanDerivationProfile.MANAGED_UPDATE_V1
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        pass
+    raise OperationsRecordError("effect outcome original plan is invalid") from None
+
+
+def _require_observed_configuration_receipt(original, observation, *, original_plan=None, request=None):
+    """Keep optional configuration syntax separate from managed replacement policy."""
+    try:
+        required = False
+        if (_observed_configuration_candidate(original)
+                and type(observation) is RuntimeEffectObservedSucceeded):
+            required = _require_original_observation_plan(original, original_plan, request=request)
+        receipt = None
+        if required or "configuration_installation_receipt" in observation.evidence.descriptor():
+            intent = original.intent
+            correlation = ConfigurationInvocationCorrelation(original.request_fingerprint,
+                original.original_start_event.event_id, intent.kind, intent.source,
+                intent.operation, intent.configuration_instances)
+            receipt = configuration_installation_receipt_for_observation(correlation, observation)
+        if required and (receipt is None or receipt.disposition is not ConfigurationInstallationDisposition.REPLACED):
+            raise ValueError
+        return receipt
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        pass
+    raise OperationsRecordError("effect outcome observed configuration proof is invalid") from None
+
+
+def _require_original_installation_outcome(original, attempt, outcome, *, original_plan=None, request=None):
+    """Bind actual runtime evidence to durable original material, without IO."""
+    valid = False
+    receipt = None
+    try:
+        if (type(original) is not EffectAttemptIntentRecord
+                or type(attempt) is not EffectAttemptRecord
+                or type(outcome) not in (ExecutionEffectOutcome, ObservedEffectOutcome,
+                    NativeConnectionEffectOutcome)):
+            raise ValueError
+        EffectAttemptIntentRecord.__post_init__(original)
+        EffectAttemptRecord.__post_init__(attempt)
+        type(outcome).__post_init__(outcome)
+        if (original.identity != attempt.state.identity
+                or outcome.identity != original.identity
+                or original.original_start_event != attempt.original_start_event
+                or original.request_fingerprint != attempt.state.request_fingerprint
+                or outcome.request_fingerprint != original.request_fingerprint
+                or outcome.effect_id != original.original_start_event.event_id):
+            raise ValueError
+        # Native connection evidence retains its independent membership owner.
+        if type(outcome) is not NativeConnectionEffectOutcome:
+            runtime_request = runtime_effect_request_for_intent(original.intent,
+                effect_id=original.original_start_event.event_id)
+            receipt = (secret_installation_receipt_for_result(runtime_request, outcome.result)
+                if type(outcome) is ExecutionEffectOutcome else
+                secret_installation_receipt_for_observation(runtime_request, outcome.observation))
+            if type(outcome) is ObservedEffectOutcome:
+                _require_observed_configuration_receipt(original, outcome.observation,
+                    original_plan=original_plan, request=request)
+        valid = True
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        pass
+    if not valid:
+        raise OperationsRecordError("effect outcome original installation evidence is invalid") from None
+    return receipt
+
+
+def _require_correlated_outcome(workspace_id, outcome, attempt_value):
+    """Validate complete result and original/direct history, independently of projection memberships."""
+    valid = (
+        workspace_id.__class__ is str
+        and workspace_id
+        and not workspace_id[512:]
+        and outcome.__class__
+        in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
+        and outcome._admitted
+    )
+    for character in workspace_id if valid else ():
+        if character < " " or "\ud800" <= character <= "\udfff":
+            valid = False
+
+    attempt = None
+    if valid:
+        attempt = _validated_attempt(attempt_value, _OutcomeError.RECORD)
+        state = attempt.state
+        original = attempt.original_start_event
+        latest = attempt.latest_transition_event
+        valid = (
+            state.identity == outcome.identity
+            and state.request_fingerprint == outcome.request_fingerprint
+            and state.status is outcome.status
+            and state.outcome_fingerprint == outcome.outcome_fingerprint
+            and state.recovery_decision is None
+            and original.event_id == outcome.effect_id
+            and original.event_id != latest.event_id
+            and original.run_id == state.identity.run_id.value
+            and latest.run_id == state.identity.run_id.value
+            and original.activity_id == state.identity.activity_id
+            and latest.activity_id == state.identity.activity_id
+            and 1 <= original.ordinal < latest.ordinal <= 2_147_483_647
+            and original.failure is None
+            and original.recovery is None
+            and latest.recovery is None
+        )
+
+    if valid:
+        start_kind = original.kind.value
+        compensation = start_kind == "step_compensation_started"
+        native = outcome.__class__ is NativeConnectionEffectOutcome
+        if native:
+            expected_start = "step_started" if state.identity.attempt == 1 else "step_observation_restarted"
+            valid = start_kind == expected_start and outcome.accepted_at == latest.occurred_at
+        else:
+            valid = (start_kind in ("step_started", "step_compensation_started")
+                or (start_kind == "step_observation_restarted"
+                    and outcome.__class__ is ExecutionEffectOutcome
+                    and outcome.status in (EffectAttemptStatus.UNSUPPORTED, EffectAttemptStatus.UNCERTAIN)
+                    and not outcome.endpoint_observations))
+        expected_latest_kind = (
+            "step_compensation_" if compensation else "step_"
+        ) + outcome.status.value
+        if native and outcome.status is EffectAttemptStatus.NOT_READY:
+            expected_latest_kind = "step_observation_not_ready"
+        valid = valid and latest.kind.value == expected_latest_kind
+
+    if valid:
+        for value in (
+            original.event_id,
+            latest.event_id,
+            original.run_id,
+            latest.run_id,
+            original.occurred_at,
+            latest.occurred_at,
+            original.activity_id,
+            latest.activity_id,
+        ):
+            if value.__class__ is not str or not value or value[512:]:
+                valid = False
+                break
+            for character in value:
+                if character < " " or "\ud800" <= character <= "\udfff":
+                    valid = False
+                    break
+            if not valid:
+                break
+
+    if valid:
+        failure = latest.failure
+        row = outcome.failure_row
+        if row is None:
+            valid = failure is None
+        else:
+            current_failure = effect_outcome_failure(outcome)
+            legacy_failure = _legacy_effect_outcome_failure(outcome)
+            valid = (
+                failure.__class__ is FailureEvidence
+                and failure.details.__class__ is BoundedEvidence
+                and failure.details.canonical_json.__class__ is str
+                and failure in (current_failure, legacy_failure)
+            )
+
+    if not valid:
+        _OutcomeError.RECORD.raised
+    return attempt
 
 
 @dataclass(frozen=True)
@@ -567,87 +952,9 @@ class EffectAttemptOutcomeRecord:
     endpoint_observations: tuple[ObservationRecord, ...] = field(repr=False)
 
     def __post_init__(self) -> None:
-        valid = (
-            self.workspace_id.__class__ is str
-            and self.workspace_id
-            and not self.workspace_id[512:]
-            and self.outcome.__class__
-            in (ExecutionEffectOutcome, ObservedEffectOutcome)
-            and self.outcome._admitted
-            and self.endpoint_observations.__class__ is tuple
-        )
-        for character in self.workspace_id if valid else ():
-            if character < " " or "\ud800" <= character <= "\udfff":
-                valid = False
-
-        attempt = None
-        if valid:
-            attempt = _validated_attempt(self.attempt, _OutcomeError.RECORD)
-            state = attempt.state
-            original = attempt.original_start_event
-            latest = attempt.latest_transition_event
-            valid = (
-                state.identity == self.outcome.identity
-                and state.request_fingerprint == self.outcome.request_fingerprint
-                and state.status is self.outcome.status
-                and state.outcome_fingerprint == self.outcome.outcome_fingerprint
-                and state.recovery_decision is None
-                and original.event_id == self.outcome.effect_id
-                and original.event_id != latest.event_id
-                and original.run_id == state.identity.run_id.value
-                and latest.run_id == state.identity.run_id.value
-                and original.activity_id == state.identity.activity_id
-                and latest.activity_id == state.identity.activity_id
-                and 1 <= original.ordinal < latest.ordinal <= 2_147_483_647
-                and original.failure is None
-                and original.recovery is None
-                and latest.recovery is None
-            )
-
-        if valid:
-            start_kind = original.kind.value
-            compensation = start_kind == "step_compensation_started"
-            valid = start_kind in ("step_started", "step_compensation_started")
-            expected_latest_kind = (
-                "step_compensation_" if compensation else "step_"
-            ) + self.outcome.status.value
-            valid = valid and latest.kind.value == expected_latest_kind
-
-        if valid:
-            for value in (
-                original.event_id,
-                latest.event_id,
-                original.run_id,
-                latest.run_id,
-                original.occurred_at,
-                latest.occurred_at,
-                original.activity_id,
-                latest.activity_id,
-            ):
-                if value.__class__ is not str or not value or value[512:]:
-                    valid = False
-                    break
-                for character in value:
-                    if character < " " or "\ud800" <= character <= "\udfff":
-                        valid = False
-                        break
-                if not valid:
-                    break
-
-        if valid:
-            failure = latest.failure
-            row = self.outcome.failure_row
-            if row is None:
-                valid = failure is None
-            else:
-                current_failure = effect_outcome_failure(self.outcome)
-                legacy_failure = _legacy_effect_outcome_failure(self.outcome)
-                valid = (
-                    failure.__class__ is FailureEvidence
-                    and failure.details.__class__ is BoundedEvidence
-                    and failure.details.canonical_json.__class__ is str
-                    and failure in (current_failure, legacy_failure)
-                )
+        attempt = _require_correlated_outcome(self.workspace_id, self.outcome, self.attempt)
+        latest = attempt.latest_transition_event
+        valid = self.endpoint_observations.__class__ is tuple
 
         if valid:
             endpoints = self.outcome.endpoint_observations
@@ -740,7 +1047,7 @@ def effect_outcome_transition(
     outcome: EffectAttemptOutcome,
 ) -> EffectAttemptTransition:
     if (
-        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome)
+        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
         or not outcome._admitted
     ):
         _OutcomeError.EVIDENCE.raised
@@ -755,7 +1062,7 @@ def effect_outcome_failure(
     outcome: EffectAttemptOutcome,
 ) -> FailureEvidence | None:
     if (
-        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome)
+        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
         or not outcome._admitted
     ):
         _OutcomeError.EVIDENCE.raised
@@ -779,7 +1086,7 @@ def effect_outcome_observation_records(
     intent_record: EffectAttemptIntentRecord | None = None,
 ) -> tuple[ObservationRecord, ...]:
     valid = (
-        outcome.__class__ in (ExecutionEffectOutcome, ObservedEffectOutcome)
+        outcome.__class__ in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
         and outcome._admitted
         and workspace_id.__class__ is str
         and workspace_id
@@ -1106,6 +1413,11 @@ __all__ = (
     "EffectAttemptOutcomeRecord",
     "EffectOutcomeProfile",
     "ExecutionEffectOutcome",
+    "NativeConnectionEffectOutcome",
+    "NativeConnectionObservation",
+    "NativeConnectionRefused",
+    "NativeConnectionReadFailure",
+    "NativeConnectionOutcome",
     "ObservedEffectOutcome",
     "effect_outcome_failure",
     "effect_outcome_observation_records",

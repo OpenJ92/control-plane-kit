@@ -204,6 +204,8 @@ EXACT_START_DEPENDENCIES = {
 }
 
 EXACT_INTERPRETER_DEPENDENCIES = {
+    "control_plane_kit_operations._configuration_preparation",
+    "control_plane_kit_core.runtime_effects",
     "control_plane_kit_core.operations",
     "control_plane_kit_core.operations.lifecycle",
     "control_plane_kit_core.planning",
@@ -214,6 +216,10 @@ EXACT_INTERPRETER_DEPENDENCIES = {
     "control_plane_kit_operations.effect_attempts",
     "control_plane_kit_operations.records",
     "control_plane_kit_operations.workflows",
+    "control_plane_kit_operations.health_effect_attempt_start",
+    "control_plane_kit_operations._health_effect_attempt_start",
+    "control_plane_kit_operations.health_receiver_trust",
+    "control_plane_kit_operations.runtime_management_targets",
 }
 
 
@@ -255,7 +261,7 @@ class EffectAttemptStartInterpreterContractTests(
         signature = inspect.signature(EffectAttemptStartService)
         self.assertEqual(
             tuple(signature.parameters),
-            ("unit_of_work_factory", "id_factory"),
+            ("unit_of_work_factory", "id_factory", "health_receiver_decoders"),
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptStartService.execute).parameters),

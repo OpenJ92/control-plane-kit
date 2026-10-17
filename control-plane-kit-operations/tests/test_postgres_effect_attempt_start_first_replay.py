@@ -196,7 +196,7 @@ class PostgresEffectAttemptStartFirstReplayTests(
         original_request = PostgresExecutionStore.get_request_for_update
         original_run = PostgresExecutionStore.get_run_for_request_for_update
         original_attempt = EffectAttemptStore.get_for_update
-        original_latest = PostgresExecutionStore.get_latest_run_for_request_for_update
+        original_latest = PostgresExecutionStore.get_latest_run_for_request
         original_observe = PostgresExecutionStore.observe_request_lease_for_update
         original_ordinal = PostgresExecutionStore.next_event_ordinal
 
@@ -244,7 +244,7 @@ class PostgresEffectAttemptStartFirstReplayTests(
             attempt,
         ), mock.patch.object(
             PostgresExecutionStore,
-            "get_latest_run_for_request_for_update",
+            "get_latest_run_for_request",
             latest,
         ), mock.patch.object(
             PostgresExecutionStore,
@@ -264,13 +264,14 @@ class PostgresEffectAttemptStartFirstReplayTests(
             calls,
             [
                 "request",
+                "latest",
                 "run",
                 "attempt",
-                "latest",
                 "request",
                 "clock",
                 "ordinal",
                 "identity",
+                "run",
             ],
         )
         self.assertEqual(len(observations), 1)
@@ -287,8 +288,8 @@ class PostgresEffectAttemptStartFirstReplayTests(
         calls: list[str] = []
         appended = []
         original_event = PostgresExecutionStore.add_event
-        original_evidence = EffectAttemptIntentStore.insert
-        original_insert = EffectAttemptStore.insert_absent
+        original_evidence = EffectAttemptIntentStore._insert
+        original_insert = EffectAttemptStore._insert_absent
 
         def add_event(store, event):
             calls.append("event")
@@ -312,11 +313,11 @@ class PostgresEffectAttemptStartFirstReplayTests(
             add_event,
         ), mock.patch.object(
             EffectAttemptIntentStore,
-            "insert",
+            "_insert",
             insert_evidence,
         ), mock.patch.object(
             EffectAttemptStore,
-            "insert_absent",
+            "_insert_absent",
             insert,
         ):
             result = self.start_service("complete-before-write").execute(

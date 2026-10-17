@@ -316,6 +316,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.receiver-authoring-context",
+                    getattr(ReadProjectionKind, "RECEIVER_AUTHORING_CONTEXT", None),
+                    "ReceiverAuthoringContextReadResponse",
+                    getattr(ReadProjectionPolicy, "PUBLIC_RECEIVER_AUTHORING_CONTEXT", None),
+                    True,
+                    False,
+                ),
+                (
                     "read.run-events",
                     ReadProjectionKind.RUN_EVENTS,
                     "RunEventsReadResponse",
@@ -418,6 +426,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
                     True,
                     True,
+                ),
+                (
+                    "read.workload-verifier-configuration",
+                    ReadProjectionKind.WORKLOAD_VERIFIER_CONFIGURATION,
+                    "WorkloadVerifierConfigurationReadResponse",
+                    ReadProjectionPolicy.PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION,
+                    True,
+                    False,
                 ),
                 (
                     "read.workspace",

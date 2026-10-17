@@ -22,11 +22,16 @@ _EXPECTED_MODULES = {
     "operations_history",
     "operator_overview",
     "protocols",
+    "receiver_authoring_context",
     "revision_history",
     "workspace_graph",
 }
 
 _PUBLIC_OWNERS = {
+    "ReceiverAuthoringContext": "receiver_authoring_context",
+    "ReceiverAuthoringContextError": "receiver_authoring_context",
+    "ReceiverAuthoringContextQuery": "receiver_authoring_context",
+    "ReceiverAuthoringContextReadService": "receiver_authoring_context",
     "ControlSurfaceReadModel": "workspace_graph",
     "FocusedDetailReadModel": "models",
     "GraphPointerReadModel": "workspace_graph",
@@ -138,6 +143,7 @@ class ReadServicesPackageTests(unittest.TestCase):
                     "models",
                     "observations",
                     "protocols",
+                    "receiver_authoring_context",
                     "workspace_graph",
                 }
             }

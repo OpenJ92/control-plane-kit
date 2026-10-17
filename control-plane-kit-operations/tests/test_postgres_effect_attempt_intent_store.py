@@ -118,7 +118,7 @@ class PostgresEffectAttemptIntentStoreTests(
                 attempt.original_start_event,
             )
             self.assertEqual(
-                stores.effect_attempt_intents.insert(record),
+                stores.effect_attempt_intents._insert(record),
                 record,
             )
             unit_of_work.commit()
@@ -343,7 +343,7 @@ class PostgresEffectAttemptIntentStoreTests(
                 ),
                 attempt.original_start_event,
             )
-            inserted = unit_of_work.stores.effect_attempt_intents.insert(record)
+            inserted = unit_of_work.stores.effect_attempt_intents._insert(record)
             self.assertIs(type(inserted), EffectAttemptIntentRecord)
             self.assertEqual(inserted, record)
 

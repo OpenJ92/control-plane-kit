@@ -14,6 +14,9 @@ from control_plane_kit_core.planning.activity_plan import (
     PlannedActivity,
     ReviewChange,
 )
+from control_plane_kit_core.planning.management_observations import (
+    ManagementBootstrapStage, ObserveManagementBootstrap,
+)
 
 
 EffectT = TypeVar("EffectT")
@@ -178,6 +181,7 @@ class SagaStateError(ValueError):
 class SagaStepStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
+    WAITING = "waiting"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     COMPENSATING = "compensating"
@@ -324,6 +328,16 @@ class SagaStepFailed:
 
 
 @dataclass(frozen=True)
+class SagaObservationNotReady:
+    step_id: SagaStepId
+
+
+@dataclass(frozen=True)
+class SagaObservationRestarted:
+    step_id: SagaStepId
+
+
+@dataclass(frozen=True)
 class SagaCancelled:
     pass
 
@@ -352,6 +366,8 @@ SagaEvent: TypeAlias = (
     SagaStepStarted
     | SagaStepSucceeded
     | SagaStepFailed
+    | SagaObservationNotReady
+    | SagaObservationRestarted
     | SagaCancelled
     | SagaCompensationRequested
     | SagaCompensationStarted
@@ -418,6 +434,14 @@ def evolve(state: SagaState, event: SagaEvent) -> SagaState:
         case SagaStepStarted(step_id=step_id):
             _require_active(state)
             _require_step_status(state, step_id, SagaStepStatus.PENDING)
+            return _replace_step(state, step_id, SagaStepStatus.RUNNING)
+        case SagaObservationNotReady(step_id=step_id):
+            _require_active(state)
+            _require_step_status(state, step_id, SagaStepStatus.RUNNING)
+            return _replace_step(state, step_id, SagaStepStatus.WAITING)
+        case SagaObservationRestarted(step_id=step_id):
+            _require_active(state)
+            _require_step_status(state, step_id, SagaStepStatus.WAITING)
             return _replace_step(state, step_id, SagaStepStatus.RUNNING)
         case SagaStepSucceeded(step_id=step_id):
             _require_step_status(state, step_id, SagaStepStatus.RUNNING)
@@ -670,6 +694,8 @@ def derive_schedule(plan: ActivityPlan, evidence: SagaState) -> ExecutionSchedul
                     waiting.append(activity)
             case SagaStepStatus.RUNNING:
                 running.append(activity)
+            case SagaStepStatus.WAITING:
+                waiting.append(activity)
             case SagaStepStatus.SUCCEEDED:
                 succeeded.append(activity)
             case SagaStepStatus.FAILED:
@@ -857,6 +883,8 @@ class ActivityJournalEventKind(StrEnum):
     """Closed pure event vocabulary projected into saga evidence."""
 
     STEP_STARTED = "step_started"
+    STEP_OBSERVATION_NOT_READY = "step_observation_not_ready"
+    STEP_OBSERVATION_RESTARTED = "step_observation_restarted"
     STEP_SUCCEEDED = "step_succeeded"
     STEP_FAILED = "step_failed"
     STEP_UNSUPPORTED = "step_unsupported"
@@ -890,6 +918,7 @@ class ActivityJournalEvent:
     ordinal: int
     kind: ActivityJournalEventKind
     activity_id: str | None = None
+    attempt: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_id, str) or not self.event_id.strip():
@@ -902,6 +931,16 @@ class ActivityJournalEvent:
             raise TypeError("activity journal kind must be ActivityJournalEventKind")
         if self.activity_id is not None and not self.activity_id.strip():
             raise ValueError("activity journal activity id must be non-empty text")
+        if self.attempt is not None and (
+            type(self.attempt) is not int or not 1 <= self.attempt <= 2_147_483_647
+            or self.activity_id is None
+        ):
+            raise ValueError("activity journal attempt coordinate is invalid")
+        if self.kind in (
+            ActivityJournalEventKind.STEP_OBSERVATION_NOT_READY,
+            ActivityJournalEventKind.STEP_OBSERVATION_RESTARTED,
+        ) and (self.activity_id is None or self.attempt is None):
+            raise ValueError("explicit observation event requires activity and attempt")
 
 
 @dataclass(frozen=True)
@@ -939,6 +978,13 @@ def project_activity_journal(
     compensation_uncertain_by_step: dict[str, ActivityJournalEvent] = {}
     compensation_event_by_step: dict[str, ActivityJournalEvent] = {}
     started_steps: set[str] = set()
+    native_ids = {
+        activity.activity_id.value for activity in plan.activities
+        if type(activity.operation) is ObserveManagementBootstrap
+        and activity.operation.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED
+    }
+    native_attempts: dict[str, int | None] = {}
+    waiting_observations: set[str] = set()
 
     for event in events:
         if event.activity_id is not None and event.activity_id not in plan_ids:
@@ -952,11 +998,51 @@ def project_activity_journal(
             continue
 
         step_id = SagaStepId(event.activity_id)
+        native = event.activity_id in native_ids
+        if event.kind in (
+            ActivityJournalEventKind.STEP_OBSERVATION_NOT_READY,
+            ActivityJournalEventKind.STEP_OBSERVATION_RESTARTED,
+        ) and (not native or event.attempt is None):
+            raise SagaJournalError("explicit observation requires native attempt evidence")
+        if native and event.kind in (
+            ActivityJournalEventKind.STEP_SUCCEEDED,
+            ActivityJournalEventKind.STEP_FAILED,
+            ActivityJournalEventKind.STEP_UNSUPPORTED,
+            ActivityJournalEventKind.STEP_UNCERTAIN,
+            ActivityJournalEventKind.STEP_OBSERVATION_NOT_READY,
+        ):
+            if event.attempt != native_attempts.get(event.activity_id):
+                raise SagaJournalError("native result does not match the active attempt")
+            if event.attempt is not None and (
+                event.activity_id not in event_by_step or event.activity_id in uncertain_by_step
+            ):
+                raise SagaJournalError("native result requires one active read")
         match event.kind:
             case ActivityJournalEventKind.STEP_STARTED:
+                if native:
+                    if event.attempt not in (None, 1):
+                        raise SagaJournalError("ordinary native start requires the first attempt")
+                    native_attempts[event.activity_id] = event.attempt
                 saga_events.append(SagaStepStarted(step_id))
                 event_by_step[event.activity_id] = event
                 started_steps.add(event.activity_id)
+            case ActivityJournalEventKind.STEP_OBSERVATION_NOT_READY:
+                if (event.activity_id not in event_by_step
+                        or event.activity_id in uncertain_by_step):
+                    raise SagaJournalError("not-ready observation requires an active native read")
+                saga_events.append(SagaObservationNotReady(step_id))
+                event_by_step.pop(event.activity_id)
+                waiting_observations.add(event.activity_id)
+            case ActivityJournalEventKind.STEP_OBSERVATION_RESTARTED:
+                prior = native_attempts.get(event.activity_id)
+                if (event.activity_id not in waiting_observations or prior is None
+                        or event.attempt != prior + 1
+                        or event.activity_id in uncertain_by_step):
+                    raise SagaJournalError("native restart requires the immediate waiting predecessor")
+                saga_events.append(SagaObservationRestarted(step_id))
+                native_attempts[event.activity_id] = event.attempt
+                waiting_observations.remove(event.activity_id)
+                event_by_step[event.activity_id] = event
             case ActivityJournalEventKind.STEP_SUCCEEDED:
                 saga_events.append(SagaStepSucceeded(step_id))
                 event_by_step.pop(event.activity_id, None)

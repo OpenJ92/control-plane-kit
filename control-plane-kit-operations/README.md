@@ -57,6 +57,61 @@ The Postgres store bundle owns operational records for:
 
 Stores expose persistence operations but never commit independently.
 
+## Exact secret selections in desired graphs
+
+`GraphAuthoringService` accepts an injected `SecretVersionMetadataReader`.
+An explicit version change uses `SetDesiredGraphCommand.actor_scopes` containing
+`SECRET_PROVIDER_USE` and `explicit_secret_choices`, a mapping from node IDs to
+tuples of Core `SecretVersionSelection` values. Metadata lookup reads only an
+existing named version; it does not resolve secret bytes or choose latest.
+
+The service reads metadata outside the transaction, then checks the original
+graph lineage, product documents, effective deliveries and current provider and
+reference admission before committing the selected desired graph. Its private
+preparation is scoped to one service invocation and one bound transaction.
+Compatible unchanged selections carry forward without provider calls. Selection
+does not prove installation or preserve authorization after revocation.
+
+Embedding a new selected value in a graph does not implicitly request metadata
+preparation. The planning command and saved-draft selection share the admission
+checks and refuse unprepared new selections. Saved revisions remain immutable;
+historical replay validates original material rather than today's desired
+version. These entrances do not yet expose the explicit preparation workflow.
+
+Runtime translation preserves authored selections and the exact version recorded
+by active generated-ingress custody. Stop and removal do not require fresh
+generated secret lookup. Version-bound execution grants, adapter qualification
+and installation/recovery evidence are later integration steps; authoring support
+alone is not readiness to execute a versioned secret update.
+
+## Receiver Health And History
+
+Fresh signed health preparations address stable workload and gateway receiver
+identities. The request's separate `authority_context` retains the exact approved
+authored graph and realized projection. Operations composes Core's receiver V2
+values and verifiers; external adapters still own signing and delivery.
+
+`ReceiverHealthEffectPreparationRecord` uses the closed
+`health-effect-preparation.v2` envelope. The original
+`HealthEffectPreparationRecord` and V1 bytes remain readable as history. Neither
+record grants current permission: fresh start, signing reload and fresh fold
+check current receiver membership, original plan/approval, actor, fence, keys
+and the retained validity interval. Live signing pairs accept only V2.
+
+Standalone reload and nested fold acquire the receiver lifecycle lock before
+request, ordered runs, attempt, session and workspace rows. A nested reload uses
+only the same transaction's held prefix. It refuses changed or foreign evidence
+without retry. Historical replay checks original evidence without consulting
+current selection, retirement, signing keys or time. V2 history structurally
+decodes original common configuration; V1 history does not.
+
+The owner examples are `tests/receiver_health_execution_fixture.py` and the
+managed application chain. Their fresh positives use DESIRED initial deployment;
+the sampled A/B/C worlds retain pending introductions across desired revisions.
+Accepted-current update coverage belongs to #1912. O2 implementation validation
+is pending on [PR #1915](https://github.com/OpenJ92/control-plane-kit/pull/1915);
+these examples do not establish provider or published-image acceptance.
+
 ## Current Schema Installation
 
 Operations owns one exact current Postgres schema. `install_schema()` creates
@@ -97,6 +152,61 @@ short transaction: record durable intent
 
 No Postgres transaction or lock may span Docker, filesystem, provider, network,
 health, or other external IO.
+
+## Receiver authoring context
+
+`ReceiverAuthoringContextReadService(factory).read(query, context=context)`
+returns exact selected public receiver configuration and recorded provenance
+from one committed database snapshot. `ReceiverAuthoringContextQuery` names a
+workspace, optional complete `ReceiverLifecycleExpectation`, and optional
+`pending_draft={"draft_id": ..., "expected_head_revision": ...}`. The trusted
+operator needs both `INSTANCE_WORKSPACE_READ` and `DELEGATION_KEY_READ` in that
+workspace before the factory is called. Existing graph reads stay redacted.
+
+The `receiver-authoring-context.v1` descriptor contains `workspace_id`, the five
+`expectation` pins, `current`, optional `desired`, and optional `pending_draft`.
+Each assigned source contains its graph/projection IDs and complete ordered
+receiver list. A receiver contains its source-specific `binding`, literal
+`configuration_artifact`, immutable `origin` references and factual
+`lifecycle` (`current` or `pending`). The draft additionally carries its exact
+ID/head. A receiver-free legacy draft can have an explicitly null projection;
+an absent desired source differs from an assigned source with no receivers.
+
+This non-executing example explains the association:
+
+1. Assume accepted current graph A contains receiver X, established by the
+   existing advancement owner after its completion prerequisites. Desired B
+   retains X with different selected public configuration.
+2. Read A and B together. X appears once in each source with that source's exact
+   artifact bytes. Both entries retain X's original introducing action; B does
+   not become accepted merely because it is desired.
+3. Author proposal C using the appropriate source's material and all five
+   captured pins. Later admission checks current truth again; a concurrent
+   pointer change makes the old expectation stale. This example proves no
+   accepted managed update for #1912.
+4. For a pending receiver, name the exact live draft/head. A later revision of
+   that same draft keeps its original introduction. Reading a historical or
+   tombstoned head is refused; omission does not free a reserved receiver ID.
+5. If an original command is interrupted, retry with its retained prepared
+   artifact and receipt. Do not use a new context read to regenerate that
+   command, replace its receiver or reselect its verification keys.
+
+The read returns at most 64 total source bindings, counting duplicates. Its
+shared database budget is 1,024 SELECTs, 4,096 returned rows and 8 MiB of scalar
+values, with pre-fetch SQL bounds: graph/projection documents 1 MiB, selected
+configuration and introducing payloads 64 KiB, ancillary text 2 KiB. Arbitrary
+record metadata is excluded. Logical query/response bodies are capped at
+16 KiB/1 MiB using compact sorted JSON, `ensure_ascii=False`, `allow_nan=False`,
+then UTF-8 encoding. Malformed, stale, corrupt or over-budget contexts fail as
+a whole; there is no pagination or partial authoring material.
+
+The snapshot is read-only and may already be superseded at delivery. It grants
+no admission, signing, provider-health or retention authority and creates no
+action/history/identity. Core catalogue and Operations mapping do not establish
+actual HTTP/MCP transport support. Servers #238 must adopt the accepted package
+coordinates together with query decoding, both scopes and separate wire/envelope
+bounds before deploying this capability; installed catalogues can automatically
+expose routes and MCP resources.
 
 ## Execution Boundary
 
@@ -178,6 +288,45 @@ mutation.
 There is intentionally no upgrade, version, ledger, backfill, or compatibility
 API. Operators must deliberately reset a noncurrent owned namespace after
 separately preserving any data they value.
+
+## Exact-version consumer authorization
+
+`AuthorizeSecretVersionUse` and `AuthorizedSecretVersionUse` are independent
+from the operational command/record types. The authorization service locks the
+workspace correlation, rechecks current provider/reference admission, and
+inserts or replays one immutable version-bound record in the existing unit of
+work. Revocation blocks reuse; changed intent at the same correlation conflicts.
+Operational correlation and fingerprint recipes remain unchanged.
+
+Runtime enumeration returns `OperationalSecretUse` or an exact Core
+`SecretVersionSelection`. A delivery and a probe may share a reference/use
+without sharing authority. Cleanup does not acquire consumer resolution work.
+Both dispatch and recovery check the actual invocation arm before authorization
+or adapter IO. Composition declares each arm explicitly:
+
+```python
+registration = RuntimeAdapterRegistration(
+    adapter=adapter,
+    exact_version_execute=True,
+    exact_version_execute_with_authority=False,
+    exact_version_observe=True,
+)
+```
+
+This declaration is a trusted composition choice, not conformance evidence.
+The owning examples in
+[`test_secret_version_dispatch.py`](tests/test_secret_version_dispatch.py)
+exercise both execution arms and wrong-grant refusals. Production adapters
+must separately prove exact resolution and installation. Receipt admission,
+fold/advance acceptance, and production qualification remain subsequent gates.
+
+The current authorization schema adds a required role and three consumer-only
+columns with conditional constraints. Raw node-control signing readers require
+the operational role. Generic reads validate role and authorization identity;
+current-schema verification scans consumer records in bounded batches.
+Old namespaces are refused unchanged: this change supplies no migration,
+reset, historical relabeling, or fabricated version. Database adoption must be
+separately scoped by the consuming server deployment.
 
 ## Package Map
 

@@ -18,6 +18,7 @@ class ReadProjectionKind(StrEnum):
     """Closed operator read projection identities."""
 
     WORKSPACE = "workspace"
+    RECEIVER_AUTHORING_CONTEXT = "receiver-authoring-context"
     CURRENT_GRAPH = "current-graph"
     DESIRED_GRAPH = "desired-graph"
     OPERATOR_GRAPH = "operator-graph"
@@ -52,6 +53,7 @@ class ReadProjectionKind(StrEnum):
     SECRET_REFERENCE_DETAIL = "secret-reference-detail"
     DELEGATION_KEYS = "delegation-keys"
     GATEWAY_VERIFIER_CONFIGURATION = "gateway-verifier-configuration"
+    WORKLOAD_VERIFIER_CONFIGURATION = "workload-verifier-configuration"
     GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
     GATEWAY_PROBE_TIMELINE = "gateway-probe-timeline"
 
@@ -73,6 +75,8 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
     REDACTED_DELEGATION_KEY = "redacted-delegation-key"
     PUBLIC_GATEWAY_VERIFIER_CONFIGURATION = "public-gateway-verifier-configuration"
+    PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION = "public-workload-verifier-configuration"
+    PUBLIC_RECEIVER_AUTHORING_CONTEXT = "public-receiver-authoring-context"
     DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
 
@@ -296,6 +300,12 @@ class _ProjectionDefinition:
 
 _CANONICAL_PROJECTIONS = (
     _ProjectionDefinition(
+        "read.receiver-authoring-context",
+        ReadProjectionKind.RECEIVER_AUTHORING_CONTEXT,
+        "ReceiverAuthoringContextReadResponse",
+        ReadProjectionPolicy.PUBLIC_RECEIVER_AUTHORING_CONTEXT,
+    ),
+    _ProjectionDefinition(
         "read.delegation-keys",
         ReadProjectionKind.DELEGATION_KEYS,
         "DelegationSigningKeyCollectionReadResponse",
@@ -308,6 +318,12 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.GATEWAY_VERIFIER_CONFIGURATION,
         "GatewayVerifierConfigurationReadResponse",
         ReadProjectionPolicy.PUBLIC_GATEWAY_VERIFIER_CONFIGURATION,
+    ),
+    _ProjectionDefinition(
+        "read.workload-verifier-configuration",
+        ReadProjectionKind.WORKLOAD_VERIFIER_CONFIGURATION,
+        "WorkloadVerifierConfigurationReadResponse",
+        ReadProjectionPolicy.PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION,
     ),
     _ProjectionDefinition(
         "read.gateway-probe-detail",

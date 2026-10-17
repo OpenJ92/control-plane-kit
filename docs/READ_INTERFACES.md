@@ -343,3 +343,32 @@ bounds memory and transfer, not total work or lock duration; no global scan runs
 per HTTP read. An older schema is rejected without writes. The retained acceptance
 installation stays pinned; no migration, reset, backfill, history import or
 new-UI compatibility with that installation is implied.
+
+Original installation sources (#1987): each new configuration acceptance retains
+a private canonical `accepted-installation-sources.v1` document alongside its
+existing artifact slots. Advancement events and actions expose only the source
+count and document digest. Explicit empty documents are valid; missing commitments
+are not interpreted as empty legacy evidence. Full acceptance, command replay and
+current-schema validation prove the document and its exact original attempts.
+Artifact-scoped configuration and cleanup reads retain their existing semantics.
+
+Unchanged consumers carry the original acceptance revision and both request and
+outcome fingerprints verbatim. Generated connector material additionally commits
+the original allocation start, its direct successful terminal and all six durable
+event columns through that terminal. Fresh discovery examines the full available
+bounded journal; historical proof reads the retained prefix. Neither path uses a
+latest-success search or today's credential permissions as historical evidence.
+
+An actual qualifying provider observation may prove installation for publication.
+It does not produce a direct completion or release outstanding claims. Schema
+changes add three required fields and three checks to the existing acceptance
+table, with no migration, backfill, reset or production-data repair. This local
+implementation has passing focused Docker evidence. The first full Operations
+gate reported 2,781 tests with 64 failure and 216 error entries; all 280 entries
+subsequently received reviewed focused green evidence. The second full gate ran
+2,781 tests with one failure and no errors: a stale atlas-digest test expectation.
+The one-literal correction then passed all ten existing atlas-reader tests,
+compilation and clean import. This is combined full-run and focused-correction
+evidence, not a green full-suite run on the corrected candidate. Parent acceptance
+remains a separate gate. No published or live compatibility with an older
+installation is established.

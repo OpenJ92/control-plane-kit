@@ -104,6 +104,13 @@ class RegisteredProductStore:
         workspace_id: str,
         reference: ProductReference,
     ) -> RegisteredProduct:
+        return self._get(workspace_id, reference, for_update=False)
+
+    def get_for_update(self, workspace_id: str, reference: ProductReference) -> RegisteredProduct:
+        """Fence fresh admission against concurrent registration revocation."""
+        return self._get(workspace_id, reference, for_update=True)
+
+    def _get(self, workspace_id, reference, *, for_update):
         row = self._connection.execute(
             """
             SELECT
@@ -120,7 +127,7 @@ class RegisteredProductStore:
             FROM cpk_registered_products
             WHERE workspace_id = %s
               AND descriptor_sha256 = %s
-            """,
+            """ + (" FOR UPDATE" if for_update else ""),
             (workspace_id, reference.descriptor_sha256.value),
         ).fetchone()
         if row is None:
@@ -152,6 +159,21 @@ class RegisteredProductStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_registered(row) for row in rows)
+
+    def _configuration_product(self, workspace_id, reference, read):
+        columns = (("registration_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("product_reference", "json", 8192), ("descriptor_document", "json", 1048576),
+            ("descriptor_content", "text", 1048576), ("source", "json", 8192),
+            ("imported_by", "text", 2048), ("imported_at", "time", 64),
+            ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_registered_products", columns,
+            "workspace_id=%s AND descriptor_sha256=%s", (workspace_id, reference.descriptor_sha256.value))
+        if not rows:
+            raise ProductRegistrationNotFound("registered product was not found")
+        product = _row_to_registered(rows[0])
+        if product.reference != reference or product.status is not RegisteredProductStatus.ACTIVE:
+            raise ProductRegistrationNotFound("registered product is unavailable")
+        return product
 
     def revoke(
         self,

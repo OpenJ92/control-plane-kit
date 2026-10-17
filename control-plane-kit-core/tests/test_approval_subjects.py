@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from copy import deepcopy
+from dataclasses import fields
+from hashlib import sha256
+
+import rfc8785
 
 from control_plane_kit_core.approval_subjects import (
     ActivityPlanApprovalSubject,
@@ -12,6 +17,49 @@ from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 
 
 class ApprovalSubjectTests(unittest.TestCase):
+    def cleanup_subject(self, digest="a" * 64):
+        member = next((item for item in fields(ActivityPlanApprovalSubject)
+                       if item.name == "proposal_fingerprint"), None)
+        self.assertIsNotNone(member, "#1928 exact cleanup approval subject is missing")
+        self.assertTrue(member.kw_only)
+        return ActivityPlanApprovalSubject("plan-a", proposal_fingerprint=digest)
+
+    def test_cleanup_subject_binds_exact_proposal_without_changing_legacy_digest(self):
+        subject = self.cleanup_subject()
+        descriptor = {"kind": "activity-plan", "profile": "configuration-cleanup-approval.v1",
+                      "plan_id": "plan-a", "proposal_fingerprint": "a" * 64}
+        self.assertEqual(subject.descriptor(), descriptor)
+        self.assertEqual(approval_subject_from_descriptor(descriptor), subject)
+        self.assertEqual(subject.review_digest, sha256(
+            b"control-plane-kit.configuration-cleanup-approval.v1\x00" + rfc8785.dumps(descriptor)).hexdigest())
+        self.assertNotEqual(subject.review_digest, self.cleanup_subject("b" * 64).review_digest)
+        self.assertEqual(subject.subject_id, "plan-a")
+        legacy = ActivityPlanApprovalSubject("plan-a")
+        self.assertEqual(legacy.descriptor(), {"kind": "activity-plan", "plan_id": "plan-a"})
+        self.assertEqual(legacy.review_digest, sha256(b"activity-plan:plan-a").hexdigest())
+        self.assertNotEqual(subject.review_digest, legacy.review_digest)
+
+    def test_cleanup_subject_rejects_partial_unknown_and_mutated_profiles(self):
+        original = self.cleanup_subject().descriptor()
+        cases = [{**original, "profile": "UNKNOWN-CANARY"}, {**original, "extra": "EXTRA-CANARY"},
+                 {**original, "proposal_fingerprint": True}, {**original, "proposal_fingerprint": "A" * 64},
+                 {**original, "proposal_fingerprint": None}]
+        for key in original:
+            candidate = deepcopy(original)
+            del candidate[key]
+            cases.append(candidate)
+        for candidate in cases:
+            with self.subTest(candidate=candidate), self.assertRaises((TypeError, ValueError)):
+                approval_subject_from_descriptor(candidate)
+        for invalid in (True, "x", "A" * 64, [], {}):
+            with self.subTest(invalid=invalid):
+                subject = self.cleanup_subject()
+                object.__setattr__(subject, "proposal_fingerprint", invalid)
+                with self.assertRaises((TypeError, ValueError)):
+                    subject.descriptor()
+                with self.assertRaises((TypeError, ValueError)):
+                    _ = subject.review_digest
+
     def test_activity_plan_subject_has_stable_identity_digest_and_round_trip(self) -> None:
         subject = ActivityPlanApprovalSubject("plan-a")
 

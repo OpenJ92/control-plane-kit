@@ -1,0 +1,99 @@
+"""#1903 generic publication pins/old receipts survive the existing gateway composition."""
+
+from dataclasses import replace
+import unittest
+
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+from control_plane_kit_operations.desired_realized_projections import (
+    prepare_desired_realized_projection_publication, publish_desired_realized_projection_in_unit_of_work,
+)
+from control_plane_kit_operations.gateway_key_rotation_overlap import GatewayKeyRotationOverlapProjectionConflict
+from control_plane_kit_operations.records import RealizedGraphProjectionRecord
+from tests import test_gateway_key_rotation_overlap_projection as existing
+
+
+class ReceiverGatewayPublicationFormatTests(unittest.TestCase):
+    # Reuse established real-store setup without collecting its tests again.
+    setUp = existing.GatewayKeyRotationOverlapProjectionTests.setUp
+    tearDown = existing.GatewayKeyRotationOverlapProjectionTests.tearDown
+    unit_of_work = existing.GatewayKeyRotationOverlapProjectionTests.unit_of_work
+    seed = existing.GatewayKeyRotationOverlapProjectionTests.seed
+    command = existing.GatewayKeyRotationOverlapProjectionTests.command
+    service = existing.GatewayKeyRotationOverlapProjectionTests.service
+    authored_graph = staticmethod(existing.GatewayKeyRotationOverlapProjectionTests.authored_graph)
+    public_key = staticmethod(existing.GatewayKeyRotationOverlapProjectionTests.public_key)
+    projection = classmethod(existing.GatewayKeyRotationOverlapProjectionTests.projection.__func__)
+    signing_key = classmethod(existing.GatewayKeyRotationOverlapProjectionTests.signing_key.__func__)
+    rotation = staticmethod(existing.GatewayKeyRotationOverlapProjectionTests.rotation)
+
+    def test_old_gateway_receipt_preserves_legacy_reference_outside_new_pin_language(self):
+        command = self.command()
+        # Retain the original legacy projection construction, then publish its
+        # old generic command against an actual legacy-sized settled lineage.
+        with self.unit_of_work() as uow:
+            prepared = prepare_desired_realized_projection_publication(uow, "workspace-a",
+                command.session_id, command.idempotency_key.value)
+            value = self.service()._publication_command(uow, command, prepared=prepared,
+                created_at="2026-08-02T02:00:00Z")
+            original = uow.stores.realized_graphs.get("projection-a")
+            legacy = RealizedGraphProjectionRecord.from_graph(projection_id="p" * 257,
+                workspace_id=original.workspace_id,
+                source_authored_graph_id=original.source_authored_graph_id,
+                projection_kind=original.projection_kind, projection_key="legacy-reference",
+                graph=DEFAULT_GRAPH_CODEC.decode(original.graph_descriptor),
+                created_by=original.created_by, created_at=original.created_at)
+            uow.stores.realized_graphs.save(legacy)
+            uow.stores.workspaces.set_current_graph("workspace-a", "graph-a", legacy.projection_id)
+            workspace = uow.stores.workspaces.set_desired_graph("workspace-a", "graph-a", legacy.projection_id)
+            uow.commit()
+        command = replace(command, expected_current_realized_projection_id=legacy.projection_id,
+            expected_desired_realized_projection_id=legacy.projection_id,
+            expected_desired_graph_revision=workspace.desired_graph_revision)
+        with self.assertRaises(GatewayKeyRotationOverlapProjectionConflict):
+            self.service().execute(command)
+        old = replace(value, receiver_lifecycle=None, expected_realized_projection_id=legacy.projection_id,
+            expected_desired_graph_revision=workspace.desired_graph_revision)
+        with self.unit_of_work() as uow:
+            prepared = prepare_desired_realized_projection_publication(uow, "workspace-a",
+                command.session_id, command.idempotency_key.value)
+            receipt = publish_desired_realized_projection_in_unit_of_work(uow, old, prepared=prepared,
+                created_at="2026-08-02T02:00:00Z", action_id="old-long-pin-publication")
+            uow.commit()
+        replay = self.service("unused-action").execute(command)
+        self.assertTrue(replay.publication.replayed)
+        self.assertEqual(replay.publication.action, receipt.action)
+
+    def test_fresh_gateway_publication_forwards_the_original_five_pins(self):
+        command = self.command()
+        result = self.service().execute(command)
+        self.assertEqual(result.publication.action.payload.get("receiver_lifecycle"), dict(
+            current_graph_id=command.expected_authored_graph_id,
+            current_realized_projection_id=command.expected_current_realized_projection_id,
+            desired_graph_id=command.expected_authored_graph_id,
+            desired_realized_projection_id=command.expected_desired_realized_projection_id,
+            desired_graph_revision=command.expected_desired_graph_revision))
+
+    def test_owned_old_publication_receipt_selects_old_format_after_supersession(self):
+        command = self.command()
+        with self.unit_of_work() as uow:
+            prepared = prepare_desired_realized_projection_publication(uow, "workspace-a",
+                command.session_id, command.idempotency_key.value)
+            value = self.service()._publication_command(uow, command, prepared=prepared,
+                created_at="2026-08-02T02:00:00Z")
+            self.assertTrue(hasattr(value, "receiver_lifecycle"), "#1903 generic publication lacks expectation")
+            # A real legacy-only old child, committed before the resumed outer
+            # composition. It has no new member and no caller bypass parameter.
+            old = replace(value, receiver_lifecycle=None)
+            original = publish_desired_realized_projection_in_unit_of_work(uow, old, prepared=prepared,
+                created_at="2026-08-02T02:00:00Z", action_id="original-old-publication")
+            uow.commit()
+        self.assertNotIn("receiver_lifecycle", original.action.payload)
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.set_desired_graph("workspace-a", command.expected_authored_graph_id,
+                command.expected_desired_realized_projection_id)
+            uow.commit()
+        replay = self.service("unused-action").execute(command)
+        self.assertTrue(replay.publication.replayed)
+        self.assertEqual(replay.publication.action, original.action)
+        with self.assertRaises(GatewayKeyRotationOverlapProjectionConflict):
+            self.service().execute(replace(command, expected_rotation_version=command.expected_rotation_version + 1))
