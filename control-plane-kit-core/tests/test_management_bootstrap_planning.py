@@ -1382,7 +1382,7 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
             current, _ = ManagedSelectedConsumerUpdateTests().pair("version")
         else:
             current, _, _, _ = ManagedImageUpdateTests().pair()
-        wrapper = current.node("workload").configuration_artifacts[0]
+        wrapper = self.wrapper(current)
         document = json.loads(wrapper.content)
         key = document["verifiers"][0]["public_keys"][0]
         document["verifiers"][0]["public_keys"].append({**key,
@@ -1393,7 +1393,12 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
     def with_wrapper(self, graph, wrapper):
         node = graph.node("workload")
         return graph.update_node(replace(node,
-            configuration_artifacts=(wrapper, *node.configuration_artifacts[1:])))
+            configuration_artifacts=tuple(wrapper if value.artifact_id == "receiver" else value
+                for value in node.configuration_artifacts)))
+
+    def wrapper(self, graph):
+        return next(value for value in graph.node("workload").configuration_artifacts
+            if value.artifact_id == "receiver")
 
     def test_refresh_reconciles_before_desired_protected_health_without_other_changes(self):
         for selected in (False, True):
@@ -1408,7 +1413,7 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
                 self.assertEqual(plan_codec.decode(plan_codec.encode(plan)), plan)
                 reconcile, = (a for a in plan.activities if isinstance(a.operation, ReconcileNode))
                 self.assertEqual(reconcile.operation.target.node_id, "workload")
-                self.assertIs(reconcile.impact, core.ActivityImpact.DISRUPTIVE)
+                self.assertEqual(reconcile.impact.value, "disruptive")
                 health, = (a for a in plan.activities if isinstance(a.operation, core.ObserveNodeHealth))
                 self.assertIn(reconcile.activity_id, predecessors(plan, health))
                 self.assertIs(health.operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
@@ -1429,7 +1434,7 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
     def test_equal_graph_is_empty_but_equivalent_wrapper_rewrites_are_not_refresh(self):
         _, current = self.pair()
         self.assertEqual(self.compile(current, current).activities, ())
-        wrapper = current.node("workload").configuration_artifacts[0]
+        wrapper = self.wrapper(current)
         document = json.loads(wrapper.content)
         document["verifiers"].reverse()
         for family in document["verifiers"]:
@@ -1441,7 +1446,7 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
 
     def test_every_receiver_target_field_and_declaration_are_preserved(self):
         current, desired = self.pair()
-        wrapper = desired.node("workload").configuration_artifacts[0]
+        wrapper = self.wrapper(desired)
         for field, value in (("workspace_id", "other-workspace"), ("runtime_id", "other-runtime"),
                 ("node_id", "other-node"), ("provider_socket_name", "other"), ("receiver_id", "b" * 32)):
             with self.subTest(field=field):
@@ -1462,14 +1467,15 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
             for content in ('{}', '{"profile":"workload-node-control-configuration.v1"}'):
                 with self.subTest(side=side, content=content):
                     pair = [current, desired]
-                    wrapper = pair[side].node("workload").configuration_artifacts[0]
+                    wrapper = self.wrapper(pair[side])
                     pair[side] = self.with_wrapper(pair[side], replace(wrapper, content=content, source_digest=None))
                     self.refused(*pair)
 
     def test_wrapper_slot_and_other_graph_deltas_are_not_verifier_only(self):
         current, desired = self.pair(selected=True)
         node = desired.node("workload")
-        wrapper, application = node.configuration_artifacts
+        wrapper = self.wrapper(desired)
+        application = next(value for value in node.configuration_artifacts if value.artifact_id == "application")
         for changed in (replace(wrapper, artifact_id="other"), replace(wrapper, target_path="/etc/other.json"),
                 replace(wrapper, media_type=ConfigurationMediaType.TEXT),
                 replace(wrapper, file_mode=ConfigurationFileMode.OWNER_READ_ONLY)):
@@ -1477,8 +1483,9 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
                     media=changed.media_type, mode=changed.file_mode):
                 self.refused(current, self.with_wrapper(desired, changed))
         cases = (
-            desired.update_node(replace(node, configuration_artifacts=(wrapper,
-                replace(application, content='{"mode":"green"}', source_digest=None)))),
+            desired.update_node(replace(node, configuration_artifacts=tuple(
+                replace(value, content='{"mode":"green"}', source_digest=None)
+                if value.artifact_id == application.artifact_id else value for value in node.configuration_artifacts))),
             desired.update_node(replace(node, metadata={**node.metadata, "oci_image":
                 "registry.example.invalid/apps/receiver@sha256:" + "c" * 64})),
             desired.update_node(replace(node, secret_selections=(replace(node.secret_selections[0], version_id="version-2"),))),
