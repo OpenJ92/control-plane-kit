@@ -84,3 +84,11 @@ These seven target methods are tests-first under #1978 plan6235493179,
 clarification6235526740 and North release6235539397. Missing-relation/order red
 must come from the unchanged owning Core Docker gate; setup errors earn no causal
 credit. No production implementation or runtime acceptance is included here.
+# C5 target review refinements
+
+The variable-bearing composition uses a valid three-family receiver wrapper and
+explicitly asserts the existing strict route codec's depth refusal. It earns no
+isolated causal credit for a new health-only C5 predicate. Separate cases refuse
+a strict-valid verifier change coupled with the declaration transition, and
+gateway wrapper/route targets that agree with each other but name a foreign node
+instead of the actual gateway placement. These remain unexecuted target tests.

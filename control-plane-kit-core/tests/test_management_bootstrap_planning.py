@@ -1696,6 +1696,20 @@ class ManagedDeclarationUpdateTests(unittest.TestCase):
             replace(value, origin="http://peer:9000") if value == peer else value for value in routes.targets))))
         self.refused(current, self.with_routes(desired,
             replace(routes, gateway_target=replace(routes.gateway_target, receiver_id="f" * 32))))
+        foreign_pair = []
+        for graph in (current, desired):
+            wrapper = self.artifact(graph, "gateway", "gateway-control")
+            configuration = self.wrapper_codec.decode_bytes(wrapper.content.encode())
+            foreign_target = replace(configuration.target,
+                node_id=NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, "foreign-gateway"))
+            candidate = self.with_artifact(graph, "gateway", wrapper.artifact_id, replace(wrapper,
+                content=self.wrapper_codec.encode_bytes(replace(configuration, target=foreign_target)).decode()))
+            route_values = self.routes(graph)
+            foreign_pair.append(self.with_routes(candidate, replace(route_values, gateway_target=foreign_target,
+                targets=tuple(replace(value, target=foreign_target) if value.target == configuration.target
+                    else value for value in route_values.targets))))
+        # Both strict artifacts agree; only the actual gateway placement disagrees.
+        self.refused(*foreign_pair)
         decoy = replace(self.artifact(current, "gateway", "management-routes"),
             artifact_id="decoy", target_path="/etc/gateway/decoy.json")
         for sides in ((0,), (1,), (0, 1)):
@@ -1736,22 +1750,36 @@ class ManagedDeclarationUpdateTests(unittest.TestCase):
         declaration = core.WorkloadNodeControlSurfaceDeclaration(surface(
             kinds=(NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS), variable=True),
             profile=core.WorkloadNodeControlSurfaceDeclarationProfile.V2)
-        # Deliberately unsupported route material bypasses the strict route producer,
-        # not the graph/plan validator under test.
+        # A valid three-family wrapper composes with a route rejected by the
+        # existing depth law; this is not isolated proof of a new C5 predicate.
         wrapper = self.artifact(desired, "workload", "receiver")
-        document = json.loads(wrapper.content)
-        document["declaration"] = declaration.descriptor()
+        fixture = receiver_fixtures.ReceiverConfigurationTests()
+        fixture.setUp()
+        document = fixture.document(declaration)
+        document["target"] = json.loads(wrapper.content)["target"]
+        configured = self.wrapper_codec.decode(document)
+        self.assertEqual(configured.declaration, declaration)
+        self.assertEqual(len(configured.verifiers), 3)
         candidate = desired.update_node(replace(node, block_spec=replace(node.block_spec,
             control_surfaces=(declaration.surface,))))
         candidate = self.with_artifact(candidate, "workload", "receiver",
-            replace(wrapper, content=json.dumps(document), source_digest=None))
+            replace(wrapper, content=self.wrapper_codec.encode_bytes(configured).decode(), source_digest=None))
         route = self.artifact(candidate, "gateway", "management-routes")
         route_document = json.loads(route.content)
         for value in route_document["targets"]:
             if value["target_id"] == "retained-alias":
                 value["declaration"] = declaration.descriptor()
+        with self.assertRaises(core.ReceiverManagementRoutesError):
+            self.routes_codec.decode(route_document)
         self.refused(current, self.with_artifact(candidate, "gateway", "management-routes",
             replace(route, content=json.dumps(route_document), source_digest=None)))
+        document = json.loads(wrapper.content)
+        document["verifiers"][0]["issuer"] = "changed-public-issuer"
+        configured = self.wrapper_codec.decode(document)
+        self.assertEqual(configured.declaration,
+            self.wrapper_codec.decode_bytes(wrapper.content.encode()).declaration)
+        self.refused(current, self.with_artifact(desired, "workload", "receiver",
+            replace(wrapper, content=self.wrapper_codec.encode_bytes(configured).decode(), source_digest=None)))
         for metadata in ({**node.metadata, "oci_image": "registry.example.invalid/apps/receiver@sha256:" + "f" * 64},
                 {**node.metadata, "product_identity": current.node("workload").metadata["product_identity"]},
                 {**node.metadata, "product_descriptor_digest": current.node("workload").metadata["product_descriptor_digest"]},
