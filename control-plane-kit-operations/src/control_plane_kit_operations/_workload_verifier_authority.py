@@ -63,15 +63,14 @@ def require_verifier_refresh_authority(stores, workspace_id, current, desired, p
     if profile is not PlanDerivationProfile.MANAGED_UPDATE_V1 or not plan.ready_for_execution:
         return
     for selected in plan.activities:
-        if (type(selected.operation) is not ReconcileNode
-                or (activity is not None and selected != activity)):
+        if type(selected.operation) is not ReconcileNode:
             continue
         node_id = selected.operation.target.node_id
         if node_id not in current.nodes or node_id not in desired.nodes:
             continue
         nodes = (current.node(node_id), desired.node(node_id))
         runtime = desired.runtimes[nodes[1].runtime_id]
-        # Gateway route replacements belong to the existing add/remove family.
+        # A gateway's own wrapper never substitutes for workload authority.
         if runtime.management is None or node_id == runtime.management.gateway_node_id:
             continue
         if nodes[0].configuration_artifacts == nodes[1].configuration_artifacts:
@@ -84,7 +83,13 @@ def require_verifier_refresh_authority(stores, workspace_id, current, desired, p
                 control_surfaces=node.block_spec.control_surfaces)
             configured.append(ReceiverNodeControlConfigurationCodec().decode_bytes(artifact.content.encode("utf-8")))
         before, after = configured
-        if before.verifiers == after.verifiers:
+        declaration_changed = before.declaration != after.declaration
+        if activity is not None and selected != activity:
+            # Core's admitted coupled pair installs this declaration at X and G.
+            if (not declaration_changed or type(activity.operation) is not ReconcileNode
+                    or activity.operation.target.node_id != runtime.management.gateway_node_id):
+                continue
+        if before.verifiers == after.verifiers and not declaration_changed:
             continue
         if after.target.workspace_id.value != workspace_id:
             raise WorkloadVerifierAuthorityUnavailable(_UNAVAILABLE)

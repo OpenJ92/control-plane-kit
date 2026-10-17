@@ -51,6 +51,21 @@ distinct authored revisions, same registry/repository and changed image digest;
 all other graph values, including receiver bytes and selected artifacts, stay fixed.
 Malformed or incompatible image candidates refuse the managed-update profile.
 
+The same product-reference branch also consumes Core's closed same-image,
+health-only declaration successor with a coupled gateway route replacement.
+Both exact registrations and every affected runtime participant must be active.
+Restoring the successor's control surface and selected wrapper default must
+recover the entire previous registered runtime contract. Unchanged defaults are
+selected structurally and may remain opaque templates. Changed defaults must
+strictly decode, match their respective registered surfaces, and preserve their
+own complete target, verifier families, declaration profile and artifact slot.
+Template receiver identity need not equal the installed instance identity.
+Unrelated defaults and all other contract fields remain exact. Actual graph
+wrappers are independently strict and route origins still use the existing full
+registered/selected route checks. Core owns the health-only delta and ordering;
+the existing authority guard separately binds fresh planning and both installs
+to the workload's complete current public snapshot.
+
 The metadata field does not select image authority: effect lowering consumes the
 registered descriptor's immutable image and the approved instance's declared slot
 payloads. Other existing update families do not gain a global `oci_image` requirement.
