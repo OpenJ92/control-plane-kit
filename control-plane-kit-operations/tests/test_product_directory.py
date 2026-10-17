@@ -19,6 +19,10 @@ from control_plane_kit_core.operations.services import ControlPlaneServiceRole
 from control_plane_kit_operations.cpk_server import CpkServerReadService, CpkServerApplicationError
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.products import ProductRegistrationService, ImportProductDescriptorCommand, InlineDescriptorSource
+from control_plane_kit_operations.read_services import InstanceReadService
+from control_plane_kit_operations.read_pages import (
+    ReadCollection, ReadPageRequest, WorkspaceReadScope, read_cursor_from_mapping,
+)
 
 
 def document(name):
@@ -104,6 +108,41 @@ class ProductDirectoryStoreTests(unittest.TestCase):
         cursor=first['next_cursor'];cursor['scope']['workspace_id']='workspace-b'
         with self.assertRaises(CpkServerApplicationError) as caught:self.app.handle(Request(payload={'after':cursor}))
         self.assertEqual(caught.exception.status,400)
+
+    def test_201_products_cross_maximum_pages_with_direct_http_mcp_parity(self):
+        with self.uow() as unit:
+            for index in range(198):
+                self.records.append(unit.stores.registered_products.register(
+                    workspace_id='workspace-a', descriptor_document=document(f'product-{index:03d}'),
+                    source=InlineDescriptorSource(), imported_by='operator-a',
+                    imported_at='2026-10-17T00:00:00Z',
+                ))
+            unit.commit()
+        cursor = None
+        digests = []
+        for size in (100,100,1):
+            payload = {'limit':100}
+            if cursor is not None:
+                payload['after'] = cursor
+            http = self.app.handle(Request(payload=payload))
+            mcp = self.app.handle(Request(surface='mcp',path_parameters={},
+                payload={'workspace_id':'workspace-a',**payload}))
+            with self.uow() as unit:
+                direct = InstanceReadService(workspace_store=unit.stores.workspaces,
+                    graph_topology_store=unit.stores.graphs,
+                    registered_product_store=unit.stores.registered_products).products(ReadPageRequest(
+                        ReadCollection.REGISTERED_PRODUCTS,WorkspaceReadScope('workspace-a'),100,
+                        None if cursor is None else read_cursor_from_mapping(cursor),
+                    )).descriptor()
+            self.assertEqual(http,mcp)
+            self.assertEqual(http,direct)
+            self.assertEqual(len(http['items']),size)
+            self.assertLessEqual(len(json.dumps(http,ensure_ascii=True,separators=(',',':')).encode()),1048576)
+            digests.extend(item['reference']['descriptor_sha256'] for item in http['items'])
+            cursor = http['next_cursor']
+        self.assertIsNone(cursor)
+        self.assertEqual(digests,sorted(record.reference.descriptor_sha256.value for record in self.records))
+        self.assertEqual(len(set(digests)),201)
 
     def test_detail_preserves_reference_and_omits_values(self):
         record=self.records[0];body=self.detail(record.reference.descriptor_sha256.value)
