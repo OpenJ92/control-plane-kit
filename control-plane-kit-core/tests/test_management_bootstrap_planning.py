@@ -1511,5 +1511,349 @@ class ManagedVerifierRefreshTests(unittest.TestCase):
             self.refused(*pair)
 
 
+class ManagedDeclarationUpdateTests(unittest.TestCase):
+    """#1978: one strict declaration and its matching route move together."""
+
+    compile = ManagedImageUpdateTests.compile
+    refused = ManagedImageUpdateTests.refused
+    wrapper_codec = core.ReceiverNodeControlConfigurationCodec()
+    routes_codec = core.ReceiverManagementRoutesCodec()
+
+    def artifact(self, graph, node, identity):
+        return next(value for value in graph.node(node).configuration_artifacts if value.artifact_id == identity)
+
+    def with_artifact(self, graph, node, identity, artifact):
+        value = graph.node(node)
+        return graph.update_node(replace(value, configuration_artifacts=tuple(
+            artifact if item.artifact_id == identity else item for item in value.configuration_artifacts)))
+
+    def routes(self, graph):
+        return self.routes_codec.decode_bytes(self.artifact(graph, "gateway", "management-routes").content.encode())
+
+    def with_routes(self, graph, routes):
+        artifact = self.artifact(graph, "gateway", "management-routes")
+        return self.with_artifact(graph, "gateway", artifact.artifact_id,
+            replace(artifact, content=self.routes_codec.encode_bytes(routes).decode(), source_digest=None))
+
+    def pair(self, *, reverse=False, selected=False, new_kinds=None):
+        from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
+        base, _, product, _ = ManagedImageUpdateTests().pair()
+        original = self.wrapper_codec.decode_bytes(self.artifact(base, "workload", "receiver").content.encode())
+        readiness = (NodeHealthReadKind.READINESS,)
+        both = (NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS)
+        kinds = (both, readiness) if reverse else (readiness, both)
+        if new_kinds is not None:
+            kinds = (kinds[0], new_kinds)
+        gateway = base.node("gateway")
+        gateway_target = replace(original.target,
+            node_id=NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, "gateway"), receiver_id="b" * 32)
+        gateway_configuration = replace(original, target=gateway_target,
+            declaration=core.WorkloadNodeControlSurfaceDeclaration(gateway.block_spec.control_surfaces[0],
+                profile=core.WorkloadNodeControlSurfaceDeclarationProfile.V2))
+        gateway_wrapper = replace(self.artifact(base, "workload", "receiver"), artifact_id="gateway-control",
+            target_path="/etc/gateway/control.json", content=self.wrapper_codec.encode_bytes(gateway_configuration).decode())
+        peer_target = replace(original.target,
+            node_id=NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, "peer"), receiver_id="c" * 32)
+        peer_wrapper = replace(self.artifact(base, "workload", "receiver"),
+            content=self.wrapper_codec.encode_bytes(replace(original, target=peer_target)).decode())
+        peer = replace(base.node("workload"), node_id="peer",
+            block_spec=replace(base.node("workload").block_spec, role_id="peer"),
+            configuration_artifacts=(peer_wrapper,),
+            endpoints={"control": Endpoint(LiteralAddress("http://peer:8000"), Protocol.HTTP)})
+        delivery = SecretEnvironmentDelivery("APPLICATION_TOKEN", SecretReference("secret://workspace/application"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        graphs = []
+        fixture = receiver_fixtures.ReceiverConfigurationTests()
+        fixture.setUp()
+        for index, health_kinds in enumerate(kinds):
+            declaration = core.WorkloadNodeControlSurfaceDeclaration(
+                surface(kinds=health_kinds),
+                profile=core.WorkloadNodeControlSurfaceDeclarationProfile.V2)
+            document = fixture.document(declaration)
+            document["target"] = original.target.descriptor()
+            configured = self.wrapper_codec.decode(document)
+            wrapper = replace(self.artifact(base, "workload", "receiver"),
+                content=self.wrapper_codec.encode_bytes(configured).decode())
+            contract = replace(product.runtime_contract, control_surfaces=(declaration.surface,),
+                configuration_artifacts=tuple(wrapper if item.artifact_id == "receiver" else item
+                    for item in product.runtime_contract.configuration_artifacts),
+                secret_deliveries=(delivery,) if selected else ())
+            successor = replace(product, identity=replace(product.identity, contract_revision=index + 1),
+                runtime_contract=contract)
+            workload = instantiate_product(successor, "workload", ProductInstanceConfiguration.from_contract(contract))
+            topology_value = topology()
+            current = compile_topology(replace(topology_value, root=replace(topology_value.root,
+                children=(*topology_value.root.children[:2], workload))))
+            route_values = core.ReceiverManagementRoutes(gateway_target, (
+                core.ReceiverManagementRouteBinding("self", gateway_target, gateway_configuration.declaration,
+                    "http://gateway:8000"),
+                core.ReceiverManagementRouteBinding("retained-alias", configured.target, declaration,
+                    "http://workload:8000"),
+                core.ReceiverManagementRouteBinding("peer-alias", peer_target, original.declaration,
+                    "http://peer:8000")))
+            route_artifact = ConfigurationArtifact("management-routes", "/etc/gateway/routes.json",
+                ConfigurationMediaType.JSON, self.routes_codec.encode_bytes(route_values).decode())
+            configured_gateway = replace(gateway, configuration_artifacts=(gateway_wrapper, route_artifact),
+                public_environment=(PublicStaticEnvironmentBinding(receiver_fixtures.PATH_KEY, gateway_wrapper.target_path),))
+            current = current.update_node(configured_gateway)
+            current = replace(current, nodes={**current.nodes, "peer": peer}, runtimes={"runtime":
+                replace(current.runtimes["runtime"], children=(*current.runtimes["runtime"].children, "peer"))})
+            if selected:
+                for node_id in ("workload", "gateway"):
+                    node = current.node(node_id)
+                    current = current.update_node(replace(node, secret_deliveries=(delivery,),
+                        secret_selections=(core.SecretVersionSelection(delivery.reference, delivery.intent, "version-1"),)))
+            codec = GraphDescriptorCodec()
+            graphs.append(codec.decode(codec.encode(current)))
+        return tuple(graphs)
+
+    def test_coupled_installation_preserves_base_plan_and_orders_desired_health(self):
+        for reverse, selected in ((False, False), (True, False), (False, True)):
+            with self.subTest(reverse=reverse, selected=selected):
+                current, desired = self.pair(reverse=reverse, selected=selected)
+                codec = GraphDescriptorCodec()
+                snapshots = codec.encode(current), codec.encode(desired)
+                base = core.compile_graph_activity_plan(validate_graph(current), validate_graph(desired))
+                plan = self.compile(current, desired)
+                self.assertTrue(base.ready_for_execution)
+                self.assertTrue(plan.ready_for_execution)
+                base_by_id = {value.activity_id: value for value in base.activities}
+                by_id = {value.activity_id: value for value in plan.activities}
+                self.assertEqual(set(by_id), set(base_by_id))
+                changed_edges = set()
+                for identity, activity in by_id.items():
+                    old = base_by_id[identity]
+                    self.assertEqual(replace(activity, dependencies=old.dependencies), old)
+                    old_edges = {value.predecessor for value in old.dependencies}
+                    new_edges = {value.predecessor for value in activity.dependencies}
+                    self.assertLessEqual(old_edges, new_edges)
+                    changed_edges |= {(parent, identity) for parent in new_edges - old_edges}
+                reconciles = {value.operation.target.node_id: value for value in plan.activities
+                    if isinstance(value.operation, ReconcileNode)}
+                self.assertEqual(set(reconciles), {"workload", "gateway"})
+                workload, gateway = reconciles["workload"], reconciles["gateway"]
+                self.assertTrue(all(value.impact.value == "disruptive" for value in reconciles.values()))
+                self.assertEqual(changed_edges, {(workload.activity_id, gateway.activity_id)})
+                health, = [value for value in plan.activities if isinstance(value.operation, core.ObserveNodeHealth)]
+                self.assertNotIn(health.activity_id, predecessors(plan, gateway))
+                stages = {value.operation.stage: value for value in plan.activities
+                    if isinstance(value.operation, core.ObserveManagementBootstrap)}
+                chain = [workload, gateway, *(stages[stage] for stage in (
+                    core.ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+                    core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+                    core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)), health]
+                for before, after in zip(chain, chain[1:]):
+                    self.assertIn(before.activity_id, predecessors(plan, after))
+                self.assertIs(health.operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
+                resolved = core.resolve_management_observation(health.operation, validate_graph(current),
+                    validate_graph(desired), expected_operation=health.operation)
+                self.assertEqual(resolved.workload_node, desired.node("workload"))
+                self.assertEqual(resolved.workload_surface, desired.node("workload").block_spec.control_surfaces[0])
+                plan_codec = ActivityPlanDescriptorCodec()
+                self.assertEqual(plan_codec.decode(plan_codec.encode(plan)), plan)
+                self.assertEqual(self.compile(*(codec.decode(value) for value in snapshots)), plan)
+                self.assertEqual((codec.encode(current), codec.encode(desired)), snapshots)
+
+    def test_only_declaration_product_reference_and_matching_route_change(self):
+        current, desired = self.pair()
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
+        old = self.wrapper_codec.decode_bytes(self.artifact(current, "workload", "receiver").content.encode())
+        new = self.wrapper_codec.decode_bytes(self.artifact(desired, "workload", "receiver").content.encode())
+        self.assertEqual((old.target, old.verifiers), (new.target, new.verifiers))
+        self.assertNotEqual(old.declaration, new.declaration)
+        old_routes, new_routes = self.routes(current), self.routes(desired)
+        self.assertEqual(old_routes.gateway_target, new_routes.gateway_target)
+        for before, after in zip(old_routes.targets, new_routes.targets):
+            self.assertEqual(replace(after, declaration=before.declaration), before)
+            self.assertEqual(before.declaration != after.declaration, before.target == old.target)
+        self.assertEqual(self.artifact(current, "gateway", "gateway-control"),
+            self.artifact(desired, "gateway", "gateway-control"))
+        restored = desired.update_node(replace(desired.node("workload"),
+            block_spec=current.node("workload").block_spec, metadata=current.node("workload").metadata,
+            configuration_artifacts=current.node("workload").configuration_artifacts))
+        self.assertEqual(self.with_routes(restored, old_routes), current)
+
+    def test_noop_and_incomplete_or_stale_coupling(self):
+        current, desired = self.pair()
+        self.assertEqual(self.compile(current, current).activities, ())
+        for candidate in (desired.update_node(current.node("gateway")),
+                desired.update_node(current.node("workload"))):
+            self.refused(current, candidate)
+        route = self.artifact(current, "gateway", "management-routes")
+        self.refused(current, self.with_artifact(current, "gateway", route.artifact_id,
+            replace(route, content=json.dumps(json.loads(route.content), indent=2), source_digest=None)))
+
+    def test_route_alias_origin_target_peer_and_ambiguity_are_closed(self):
+        current, desired = self.pair()
+        routes = self.routes(desired)
+        changed, = [value for value in routes.targets if value.target_id == "retained-alias"]
+        for binding in (replace(changed, target_id="renamed"), replace(changed, origin="http://workload:9000"),
+                replace(changed, target=replace(changed.target, receiver_id="e" * 32))):
+            self.refused(current, self.with_routes(desired, replace(routes,
+                targets=tuple(binding if value == changed else value for value in routes.targets))))
+        peer, = [value for value in routes.targets if value.target_id == "peer-alias"]
+        self.refused(current, self.with_routes(desired, replace(routes, targets=tuple(
+            replace(value, origin="http://peer:9000") if value == peer else value for value in routes.targets))))
+        self.refused(current, self.with_routes(desired,
+            replace(routes, gateway_target=replace(routes.gateway_target, receiver_id="f" * 32))))
+        foreign_pair = []
+        for graph in (current, desired):
+            wrapper = self.artifact(graph, "gateway", "gateway-control")
+            configuration = self.wrapper_codec.decode_bytes(wrapper.content.encode())
+            foreign_target = replace(configuration.target,
+                node_id=NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, "foreign-gateway"))
+            candidate = self.with_artifact(graph, "gateway", wrapper.artifact_id, replace(wrapper,
+                content=self.wrapper_codec.encode_bytes(replace(configuration, target=foreign_target)).decode()))
+            route_values = self.routes(graph)
+            foreign_pair.append(self.with_routes(candidate, replace(route_values, gateway_target=foreign_target,
+                targets=tuple(replace(value, target=foreign_target) if value.target == configuration.target
+                    else value for value in route_values.targets))))
+        # Both strict artifacts agree; only the actual gateway placement disagrees.
+        self.refused(*foreign_pair)
+        decoy = replace(self.artifact(current, "gateway", "management-routes"),
+            artifact_id="decoy", target_path="/etc/gateway/decoy.json")
+        for sides in ((0,), (1,), (0, 1)):
+            pair = [current, desired]
+            for side in sides:
+                node = pair[side].node("gateway")
+                pair[side] = pair[side].update_node(replace(node,
+                    configuration_artifacts=tuple(sorted((*node.configuration_artifacts, decoy)))))
+            self.refused(*pair)
+
+    def test_route_limit_refuses_unrelated_shortening_without_constructing_oversized_intermediate(self):
+        current, desired = self.pair()
+        routes = self.routes(current)
+        peer, = [value for value in routes.targets if value.target_id == "peer-alias"]
+        socket = NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, "s" * 128)
+        declaration = replace(peer.declaration, surface=replace(peer.declaration.surface, provider_socket_name=socket))
+        origin = "http://" + ".".join(("a" * 63, "b" * 63, "c" * 63, "d" * 61)) + ":8080"
+        document = routes.descriptor()
+        for index in range(125):
+            document["targets"].append(core.ReceiverManagementRouteBinding(
+                f"t{index:03}" + "a" * 124,
+                replace(peer.target, node_id=NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, "n" * 128),
+                    provider_socket_name=socket, receiver_id=f"{index:032x}"), declaration, origin).descriptor())
+        encoded = lambda: json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+        excess = len(encoded()) - 131072
+        self.assertGreater(excess, 0)
+        for entry in document["targets"][3:]:
+            for container, key in ((entry, "target_id"), (entry["target"], "node_id")):
+                reduction = min(excess, len(container[key]) - 4)
+                if reduction:
+                    container[key] = container[key][:-reduction]
+                    excess -= reduction
+        self.assertEqual(excess, 0)
+        self.assertEqual(len(encoded()), 131072)
+        original = self.routes_codec.decode_bytes(encoded())
+        updated = self.routes(desired)
+        changed, = [value for value in updated.targets if value.target_id == "retained-alias"]
+        implied = tuple(changed if value.target_id == changed.target_id else value for value in original.targets)
+        with self.assertRaises(core.ReceiverManagementRoutesError):
+            replace(original, targets=implied)
+        # Removing an unrelated route makes the supplied desired document valid,
+        # but cannot turn this into the closed declaration-only transition.
+        successor = replace(original, targets=tuple(value for value in implied if value.target_id != "peer-alias"))
+        current, desired = self.with_routes(current, original), self.with_routes(desired, successor)
+        self.assertEqual(self.routes(current), original)
+        self.assertEqual(self.routes(desired), successor)
+        self.refused(current, desired)
+
+    def test_actual_wrapper_and_route_material_and_slots_are_required(self):
+        current, desired = self.pair()
+        for side in (0, 1):
+            for node_id, identity in (("workload", "receiver"), ("gateway", "gateway-control"),
+                    ("gateway", "management-routes")):
+                pair = [current, desired]
+                artifact = self.artifact(pair[side], node_id, identity)
+                pair[side] = self.with_artifact(pair[side], node_id, identity,
+                    replace(artifact, content="{}", source_digest=None))
+                self.refused(*pair)
+        for node_id, identity in (("workload", "receiver"), ("gateway", "management-routes")):
+            artifact = self.artifact(desired, node_id, identity)
+            for candidate in (replace(artifact, artifact_id="renamed"),
+                    replace(artifact, file_mode=ConfigurationFileMode.OWNER_READ_ONLY)):
+                self.refused(current, self.with_artifact(desired, node_id, identity, candidate))
+        wrapper = self.artifact(desired, "workload", "receiver")
+        for field, value in (("workspace_id", "foreign"), ("runtime_id", "foreign"), ("node_id", "foreign"),
+                ("provider_socket_name", "other"), ("receiver_id", "d" * 32)):
+            document = json.loads(wrapper.content)
+            document["target"][field] = value
+            self.refused(current, self.with_artifact(desired, "workload", "receiver",
+                replace(wrapper, content=json.dumps(document), source_digest=None)))
+
+    def test_health_only_same_image_product_successor_and_other_material_are_closed(self):
+        self.refused(*self.pair(new_kinds=(NodeHealthReadKind.LIVENESS,)))
+        current, desired = self.pair(selected=True)
+        node = desired.node("workload")
+        declaration = core.WorkloadNodeControlSurfaceDeclaration(surface(
+            kinds=(NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS), variable=True),
+            profile=core.WorkloadNodeControlSurfaceDeclarationProfile.V2)
+        # A valid three-family wrapper composes with a route rejected by the
+        # existing depth law; this is not isolated proof of a new C5 predicate.
+        wrapper = self.artifact(desired, "workload", "receiver")
+        fixture = receiver_fixtures.ReceiverConfigurationTests()
+        fixture.setUp()
+        document = fixture.document(declaration)
+        document["target"] = json.loads(wrapper.content)["target"]
+        configured = self.wrapper_codec.decode(document)
+        self.assertEqual(configured.declaration, declaration)
+        self.assertEqual(len(configured.verifiers), 3)
+        candidate = desired.update_node(replace(node, block_spec=replace(node.block_spec,
+            control_surfaces=(declaration.surface,))))
+        candidate = self.with_artifact(candidate, "workload", "receiver",
+            replace(wrapper, content=self.wrapper_codec.encode_bytes(configured).decode(), source_digest=None))
+        route = self.artifact(candidate, "gateway", "management-routes")
+        route_document = json.loads(route.content)
+        for value in route_document["targets"]:
+            if value["target_id"] == "retained-alias":
+                value["declaration"] = declaration.descriptor()
+        with self.assertRaises(core.ReceiverManagementRoutesError):
+            self.routes_codec.decode(route_document)
+        self.refused(current, self.with_artifact(candidate, "gateway", "management-routes",
+            replace(route, content=json.dumps(route_document), source_digest=None)))
+        document = json.loads(wrapper.content)
+        document["verifiers"][0]["issuer"] = "changed-public-issuer"
+        configured = self.wrapper_codec.decode(document)
+        self.assertEqual(configured.declaration,
+            self.wrapper_codec.decode_bytes(wrapper.content.encode()).declaration)
+        self.refused(current, self.with_artifact(desired, "workload", "receiver",
+            replace(wrapper, content=self.wrapper_codec.encode_bytes(configured).decode(), source_digest=None)))
+        for metadata in ({**node.metadata, "oci_image": "registry.example.invalid/apps/receiver@sha256:" + "f" * 64},
+                {**node.metadata, "product_identity": current.node("workload").metadata["product_identity"]},
+                {**node.metadata, "product_descriptor_digest": current.node("workload").metadata["product_descriptor_digest"]},
+                {**node.metadata, "product_identity": "foreign/receiver/2"},
+                {**node.metadata, "product_identity": "examples/receiver/02"},
+                {**node.metadata, "extra": "unrelated"}):
+            self.refused(current, desired.update_node(replace(node, metadata=metadata)))
+        application = self.artifact(desired, "workload", "application")
+        self.refused(current, self.with_artifact(desired, "workload", "application",
+            replace(application, content='{"mode":"green"}', source_digest=None)))
+        self.refused(current, desired.update_node(replace(node,
+            secret_selections=(replace(node.secret_selections[0], version_id="version-2"),))))
+        self.refused(current, desired.update_node(replace(desired.node("peer"), metadata={"changed": True})))
+        gateway_wrapper = self.artifact(desired, "gateway", "gateway-control")
+        self.refused(current, self.with_artifact(desired, "gateway", "gateway-control",
+            replace(gateway_wrapper, source_digest="f" * 64)))
+
+    def test_both_replacement_recipients_require_retained_eligibility(self):
+        current, desired = self.pair(selected=True)
+        for node_id in ("workload", "gateway"):
+            for changes in ({"lifecycle": ResourceLifecycle.external()},
+                    {"lifecycle": ResourceLifecycle.owned_with_retained_data("data")},
+                    {"lifecycle": replace(current.node(node_id).lifecycle, compute=ResourcePersistence.RETAINED)},
+                    {"runtime_authority_deliveries": (authority_fixtures.DELIVERY,)}):
+                self.refused(*(value.update_node(replace(value.node(node_id), **changes)) for value in (current, desired)))
+            self.refused(*(value.update_node(replace(value.node(node_id), block_spec=replace(
+                value.node(node_id).block_spec, verification=VerificationContract((HttpCheck(
+                    check_id="own", provider_socket="control", path="/health"),))))) for value in (current, desired)))
+            for side in (0, 1):
+                pair = [current, desired]
+                node = pair[side].node(node_id)
+                selected = node.secret_selections[0]
+                pair[side] = pair[side].update_node(replace(node, secret_selections=(
+                    UnselectedSecretUse(selected.reference, selected.intent),)))
+                self.refused(*pair)
+
+
 if __name__ == "__main__":
     unittest.main()

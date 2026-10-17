@@ -218,3 +218,48 @@ issuer/purpose/signer coverage, compatible grant intervals, original attempts an
 partial-cutover refusal. Servers #253 owns explicit refresh authoring and exact
 journal replay; ordinary existing-wrapper preservation does not change here.
 No new operation, export, descriptor schema or package dependency is introduced.
+
+## #1978 coupled declaration and gateway-route update
+
+The compiler recognizes one retained workload's health-only V2 declaration
+successor together with its exact existing gateway route declaration. Both sides
+retain readiness and the control socket; no variables or verifier changes are
+admitted. The same product family changes its canonical revision and descriptor
+digest while keeping the same immutable image. Core checks reference syntax and
+closed graph deltas; Operations #1979 owns genuine registered contract/current
+state, route selection, endpoint and signer authority.
+
+Both replacement recipients share the retained eligibility check: owned,
+ephemeral compute, no retained data/runtime authority delivery/independent
+verification, and complete selected-secret coverage. Existing workload-only
+relations still exclude gateway and connector. Add/remove rules are unchanged.
+The coupled relation preserves exact selected versions and all other graph
+material by restoring only its explicitly permitted fields and requiring whole
+graph equality.
+
+Every gateway artifact is attempted through the strict existing route codec;
+exactly one must decode on each side, even if another plausible route artifact is
+unchanged. Its JSON slot/path/media/mode stays fixed. Its complete gateway target
+must match the strict gateway wrapper and actual node/runtime/socket placement.
+The gateway wrapper itself remains exact. Only the workload's matching route
+binding declaration changes; all aliases, origins, targets, self/peer bindings
+and unrelated artifacts stay equal. Existing route depth limits remain intact.
+
+The implementation refines the actual base graph plan, preserving every activity
+and dependency and adding only workload reconciliation -> gateway reconciliation.
+It requires the existing retained local-ready -> connected -> authenticated-path
+-> desired-workload-health chain. ActivityPlan rejects cycles; unsupported or
+ambiguous composition becomes review-blocked without dropping prerequisites.
+
+The executable teaching example is ManagedDeclarationUpdateTests.pair and its
+public-compiler tests: readiness -> readiness+liveness and the reverse, including
+unchanged selected secrets on both recipients. Both installs remain disruptive;
+this pure plan supplies no approval, execution, atomicity, rollback or successful
+health evidence. Operations #1979 and Servers #254 own authoritative admission,
+original-attempt correlation, partial failure/history and actual installed proof.
+No new public type, operation, schema, export, provider or dependency is added.
+
+Route comparison operates on normalized binding tuples, without constructing a
+hypothetical aggregate. This preserves bounded refusal when actual current and
+desired documents each fit the route limit but an implied declaration-only
+intermediate would exceed it; unrelated shortening remains unsupported.
