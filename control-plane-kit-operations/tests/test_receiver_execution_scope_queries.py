@@ -12,7 +12,7 @@ from control_plane_kit_core.topology import compile_topology
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting
 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
-from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
+from control_plane_kit_operations.postgres.configuration_evidence import _Capacity, _EvidenceRead
 from control_plane_kit_operations.postgres.receiver_execution_scopes import _ExecutionScopeStorage
 from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture, SCOPES
 
@@ -37,6 +37,42 @@ def plan_paths(plan, parents=()):
 
 
 class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_shared_bounded_point_transport_uses_8192_record_allowance(self):
+        # Literal policy edges; injected prior work is not a large-history claim.
+        for prior in (4096, 8190):
+            with self.subTest(prior=prior), _configuration_accounting("point-query"):
+                recording = QueryRecorder(self.connection)
+                read = _EvidenceRead(recording)
+                read.used = ConfigurationEvidenceFootprint(prior, 0, 0, 0)
+                rows = read.bounded_rows("cpk_workspaces", (("workspace_id", "text", 2048),),
+                    "workspace_id=%s", ("workspace-a",))
+                self.assertEqual(rows, (("workspace-a",),))
+                self.assertEqual(read.used.records, prior + 2)
+                self.assertEqual(len(recording.calls), 2)
+                if prior == 8190:
+                    exhausted = read.used
+                    with self.assertRaises(_Capacity):
+                        read.bounded_rows("cpk_workspaces", (("workspace_id", "text", 2048),),
+                            "workspace_id=%s", ("workspace-a",))
+                    self.assertEqual(read.used, exhausted)
+                    self.assertEqual(len(recording.calls), 2)
+
+    def test_shared_candidate_transport_uses_allowance_above_4096_prior_records(self):
+        module = self.require_scopes()
+        self.admit()
+        with _configuration_accounting("candidate-query"):
+            recording = QueryRecorder(self.connection)
+            read = _EvidenceRead(recording)
+            read.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+            before = read.used
+            found = _ExecutionScopeStorage(recording, read).candidates(
+                "workspace-a", (module.ExecutionReceiverScope("docker", None),))
+            self.assertEqual(found, ("execution-a",))
+            self.assertGreater(read.used.records, before.records)
+            self.assertLessEqual(read.used.records, 8192)
+            self.assertGreater(read.used.accounted_bytes, before.accounted_bytes)
+            self.assertLessEqual(read.used.accounted_bytes, 16 * 1024 * 1024)
+
     def test_shared_accounting_reads_small_runtime_wide_candidates_after_prior_transport(self):
         module = self.require_scopes()
         self.admit()
