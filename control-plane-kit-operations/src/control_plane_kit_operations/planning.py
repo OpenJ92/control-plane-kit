@@ -762,6 +762,18 @@ class ActivityPlanningCommandService:
                 unit_of_work, plan, transition.desired.graph,
                 workspace_id=command.workspace_id,
             )
+            from control_plane_kit_operations._workload_verifier_authority import (
+                WorkloadVerifierAuthorityUnavailable, require_verifier_refresh_authority,
+            )
+            try:
+                require_verifier_refresh_authority(unit_of_work.stores, command.workspace_id,
+                    transition.current.graph, transition.desired.graph, plan, profile)
+            except WorkloadVerifierAuthorityUnavailable:
+                unavailable_verifiers = True
+            else:
+                unavailable_verifiers = False
+            if unavailable_verifiers:
+                raise ActivityPlanningError("workload verifier configuration is unavailable")
             created_at = self._clock()
             plan_record = ActivityPlanRecord(
                 plan_id=self._id_factory(),
