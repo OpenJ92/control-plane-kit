@@ -310,7 +310,7 @@ class ConfigurationCleanupPhaseReadBoundsFixture(ConfigurationCleanupReadCeiling
         self.assertEqual(read.used.statements, observed["statements"])
         for query in observed["queries"]:
             r, b, c, s = query["peak"]
-            self.assertLessEqual(r, 4096)
+            self.assertLessEqual(r, 8192)
             self.assertLessEqual(b + 128*r + 16*c + 256*s, 16 * 1024 * 1024)
         peaks = [b + 128*r + 16*c + 256*s for r, b, c, s in
             (query["peak"] for query in observed["queries"])]

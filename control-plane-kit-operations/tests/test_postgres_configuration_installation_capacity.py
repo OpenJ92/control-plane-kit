@@ -409,7 +409,7 @@ class PostgresConfigurationInstallationCapacityTests(unittest.TestCase):
                     getattr(peak, field), "selected start exceeded its complete suffix reservation")
         for entry in trace["wire"]["queries"]:
             self.assertLessEqual(Footprint(*entry["peak"]).accounted_bytes, 16 * 1024 * 1024)
-            self.assertLessEqual(Footprint(*entry["peak"]).records, 4096)
+            self.assertLessEqual(Footprint(*entry["peak"]).records, 8192)
         measure_selected_scope_inputs(self, member.fixture.database_url, "24-reference-before", passes=1)
         with _publication_budget_observation(self, member.fixture.database_url) as (publication, factory):
             member.advance(factory=factory)

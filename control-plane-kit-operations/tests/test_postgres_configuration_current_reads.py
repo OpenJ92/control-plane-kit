@@ -237,7 +237,7 @@ class PostgresConfigurationCurrentReadTests(unittest.TestCase):
             self.assertEqual(accounting.used.statements, observed["statements"])
             self.assertGreaterEqual(accounting.used.records, observed["rows"])
             self.assertGreaterEqual(accounting.used.accounted_bytes, observed["bytes"])
-            self.assertLessEqual(accounting.used.records, 4096)
+            self.assertLessEqual(accounting.used.records, 8192)
             self.assertLessEqual(accounting.used.accounted_bytes, 16 * 1024 * 1024)
         self.assert_complete_bindings(self.read_current())
         self.assertEqual(self.base.retained_snapshot(), before)

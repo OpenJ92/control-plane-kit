@@ -4960,3 +4960,24 @@ injections at 4095; they are translated to 8191 without changing their refusal,
 pre-clock/ID or durable-truth assertions. Their two existing focused methods
 are the next validation on the corrected checkpoint. No production change was
 needed after the first focused green.
+
+The first full owning gate at `0175f525` failed after 2801 test executions in
+6269.352 seconds: 70 failures, all `8192 not less than or equal to 4096`.
+Log SHA256 `2254092d72c2678cf58c7c5568e4878bc2e7c5f183a79a241464849c58f4a0d2`.
+Kepler independently traced 64 failures to the shared phase fixture's query
+reservation assertion, three to the cleanup coordinator peak assertion, two
+to the same installation peak method under two module names, and one to a
+repeat-until-capacity current-read test. These were policy-bound expectations
+mistakenly retained as stronger small-fixture bounds in the initial audit.
+
+The correction changes five assertions only: those four roots and the matching
+phase-bound independent-reader peak check masked by earlier fixture failure.
+`_PhaseConnection.execute` observes the cumulative ledger while the full SQL
+reservation is outstanding, before successful-fetch settlement. That peak uses
+the approved 8192 policy. The current-read test deliberately exhausts the
+shared budget with real repeated reads; it is not a fixed small-history bound.
+Adjacent settled-usage checks remain at 4096, and all byte, native cardinality,
+bounded-loop, physical-accounting, forecast, freshness and durable-truth
+assertions remain. No production code or capacity limit changes again.
+Targeted corrected evidence and a reviewed full rerun are required; the failed
+full gate remains a HOLD and supplies no Servers acceptance credit.

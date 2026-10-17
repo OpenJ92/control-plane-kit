@@ -846,7 +846,7 @@ class PostgresConfigurationCleanupPhaseReadBoundsTests(ConfigurationCleanupPhase
                     self.assertLessEqual(read.used.accounted_bytes, 16*1024*1024)
                     for q in segment:
                         r, b, c, s = q["peak"]
-                        self.assertLessEqual(r, 4096)
+                        self.assertLessEqual(r, 8192)
                         self.assertLessEqual(b + 128*r + 16*c + 256*s, 16*1024*1024)
         self.assertEqual(self.ceiling_truth(), before)
 
