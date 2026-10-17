@@ -40,3 +40,25 @@ or installed-material evidence. The initial causal-red checkpoint ran1033 tests
 with only the three legal-family readiness assertions failing. The implemented
 Core gate at 57724876 passed 21 support tests and all 1035 package tests, plus
 compile/import checks. Operations and live composition require separate evidence.
+
+## #1976 verifier-refresh laws
+
+ManagedVerifierRefreshTests exercises only the public graph-pair compiler. A
+same-target/declaration public-key-set successor, with and without unchanged
+complete secret selection, must produce one disruptive reconciliation before
+desired protected health and preserve the managed-path chain. Plan/graph codec
+round trips, deterministic output and immutable inputs remain observable laws.
+
+Negative cases preserve every target component (workspace/receiver included),
+strict V2 selection on both sides, wrapper slots, all non-wrapper material and
+whole-graph isolation. Equal graphs remain empty; formatting, normalized family/
+key reordering and provenance-only rewrites are not refreshes. Mixed app/image/
+secret/topology edits and ineligible or unresolved retained consumers stay
+review-blocked. No Operations authority or replay state machine is simulated.
+
+The first tests-only checkpoint selected an artifact by position despite product
+sorting and produced seven fixture errors; it is not causal red. Corrected
+`d433089d` ran 1,041 package methods with only the two intended valid-refresh
+subcases failing at ready_for_execution, no errors; 21 support tests and integrity
+passed. Production implementation follows that causal evidence. Final green and
+review belong in the issue/PR record; test count is not independent law count.
