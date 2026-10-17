@@ -1371,5 +1371,138 @@ class ManagedSelectedConsumerUpdateTests(unittest.TestCase):
         self.refused(current, desired)
 
 
+class ManagedVerifierRefreshTests(unittest.TestCase):
+    """#1976: only public verifier values may change on one exact receiver."""
+
+    compile = ManagedImageUpdateTests.compile
+    refused = ManagedImageUpdateTests.refused
+
+    def pair(self, *, selected=False):
+        if selected:
+            current, _ = ManagedSelectedConsumerUpdateTests().pair("version")
+        else:
+            current, _, _, _ = ManagedImageUpdateTests().pair()
+        wrapper = current.node("workload").configuration_artifacts[0]
+        document = json.loads(wrapper.content)
+        key = document["verifiers"][0]["public_keys"][0]
+        document["verifiers"][0]["public_keys"].append({**key,
+            "key_id": "public-b", "public_key_pem": key["public_key_pem"].replace("aaaaaaaa", "bbbbbbbb")})
+        return current, self.with_wrapper(current, replace(wrapper,
+            content=json.dumps(document), source_digest=None))
+
+    def with_wrapper(self, graph, wrapper):
+        node = graph.node("workload")
+        return graph.update_node(replace(node,
+            configuration_artifacts=(wrapper, *node.configuration_artifacts[1:])))
+
+    def test_refresh_reconciles_before_desired_protected_health_without_other_changes(self):
+        for selected in (False, True):
+            with self.subTest(selected=selected):
+                current, desired = self.pair(selected=selected)
+                codec = GraphDescriptorCodec()
+                original = codec.encode(current), codec.encode(desired)
+                plan = self.compile(current, desired)
+                self.assertTrue(plan.ready_for_execution)
+                self.assertEqual(plan, self.compile(*(codec.decode(value) for value in original)))
+                plan_codec = ActivityPlanDescriptorCodec()
+                self.assertEqual(plan_codec.decode(plan_codec.encode(plan)), plan)
+                reconcile, = (a for a in plan.activities if isinstance(a.operation, ReconcileNode))
+                self.assertEqual(reconcile.operation.target.node_id, "workload")
+                self.assertIs(reconcile.impact, core.ActivityImpact.DISRUPTIVE)
+                health, = (a for a in plan.activities if isinstance(a.operation, core.ObserveNodeHealth))
+                self.assertIn(reconcile.activity_id, predecessors(plan, health))
+                self.assertIs(health.operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
+                resolved = core.resolve_management_observation(health.operation,
+                    validate_graph(current), validate_graph(desired), expected_operation=health.operation)
+                self.assertEqual(resolved.workload_node, desired.node("workload"))
+                stages = {a.operation.stage: a for a in plan.activities
+                    if isinstance(a.operation, core.ObserveManagementBootstrap)}
+                chain = [stages[stage] for stage in (core.ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+                    core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+                    core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)] + [health]
+                for before, after in zip(chain, chain[1:]):
+                    self.assertIn(before.activity_id, predecessors(plan, after))
+                self.assertFalse(any(isinstance(a.operation, (StartNode, StartRuntime, AllocatePublicIngress,
+                    StopNode, RemoveNodeResource, ReconcileRuntime)) for a in plan.activities))
+                self.assertEqual((codec.encode(current), codec.encode(desired)), original)
+
+    def test_equal_graph_is_empty_but_equivalent_wrapper_rewrites_are_not_refresh(self):
+        _, current = self.pair()
+        self.assertEqual(self.compile(current, current).activities, ())
+        wrapper = current.node("workload").configuration_artifacts[0]
+        document = json.loads(wrapper.content)
+        document["verifiers"].reverse()
+        for family in document["verifiers"]:
+            family["public_keys"].reverse()
+        for changed in (replace(wrapper, content=json.dumps(document), source_digest=None),
+                replace(wrapper, content=json.dumps(json.loads(wrapper.content), indent=2), source_digest=None),
+                replace(wrapper, source_digest="f" * 64)):
+            self.refused(current, self.with_wrapper(current, changed))
+
+    def test_every_receiver_target_field_and_declaration_are_preserved(self):
+        current, desired = self.pair()
+        wrapper = desired.node("workload").configuration_artifacts[0]
+        for field, value in (("workspace_id", "other-workspace"), ("runtime_id", "other-runtime"),
+                ("node_id", "other-node"), ("provider_socket_name", "other"), ("receiver_id", "b" * 32)):
+            with self.subTest(field=field):
+                document = json.loads(wrapper.content)
+                document["target"][field] = value
+                self.refused(current, self.with_wrapper(desired,
+                    replace(wrapper, content=json.dumps(document), source_digest=None)))
+        document = json.loads(wrapper.content)
+        document["declaration"] = core.WorkloadNodeControlSurfaceDeclaration(
+            surface(kinds=(NodeHealthReadKind.LIVENESS,)),
+            profile=core.WorkloadNodeControlSurfaceDeclarationProfile.V2).descriptor()
+        self.refused(current, self.with_wrapper(desired,
+            replace(wrapper, content=json.dumps(document), source_digest=None)))
+
+    def test_both_actual_wrappers_must_be_strict_v2_material(self):
+        current, desired = self.pair()
+        for side in (0, 1):
+            for content in ('{}', '{"profile":"workload-node-control-configuration.v1"}'):
+                with self.subTest(side=side, content=content):
+                    pair = [current, desired]
+                    wrapper = pair[side].node("workload").configuration_artifacts[0]
+                    pair[side] = self.with_wrapper(pair[side], replace(wrapper, content=content, source_digest=None))
+                    self.refused(*pair)
+
+    def test_wrapper_slot_and_other_graph_deltas_are_not_verifier_only(self):
+        current, desired = self.pair(selected=True)
+        node = desired.node("workload")
+        wrapper, application = node.configuration_artifacts
+        for changed in (replace(wrapper, artifact_id="other"), replace(wrapper, target_path="/etc/other.json"),
+                replace(wrapper, media_type=ConfigurationMediaType.TEXT),
+                replace(wrapper, file_mode=ConfigurationFileMode.OWNER_READ_ONLY)):
+            with self.subTest(wrapper=changed.artifact_id, path=changed.target_path,
+                    media=changed.media_type, mode=changed.file_mode):
+                self.refused(current, self.with_wrapper(desired, changed))
+        cases = (
+            desired.update_node(replace(node, configuration_artifacts=(wrapper,
+                replace(application, content='{"mode":"green"}', source_digest=None)))),
+            desired.update_node(replace(node, metadata={**node.metadata, "oci_image":
+                "registry.example.invalid/apps/receiver@sha256:" + "c" * 64})),
+            desired.update_node(replace(node, secret_selections=(replace(node.secret_selections[0], version_id="version-2"),))),
+            desired.update_node(replace(node, configuration_artifacts=(wrapper,))),
+            desired.update_node(replace(desired.node("connector"), metadata={"changed": True})),
+            replace(desired, name="other"),
+        )
+        for index, candidate in enumerate(cases):
+            with self.subTest(case=index):
+                self.refused(current, candidate)
+
+    def test_retained_eligibility_and_complete_selection_still_apply(self):
+        current, desired = self.pair(selected=True)
+        for lifecycle in (ResourceLifecycle.external(), ResourceLifecycle.owned_with_retained_data("data")):
+            self.refused(*(graph.update_node(replace(graph.node("workload"), lifecycle=lifecycle))
+                for graph in (current, desired)))
+        for side in (0, 1):
+            pair = [current, desired]
+            node = pair[side].node("workload")
+            selection = node.secret_selections[0]
+            pair[side] = pair[side].update_node(replace(node,
+                secret_selections=(UnselectedSecretUse(selection.reference, selection.intent),)))
+            self.refused(*pair)
+
+
 if __name__ == "__main__":
     unittest.main()
