@@ -2,6 +2,22 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations._workload_verifier_authority",
+      "destination": "control_plane_kit_operations._workload_verifier_authority",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_workload_verifier_authority.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["validation"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": ["control_plane_kit_core.planning", "control_plane_kit_core.receiver_configuration", "control_plane_kit_core.wrapper_configuration", "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.plan_derivation"],
+      "known_package_consumers": ["control_plane_kit_operations.read_services.gateway_security", "control_plane_kit_operations.planning", "control_plane_kit_operations.postgres.configuration_preparation_store"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_managed_verifier_refresh.py", "tests/test_workload_verifier_configuration.py"],
+      "motivation": "One current public verifier selector shared by read projection and fresh retained-wrapper admission; no key lifecycle, signing, replay or effect authority."
+    },
+    {
       "module": "control_plane_kit_operations._accepted_installation_sources",
       "destination": "control_plane_kit_operations._accepted_installation_sources",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_accepted_installation_sources.py",

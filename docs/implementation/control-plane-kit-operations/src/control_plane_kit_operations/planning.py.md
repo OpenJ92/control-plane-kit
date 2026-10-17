@@ -1,6 +1,12 @@
 Source: [planning.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/planning.py).
 Maintain this companion alongside its source.
 
+#1977 binds an already canonical retained verifier-refresh plan to the current
+owner-selected public families before plan/action IDs or writes. All declared
+families must match full current public identities. The helper is not a new
+profile or graph classifier. Historical plan replay returns before fresh
+authority selection; stale desired bytes are refused rather than regenerated.
+
 Public explicit secret selection (#1989): `SetDesiredGraph` carries immutable
 canonical `explicit_secret_choices` and authenticated `actor_scopes`.
 `DesiredGraphCommandService(..., secret_metadata_reader=...)` privately reuses

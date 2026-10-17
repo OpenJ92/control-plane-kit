@@ -1,6 +1,16 @@
 Source: [configuration_preparation_store.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_preparation_store.py).
 Maintain this companion alongside its source.
 
+#1977 checks current verifier-refresh authority in fresh `_material`, both for
+the optimistic coordinator proposal and the start owner's locked rederivation.
+The shared selector holds ordered purpose locks until that caller's UoW ends;
+drift after proposal therefore refuses before replacement attempt/provenance
+writes. Only the selected retained Reconcile with changed wrapper verifiers
+reads key authority. Original replay, ordinary content/image/selection updates,
+other activities and teardown do not acquire new refresh key reads. Existing
+configuration evidence accounting and limits are unchanged; the separately
+bounded key-owner reads are not claimed as a newly measured global bound.
+
 #1923 adds original configuration provenance inside Operations. Own original configuration refs and protective claims inside the existing first-start transaction.
 
 The first-start owner rederives selected material under the existing lifecycle lock before IDs or writes. Exact original replay reads retained intent and protective claims without selecting current catalogs. Public evidence states are complete, unavailable, or capacity; none authorize dispatch, reuse, acceptance, deletion, or release.

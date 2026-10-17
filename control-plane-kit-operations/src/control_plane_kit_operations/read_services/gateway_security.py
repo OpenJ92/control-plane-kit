@@ -6,9 +6,8 @@ import json
 from typing import Callable
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
-from control_plane_kit_core.wrapper_configuration import (
-    NodeControlVerificationConfiguration,
-    WrapperConfigurationError,
+from control_plane_kit_operations._workload_verifier_authority import (
+    WorkloadVerifierAuthorityUnavailable, current_workload_verifiers,
 )
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyNotFound,
@@ -170,44 +169,8 @@ class _GatewaySecurityReadProjection:
         if store is None:
             raise ReadModelError(_WORKLOAD_UNAVAILABLE)
         try:
-            # Acquire every purpose lock in a fixed order before reading any set.
-            # The caller's read UoW holds them through the complete observation.
-            selected = tuple(
-                (purpose, store.require_unambiguous_active(workspace_id, purpose))
-                for purpose in sorted(purposes, key=lambda value: value.value)
-            )
-            families = []
-            for purpose, active in selected:
-                if (
-                    not isinstance(active, RegisteredDelegationSigningKey)
-                    or active.workspace_id != workspace_id
-                    or active.purpose is not purpose
-                    or active.status is not RegisteredDelegationSigningKeyStatus.ACTIVE
-                ):
-                    raise ReadModelError(_WORKLOAD_UNAVAILABLE)
-                keys = store.list_for_verification(
-                    workspace_id, purpose, active.issuer, limit=17,
-                )
-                if (
-                    not 1 <= len(keys) <= 16
-                    or any(
-                        not isinstance(value, RegisteredDelegationSigningKey)
-                        or value.workspace_id != workspace_id
-                        or value.purpose is not purpose
-                        or value.issuer != active.issuer
-                        or value.status not in (
-                            RegisteredDelegationSigningKeyStatus.ACTIVE,
-                            RegisteredDelegationSigningKeyStatus.VERIFY_ONLY,
-                        )
-                        for value in keys
-                    )
-                    or active not in keys
-                ):
-                    raise ReadModelError(_WORKLOAD_UNAVAILABLE)
-                families.append(NodeControlVerificationConfiguration(
-                    purpose, active.issuer, tuple(value.public_key for value in keys),
-                ))
-        except (DelegationSigningKeyNotFound, WrapperConfigurationError):
+            families = current_workload_verifiers(store, workspace_id, purposes)
+        except WorkloadVerifierAuthorityUnavailable:
             unavailable = True
         else:
             unavailable = False

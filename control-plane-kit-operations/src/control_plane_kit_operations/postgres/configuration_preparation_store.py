@@ -757,6 +757,9 @@ class ConfigurationPreparationStore:
         material = _RuntimeEffectMaterial(request, run, plan, base, desired, products, runtime_authorities=runtimes)
         if activity is None:
             return material
+        from control_plane_kit_operations._workload_verifier_authority import require_verifier_refresh_authority
+        require_verifier_refresh_authority(stores, workspace, graphs[0], graphs[1],
+            plan.plan, plan.derivation_profile, activity=activity)
         graph = _material_graph(material, activity.operation)
         node_id = _node_target(activity.operation)
         if node_id is None:
