@@ -10,6 +10,7 @@ from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec,
     select_receiver_node_control_configuration_artifact,
+    select_receiver_node_control_configuration_slot,
 )
 from control_plane_kit_core.receiver_management_routes import (
     ReceiverManagementRoutesCodec,
@@ -292,7 +293,8 @@ def _managed_update_shape(
             if old is None or new is None:
                 return False
             old_product, new_product = old.descriptor_document.product, new.descriptor_document.product
-            if (old_product.runtime_contract != new_product.runtime_contract
+            if ((old_product.runtime_contract != new_product.runtime_contract
+                        and not _registered_declaration_successor(old_product, new_product))
                     or before.metadata["oci_image"] != old_product.image.execution_reference
                     or after.metadata["oci_image"] != new_product.image.execution_reference):
                 return False
@@ -463,6 +465,35 @@ def _managed_retained_participants_are_exact(current, desired, runtime_id, regis
     except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
         return False
     return True
+
+
+def _registered_declaration_successor(before, after) -> bool:
+    """Bind Core's admitted declaration pair to complete registered defaults.
+
+    An unchanged default is a structural template, not installed authority.
+    A changed default must preserve its own identity and public trust exactly.
+    """
+    old, new = before.runtime_contract, after.runtime_contract
+    if before.image != after.image or old.control_surfaces == new.control_surfaces:
+        return False
+    wrappers = tuple(select_receiver_node_control_configuration_slot(
+        artifacts=contract.configuration_artifacts, environment=contract.public_environment,
+        control_surfaces=contract.control_surfaces) for contract in (old, new))
+    original, successor = wrappers
+    if replace(successor, content=original.content, source_digest=original.source_digest) != original:
+        return False
+    if original != successor:
+        codec = ReceiverNodeControlConfigurationCodec()
+        previous, updated = (codec.decode_bytes(value.content.encode("utf-8")) for value in wrappers)
+        if (previous.declaration.surface != old.control_surfaces[0]
+                or updated.declaration.surface != new.control_surfaces[0]
+                or replace(updated, declaration=previous.declaration) != previous
+                or replace(updated.declaration, surface=previous.declaration.surface) != previous.declaration):
+            return False
+    restored = replace(new, control_surfaces=old.control_surfaces,
+        configuration_artifacts=tuple(original if value.artifact_id == successor.artifact_id else value
+            for value in new.configuration_artifacts))
+    return restored == old
 
 
 def _managed_update_candidate_shape(
