@@ -92,3 +92,9 @@ isolated causal credit for a new health-only C5 predicate. Separate cases refuse
 a strict-valid verifier change coupled with the declaration transition, and
 gateway wrapper/route targets that agree with each other but name a foreign node
 instead of the actual gateway placement. These remain unexecuted target tests.
+
+The tests-first checkpoint at 32e377ed ran through the unchanged owning Docker
+suite: 21 support passed; 1048 Core tests produced four intended managed-readiness
+assertion failures and zero errors. Actual base-plan readiness passed. Deeper
+assertions after managed readiness earned no red credit. The subsequent bounded
+implementation preserves these tests; candidate green validation is pending.

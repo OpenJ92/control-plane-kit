@@ -9,9 +9,10 @@ import hashlib
 from control_plane_kit_core.configuration import ConfigurationMediaType
 from control_plane_kit_core.lifecycle import ResourceOwnership, ResourcePersistence
 from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor
+from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.planning.activity_plan import (
     ActivityDependency, ActivityId, ActivityPlan, AllocatePublicIngress,
-    ChangeTarget, PlannedActivity, ReconcileNode, RemoveNodeResource, ReviewChange,
+    ChangeTarget, InvalidActivityPlan, PlannedActivity, ReconcileNode, RemoveNodeResource, ReviewChange,
     ReviewReason, RiskLevel, StartNode, StartRuntime, StopNode, WaitForHealthy,
 )
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
@@ -25,6 +26,7 @@ from control_plane_kit_core.products import OciImageReference, ProductDescriptor
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
 )
+from control_plane_kit_core.receiver_management_routes import ReceiverManagementRoutesCodec, ReceiverManagementRoutesError
 from control_plane_kit_core.secret_selections import SecretVersionSelection, normalize_secret_selections
 from control_plane_kit_core.topology.changes import (
     AddedChange, FieldSubject, ModifiedChange, RemovedChange, StructuralField,
@@ -263,6 +265,26 @@ def _managed_update_shape(current, desired, diff):
     )
 
 
+def _retained_update_eligible(before, after):
+    """Shared replacement posture; relation owners separately constrain changes."""
+    # Compiled Node.secret_deliveries includes active socket-derived deliveries.
+    if before.secret_deliveries != after.secret_deliveries:
+        return False
+    try:
+        for node in (before, after):
+            if (_independent_verification(node)
+                    or node.lifecycle.ownership is not ResourceOwnership.OWNED
+                    or node.lifecycle.compute is not ResourcePersistence.EPHEMERAL
+                    or node.lifecycle.data or node.runtime_authority_deliveries):
+                return False
+            selections = normalize_secret_selections(node.secret_deliveries, node.secret_selections)
+            if any(type(value) is not SecretVersionSelection for value in selections):
+                return False
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return False
+    return True
+
+
 def _retained_update_wrapper(current, desired, node_id):
     """Select the exact receiver for an eligible retained workload update."""
     before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
@@ -270,20 +292,9 @@ def _retained_update_wrapper(current, desired, node_id):
     surface, _ = _selected_surface(after)
     if (runtime.management is None or surface is None
             or NodeHealthReadKind.READINESS not in surface.health_reads
-            or _independent_verification(after)
-            or after.lifecycle.ownership is not ResourceOwnership.OWNED
-            or after.lifecycle.compute is not ResourcePersistence.EPHEMERAL
-            or after.lifecycle.data
-            or after.runtime_authority_deliveries):
-        return None
-    # Compiled Node.secret_deliveries includes active socket-derived deliveries.
-    if before.secret_deliveries != after.secret_deliveries:
+            or not _retained_update_eligible(before, after)):
         return None
     try:
-        for node in (before, after):
-            selections = normalize_secret_selections(node.secret_deliveries, node.secret_selections)
-            if any(type(value) is not SecretVersionSelection for value in selections):
-                return None
         _, gateway, connector, _, _ = _pin_path(desired, after.runtime_id, PlanGraphSide.DESIRED_GRAPH)
         if node_id in (gateway.node_id, connector.node_id):
             return None
@@ -441,6 +452,163 @@ def _managed_secret_selection_update_shape(current, desired, diff):
         before.secret_selections, after.secret_selections, strict=True)) == 1
 
 
+def _same_image_product_successor(before, after):
+    """Canonical references only; registered contract authority is external."""
+    keys = {"product_identity", "product_descriptor_digest"}
+    if (not keys <= before.metadata.keys() or not keys <= after.metadata.keys()
+            or any(before.metadata[key] == after.metadata[key] for key in keys)
+            or {**after.metadata, **{key: before.metadata[key] for key in keys}} != before.metadata):
+        return False
+    identities = []
+    try:
+        for node in (before, after):
+            namespace, name, revision = node.metadata["product_identity"].split("/")
+            identity = ProductIdentity(namespace, name, int(revision))
+            ProductDescriptorDigest(node.metadata["product_descriptor_digest"])
+            registry, path = node.metadata["oci_image"].split("/", 1)
+            repository, digest = path.split("@")
+            image = OciImageReference(registry, repository, digest)
+            if (identity.key != node.metadata["product_identity"]
+                    or image.execution_reference != node.metadata["oci_image"]):
+                return False
+            identities.append(identity)
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+        return False
+    return (identities[0].namespace, identities[0].name) == (identities[1].namespace, identities[1].name)
+
+
+def _unique_receiver_routes(node):
+    """Count every strict route candidate, including unchanged decoys."""
+    candidates = []
+    for artifact in node.configuration_artifacts:
+        try:
+            routes = ReceiverManagementRoutesCodec().decode_bytes(artifact.content.encode("utf-8"))
+        except ReceiverManagementRoutesError:
+            continue
+        candidates.append((artifact, routes))
+    if len(candidates) != 1 or candidates[0][0].media_type is not ConfigurationMediaType.JSON:
+        return None
+    return candidates[0]
+
+
+def _managed_declaration_update_shape(current, desired, diff):
+    """One health-only workload successor and its exact retained gateway route."""
+    if len(diff.changes) != 4 or any(not isinstance(change, ModifiedChange)
+            or not isinstance(change.subject, FieldSubject)
+            or not isinstance(change.subject.owner, NodeSubject) for change in diff.changes):
+        return None
+    declarations = [change.subject.owner.node_id for change in diff.changes
+                    if change.subject.field is StructuralField.BLOCK_SPECIFICATION]
+    if len(declarations) != 1:
+        return None
+    node_id = declarations[0]
+    before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
+    wrapper = _retained_update_wrapper(current, desired, node_id)
+    if wrapper is None or not _same_image_product_successor(before, after):
+        return None
+    gateway_id = desired.graph.runtimes[after.runtime_id].management.gateway_node_id
+    if {(change.subject.owner.node_id, change.subject.field) for change in diff.changes} != {
+            (node_id, StructuralField.BLOCK_SPECIFICATION), (node_id, StructuralField.NODE_METADATA),
+            (node_id, StructuralField.CONFIGURATION_ARTIFACTS),
+            (gateway_id, StructuralField.CONFIGURATION_ARTIFACTS)}:
+        return None
+    old_gateway, new_gateway = current.graph.nodes[gateway_id], desired.graph.nodes[gateway_id]
+    if not _retained_update_eligible(old_gateway, new_gateway):
+        return None
+    codec = ReceiverNodeControlConfigurationCodec()
+    try:
+        successor = select_receiver_node_control_configuration_artifact(
+            artifacts=after.configuration_artifacts,
+            environment=after.public_environment + after.socket_environment,
+            control_surfaces=after.block_spec.control_surfaces)
+        original = codec.decode_bytes(wrapper.content.encode("utf-8"))
+        updated = codec.decode_bytes(successor.content.encode("utf-8"))
+        gateway_configurations = []
+        for gateway in (old_gateway, new_gateway):
+            own_wrapper = select_receiver_node_control_configuration_artifact(
+                artifacts=gateway.configuration_artifacts,
+                environment=gateway.public_environment + gateway.socket_environment,
+                control_surfaces=gateway.block_spec.control_surfaces)
+            configured = codec.decode_bytes(own_wrapper.content.encode("utf-8"))
+            readiness, _ = _selected_surface(gateway, gateway=True)
+            if (readiness is None or configured.target.node_id.value != gateway_id
+                    or configured.target.runtime_id.value != gateway.runtime_id
+                    or configured.target.provider_socket_name != readiness.provider_socket_name):
+                return None
+            gateway_configurations.append((own_wrapper, configured))
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return None
+    if (original.target != updated.target or original.verifiers != updated.verifiers
+            or original.declaration == updated.declaration
+            or any(value.profile is not WorkloadNodeControlSurfaceDeclarationProfile.V2
+                or value.surface.variables or NodeHealthReadKind.READINESS not in value.surface.health_reads
+                for value in (original.declaration, updated.declaration))
+            or replace(updated.declaration.surface, health_reads=original.declaration.surface.health_reads)
+                != original.declaration.surface
+            or replace(after.block_spec, control_surfaces=before.block_spec.control_surfaces) != before.block_spec
+            or replace(successor, content=wrapper.content, source_digest=wrapper.source_digest) != wrapper
+            or tuple(wrapper if item.artifact_id == successor.artifact_id else item
+                for item in after.configuration_artifacts) != before.configuration_artifacts
+            or gateway_configurations[0] != gateway_configurations[1]):
+        return None
+    old_routes, new_routes = _unique_receiver_routes(old_gateway), _unique_receiver_routes(new_gateway)
+    if old_routes is None or new_routes is None:
+        return None
+    old_artifact, old_value = old_routes
+    new_artifact, new_value = new_routes
+    if (old_value.gateway_target != gateway_configurations[0][1].target
+            or new_value.gateway_target != gateway_configurations[1][1].target
+            or replace(new_artifact, content=old_artifact.content, source_digest=old_artifact.source_digest) != old_artifact):
+        return None
+    bindings = [value for value in old_value.targets if value.target == original.target]
+    if len(bindings) != 1 or bindings[0].declaration != original.declaration:
+        return None
+    expected = replace(old_value, targets=tuple(
+        replace(value, declaration=updated.declaration) if value == bindings[0] else value for value in old_value.targets))
+    if new_value != expected:
+        return None
+    restored_gateway = replace(new_gateway, configuration_artifacts=tuple(
+        old_artifact if item.artifact_id == new_artifact.artifact_id else item
+        for item in new_gateway.configuration_artifacts))
+    restored_workload = replace(after, block_spec=before.block_spec, metadata=before.metadata,
+        configuration_artifacts=before.configuration_artifacts)
+    if desired.graph.update_node(restored_gateway).update_node(restored_workload) != current.graph:
+        return None
+    return node_id, gateway_id, after.runtime_id
+
+
+def _declaration_update_plan(base, shape):
+    """Add only workload-install -> gateway-install; preserve every base edge."""
+    node_id, gateway_id, runtime_id = shape
+    workload = _matching_activity(base, ReconcileNode, lambda value: value.target.node_id == node_id)
+    gateway = _matching_activity(base, ReconcileNode, lambda value: value.target.node_id == gateway_id)
+    stages = tuple(_matching_activity(base, ObserveManagementBootstrap,
+        lambda value: value.target.runtime_id == runtime_id
+        and value.target.graph_side is PlanGraphSide.DESIRED_GRAPH and value.stage is stage)
+        for stage in (ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+            ManagementBootstrapStage.CONNECTOR_CONNECTED, ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH))
+    health = _matching_activity(base, ObserveNodeHealth, lambda value: value.node_id == node_id
+        and value.target.runtime_id == runtime_id and value.target.graph_side is PlanGraphSide.DESIRED_GRAPH)
+    if workload is None or gateway is None or health is None or any(value is None for value in stages):
+        return None
+    try:
+        parents = {value.predecessor for value in gateway.dependencies} | {workload.activity_id}
+        ordered = ActivityPlan(tuple(replace(value, dependencies=tuple(ActivityDependency(parent)
+            for parent in sorted(parents))) if value == gateway else value for value in base.activities))
+    except InvalidActivityPlan:
+        return None
+    ancestors = {}
+    for activity in ordered.activities:
+        ancestors[activity.activity_id] = {item.predecessor for item in activity.dependencies}
+        for item in activity.dependencies:
+            ancestors[activity.activity_id].update(ancestors[item.predecessor])
+    chain = (workload, gateway, *stages, health)
+    if (health.activity_id in ancestors[gateway.activity_id]
+            or any(left.activity_id not in ancestors[right.activity_id] for left, right in zip(chain, chain[1:]))):
+        return None
+    return ordered
+
+
 def _review_blocked(plan, diff):
     if not diff.changes:
         return plan
@@ -457,7 +625,7 @@ def _matching_activity(plan, operation_type, predicate):
 
 
 def compile_managed_update_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
-    """Derive closed add/remove, content, image, selected-version or verifier updates."""
+    """Derive closed managed updates, including coupled declaration/route changes."""
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
     base = compile_graph_activity_plan(current, desired)
@@ -466,6 +634,11 @@ def compile_managed_update_activity_plan(current: ValidatedGraph, desired: Valid
             or _managed_secret_selection_update_shape(current, desired, diff)
             or _managed_verifier_refresh_shape(current, desired, diff)):
         return base
+    declaration_shape = _managed_declaration_update_shape(current, desired, diff)
+    if declaration_shape is not None:
+        if not base.ready_for_execution:
+            return base
+        return _declaration_update_plan(base, declaration_shape) or _review_blocked(base, diff)
     shape = _managed_update_shape(current, desired, diff)
     if shape is None or not base.ready_for_execution:
         return _review_blocked(base, diff) if shape is None else base
