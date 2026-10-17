@@ -241,7 +241,7 @@ class ReadPageContractTests(unittest.TestCase):
         self.assertEqual(len(ReadCollection), 21)
         self.assertEqual(
             len({spec.route_id for spec in READ_COLLECTION_SPECS}),
-            20,
+            21,
         )
         for name, wire, route, scope, cursor, order, position in rows:
             collection = getattr(ReadCollection, name)
