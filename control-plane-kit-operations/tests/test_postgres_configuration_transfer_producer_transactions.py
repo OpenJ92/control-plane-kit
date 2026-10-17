@@ -128,7 +128,7 @@ class PostgresConfigurationTransferProducerTransactionTests(unittest.TestCase):
         def admit(store, prepared):
             self.assertIsNone(prepared.event)
             _, _, remaining = store._publication_budgets(prepared)
-            extra = 4096 - prepared.evidence_read.used.records - remaining.peak.records + 1
+            extra = 8192 - prepared.evidence_read.used.records - remaining.peak.records + 1
             self.assertGreater(extra, 0)
             # Transport actual harmless scalar evidence into the same ledger;
             # do not edit accounting counters or fabricate a prior footprint.

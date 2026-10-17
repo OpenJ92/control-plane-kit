@@ -58,7 +58,7 @@ class ConfigurationAcceptancePreflightTests(unittest.TestCase):
         self.assertEqual(self.exercise(snapshot=exact.plus(one), future=over_future, refuses=True), [])
 
     def test_cold_consumer_record_and_byte_edges_use_actual_envelope(self):
-        for field, limit, refusal in (("records", 4096, "record-limit"), ("value_octets", 16777216, "byte-limit")):
+        for field, limit, refusal in (("records", 8192, "record-limit"), ("value_octets", 16777216, "byte-limit")):
             with self.subTest(dimension=field):
                 peak = self.future.peak
                 extra = limit - (peak.records if field == "records" else peak.accounted_bytes)
@@ -71,7 +71,7 @@ class ConfigurationAcceptancePreflightTests(unittest.TestCase):
                 self.assertEqual(denied[-1][1], refusal)
 
     def test_publication_record_and_byte_edges_include_prior_command_work(self):
-        for field, limit, refusal in (("records", 4096, "record-limit"), ("value_octets", 16777216, "byte-limit")):
+        for field, limit, refusal in (("records", 8192, "record-limit"), ("value_octets", 16777216, "byte-limit")):
             with self.subTest(dimension=field):
                 combined = self.prior.plus(self.publication.peak)
                 extra = limit - (combined.records if field == "records" else combined.accounted_bytes)

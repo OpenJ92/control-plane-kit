@@ -337,11 +337,11 @@ class PostgresConfigurationCleanupReadCeilingsTests(ConfigurationCleanupReadCeil
             with owner.bind(issued):
                 # Explicit injected exhaustion, never natural-fit evidence:
                 # txid's final record fits; the following length reservation cannot.
-                read.used = replace(read.used, records=4095)
+                read.used = replace(read.used, records=8191)
                 initial = read.used
                 with self.assertRaises(_Capacity):
                     uow.stores.graphs.get(self.plan.base_graph_id)
-                self.assertEqual(read.used.records, 4096)
+                self.assertEqual(read.used.records, 8192)
                 self.assertEqual(read.used.statements, initial.statements + 1)
         self.assertEqual(self.ceiling_truth(), before)
 

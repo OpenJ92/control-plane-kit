@@ -69,7 +69,7 @@ class PostgresConfigurationMutationAccountingTests(PostgresEffectAttemptStoreFix
         with self.measured_uow(observations) as uow:
             insert = lambda: uow.stores.execution.add_command_receipt(receipt)
             with _configuration_accounting("run-a") as accounting:
-                accounting.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+                accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
                 with self.assertRaises(_Capacity):
                     insert()
                 self.assertEqual(observations["statements"], 0)
@@ -105,7 +105,7 @@ class PostgresConfigurationMutationAccountingTests(PostgresEffectAttemptStoreFix
                 expected=original.status, replacement=ActivityRunStatus.RUNNING,
                 started_at="2030-01-01T00:00:01Z")
             with _configuration_accounting("run-a") as accounting:
-                accounting.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+                accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
                 before_statements = observations["statements"]
                 with self.assertRaises(_Capacity):
                     change()
@@ -148,7 +148,7 @@ class PostgresConfigurationMutationAccountingTests(PostgresEffectAttemptStoreFix
             self.add_record_events(uow.stores, record)
             self.add_record_intent(uow.stores, record)
             with _configuration_accounting("run-a") as accounting:
-                accounting.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+                accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
                 with self.assertRaises(_Capacity):
                     uow.stores.effect_attempts._insert_absent(record)
             with self.assertRaises(KeyError):
@@ -169,7 +169,7 @@ class PostgresConfigurationMutationAccountingTests(PostgresEffectAttemptStoreFix
             uow.stores.execution.add_event(replacement.latest_transition_event)
             change = lambda: uow.stores.effect_attempts.compare_and_set(original, replacement)
             with _configuration_accounting("run-a") as accounting:
-                accounting.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+                accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
                 with self.assertRaises(_Capacity):
                     change()
             self.assertEqual(uow.stores.effect_attempts.get(original.state.identity), original)
@@ -194,7 +194,7 @@ class PostgresConfigurationMutationAccountingTests(PostgresEffectAttemptStoreFix
             complete = lambda: uow.stores.execution.complete_command_receipt("run-a", original.idempotency_key,
                 intent_fingerprint=original.intent_fingerprint, completed_at="2030-01-01T00:00:01Z", result=result)
             with _configuration_accounting("run-a") as accounting:
-                accounting.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+                accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
                 with self.assertRaises(_Capacity):
                     complete()
             self.assertEqual(uow.stores.execution.command_receipt_for_idempotency("run-a", original.idempotency_key), original)

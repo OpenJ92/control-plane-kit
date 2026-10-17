@@ -409,7 +409,7 @@ class PostgresConfigurationInstallationCapacityTests(unittest.TestCase):
                     getattr(peak, field), "selected start exceeded its complete suffix reservation")
         for entry in trace["wire"]["queries"]:
             self.assertLessEqual(Footprint(*entry["peak"]).accounted_bytes, 16 * 1024 * 1024)
-            self.assertLessEqual(Footprint(*entry["peak"]).records, 4096)
+            self.assertLessEqual(Footprint(*entry["peak"]).records, 8192)
         measure_selected_scope_inputs(self, member.fixture.database_url, "24-reference-before", passes=1)
         with _publication_budget_observation(self, member.fixture.database_url) as (publication, factory):
             member.advance(factory=factory)
@@ -438,7 +438,7 @@ class PostgresConfigurationInstallationCapacityTests(unittest.TestCase):
             assert_installation_shapes(self, prepared.read_bounds, (member.original,), member.connection)
             prior = _ACCOUNTING.get().used
             snapshot, future, publication = store._publication_budgets(prepared)
-            for field, limit in (("records", 4096), ("value_octets", 16 * 1024 * 1024)):
+            for field, limit in (("records", 8192), ("value_octets", 16 * 1024 * 1024)):
                 total = prior.plus(publication.peak)
                 spare = limit - (total.records if field == "records" else total.accounted_bytes)
                 self.assertGreaterEqual(spare, 0, "fixed witness exceeds actual publication forecast")

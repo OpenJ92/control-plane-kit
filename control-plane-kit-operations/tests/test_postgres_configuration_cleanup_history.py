@@ -286,7 +286,7 @@ class PostgresConfigurationCleanupHistoryTests(ConfigurationCleanupExecutionFixt
             accounting = _ACCOUNTING.get()
             self.assertIsNotNone(accounting)
             before = accounting.used
-            accounting.used = before.plus(ConfigurationEvidenceFootprint(4096 - before.records, 0, 0, 0))
+            accounting.used = before.plus(ConfigurationEvidenceFootprint(8192 - before.records, 0, 0, 0))
             self.assertEqual(accounting.used.value_octets, before.value_octets)
             self.assertEqual(accounting.used.statements, before.statements)
             return RuntimeEffectResult.succeeded(request.effect_id)

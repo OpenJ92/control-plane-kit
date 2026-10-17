@@ -70,13 +70,13 @@ class ConfigurationPreparationCapacityTests(unittest.TestCase):
         module = self.language()
         value, decision = module.ConfigurationEvidenceFootprint, module.ConfigurationCapacityDecision
         cases = (
-            (value(4096, 0, 0, 0), decision.WITHIN_LIMITS),
-            (value(4097, 0, 0, 0), decision.RECORD_LIMIT),
+            (value(8192, 0, 0, 0), decision.WITHIN_LIMITS),
+            (value(8193, 0, 0, 0), decision.RECORD_LIMIT),
             # Nonzero overhead is 560; literal octet values straddle 16MiB.
             (value(2, 16_776_655, 3, 1), decision.WITHIN_LIMITS),
             (value(2, 16_776_656, 3, 1), decision.WITHIN_LIMITS),
             (value(2, 16_776_657, 3, 1), decision.BYTE_LIMIT),
-            (value(4097, 16_777_217, 0, 0), decision.RECORD_LIMIT),
+            (value(8193, 16_777_217, 0, 0), decision.RECORD_LIMIT),
         )
         self.assertEqual(value(2, 16_776_656, 3, 1).accounted_bytes, 16_777_216)
         for footprint, expected in cases:
@@ -126,7 +126,7 @@ class ConfigurationPreparationCapacityTests(unittest.TestCase):
     def test_preflight_validates_shapes_before_reporting_claim_or_byte_capacity(self):
         module = self.language()
         value = module.ConfigurationEvidenceFootprint
-        arguments = dict(current=value(4097, 16_777_217, 0, 0), reserved_future=value(0, 0, 0, 0),
+        arguments = dict(current=value(8193, 16_777_217, 0, 0), reserved_future=value(0, 0, 0, 0),
             existing_claim_keys=(self.key(0),), proposed_claim_key=self.key(1), existing_total_claims=1)
         for changes in (
                 {"existing_claim_keys": (self.key(0), self.key(0)), "existing_total_claims": 2},

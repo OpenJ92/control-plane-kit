@@ -333,14 +333,14 @@ class ManagedObservedInstallationTests(unittest.IsolatedAsyncioTestCase):
             observer = ProofReadObserver(psycopg.connect(os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]))
             with PostgresUnitOfWork(lambda: observer) as uow, _composed_read(uow.stores.connection) as read:
                 self.assertEqual(read.used, F(0, 0, 0, 0))
-                read.used = read.used.plus(F(4096 - probe_prefix[0], 0, 0, 0))
+                read.used = read.used.plus(F(8192 - probe_prefix[0], 0, 0, 0))
                 observer.enabled = True
                 with self.assertRaises(OperationsRecordError):
                     uow.stores.effect_outcomes.get(identity, event)
                 plans = [sql for sql in observer.queries if "FROM cpk_activity_plans" in sql]
                 self.assertEqual(len(plans), 1)
                 self.assertTrue(plans[0].startswith("SELECT octet_length("))
-                self.assertGreaterEqual(read.used.records, 4096)
+                self.assertGreaterEqual(read.used.records, 8192)
 
             # The receiver history already owns its original plan. Its outcome
             # checks must not fetch a second copy or reset the shared ledger.

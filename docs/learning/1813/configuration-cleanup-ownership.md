@@ -4909,3 +4909,75 @@ test resources were verified absent. Retained growth observed 264 closed and
 The subsequent automatic full gates remain required before C acceptance.
 There is no new security surface, credential handling, provider call or durable
 production mutation in this correction.
+
+## #1993 approved cumulative-record policy validation
+
+The four-node, three-receiver Servers #252 witness at `50dcd39` completed initial
+selected deployment, version and image replacements, and content execution.
+Content advancement refused before IDs/CAS: prior 2003 plus settled publication
+2225 equaled 4228 records (peak 4229), exceeding 4096. Bytes and the 3 MiB snapshot
+were within their separate limits. Exact owned failure cleanup passed. This is
+cumulative transported evidence, not unique durable rows. Repeated history
+reads bracket real writes; removing forecast terms would undercount actual work.
+The bounded cache audit found no demonstrated correction sufficient to close
+the 132-record gap. The client execution-status misclassification remains a
+separate reporting defect; completed effects must not be replayed blindly.
+
+The user approved evaluating 8192 shared records on #1993, with the 16 MiB
+weighted-byte cap, 3 MiB snapshot, native candidate/event/run/claim limits and
+fresh authority/history checks unchanged. The finite allowance doubles and
+provides 3963 records above the observed peak; that does not prove the remaining
+scenario fits or that larger history is supported. This policy affects all
+joined configuration operations, including read/start/transfer/cleanup. It is
+not an advancement-only exception, an authority grant, or a query/CPU/latency or
+process-memory guarantee. If the candidate fails resource review or the full
+workload, stop for a policy decision rather than increase it again.
+
+One constant in `configuration_preparation.py` feeds the predicate and the two
+remaining-record calculations in `postgres/configuration_evidence.py` and
+`postgres/receiver_execution_scopes.py`. No schema, cache or SQL-shape change is
+made. Boundary fixtures translate only shared exhaustion and exact/one-over
+values; native limits and stronger small-fixture upper bounds remain intact.
+
+Causal-red checkpoint `ff3463449d5dc33ee10c71ea355f31bcf5032ccf` ran three focused
+owning Docker tests: literal 8192 policy fit failed; both actual PostgreSQL
+transport paths refused above the old allowance. Integrity and collection
+passed. Log SHA256 `8bcbe2cd8210a94f817d77be1518b1848ff09476c28e87e76c6b0713bc4d52d7`.
+This separates policy causality from apparatus and from product acceptance.
+Focused green, independent review, full package/backend evidence and accepted
+pin propagation remain pending. Final acceptance still requires the unchanged
+Servers initial + three edits + history/replay/no-op + public desired-empty
+cleanup workload. Earlier 4096 observations in this document remain historical
+measurements, not claims about the new policy.
+
+Focused green at `1dacbc4adf4e00e086dd796e704debf7325c0f9e` completed with exit 0:
+26 selected tests in 399.145 seconds, compilation and clean import passed.
+This includes literal policy/byte/snapshot edges, both real transport paths,
+selected publication edges, late-history rollback and unchanged native scope
+limits. Log SHA256 `fc968a3c11b7e22f00b5036e37a38afc05af6582981da33324c0fb0d75c69ef3`.
+Independent review found two missed cleanup planning/approval exhaustion
+injections at 4095; they are translated to 8191 without changing their refusal,
+pre-clock/ID or durable-truth assertions. Their two existing focused methods
+are the next validation on the corrected checkpoint. No production change was
+needed after the first focused green.
+
+The first full owning gate at `0175f525` failed after 2801 test executions in
+6269.352 seconds: 70 failures, all `8192 not less than or equal to 4096`.
+Log SHA256 `2254092d72c2678cf58c7c5568e4878bc2e7c5f183a79a241464849c58f4a0d2`.
+Kepler independently traced 64 failures to the shared phase fixture's query
+reservation assertion, three to the cleanup coordinator peak assertion, two
+to the same installation peak method under two module names, and one to a
+repeat-until-capacity current-read test. These were policy-bound expectations
+mistakenly retained as stronger small-fixture bounds in the initial audit.
+
+The correction changes five assertions only: those four roots and the matching
+phase-bound independent-reader peak check masked by earlier fixture failure.
+`_PhaseConnection.execute` observes the cumulative ledger while the full SQL
+reservation is outstanding, before successful-fetch settlement. That peak uses
+the approved 8192 policy. The current-read test deliberately exhausts the
+shared budget with real repeated reads; it is not a fixed small-history bound.
+Adjacent settled-usage checks remain at 4096, and all byte, native cardinality,
+bounded-loop, physical-accounting, forecast, freshness and durable-truth
+assertions remain. No production code or capacity limit changes again.
+Targeted corrected evidence and a reviewed full rerun are required; the failed
+full gate remains a HOLD and supplies no Servers acceptance credit.

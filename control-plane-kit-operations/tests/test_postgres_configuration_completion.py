@@ -376,7 +376,7 @@ class PostgresConfigurationCompletionTests(ConfigurationPreparationFixture, unit
             self.assertGreater(accounting.used.records, 0)
             # Preserved capacity refusal after real original proof. This can
             # refuse at observation and alone does not prove ledger continuity.
-            accounting.used = ConfigurationEvidenceFootprint(4095, 0, 0, 0)
+            accounting.used = ConfigurationEvidenceFootprint(8191, 0, 0, 0)
             injected.append(accounting)
             return result
         ids = Sequence("must-not-be-used")
@@ -517,7 +517,7 @@ class PostgresConfigurationCompletionTests(ConfigurationPreparationFixture, unit
                 # Fifteen remaining relational identities cover the ordinary
                 # tail but not the supported verification's repeated source
                 # and event reads plus generic ownership evidence.
-                reader.used = replace(reader.used, records=4096 - 15)
+                reader.used = replace(reader.used, records=8192 - 15)
                 injected.append(True)
             return result
         ids = Sequence("must-not-be-used")

@@ -10,3 +10,15 @@ Transport reservations include statements, scalar markers, returned values and r
 B1 source integration is implemented. The full owning Docker gate and independent whole-B1 review remain pending. B2 current-use evidence and provider behavior are outside this module's authority.
 
 #1931 source checkpoint (unvalidated): D1 adds `_joined_read`: active owner accounting and connection/context are preserved while one read/cache is installed and restored. Standalone point reads retain their own composed context. A nested completion proof never replaces an active fold ledger or erases accumulated charges.
+
+## #1993 shared record policy
+
+The guarded length-probe allowance consumes the owner-defined
+`MAX_CONFIGURATION_EVIDENCE_RECORDS` (8192), matching the capacity predicate.
+It still subtracts prior cumulative records, divides by relational identity
+multiplicity and intersects the result with the unchanged 16 MiB byte budget.
+Length/fetch reservations, failed-query charges and cache lifetimes are
+unchanged. Exact exhaustion refuses before SQL. Real PostgreSQL target tests
+exercise prior records above 4096 and the 8192 boundary; injected prior work is
+not evidence of a naturally large history. Focused owner validation passed at
+`1dacbc4a`; full validation is pending.

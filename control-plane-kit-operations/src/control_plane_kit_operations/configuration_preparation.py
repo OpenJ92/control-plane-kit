@@ -17,6 +17,9 @@ from control_plane_kit_core.runtime_effect_observation import RuntimeEffectInten
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_operations.records import OperationsRecordError
 
+# Shared cumulative transport allowance, independent of native collection caps.
+MAX_CONFIGURATION_EVIDENCE_RECORDS = 8192
+
 _ERROR = "configuration preparation evidence is invalid"
 _ARTIFACT = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -130,7 +133,7 @@ class ConfigurationCapacityDecision(StrEnum):
 
 def configuration_evidence_capacity(footprint: ConfigurationEvidenceFootprint) -> ConfigurationCapacityDecision:
     _footprint(footprint)
-    if footprint.records > 4096:
+    if footprint.records > MAX_CONFIGURATION_EVIDENCE_RECORDS:
         return ConfigurationCapacityDecision.RECORD_LIMIT
     if footprint.accounted_bytes > 16 * 1024 * 1024:
         return ConfigurationCapacityDecision.BYTE_LIMIT

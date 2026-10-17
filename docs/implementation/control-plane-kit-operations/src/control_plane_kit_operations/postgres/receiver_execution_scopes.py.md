@@ -12,3 +12,14 @@ are retained; no fresh mutable authority is inferred from retained history.
 Receiver scope evidence joins the active configuration reader when invoked by
 advancement. Repeated prepare/finish reads retain their actual costs in the
 same command ledger; a fresh storage instance does not reset accounting.
+
+## #1993 shared record policy
+
+When candidate discovery joins a configuration command, its remaining-record
+calculation consumes `MAX_CONFIGURATION_EVIDENCE_RECORDS` (8192) from the
+existing capacity owner. This is distinct from the unchanged native
+`MAX_CANDIDATE_ROWS = 4096` and the unrelated 4096-byte row reservation estimate.
+The query still intersects native cardinality, remaining transport bytes and
+prior shared accounting before SQL. A filled shortened prefix still refuses
+before request deduplication; no history read or freshness check is removed.
+Focused owner validation passed at `1dacbc4a`; full validation is pending.

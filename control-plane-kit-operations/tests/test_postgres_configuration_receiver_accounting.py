@@ -34,7 +34,7 @@ class PostgresConfigurationReceiverAccountingTests(ReceiverAdmissionFixture, uni
                     operation()
                     self.assertGreater(accounting.used.accounted_bytes, 0)
                 with _configuration_accounting("configuration-command") as accounting:
-                    accounting.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+                    accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
                     with self.assertRaises(_Capacity):
                         operation()
         self.assertEqual(self.admission_truth(), before)
@@ -50,7 +50,7 @@ class PostgresConfigurationReceiverAccountingTests(ReceiverAdmissionFixture, uni
                 self.assertTrue(evidence)
                 self.assertGreater(accounting.used.accounted_bytes, 0)
             with _configuration_accounting("configuration-command") as accounting:
-                accounting.used = ConfigurationEvidenceFootprint(4096, 0, 0, 0)
+                accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
                 with self.assertRaises((ReceiverLifecycleStorageError, _Capacity)):
                     uow.stores.execution._receiver_acceptance_evidence((origin,))
         self.assertEqual(self.admission_truth(), before)

@@ -340,7 +340,7 @@ class PostgresConfigurationCleanupExecutionTests(ConfigurationCleanupExecutionFi
         for query in observed["queries"]:
             records, octets, cells, statements = query["peak"]
             peak = octets + 128 * records + 16 * cells + 256 * statements
-            self.assertLessEqual(records, 4096)
+            self.assertLessEqual(records, 8192)
             self.assertLessEqual(peak, 16 * 1024 * 1024)
             peaks.append(peak)
         print("#1936 public K1 coordinator transport", dict(used=_components(used),
