@@ -188,3 +188,33 @@ use keys; exactly one selected version may differ. It reuses the generic diff,
 disruptive reconciliation and managed health ordering. Combined version/image/
 content edits, two version changes, multiple consumers and changed slots do not
 acquire support. Recognition grants neither selection nor execution authority.
+
+## #1976 retained public verifier refresh
+
+The same public compiler now recognizes one more closed graph relation. One
+eligible retained workload changes only the selected V2 wrapper's public verifier
+values. Restoring its configuration field recovers the entire current graph;
+artifact membership, all non-wrapper artifacts, wrapper identity/path/media/mode,
+full receiver target (including workspace and receiver ID), declaration, selected
+secrets, image and topology remain exact. Both actual wrappers pass the strict V2
+selector/codec. Normalized verifier values must differ; formatting, order or
+provenance-only rewrites are review-blocked. No current-authority claim follows
+from structurally valid public material.
+
+For existing validated receiver values, the permitted shape is:
+
+```python
+refreshed = replace(installed, verifiers=successor_public_verifiers)
+content = ReceiverNodeControlConfigurationCodec().encode_bytes(refreshed).decode()
+successor_wrapper = replace(wrapper, content=content, source_digest=None)
+# Replace only this artifact in the otherwise unchanged desired graph, then call
+plan = compile_managed_update_activity_plan(current_validated, desired_validated)
+```
+
+The existing disruptive ReconcileNode and desired protected-health dependencies
+are reused. Core performs no I/O, key generation, activation/revocation, grant
+renewal, execution or replay. Operations #1977 owns authoritative current material,
+issuer/purpose/signer coverage, compatible grant intervals, original attempts and
+partial-cutover refusal. Servers #253 owns explicit refresh authoring and exact
+journal replay; ordinary existing-wrapper preservation does not change here.
+No new operation, export, descriptor schema or package dependency is introduced.

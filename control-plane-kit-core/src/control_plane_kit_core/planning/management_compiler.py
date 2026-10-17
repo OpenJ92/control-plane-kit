@@ -334,6 +334,48 @@ def _managed_configuration_update_shape(current, desired, diff):
             and replace(successor, content=original.content, source_digest=original.source_digest) == original)
 
 
+def _managed_verifier_refresh_shape(current, desired, diff):
+    """One exact receiver changes only its structurally valid public verifiers."""
+    if len(diff.changes) != 1:
+        return False
+    change = diff.changes[0]
+    if (not isinstance(change, ModifiedChange)
+            or not isinstance(change.subject, FieldSubject)
+            or change.subject.field is not StructuralField.CONFIGURATION_ARTIFACTS
+            or not isinstance(change.subject.owner, NodeSubject)):
+        return False
+    node_id = change.subject.owner.node_id
+    before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
+    if desired.graph.update_node(replace(after, configuration_artifacts=before.configuration_artifacts)) != current.graph:
+        return False
+    wrapper = _retained_update_wrapper(current, desired, node_id)
+    if wrapper is None:
+        return False
+    old = {value.artifact_id: value for value in before.configuration_artifacts}
+    new = {value.artifact_id: value for value in after.configuration_artifacts}
+    if old.keys() != new.keys() or [key for key in old if old[key] != new[key]] != [wrapper.artifact_id]:
+        return False
+    successor = new[wrapper.artifact_id]
+    if replace(successor, content=wrapper.content, source_digest=wrapper.source_digest) != wrapper:
+        return False
+    try:
+        selected = select_receiver_node_control_configuration_artifact(
+            artifacts=after.configuration_artifacts,
+            environment=after.public_environment + after.socket_environment,
+            control_surfaces=after.block_spec.control_surfaces,
+        )
+        codec = ReceiverNodeControlConfigurationCodec()
+        original = codec.decode_bytes(wrapper.content.encode("utf-8"))
+        refreshed = codec.decode_bytes(selected.content.encode("utf-8"))
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return False
+    # Full target equality includes workspace and receiver identity, not only placement.
+    # Current signer/issuer authority remains an Operations admission obligation.
+    return (original.target == refreshed.target
+            and original.declaration == refreshed.declaration
+            and original.verifiers != refreshed.verifiers)
+
+
 def _managed_image_update_shape(current, desired, diff):
     """Recognize a pinned image transition; registered contract truth is external."""
     if len(diff.changes) != 1:
@@ -415,13 +457,14 @@ def _matching_activity(plan, operation_type, predicate):
 
 
 def compile_managed_update_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
-    """Derive closed add/remove, content, image or selected-version updates."""
+    """Derive closed add/remove, content, image, selected-version or verifier updates."""
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
     base = compile_graph_activity_plan(current, desired)
     if (not diff.changes or _managed_configuration_update_shape(current, desired, diff)
             or _managed_image_update_shape(current, desired, diff)
-            or _managed_secret_selection_update_shape(current, desired, diff)):
+            or _managed_secret_selection_update_shape(current, desired, diff)
+            or _managed_verifier_refresh_shape(current, desired, diff)):
         return base
     shape = _managed_update_shape(current, desired, diff)
     if shape is None or not base.ready_for_execution:
