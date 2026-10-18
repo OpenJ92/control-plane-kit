@@ -8,6 +8,11 @@ from control_plane_kit_core.secret_selections import (
     SecretSelectionError, author_secret_selections, normalize_secret_selections,
     secret_selection_key,
 )
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfigurationCodec, _receiver_health_declaration_successor,
+    select_receiver_node_control_configuration_artifact,
+    select_receiver_node_control_configuration_slot,
+)
 from control_plane_kit_core.secrets import secret_delivery_sort_key
 from control_plane_kit_core.topology.graph import DeploymentGraph
 
@@ -95,6 +100,68 @@ def _node_compatible(before, after):
             and _artifact_slots(before.configuration_artifacts) == _artifact_slots(after.configuration_artifacts))
 
 
+def _declaration_compatible(before, after, documents):
+    """Carry an admitted choice through one exact declaration-only successor.
+
+    Documents establish pure compatibility, not active registration. Complete
+    graph/route admission and current verifier authority remain with their owners.
+    """
+    old, new = _coordinates(before), _coordinates(after)
+    if old == new or old not in documents or new not in documents:
+        return False
+    first, second = documents[old], documents[new]
+    if ((first.identity.namespace, first.identity.name) != (second.identity.namespace, second.identity.name)
+            or first.identity == second.identity
+            or replace(second, identity=first.identity, runtime_contract=first.runtime_contract) != first):
+        return False
+    a, b = first.runtime_contract, second.runtime_contract
+    if a.control_surfaces == b.control_surfaces:
+        return False
+    codec = ReceiverNodeControlConfigurationCodec()
+    try:
+        defaults = tuple(select_receiver_node_control_configuration_slot(
+            artifacts=value.configuration_artifacts, environment=value.public_environment,
+            control_surfaces=value.control_surfaces) for value in (a, b))
+        old_default, new_default = defaults
+        if replace(new_default, content=old_default.content, source_digest=old_default.source_digest) != old_default:
+            return False
+        # Unchanged defaults may be opaque templates. Changed defaults preserve
+        # their own identity/trust; neither default confers installed identity.
+        if old_default != new_default:
+            prior, next_value = (codec.decode_bytes(value.content.encode("utf-8")) for value in defaults)
+            if (prior.declaration.surface != a.control_surfaces[0]
+                    or next_value.declaration.surface != b.control_surfaces[0]
+                    or not _receiver_health_declaration_successor(prior, next_value)):
+                return False
+        if replace(b, control_surfaces=a.control_surfaces, configuration_artifacts=tuple(
+                old_default if value.artifact_id == new_default.artifact_id else value
+                for value in b.configuration_artifacts)) != a:
+            return False
+        wrappers = tuple(select_receiver_node_control_configuration_artifact(
+            artifacts=node.configuration_artifacts,
+            environment=node.public_environment + node.socket_environment,
+            control_surfaces=node.block_spec.control_surfaces) for node in (before, after))
+        original, updated = (codec.decode_bytes(value.content.encode("utf-8")) for value in wrappers)
+        if (before.block_spec.control_surfaces != a.control_surfaces
+                or after.block_spec.control_surfaces != b.control_surfaces
+                or original.target.node_id.value != before.node_id
+                or original.target.runtime_id.value != before.runtime_id
+                or not _receiver_health_declaration_successor(original, updated)):
+            return False
+        wrapper, successor = wrappers
+        if replace(successor, content=wrapper.content, source_digest=wrapper.source_digest) != wrapper:
+            return False
+        restored = replace(after,
+            block_spec=replace(after.block_spec, control_surfaces=before.block_spec.control_surfaces),
+            metadata={**after.metadata, "product_identity": before.metadata["product_identity"],
+                "product_descriptor_digest": before.metadata["product_descriptor_digest"]},
+            configuration_artifacts=tuple(wrapper if value.artifact_id == successor.artifact_id else value
+                for value in after.configuration_artifacts), secret_selections=before.secret_selections)
+        return restored == before
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return False
+
+
 def _slots(node, key):
     return tuple(sorted(secret_delivery_sort_key(value) for value in node.secret_deliveries
                         if hasattr(value, "intent") and secret_selection_key(value) == key))
@@ -116,7 +183,8 @@ def carry_forward_secret_selections(previous_graph, desired_graph, explicit_choi
         if previous is not None:
             normalize_secret_selections(previous.secret_deliveries, previous.secret_selections)
             compatible = _compatible_product(previous, desired, documents)
-            if compatible and _node_compatible(previous, desired):
+            if ((compatible and _node_compatible(previous, desired))
+                    or _declaration_compatible(previous, desired, documents)):
                 inherited = tuple(value for value in previous.secret_selections
                                   if _slots(previous, secret_selection_key(value))
                                   == _slots(desired, secret_selection_key(value)))

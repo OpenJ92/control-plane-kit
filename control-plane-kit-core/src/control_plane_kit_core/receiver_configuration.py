@@ -8,10 +8,11 @@ from control_plane_kit_core._node_control_public_wire import canonical_json_byte
 from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding
 from control_plane_kit_core.node_control import (
-    WorkloadNodeControlSurfaceDescriptor, WorkloadNodeControlSurfaceDescriptorCodec,
+    NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor, WorkloadNodeControlSurfaceDescriptorCodec,
 )
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationCodec,
+    WorkloadNodeControlSurfaceDeclarationProfile,
 )
 from control_plane_kit_core.receiver_identity import NodeControlReceiverTarget, NodeControlReceiverTargetCodec
 from control_plane_kit_core.wrapper_configuration import (
@@ -132,6 +133,17 @@ def select_receiver_node_control_configuration_artifact(
     except _INPUT_ERRORS:
         failure = WrapperConfigurationError(_ERROR)
     raise failure
+
+
+def _receiver_health_declaration_successor(original, updated):
+    """Pure installed configuration relation; no registration or execution authority."""
+    return (original.target == updated.target and original.verifiers == updated.verifiers
+            and original.declaration != updated.declaration
+            and all(value.profile is WorkloadNodeControlSurfaceDeclarationProfile.V2
+                and not value.surface.variables and NodeHealthReadKind.READINESS in value.surface.health_reads
+                for value in (original.declaration, updated.declaration))
+            and replace(updated.declaration.surface, health_reads=original.declaration.surface.health_reads)
+                == original.declaration.surface)
 
 
 __all__ = [
