@@ -68,6 +68,13 @@ successor = carry_forward_secret_selections(
 
 Changed registered product coordinates require both exact canonical documents.
 They prove pure contract compatibility, not registry admission or authority.
+An exact same-image health-declaration successor also retains the selected
+version: the installed receiver target, verifier families, delivery slots and
+all unrelated node/contract material must agree. Only the V2 health-read set
+may change, with readiness retained. Unchanged registered wrapper templates may
+be opaque; changed templates must preserve their own target and public trust.
+Neither template replaces installed receiver identity. This pure carry-forward
+performs no provider read and grants no graph, route or execution authority.
 An incompatible delivery remains explicitly unresolved until an explicit valid
 choice is supplied. Version-only changes produce a real graph difference and
 node reconciliation. Stops/removals need not invent historical versions.

@@ -121,7 +121,7 @@
       "owner": "core", "role": "pure-contract", "semantic_roles": ["validation", "transformations"],
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["carry_forward_secret_selections"],
-      "internal_dependencies": ["control_plane_kit_core.products", "control_plane_kit_core.secret_selections", "control_plane_kit_core.secrets", "control_plane_kit_core.topology.graph"],
+      "internal_dependencies": ["control_plane_kit_core.products", "control_plane_kit_core.receiver_configuration", "control_plane_kit_core.secret_selections", "control_plane_kit_core.secrets", "control_plane_kit_core.topology.graph"],
       "known_package_consumers": [], "optional_external_dependencies": [],
       "protecting_tests": ["tests/test_secret_selections.py"],
       "motivation": "Carry forward exact known choices using explicit pure product compatibility evidence, without registry I/O or authority inference."
@@ -12392,11 +12392,11 @@
       "known_package_consumers": ["control_plane_kit_core"],
       "migration_prerequisites": [],
       "module": "control_plane_kit_core.receiver_configuration",
-      "motivation": "Explicit V2 configuration and structural artifact selection for logical receivers, without authority context or profile fallback.",
+      "motivation": "Explicit V2 configuration, structural artifact selection and pure retained health-declaration relation for logical receivers, without authority context or profile fallback.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
-      "protecting_tests": ["tests/test_receiver_configuration.py", "tests/test_wrapper_configuration.py"],
+      "protecting_tests": ["tests/test_receiver_configuration.py", "tests/test_wrapper_configuration.py", "tests/test_secret_selections.py", "tests/test_management_bootstrap_planning.py"],
       "role": "deployment-language",
       "semantic_roles": ["values", "transformations"],
       "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_configuration.py"

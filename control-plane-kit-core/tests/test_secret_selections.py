@@ -96,6 +96,108 @@ class SecretSelectionTests(unittest.TestCase):
                 self.assertEqual(carried.node("workload").secret_selections, (choice(),))
                 self.assertEqual(carried, desired)
 
+    def assert_declaration_not_carried(self, current, desired, documents):
+        carried = language("topology.secret_selection").carry_forward_secret_selections(
+            current, desired, {}, product_documents=documents)
+        self.assertTrue(all(type(value) is language().UnselectedSecretUse
+            for value in carried.node("workload").secret_selections))
+
+    def declaration_product(self, graph, product):
+        updated = ProductDescriptorCodec().encode_document(product)
+        node = graph.node("workload")
+        return graph.update_node(replace(node, metadata={**node.metadata,
+            "product_identity": product.identity.key, "product_descriptor_digest": updated.content_digest,
+            "oci_image": product.image.execution_reference})), updated
+
+    def test_declaration_carry_refuses_unrelated_node_and_installed_trust_changes(self):
+        from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+        from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+        current, desired, documents = self.declaration_pair()
+        node = desired.node("workload")
+        wrapper = next(value for value in node.configuration_artifacts if value.artifact_id == "receiver")
+        codec = ReceiverNodeControlConfigurationCodec()
+        configured = codec.decode_bytes(wrapper.content.encode())
+        materials = [replace(configured, target=replace(configured.target, receiver_id="e" * 32)),
+            replace(configured, verifiers=tuple(replace(value, issuer="different-issuer")
+                for value in configured.verifiers))]
+        wrappers = [replace(wrapper, content=codec.encode_bytes(value).decode(), source_digest=None)
+            for value in materials]
+        wrappers += [replace(wrapper, target_path="/elsewhere/receiver.json"),
+            replace(wrapper, content=wrapper.content.replace("workload-node-control-configuration.v2",
+                "workload-node-control-configuration.v1"), source_digest=None)]
+        candidates = [replace(node, metadata={**node.metadata, "unrelated": "changed"}),
+            replace(node, block_spec=replace(node.block_spec, role_id="another-role")),
+            replace(node, block_spec=replace(node.block_spec, control_surfaces=(
+                replace(node.block_spec.control_surfaces[0], provider_socket_name="other"),))),
+            replace(node, public_environment=(*node.public_environment, PublicStaticEnvironmentBinding("EXTRA", "value"))),
+            replace(node, secret_deliveries=tuple(replace(value, target_path="/run/secrets/moved")
+                for value in node.secret_deliveries)),
+            replace(node, configuration_artifacts=(*node.configuration_artifacts,
+                ConfigurationArtifact("extra", "/etc/extra.json", ConfigurationMediaType.JSON, "{}")))]
+        candidates += [replace(node, configuration_artifacts=tuple(value if item.artifact_id == wrapper.artifact_id
+            else item for item in node.configuration_artifacts)) for value in wrappers]
+        for index, candidate in enumerate(candidates):
+            with self.subTest(case=index):
+                self.assert_declaration_not_carried(current, desired.update_node(candidate), documents)
+
+    def test_declaration_carry_requires_exact_product_family_image_and_default_relation(self):
+        from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+        current, desired, documents = self.declaration_pair()
+        product = documents[1].product
+        wrapper = next(value for value in product.runtime_contract.configuration_artifacts
+                       if value.artifact_id == "receiver")
+        codec = ReceiverNodeControlConfigurationCodec()
+        configured = codec.decode_bytes(wrapper.content.encode())
+        changed_defaults = [replace(wrapper, content="{}", source_digest=None),
+            replace(wrapper, content=codec.encode_bytes(replace(configured,
+                target=replace(configured.target, receiver_id="e" * 32))).decode(), source_digest=None),
+            replace(wrapper, content=codec.encode_bytes(replace(configured, verifiers=tuple(
+                replace(value, issuer="different-template-issuer") for value in configured.verifiers))).decode(),
+                source_digest=None)]
+        candidates = [replace(product, image=replace(product.image, digest="sha256:" + "c" * 64)),
+            replace(product, identity=replace(product.identity, name="different-product")),
+            replace(product, runtime_contract=replace(product.runtime_contract, configuration_artifacts=(
+                *product.runtime_contract.configuration_artifacts,
+                ConfigurationArtifact("extra", "/etc/extra.json", ConfigurationMediaType.JSON, "{}"))))]
+        candidates += [replace(product, runtime_contract=replace(product.runtime_contract,
+            configuration_artifacts=tuple(value if item.artifact_id == wrapper.artifact_id else item
+                for item in product.runtime_contract.configuration_artifacts))) for value in changed_defaults]
+        for index, candidate in enumerate(candidates):
+            graph, document = self.declaration_product(desired, candidate)
+            with self.subTest(case=index):
+                self.assert_declaration_not_carried(current, graph, (documents[0], document))
+        for evidence in ((), documents[:1], (*documents, documents[1]),
+                         (documents[0], replace(documents[1], product=candidates[0]))):
+            with self.subTest(evidence_count=len(evidence)), self.assertRaises(ValueError):
+                language("topology.secret_selection").carry_forward_secret_selections(
+                    current, desired, {}, product_documents=evidence)
+
+    def test_declaration_carry_preserves_opaque_and_independent_registered_templates(self):
+        from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+        codec = ReceiverNodeControlConfigurationCodec()
+        for opaque in (False, True):
+            current, desired, documents = self.declaration_pair()
+            graphs, updated_documents = [], []
+            for graph, document in zip((current, desired), documents, strict=True):
+                product = document.product
+                artifacts = []
+                for artifact in product.runtime_contract.configuration_artifacts:
+                    if artifact.artifact_id == "receiver":
+                        configured = codec.decode_bytes(artifact.content.encode())
+                        content = "{}" if opaque else codec.encode_bytes(replace(configured,
+                            target=replace(configured.target, receiver_id="d" * 32))).decode()
+                        artifact = replace(artifact, content=content, source_digest=None)
+                    artifacts.append(artifact)
+                product = replace(product, runtime_contract=replace(product.runtime_contract,
+                    configuration_artifacts=tuple(artifacts)))
+                graph, document = self.declaration_product(graph, product)
+                graphs.append(graph)
+                updated_documents.append(document)
+            with self.subTest(opaque=opaque):
+                carried = language("topology.secret_selection").carry_forward_secret_selections(
+                    *graphs, {}, product_documents=tuple(updated_documents))
+                self.assertEqual(carried, graphs[1])
+
     def test_closed_explicit_unselected_and_exact_version_encoding(self):
         m = language()
         selected = choice()

@@ -9,7 +9,6 @@ import hashlib
 from control_plane_kit_core.configuration import ConfigurationMediaType
 from control_plane_kit_core.lifecycle import ResourceOwnership, ResourcePersistence
 from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor
-from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.planning.activity_plan import (
     ActivityDependency, ActivityId, ActivityPlan, AllocatePublicIngress,
     ChangeTarget, InvalidActivityPlan, PlannedActivity, ReconcileNode, RemoveNodeResource, ReviewChange,
@@ -24,6 +23,7 @@ from control_plane_kit_core.planning.management_observations import (
 from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.products import OciImageReference, ProductDescriptorDigest, ProductIdentity
 from control_plane_kit_core.receiver_configuration import (
+    _receiver_health_declaration_successor,
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
 )
 from control_plane_kit_core.receiver_management_routes import ReceiverManagementRoutesCodec, ReceiverManagementRoutesError
@@ -538,13 +538,7 @@ def _managed_declaration_update_shape(current, desired, diff):
             gateway_configurations.append((own_wrapper, configured))
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
         return None
-    if (original.target != updated.target or original.verifiers != updated.verifiers
-            or original.declaration == updated.declaration
-            or any(value.profile is not WorkloadNodeControlSurfaceDeclarationProfile.V2
-                or value.surface.variables or NodeHealthReadKind.READINESS not in value.surface.health_reads
-                for value in (original.declaration, updated.declaration))
-            or replace(updated.declaration.surface, health_reads=original.declaration.surface.health_reads)
-                != original.declaration.surface
+    if (not _receiver_health_declaration_successor(original, updated)
             or replace(after.block_spec, control_surfaces=before.block_spec.control_surfaces) != before.block_spec
             or replace(successor, content=wrapper.content, source_digest=wrapper.source_digest) != wrapper
             or tuple(wrapper if item.artifact_id == successor.artifact_id else item
