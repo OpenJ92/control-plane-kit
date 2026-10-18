@@ -204,6 +204,46 @@ class ManagedSelectedUpdateExecutionTests(chain.ManagedApplicationFixture):
             "product_identity": successor.identity.key, "product_descriptor_digest": document.content_digest,
             "oci_image": successor.image.execution_reference}))
 
+    async def test_declaration_prepare_retains_selected_version_without_provider_read(self):
+        from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+        from tests.test_managed_declaration_update_admission import declaration_successor, selected_wrapper
+        from tests.test_managed_verifier_refresh import ManagedVerifierRefreshTests
+        await self.complete_initial()
+        _, configured = selected_wrapper(self.graph.node("api"))
+        family, = (value for value in configured.verifiers
+            if value.purpose is DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ)
+        ManagedVerifierRefreshTests.register_public(self, family.purpose, family.public_keys[0], active=True)
+        desired, document = declaration_successor(self.graph, self.documents["api"].product,
+            node_id="api", change_default=True)
+        await self.invoke("command.product.import", ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"}, payload={
+                "descriptor_document": json.loads(document.content),
+                "imported_at": chain.now(), "idempotency_key": "selected-declaration-product"})
+        payload = ManagedVerifierRefreshTests.prepare_payload(self, desired, "selected-declaration-prepare")
+        baseline = tuple(self.metadata_calls), self.effects(), tuple(self.runtime.calls)
+        with self.unit_of_work() as uow:
+            previous = uow.stores.workspaces.get("workspace-a")
+        prepared = await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"}, payload=payload)
+        self.assertEqual(prepared["status"], "approval-required")
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            stored = uow.stores.graphs.get(workspace.desired_graph_id)
+            plan = uow.stores.activity_history.get_plan(prepared["plan_id"])
+        selected = DEFAULT_GRAPH_CODEC.decode(stored.graph_descriptor).node("api")
+        self.assertEqual(selected.secret_selections, self.graph.node("api").secret_selections)
+        self.assertEqual(selected.secret_deliveries, self.graph.node("api").secret_deliveries)
+        self.assertEqual(workspace.current_graph_id, previous.current_graph_id)
+        self.assertEqual(workspace.current_realized_projection_id, previous.current_realized_projection_id)
+        self.assertEqual([value.operation.target.node_id for value in plan.plan.activities
+            if type(value.operation) is ReconcileNode], ["api", "gateway"])
+        snapshot = self.durable_snapshot()
+        replay = await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"}, payload=payload, app=self.application())
+        self.assertEqual(replay, prepared)
+        self.assertEqual(self.durable_snapshot(), snapshot)
+        self.assertEqual((tuple(self.metadata_calls), self.effects(), tuple(self.runtime.calls)), baseline)
+
     async def test_public_version_selection_prepares_executes_and_replays_exact_update(self):
         await self.prepare_content()
         result = await self.execute_content()

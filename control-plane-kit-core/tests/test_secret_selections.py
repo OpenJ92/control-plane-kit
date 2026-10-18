@@ -53,6 +53,49 @@ def request_with_version(version="version-1"):
 
 
 class SecretSelectionTests(unittest.TestCase):
+    def declaration_pair(self, *, reverse=False):
+        from control_plane_kit_core.node_control import NodeHealthReadKind
+        from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+        from tests.test_management_bootstrap_planning import ManagedImageUpdateTests
+        delivery = SecretFileDelivery("/run/secrets/key", choice().reference, choice().intent)
+        initial, _, product, _ = ManagedImageUpdateTests().pair(secret_deliveries=(delivery,))
+        codec = ReceiverNodeControlConfigurationCodec()
+        wrapper = next(value for value in product.runtime_contract.configuration_artifacts
+                       if value.artifact_id == "receiver")
+        configured = codec.decode_bytes(wrapper.content.encode())
+        readiness = (NodeHealthReadKind.READINESS,)
+        both = (NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS)
+        graphs, documents = [], []
+        for revision, kinds in enumerate((both, readiness) if reverse else (readiness, both), 1):
+            declaration = replace(configured.declaration,
+                surface=replace(configured.declaration.surface, health_reads=kinds))
+            artifact = replace(wrapper, content=codec.encode_bytes(
+                replace(configured, declaration=declaration)).decode(), source_digest=None)
+            artifacts = tuple(artifact if value.artifact_id == wrapper.artifact_id else value
+                              for value in product.runtime_contract.configuration_artifacts)
+            successor = replace(product, identity=replace(product.identity, contract_revision=revision),
+                runtime_contract=replace(product.runtime_contract,
+                    control_surfaces=(declaration.surface,), configuration_artifacts=artifacts))
+            document = ProductDescriptorCodec().encode_document(successor)
+            node = initial.node("workload")
+            graphs.append(initial.update_node(replace(node,
+                block_spec=replace(node.block_spec, control_surfaces=(declaration.surface,)),
+                configuration_artifacts=artifacts, secret_selections=(choice(),),
+                metadata={**node.metadata, "product_identity": successor.identity.key,
+                    "product_descriptor_digest": document.content_digest})))
+            documents.append(document)
+        return (*graphs, tuple(documents))
+
+    def test_health_declaration_successor_carries_exact_selected_version(self):
+        authoring = language("topology.secret_selection")
+        for reverse in (False, True):
+            with self.subTest(reverse=reverse):
+                current, desired, documents = self.declaration_pair(reverse=reverse)
+                carried = authoring.carry_forward_secret_selections(
+                    current, desired, {}, product_documents=documents)
+                self.assertEqual(carried.node("workload").secret_selections, (choice(),))
+                self.assertEqual(carried, desired)
+
     def test_closed_explicit_unselected_and_exact_version_encoding(self):
         m = language()
         selected = choice()
