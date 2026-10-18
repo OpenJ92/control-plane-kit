@@ -128,7 +128,8 @@ class SecretSelectionTests(unittest.TestCase):
         candidates = [replace(node, metadata={**node.metadata, "unrelated": "changed"}),
             replace(node, block_spec=replace(node.block_spec, role_id="another-role")),
             replace(node, block_spec=replace(node.block_spec, control_surfaces=(
-                replace(node.block_spec.control_surfaces[0], provider_socket_name="other"),))),
+                replace(node.block_spec.control_surfaces[0], provider_socket_name=replace(
+                    node.block_spec.control_surfaces[0].provider_socket_name, value="other")),))),
             replace(node, public_environment=(*node.public_environment, PublicStaticEnvironmentBinding("EXTRA", "value"))),
             replace(node, secret_deliveries=tuple(replace(value, target_path="/run/secrets/moved")
                 for value in node.secret_deliveries)),
