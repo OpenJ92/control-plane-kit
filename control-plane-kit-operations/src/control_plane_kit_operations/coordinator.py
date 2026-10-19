@@ -74,6 +74,12 @@ from control_plane_kit_core.configuration_instances import (
 from control_plane_kit_core.planning import CleanupConfigurationInstances
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+from control_plane_kit_core.topology.validation import validate_graph
+from control_plane_kit_core.planning.management_compiler import resolve_management_observation
+from control_plane_kit_operations.connector_installation import (
+    CurrentConnectorInstallation, CurrentConnectorInstallationRead,
+)
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
@@ -286,6 +292,7 @@ class ActivityRealizationContext:
     ingress_authorities: tuple[RegisteredIngressAuthority, ...] = ()
     ingress_resources: tuple[CloudflareOwnedIngressResource, ...] = ()
     generated_ingress_secrets: tuple[GeneratedIngressSecretReference, ...] = ()
+    connector_installation: CurrentConnectorInstallation | None = field(default=None, repr=False)
 
     @property
     def plan(self) -> ActivityPlan:
@@ -466,6 +473,33 @@ class ActivityRealizationContext:
                 )
         if self.intent_event.activity_id != self.activity.activity_id.value:
             raise InvalidOperationCommand("realization intent must match activity")
+        if self.connector_installation is not None:
+            valid = False
+            try:
+                installation = self.connector_installation
+                if (type(installation) is not CurrentConnectorInstallation
+                        or self.plan_record.derivation_profile is not PlanDerivationProfile.MANAGED_UPDATE_V1
+                        or not is_native_connection_operation(self.activity.operation)):
+                    raise ValueError
+                CurrentConnectorInstallation.__post_init__(installation)
+                resolved = _native_connector_observation(self)
+                valid = (installation.workspace_id == workspace_id
+                    and installation.current_graph_id == self.plan_record.base_graph_id
+                    and installation.current_realized_projection_id == self.plan_record.base_realized_projection_id
+                    and installation.runtime_id == resolved.operation.target.runtime_id
+                    and installation.node_id == resolved.connector_node.node_id)
+            except (ValueError, TypeError, KeyError, AttributeError, IndexError, RecursionError):
+                pass
+            if not valid:
+                raise InvalidOperationCommand("realization connector installation does not match native observation")
+
+
+def _native_connector_observation(realization):
+    """Resolve the existing Core relation against the pinned accepted operation."""
+    return resolve_management_observation(realization.activity.operation,
+        validate_graph(DEFAULT_GRAPH_CODEC.decode(realization.base_graph.graph_descriptor)),
+        validate_graph(DEFAULT_GRAPH_CODEC.decode(realization.desired_graph.graph_descriptor)),
+        expected_operation=realization.plan.activity(realization.activity.activity_id).operation)
 
 
 @dataclass(frozen=True)
@@ -1070,18 +1104,20 @@ class ExecutionCoordinator:
             effect_id=attempt.original_start_event.event_id, secret_resolution_grants=())
         selected_runtime = self._selected_managed_runtime(context, intent)
         if native:
-            intent_record, runtime = self._managed_dispatch_authority(command, attempt, selected_runtime)
+            intent_record, runtime, realization = self._managed_dispatch_authority(
+                command, attempt, selected_runtime, realization=realization, expected_intent=intent)
             response = NativeConnectionReadFailure()
             cancelled = None
             try:
-                observed = await self._managed_health.observe_connection(realization, request, runtime)
-                if type(observed) in (NativeConnectionObservation, NativeConnectionRefused):
-                    if type(observed) is NativeConnectionObservation:
-                        observed.__post_init__()
-                        if (observed.effect_id != request.effect_id
-                                or observed.activity_id != request.activity_id.value):
-                            raise ValueError("native read correlation mismatch")
-                    response = observed
+                if realization is not None:
+                    observed = await self._managed_health.observe_connection(realization, request, runtime)
+                    if type(observed) in (NativeConnectionObservation, NativeConnectionRefused):
+                        if type(observed) is NativeConnectionObservation:
+                            observed.__post_init__()
+                            if (observed.effect_id != request.effect_id
+                                    or observed.activity_id != request.activity_id.value):
+                                raise ValueError("native read correlation mismatch")
+                        response = observed
             except asyncio.CancelledError as error:
                 cancelled = error
             except Exception:
@@ -1106,7 +1142,7 @@ class ExecutionCoordinator:
             raise ExecutionCoordinatorDenied("original health grant is not yet usable")
         if delay:
             await asyncio.sleep(delay)
-        intent_record, runtime = self._managed_dispatch_authority(command, attempt, selected_runtime)
+        intent_record, runtime, _ = self._managed_dispatch_authority(command, attempt, selected_runtime)
         authority = self._health_signing_authority.execute(ReloadHealthSigningAuthority(
             context.request.identity.request_id, attempt.state.identity, command.context,
             execution.authority, execution.fence))
@@ -1155,7 +1191,8 @@ class ExecutionCoordinator:
             raise ExecutionCoordinatorDenied("managed runtime authority is unavailable")
         return selected[0]
 
-    def _managed_dispatch_authority(self, command, attempt, selected_runtime):
+    def _managed_dispatch_authority(self, command, attempt, selected_runtime, *,
+            realization=None, expected_intent=None):
         with self._unit_of_work_factory() as uow:
             stores = uow.stores
             request, run = _locked_request_and_run(stores, command.execution)
@@ -1174,8 +1211,45 @@ class ExecutionCoordinator:
             observed = stores.execution.observe_request_lease_for_update(request.identity.request_id)
             if observed.request != request or observed.expired:
                 raise ExecutionCoordinatorDenied("managed read lease expired")
+            if realization is not None:
+                if (intent.intent != expected_intent
+                        or realization.intent_event != attempt.original_start_event
+                        or realization.plan_record != stores.activity_history.get_plan(request.identity.plan_id)):
+                    raise ExecutionCoordinatorDenied("native observation context changed")
+                realization = self._native_connector_installation(stores, realization)
             uow.commit()
-        return intent, authority
+        return intent, authority, realization
+
+    def _native_connector_installation(self, stores, realization):
+        """Join accepted provenance inside fresh admission, never across effects."""
+        if realization.plan_record.derivation_profile is not PlanDerivationProfile.MANAGED_UPDATE_V1:
+            return realization
+        resolved = _native_connector_observation(realization)
+        workspace = stores.workspaces.get(realization.request.identity.workspace_id)
+        plan = realization.plan_record
+        if (workspace.current_graph_id != plan.base_graph_id
+                or workspace.current_realized_projection_id != plan.base_realized_projection_id):
+            raise ExecutionCoordinatorDenied("native observation current pins changed")
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
+        accounting = _ACCOUNTING.get()
+        if (accounting is None or accounting.owner != realization.run.run_id
+                or accounting.execution_context != _execution_context()):
+            raise ExecutionCoordinatorDenied("native observation accounting is unavailable")
+        active = accounting.active
+        accounting.active = True
+        try:
+            proof = stores.configuration_acceptance.read_current_connector_installation(
+                workspace.workspace_id, expected_current_graph_id=plan.base_graph_id,
+                expected_current_realized_projection_id=plan.base_realized_projection_id,
+                runtime_id=resolved.operation.target.runtime_id, node_id=resolved.connector_node.node_id)
+        finally:
+            accounting.active = active
+        if type(proof) is not CurrentConnectorInstallationRead:
+            raise ExecutionCoordinatorConflict("native connector installation read is invalid")
+        CurrentConnectorInstallationRead.__post_init__(proof)
+        if proof.state != "complete":
+            return None
+        return replace(realization, connector_installation=proof.installation)
 
     def _cleanup_dispatch_matches(self, attempt, context, request):
         """Prove the committed registration before using pre-start context."""
