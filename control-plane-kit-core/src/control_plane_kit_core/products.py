@@ -15,7 +15,7 @@ from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, Require
 from control_plane_kit_core.algebra import ApplicationBlock, BlockSpec, RuntimeContext
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.runtime_management import GatewayTransitDeclaration, GatewayTransitDeclarationCodec
-from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     environment_binding_from_descriptor,
@@ -465,6 +465,7 @@ class ProductRuntimeContract:
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...] = ()
     gateway_transit: GatewayTransitDeclaration | None = field(default=None, kw_only=True)
+    configuration_requirements: tuple[ConfigurationArtifactRequirement, ...] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         sockets = self.sockets
@@ -661,6 +662,11 @@ class ProductRuntimeContract:
         if self.gateway_transit is not None:
             descriptor["gateway_transit"] = self.gateway_transit.descriptor()
         return descriptor
+
+
+def product_configuration_slots(contract: ProductRuntimeContract) -> tuple[ConfigurationArtifactRequirement, ...]:
+    """Project the declared union; #2011 target scaffold."""
+    raise NotImplementedError("product configuration slots")
 
 
 class ProductRuntimeContractCodec:

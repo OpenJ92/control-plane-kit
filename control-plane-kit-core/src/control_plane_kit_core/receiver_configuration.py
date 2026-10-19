@@ -100,12 +100,15 @@ def select_receiver_node_control_configuration_slot(
     *, artifacts: tuple[ConfigurationArtifact, ...],
     environment: tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...],
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...],
+    requirements=(),
 ) -> ConfigurationArtifact:
     """Select declared structure, never receiver identity or verifier authority.
 
     Payload retains ConfigurationArtifact integrity and bounds but need not be
     receiver configuration. Actual material requires the strict V2 selector.
     """
+    if requirements:
+        raise NotImplementedError("required receiver configuration slot")
     try:
         artifact = _select_wrapper_configuration_slot(
             artifacts=artifacts, environment=environment, control_surfaces=control_surfaces)

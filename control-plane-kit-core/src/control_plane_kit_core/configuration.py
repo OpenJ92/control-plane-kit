@@ -41,6 +41,23 @@ class ConfigurationArtifactError(ValueError):
 
 
 @dataclass(frozen=True, order=True)
+class ConfigurationArtifactRequirement:
+    """A declared file slot; #2011 target scaffold, not yet validated."""
+
+    artifact_id: str
+    target_path: str
+    media_type: ConfigurationMediaType
+    file_mode: ConfigurationFileMode = ConfigurationFileMode.READ_ONLY
+
+    def descriptor(self) -> dict[str, str]:
+        raise NotImplementedError("configuration requirement descriptor")
+
+    @classmethod
+    def from_descriptor(cls, value: Mapping[str, object]) -> "ConfigurationArtifactRequirement":
+        raise NotImplementedError("configuration requirement descriptor admission")
+
+
+@dataclass(frozen=True, order=True)
 class ConfigurationArtifact:
     """One bounded, secret-free file intended for a container path."""
 
