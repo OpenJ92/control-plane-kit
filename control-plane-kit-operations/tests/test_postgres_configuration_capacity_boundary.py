@@ -279,6 +279,39 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
         # on heap/index work or latency and not an optimizer-choice promise.
         with self.base.connection.transaction():
             self.base.connection.execute("SET LOCAL enable_seqscan=off")
+            # The shared fixture truncates tables between cases. Refresh only
+            # this case's six populated relations before checking eligibility;
+            # inherited planner statistics are a hypothesis, not a proven cause.
+            def statistics():
+                return {label: dict(
+                    relation=self.base.connection.execute(
+                        "SELECT reltuples,relpages FROM pg_class WHERE oid=%s::regclass",
+                        (table,)).fetchone(),
+                    columns=self.base.connection.execute(
+                        "SELECT attname,n_distinct,null_frac FROM pg_stats "
+                        "WHERE schemaname=current_schema() AND tablename=%s "
+                        "AND attname=ANY(%s) ORDER BY attname", (table, list(columns))).fetchall())
+                    for label, (table, columns) in prefixes.items()}
+
+            def plan_summary(plan):
+                # Fixed plan metadata only: no row values or histogram samples.
+                return [dict(kind=node["Node Type"], index=node.get("Index Name"),
+                    condition_columns=[column for column in ("workspace_id", "runtime_id", "node_id")
+                        if column in node.get("Index Cond", "")],
+                    filtered="Filter" in node or "Join Filter" in node)
+                    for node, _ in plan_paths(plan)]
+
+            node_sql, node_params = next((sql, params) for sql, params, _ in queries
+                if " FROM cpk_effect_configuration_refs WHERE protective AND " in sql
+                and all(column + "=%s" in sql for column in prefixes["node"][1]))
+            before = statistics()
+            before_plan = self.base.connection.execute(
+                "EXPLAIN (FORMAT JSON, COSTS FALSE) " + node_sql, node_params).fetchone()[0][0]["Plan"]
+            for table, _ in prefixes.values():
+                # Table names come solely from the fixed local map above.
+                self.base.connection.execute("ANALYZE " + table)
+            print("configuration-index-fixture-statistics " + json.dumps(dict(
+                before=before, after=statistics(), node_before=plan_summary(before_plan)), sort_keys=True))
             for label, (table, columns) in prefixes.items():
                 with self.subTest(prefix=label):
                     candidates = [(sql, params) for sql, params, _ in queries
@@ -289,6 +322,8 @@ class PostgresConfigurationCapacityBoundaryTests(unittest.TestCase):
                     self.assertIn("LIMIT", sql)
                     plan = self.base.connection.execute("EXPLAIN (FORMAT JSON, COSTS FALSE) " + sql,
                         params).fetchone()[0][0]["Plan"]
+                    print("configuration-index-fixture-plan " + json.dumps(dict(
+                        prefix=label, plan=plan_summary(plan)), sort_keys=True))
                     paths = [(node, parents) for node, parents in plan_paths(plan)
                         if node.get("Index Name") and all(column in node.get("Index Cond", "") for column in columns)]
                     self.assertTrue(paths, {"prefix": label, "query": sql, "plan": plan})
