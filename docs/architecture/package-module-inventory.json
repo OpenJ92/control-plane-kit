@@ -672,6 +672,10 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secret_installation",
+        "control_plane_kit_operations.connector_installation",
+        "control_plane_kit_operations.effect_outcome_evidence",
         "control_plane_kit_core.configuration_instances",
         "control_plane_kit_operations.postgres.configuration_completion_store",
         "control_plane_kit_operations.postgres.configuration_cleanup_phase_read_bounds",
@@ -696,6 +700,8 @@
       ],
       "optional_external_dependencies": [],
       "protecting_tests": [
+        "tests/test_current_connector_installation.py",
+        "tests/test_postgres_accepted_installation_sources.py",
         "tests/test_postgres_configuration_cleanup_phase_read_bounds.py",
         "tests/test_postgres_configuration_acceptance.py",
         "tests/test_current_schema_installation.py",
@@ -708,6 +714,26 @@
         "tests/test_postgres_configuration_reuse.py"
       ],
       "motivation": "Bounded original receipt discovery, complete new-node, carried and reused membership, current-row verification and read-only current-use evidence."
+    },
+    {
+      "module": "control_plane_kit_operations.connector_installation",
+      "destination": "control_plane_kit_operations.connector_installation",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/connector_installation.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["values"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["CurrentConnectorInstallation", "CurrentConnectorInstallationRead"],
+      "internal_dependencies": [
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.secret_installation",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": ["control_plane_kit_operations"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_current_connector_installation.py"],
+      "motivation": "Strict current connector installation provenance with no transient secret grants or execution authority."
     },
     {
       "module": "control_plane_kit_operations.configuration_preparation",

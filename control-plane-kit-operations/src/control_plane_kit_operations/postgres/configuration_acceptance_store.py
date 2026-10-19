@@ -10,6 +10,10 @@ import rfc8785
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 from control_plane_kit_core.planning import ActivityId, StartNode, ReconcileNode
+from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
+from control_plane_kit_core.secret_installation import (
+    secret_installation_receipt_for_result, secret_installation_receipt_for_observation,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations._configuration_acceptance import (
     _PreparedAdvancementReceipt, _require_prepared_advancement, _history_records, _PUBLICATION_SCOPE,
@@ -22,6 +26,10 @@ from control_plane_kit_operations.configuration_preparation import (
     _ref as _validate_ref,
 )
 from control_plane_kit_operations.revision_history import historical_advancement
+from control_plane_kit_operations.connector_installation import (
+    CurrentConnectorInstallation, CurrentConnectorInstallationRead,
+)
+from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome
 from control_plane_kit_operations.records import OperationsRecordError
 from .configuration_evidence import _EvidenceRead, _Unavailable, _Capacity, _joined_read
 from .activity_history import PostgresActivityHistoryStore, _action_record
@@ -83,7 +91,10 @@ def _closed_evidence(method):
     return read
 
 
-def _public_read(method):
+def _public_read(method=None, *, result_type=ConfigurationCurrentEvidence):
+    if method is None:
+        return lambda selected: _public_read(selected, result_type=result_type)
+
     @wraps(method)
     def observe(self, *args, **kwargs):
         try:
@@ -96,9 +107,9 @@ def _public_read(method):
             with _configuration_accounting(("configuration-current-read", method.__name__)):
                 return method(self, *args, **kwargs)
         except _Capacity:
-            return ConfigurationCurrentEvidence("capacity")
+            return result_type("capacity")
         except (_Unavailable, ValueError, TypeError, KeyError, AttributeError, IndexError, OperationsRecordError):
-            return ConfigurationCurrentEvidence("unavailable")
+            return result_type("unavailable")
     return observe
 
 
@@ -1294,13 +1305,23 @@ class ConfigurationAcceptanceStore:
         return (_GeneratedAllocationSource(start.event_id, terminal.event_id, digest),)
 
     def _installation_receipt(self, receipt, read):
+        """Preserve the existing full-bundle proof contract for owner callers."""
+        return self._installation_proof(receipt, read)[0]
+
+    def _installation_proof(self, receipt, read, *, connector_key=None):
+        """Prove every binding, retaining only the requested connector source."""
         header, action, event, slots, plan, request, run = receipt
         bundle = self._installation_bundle(header, action, event, read)
         _, _, graph = self._projection(header["graph_id"], header["projection_id"], header["workspace_id"])
         if {value.key for value in bundle.bindings} != set(self._installation_nodes(graph)):
             raise _Unavailable
+        if connector_key is not None and connector_key not in {
+                (graph.nodes[value.connector_node_id].runtime_id, value.connector_node_id)
+                for value in graph.public_ingresses}:
+            raise _Unavailable
         context = header, action, event, plan, request, run, None
         origins = {}
+        selected = None
         for binding in bundle.bindings:
             source_context, source_graph = context, graph
             if binding.accepted_revision != header["pinned_revision"]:
@@ -1319,8 +1340,10 @@ class ConfigurationAcceptanceStore:
             if any(slot[3:6] != (binding.source.run_id.value, binding.source.activity_id, binding.source.attempt)
                     for slot in relevant):
                 raise _Unavailable
-            self._installation_original(binding, source_context, source_graph, read)
-        return bundle
+            original = self._installation_original(binding, source_context, source_graph, read)
+            if binding.key == connector_key:
+                selected = original
+        return bundle, selected
 
     def _prepare_installation_sources(self, current, base_graph, desired_graph, slots, plan, request, run, read):
         if current[0]["pinned_revision"] is None:
@@ -1389,6 +1412,39 @@ class ConfigurationAcceptanceStore:
         if any(count > 32 for count in counts.values()):
             raise _Capacity
         return self._observed_bindings(receipt, rows, read)
+
+    @_public_read(result_type=CurrentConnectorInstallationRead)
+    def read_current_connector_installation(self, workspace_id, *, expected_current_graph_id,
+            expected_current_realized_projection_id, runtime_id, node_id):
+        """Read exact accepted connector provenance without grants or new locks.
+
+        The caller's UOW owns the snapshot. Pins bind captured current truth;
+        they do not freeze later mutations or authorize provider dispatch.
+        """
+        for value in (workspace_id, expected_current_graph_id,
+                expected_current_realized_projection_id, runtime_id, node_id):
+            _read_identifier(value)
+        workspace = PostgresWorkspaceStore(self._connection).get(workspace_id)
+        if (workspace.current_graph_id, workspace.current_realized_projection_id) != (
+                expected_current_graph_id, expected_current_realized_projection_id):
+            raise _Unavailable
+        read = _EvidenceRead(self._connection)
+        receipt = self._current_manifest(workspace, read)
+        header = receipt[0]
+        if header["pinned_revision"] is None:
+            raise _Unavailable
+        _, selected = self._installation_proof(receipt, read, connector_key=(runtime_id, node_id))
+        if selected is None:
+            raise _Unavailable
+        original, outcome = selected
+        request = runtime_effect_request_for_intent(original.intent,
+            effect_id=original.original_start_event.event_id)
+        installation = (secret_installation_receipt_for_result(request, outcome.result)
+            if type(outcome) is ExecutionEffectOutcome else
+            secret_installation_receipt_for_observation(request, outcome.observation))
+        return CurrentConnectorInstallationRead("complete", CurrentConnectorInstallation(
+            workspace_id, header["graph_id"], header["projection_id"], header["pinned_revision"],
+            runtime_id, node_id, request, installation))
 
     def _known_birth(self, read, exact_ref):
         candidates = read.bounded_rows("cpk_effect_configuration_refs", _REF_KEY_COLUMNS,

@@ -322,6 +322,17 @@ class PostgresAcceptedInstallationSourcePublicationTests(unittest.TestCase):
             expected_claims=self.member.protective_claims())
         final = advance_observed(final_command)
         self.assertEqual((bundle(middle), bundle(final)), (second_bytes, second_bytes))
+        # #2007 exposes only ingress connectors. A genuine accepted API X2
+        # replacement remains valid shared-source proof, never a connector.
+        with self.member.fixture.unit_of_work() as uow:
+            current = uow.stores.workspaces.get("workspace-a")
+            reader = getattr(uow.stores.configuration_acceptance, "read_current_connector_installation", None)
+            self.assertTrue(callable(reader), "current connector installation read is missing")
+            observed = reader("workspace-a", expected_current_graph_id=current.current_graph_id,
+                expected_current_realized_projection_id=current.current_realized_projection_id,
+                runtime_id=graph.node("api").runtime_id, node_id="api")
+            self.assertEqual(observed.state, "unavailable")
+            self.assertIsNone(observed.installation)
         connection.execute("UPDATE cpk_configuration_acceptances SET installation_sources_preimage='{}' "
             "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (middle.desired_graph_revision,))
         self.assertTrue(self.replay_service().execute(final_command).replayed)
