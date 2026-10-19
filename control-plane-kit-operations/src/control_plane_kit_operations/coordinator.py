@@ -2132,14 +2132,16 @@ class ExecutionCoordinator:
             stores = unit_of_work.stores
             from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
             accounting = _ACCOUNTING.get()
-            if accounting is not None and accounting.active:
-                try:
-                    request, run = _locked_request_and_run(stores, command)
+            active = accounting is not None and accounting.active
+            try:
+                request, run = _locked_request_and_run(stores, command)
+                if active:
                     return self._configuration_context(stores, command, request, run)
-                except (KeyError, ValueError, TypeError, AttributeError):
-                    pass
+            except (KeyError, ValueError, TypeError, AttributeError):
+                if not active:
+                    raise
+            if active:
                 raise ExecutionCoordinatorConflict("configuration material is unavailable")
-            request, run = _locked_request_and_run(stores, command)
             missing_plan = False
             try:
                 plan_record = stores.activity_history.get_plan(run.plan_id)

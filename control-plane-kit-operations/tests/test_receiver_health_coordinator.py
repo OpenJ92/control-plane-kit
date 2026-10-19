@@ -138,11 +138,12 @@ class ReceiverHealthCoordinatorTests(ReceiverHealthExecutionFixture):
         await self.prepare_and_start()
         original = ExecutionCoordinator._managed_dispatch_authority
         replaced = []
-        def changed(owner, command, attempt, runtime):
+        def changed(owner, command, attempt, runtime, *, realization=None, expected_intent=None):
             operation = self.plan.activity(ActivityId(attempt.state.identity.activity_id)).operation
             if is_signed_management_health_operation(operation):
                 replaced.append(self.replace_runtime())
-            return original(owner, command, attempt, runtime)
+            return original(owner, command, attempt, runtime,
+                realization=realization, expected_intent=expected_intent)
         with mock.patch.object(ExecutionCoordinator, "_managed_dispatch_authority", changed):
             with self.assertRaises(ExecutionCoordinatorDenied):
                 await self.drive_until_signed()

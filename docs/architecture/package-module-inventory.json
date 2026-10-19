@@ -730,9 +730,16 @@
         "control_plane_kit_core.secret_installation",
         "control_plane_kit_operations.records"
       ],
-      "known_package_consumers": ["control_plane_kit_operations"],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.postgres.configuration_acceptance_store"
+      ],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_current_connector_installation.py"],
+      "protecting_tests": [
+        "tests/test_current_connector_installation.py",
+        "tests/test_native_connector_installation_dispatch.py"
+      ],
       "motivation": "Strict current connector installation provenance with no transient secret grants or execution authority."
     },
     {
@@ -10666,6 +10673,10 @@
       "destination": "control_plane_kit_operations.coordinator",
       "internal_dependencies": [
         "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.connector_installation",
+        "control_plane_kit_operations.plan_derivation",
+        "control_plane_kit_core.planning.management_compiler",
+        "control_plane_kit_core.topology.validation",
         "control_plane_kit_core.identity",
         "control_plane_kit_core.node_health_read_results",
         "control_plane_kit_core.receiver_health_read_results",
@@ -10727,6 +10738,7 @@
         "tests/test_managed_application_chain.py",
         "tests/test_managed_health_boundaries.py",
         "tests/test_managed_reobservation_admission.py",
+        "tests/test_native_connector_installation_dispatch.py",
         "tests/test_secret_installation_admission.py",
         "tests/test_postgres_secret_installation_admission.py"
       ],

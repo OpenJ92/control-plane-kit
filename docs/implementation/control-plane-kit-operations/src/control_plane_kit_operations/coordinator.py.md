@@ -112,7 +112,9 @@ charged. Exhaustion can therefore commit a durable UNCERTAIN attempt and then
 cause `ExecutionCoordinatorConflict` at the existing post-fold context reload.
 The active bounded-context error boundary includes its initial request/run
 locator as well as material loading; lock order and ownership/fence checks are
-unchanged. Their coordinator errors and unexpected RuntimeError still propagate.
+unchanged. Both accounting modes share one lexical and executed lock call. Only
+the active mode translates the existing bounded-data exception tuple; inactive
+errors propagate unchanged. Coordinator errors and unexpected RuntimeError still propagate.
 The response failure does not erase that outcome; exact command replay reports
 uncertainty without a new proof read, attempt or effect. There is no direct-result
 shortcut or budget reset. Unexpected proof-reader exceptions propagate unchanged
