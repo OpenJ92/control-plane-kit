@@ -142,6 +142,21 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
             with self.subTest(invalid_type=type(invalid).__name__):
                 with self.assertRaises(InvalidOperationCommand):
                     replace(realization, connector_installation=invalid)
+        # Negative-only bypass on copies: the new join must revalidate a DTO,
+        # even if a caller has bypassed its frozen constructor after creation.
+        material, = origin.original_request.products
+        selected, = material.secret_selections
+        changed_material = replace(material, secret_selections=(replace(selected,
+            version_id="foreign-version"),))
+        changed_request = replace(origin.original_request, products=(changed_material,))
+        for name, value in (("workspace_id", "foreign"), ("runtime_id", "foreign"),
+                ("node_id", "foreign"), ("original_request", changed_request)):
+            invalid = replace(origin)
+            object.__setattr__(invalid, name, value)
+            with self.subTest(corrupted_field=name), self.assertRaises(InvalidOperationCommand):
+                replace(realization, connector_installation=invalid)
+        CurrentConnectorInstallation.__post_init__(origin)
+        self.assertEqual(self.assert_original(self.read_installation()), origin)
         signed = next(call[1] for call in calls if call[0] == "signed")
         with self.assertRaises(InvalidOperationCommand):
             replace(signed, connector_installation=origin)
@@ -221,6 +236,7 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
             self.assertEqual(result["coordinator_status"], "uncertain")
         self.assert_attempt_status(starts[0][0], "started" if exceptional else "uncertain")
         await self.replay_native(result)
+        self.assert_attempt_status(starts[0][0], "started" if exceptional else "uncertain")
 
     async def test_exhausted_original_ledger_skips_provider_without_reset(self):
         await self.proof_failure(exceptional=False)
@@ -251,6 +267,7 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
                 (current.current_graph_id, current.current_realized_projection_id))
         self.assert_original(self.read_installation())
         await self.replay_native()
+        self.assert_attempt_status(starts[0][0], "started")
 
     async def test_explicit_successors_reacquire_origin_with_distinct_observation_identity(self):
         await self.prepare_content()
