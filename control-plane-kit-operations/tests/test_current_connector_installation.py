@@ -6,6 +6,7 @@ simulate providers; PostgreSQL and admission/execution/advancement are real.
 from dataclasses import FrozenInstanceError, replace
 import importlib
 import json
+import os
 import re
 
 import psycopg
@@ -14,6 +15,7 @@ from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAtt
 from control_plane_kit_core.planning import StartNode
 from control_plane_kit_core.secret_installation import secret_installation_receipt_for_result
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
 from tests import test_managed_application_chain as chain
@@ -36,8 +38,8 @@ class CurrentConnectorInstallationFixture(chain.ManagedApplicationFixture):
         with self.unit_of_work() as uow:
             return uow.stores.workspaces.get("workspace-a")
 
-    def read_installation(self, *, workspace_id="workspace-a", statements=None, **overrides):
-        current = self.current()
+    def read_installation(self, *, workspace_id="workspace-a", statements=None, pins=None, **overrides):
+        current = self.current() if pins is None else pins
         arguments = dict(expected_current_graph_id=current.current_graph_id,
             expected_current_realized_projection_id=current.current_realized_projection_id,
             runtime_id="docker", node_id="connector")
@@ -56,14 +58,17 @@ class CurrentConnectorInstallationFixture(chain.ManagedApplicationFixture):
                 return self.connection.execute(query, parameters)
 
         with PostgresUnitOfWork(lambda: ReadConnection(psycopg.connect(
-                self.connection.info.dsn))) as uow:
+                os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]))) as uow:
             reader = getattr(uow.stores.configuration_acceptance,
                 "read_current_connector_installation", None)
             self.assertTrue(callable(reader), "current connector installation read is missing")
             result = reader(workspace_id, **arguments)
         self.assertFalse(any(re.search(
             r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|CREATE|DROP)\b", query, re.I)
-            for query in queries), "read must not mutate or lock rows")
+            for query in queries), "read must not mutate")
+        self.assertFalse(any(re.search(
+            r"\bFOR\s+(?:(?:NO\s+)?KEY\s+)?(?:UPDATE|SHARE)\b|\bLOCK\b|\bpg_\w*advisory\w*\s*\(",
+            query, re.I) for query in queries), "read must not acquire locks")
         return result
 
     def assert_closed(self, value, state="unavailable"):
@@ -93,6 +98,10 @@ class CurrentConnectorInstallationFixture(chain.ManagedApplicationFixture):
         self.assertEqual(installation.receipt, secret_installation_receipt_for_result(original, outcome.outcome.result))
         self.assertNotIn("RuntimeEffectRequest", repr(value))
         self.assertNotIn("SecretInstallationReceipt", repr(value))
+        self.assertNotIn(installation.receipt.request_fingerprint, repr(value))
+        self.assertNotIn(installation.receipt.current_realization_fingerprint, repr(value))
+        for selection in original.products[0].secret_selections:
+            self.assertNotIn(selection.reference.reference_id, repr(value))
         return installation
 
 
@@ -116,6 +125,17 @@ class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
             with self.subTest(change=change):
                 self.assert_closed(self.read_installation(**change))
         self.assertEqual((self.durable_snapshot(), self.effects()), before)
+
+    async def test_missing_selected_connector_outcome_is_unavailable(self):
+        await self.complete_initial()
+        installation = self.assert_original(self.read_installation())
+        source = installation.original_request
+        self.connection.execute("DELETE FROM cpk_effect_attempt_outcomes "
+            "WHERE run_id=%s AND activity_id=%s AND attempt=1",
+            (source.source.run_id.value, source.activity_id.value))
+        before = self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")
+        self.assert_closed(self.read_installation())
+        self.assertEqual((self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")), before)
 
     async def test_corrupt_bundle_or_original_outcome_is_unavailable_without_fallback(self):
         await self.complete_initial()
@@ -148,10 +168,11 @@ class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
     async def test_nested_reads_share_capacity_and_fresh_read_recovers(self):
         await self.complete_initial()
         before = self.durable_snapshot(), self.effects()
+        pins = self.current()
         with _configuration_accounting(("2007-current-connector", "workspace-a")) as accounting:
             states = []
             for _ in range(256):
-                result = self.read_installation()
+                result = self.read_installation(pins=pins)
                 states.append(result.state)
                 if result.state != "complete":
                     self.assert_closed(result, "capacity")
@@ -161,6 +182,14 @@ class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
             self.assertGreater(len(states), 1)
             self.assertLessEqual(accounting.used.records, 8192)
             self.assertLessEqual(accounting.used.accounted_bytes, 16 * 1024 * 1024)
+        # Exact boundary probe in addition to the real cumulative reads above:
+        # a caller with no remaining record allowance must dispatch no SQL.
+        with _configuration_accounting(("2007-exhausted", "workspace-a")) as accounting:
+            accounting.used = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
+            statements = []
+            self.assert_closed(self.read_installation(pins=pins, statements=statements), "capacity")
+            self.assertEqual(statements, [])
+            self.assertEqual(accounting.used, ConfigurationEvidenceFootprint(8192, 0, 0, 0))
         self.assert_original(self.read_installation())
         self.assertEqual((self.durable_snapshot(), self.effects()), before)
 
@@ -170,15 +199,20 @@ class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
         module = importlib.import_module("control_plane_kit_operations.connector_installation")
         read_type = module.CurrentConnectorInstallationRead
         self.assertIs(type(installation), module.CurrentConnectorInstallation)
+        nonconnector, = (request for request in self.runtime.calls
+            if type(request.operation) is StartNode and request.operation.target.node_id == "api")
+        connector, = (request for request in self.runtime.calls
+            if type(request.operation) is StartNode and request.operation.target.node_id == "connector")
+        self.assertTrue(connector.secret_resolution_grants)
         for state, value in (("complete", None), ("unavailable", installation),
                 ("capacity", installation), ("unknown", None), (True, None), ("complete", object())):
             with self.subTest(state=state), self.assertRaises((TypeError, ValueError)):
                 read_type(state, value)
-        for changes in ({"current_revision": True}, {"current_revision": 0},
+        for changes in ({"current_revision": True}, {"current_revision": -1}, {"current_revision": 2 ** 53},
                 {"runtime_id": "foreign"}, {"node_id": "api"}, {"workspace_id": "foreign"},
                 {"node_id": "x" * 2049}, {"current_graph_id": "\n"},
                 {"receipt": replace(installation.receipt, request_fingerprint="0" * 64)},
-                {"original_request": self.runtime.calls[-1]}):
+                {"original_request": nonconnector}, {"original_request": connector}):
             with self.subTest(fields=tuple(changes)), self.assertRaises((TypeError, ValueError)):
                 replace(installation, **changes)
         with self.assertRaises(FrozenInstanceError):
