@@ -110,6 +110,9 @@ Closed unavailable/capacity proof skips provider I/O and uses the existing guard
 `NativeConnectionReadFailure` fold. The original ledger's used footprint remains
 charged. Exhaustion can therefore commit a durable UNCERTAIN attempt and then
 cause `ExecutionCoordinatorConflict` at the existing post-fold context reload.
+The active bounded-context error boundary includes its initial request/run
+locator as well as material loading; lock order and ownership/fence checks are
+unchanged. Their coordinator errors and unexpected RuntimeError still propagate.
 The response failure does not erase that outcome; exact command replay reports
 uncertainty without a new proof read, attempt or effect. There is no direct-result
 shortcut or budget reset. Unexpected proof-reader exceptions propagate unchanged
