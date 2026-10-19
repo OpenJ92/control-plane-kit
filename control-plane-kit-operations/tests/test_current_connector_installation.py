@@ -10,6 +10,7 @@ import os
 import re
 
 import psycopg
+from psycopg import sql
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import StartNode
@@ -146,12 +147,26 @@ class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
         installation = self.assert_original(self.read_installation())
         source = installation.original_request
         self.assert_outcome_corruption_has_no_dependents(source)
+        identity = source.source.run_id.value, source.activity_id.value
+        cursor = self.connection.execute("SELECT * FROM cpk_effect_attempt_outcomes "
+            "WHERE run_id=%s AND activity_id=%s AND attempt=1", identity)
+        original = cursor.fetchone()
+        self.assertIsNotNone(original)
+        restore = sql.SQL("INSERT INTO cpk_effect_attempt_outcomes ({}) VALUES ({})").format(
+            sql.SQL(", ").join(sql.Identifier(column.name) for column in cursor.description),
+            sql.SQL(", ").join(sql.Placeholder() for _ in original))
+        accepted = self.durable_snapshot(), self.rows("cpk_configuration_acceptances")
         self.connection.execute("DELETE FROM cpk_effect_attempt_outcomes "
-            "WHERE run_id=%s AND activity_id=%s AND attempt=1",
-            (source.source.run_id.value, source.activity_id.value))
-        before = self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")
-        self.assert_closed(self.read_installation())
-        self.assertEqual((self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")), before)
+            "WHERE run_id=%s AND activity_id=%s AND attempt=1", identity)
+        try:
+            before = self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")
+            self.assert_closed(self.read_installation())
+            self.assertEqual((self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")), before)
+        finally:
+            # Exact captured owner row, solely to undo this negative fixture.
+            self.connection.execute(restore, original)
+        self.assertEqual((self.durable_snapshot(), self.rows("cpk_configuration_acceptances")), accepted)
+        self.assert_original(self.read_installation())
 
     async def test_corrupt_bundle_or_original_outcome_is_unavailable_without_fallback(self):
         await self.complete_initial()
@@ -273,11 +288,18 @@ class CurrentConnectorInstallationContentUpdateTests(CurrentConnectorInstallatio
         original_rows = self.connection.execute("SELECT installation_sources_preimage FROM cpk_configuration_acceptances "
             "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (initial.current_revision,)).fetchall()
         self.assertEqual(len(original_rows), 1)
+        current_preimage, = self.connection.execute("SELECT installation_sources_preimage FROM cpk_configuration_acceptances "
+            "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (carried.current_revision,)).fetchone()
         for damaged in ("{}", ""):
             self.connection.execute("UPDATE cpk_configuration_acceptances SET installation_sources_preimage=%s "
                 "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (damaged, carried.current_revision))
-            before = self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")
-            self.assert_closed(self.read_installation())
-            self.assertEqual((self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")), before)
+            try:
+                before = self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")
+                self.assert_closed(self.read_installation())
+                self.assertEqual((self.durable_snapshot(), self.effects(), self.rows("cpk_configuration_acceptances")), before)
+            finally:
+                self.connection.execute("UPDATE cpk_configuration_acceptances SET installation_sources_preimage=%s "
+                    "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (current_preimage, carried.current_revision))
+            self.assertEqual(self.assert_original(self.read_installation()), carried)
             self.assertEqual(self.connection.execute("SELECT installation_sources_preimage FROM cpk_configuration_acceptances "
                 "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (initial.current_revision,)).fetchall(), original_rows)
