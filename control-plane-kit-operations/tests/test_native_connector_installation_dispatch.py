@@ -12,7 +12,7 @@ from control_plane_kit_core.planning import ObserveManagementBootstrap, Manageme
 from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
 from control_plane_kit_operations.connector_installation import CurrentConnectorInstallation
-from control_plane_kit_operations.coordinator import ExecutionCoordinatorDenied
+from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict, ExecutionCoordinatorDenied
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
@@ -174,19 +174,38 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
                 "SET installation_sources_preimage='{}' "
                 "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (revision,))
 
+        def restore():
+            self.connection.execute("UPDATE cpk_configuration_acceptances "
+                "SET installation_sources_preimage=%s "
+                "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (preimage, revision))
+
+        read = ConfigurationAcceptanceStore.read_current_connector_installation
+        reads = []
+
+        def observe(store, *args, **kwargs):
+            try:
+                value = read(store, *args, **kwargs)
+                reads.append(value)
+                return value
+            finally:
+                # Isolate corruption to the actual proof read; later ordinary
+                # context classification sees the restored accepted record.
+                restore()
+
         calls = tuple(self.health.native_reads)
         try:
-            with self.after_native_start(corrupt) as starts:
+            with self.after_native_start(corrupt) as starts, \
+                    mock.patch.object(ConfigurationAcceptanceStore, "read_current_connector_installation", observe):
                 result = await self.execute_to_native(starts)
             self.assertEqual(len(starts), 1)
+            self.assertEqual(len(reads), 1)
+            self.assert_closed(reads[0])
             self.assertEqual(tuple(self.health.native_reads), calls,
                 "unavailable accepted connector proof must prevent native I/O")
             self.assertEqual(result["coordinator_status"], "uncertain")
             self.assert_attempt_status(starts[0][0], "uncertain")
         finally:
-            self.connection.execute("UPDATE cpk_configuration_acceptances "
-                "SET installation_sources_preimage=%s "
-                "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (preimage, revision))
+            restore()
         self.assertEqual(self.assert_original(self.read_installation()), origin)
         await self.replay_native(result)
 
@@ -223,7 +242,11 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
                 self.assertIs(caught.exception, interruption)
                 result = None
             else:
-                result = await self.execute_to_native(starts)
+                # The closed capacity proof folds UNCERTAIN. The existing
+                # post-fold context reload cannot spend the exhausted budget.
+                with self.assertRaisesRegex(ExecutionCoordinatorConflict, "configuration material is unavailable"):
+                    await self.execute_to_native(starts)
+                result = None
         self.assertEqual(len(reads), 1, "native dispatch must acquire a fresh installation proof")
         self.assertEqual(len(starts), 1)
         self.assertIs(reads[0][0], starts[0][1])
