@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 import hashlib
 import json
@@ -42,19 +42,52 @@ class ConfigurationArtifactError(ValueError):
 
 @dataclass(frozen=True, order=True)
 class ConfigurationArtifactRequirement:
-    """A declared file slot; #2011 target scaffold, not yet validated."""
+    """One declared configuration file slot, without an instance payload."""
 
     artifact_id: str
     target_path: str
     media_type: ConfigurationMediaType
     file_mode: ConfigurationFileMode = ConfigurationFileMode.READ_ONLY
 
+    def __post_init__(self) -> None:
+        if type(self.artifact_id) is not str or type(self.target_path) is not str:
+            raise ConfigurationArtifactError("configuration requirement fields are malformed")
+        _validate_configuration_slot(self.artifact_id, self.target_path, self.media_type, self.file_mode)
+
     def descriptor(self) -> dict[str, str]:
-        raise NotImplementedError("configuration requirement descriptor")
+        if type(self) is not ConfigurationArtifactRequirement:
+            raise ConfigurationArtifactError("configuration requirement is malformed")
+        checked = replace(self)
+        return {
+            "artifact_id": checked.artifact_id,
+            "target_path": checked.target_path,
+            "media_type": checked.media_type.value,
+            "file_mode": checked.file_mode.value,
+        }
 
     @classmethod
     def from_descriptor(cls, value: Mapping[str, object]) -> "ConfigurationArtifactRequirement":
-        raise NotImplementedError("configuration requirement descriptor admission")
+        expected = {"artifact_id", "target_path", "media_type", "file_mode"}
+        try:
+            if (cls is not ConfigurationArtifactRequirement or not isinstance(value, Mapping)
+                    or set(value) != expected or any(type(value[name]) is not str for name in expected)):
+                raise ValueError
+            return cls(value["artifact_id"], value["target_path"],
+                       ConfigurationMediaType(value["media_type"]), ConfigurationFileMode(value["file_mode"]))
+        except (TypeError, ValueError, KeyError, AttributeError):
+            failure = ConfigurationArtifactError("configuration requirement descriptor is malformed")
+        raise failure
+
+
+def _validate_configuration_slot(artifact_id, target_path, media_type, file_mode) -> None:
+    """Shared field grammar for declared slots and concrete artifacts."""
+    if not isinstance(artifact_id, str) or not _ARTIFACT_ID.fullmatch(artifact_id):
+        raise ConfigurationArtifactError("configuration artifact identity is invalid")
+    validate_configuration_target_path(target_path)
+    if not isinstance(media_type, ConfigurationMediaType):
+        raise TypeError("configuration media type must be ConfigurationMediaType")
+    if not isinstance(file_mode, ConfigurationFileMode):
+        raise TypeError("configuration file mode must be ConfigurationFileMode")
 
 
 @dataclass(frozen=True, order=True)
@@ -70,13 +103,7 @@ class ConfigurationArtifact:
     content_digest: str = field(init=False)
 
     def __post_init__(self) -> None:
-        if not _ARTIFACT_ID.fullmatch(self.artifact_id):
-            raise ConfigurationArtifactError("configuration artifact identity is invalid")
-        validate_configuration_target_path(self.target_path)
-        if not isinstance(self.media_type, ConfigurationMediaType):
-            raise TypeError("configuration media type must be ConfigurationMediaType")
-        if not isinstance(self.file_mode, ConfigurationFileMode):
-            raise TypeError("configuration file mode must be ConfigurationFileMode")
+        _validate_configuration_slot(self.artifact_id, self.target_path, self.media_type, self.file_mode)
         if not isinstance(self.content, str):
             raise TypeError("configuration content must be text")
         encoded = self.content.encode("utf-8")

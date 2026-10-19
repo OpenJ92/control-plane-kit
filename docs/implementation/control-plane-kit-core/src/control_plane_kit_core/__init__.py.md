@@ -48,3 +48,7 @@ Core #1968 reexports `select_receiver_node_control_configuration_slot` from
 receiver_configuration. This pure declared-slot operation is distinct from
 strict actual V2 configuration validation and grants no identity, key or runtime
 authority. Existing public exports and dependency direction are preserved.
+
+Core #2011 exports `ConfigurationArtifactRequirement` from configuration and
+`product_configuration_slots` from products. They are pure slot language and
+projection, with no Operations dependency, material preparation or effects.

@@ -6,7 +6,7 @@ import json
 
 from control_plane_kit_core._node_control_public_wire import canonical_json_bytes, reference_violation
 from control_plane_kit_core.configuration import (
-    ConfigurationArtifact, ConfigurationFileMode, ConfigurationMediaType,
+    ConfigurationArtifact, ConfigurationArtifactRequirement, ConfigurationFileMode, ConfigurationMediaType,
     validate_configuration_target_path,
 )
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
@@ -208,7 +208,8 @@ def _select_wrapper_configuration_slot(
     *, artifacts: tuple[ConfigurationArtifact, ...],
     environment: tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...],
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...],
-) -> ConfigurationArtifact:
+    requirements: tuple[ConfigurationArtifactRequirement, ...] = (),
+) -> ConfigurationArtifact | ConfigurationArtifactRequirement:
     """Select an exact structural slot without choosing a configuration profile."""
     _require(type(control_surfaces) is tuple and len(control_surfaces) == 1
              and type(control_surfaces[0]) is WorkloadNodeControlSurfaceDescriptor)
@@ -218,10 +219,18 @@ def _select_wrapper_configuration_slot(
     _require(len(bindings) == 1 and type(bindings[0]) is PublicStaticEnvironmentBinding)
     validate_configuration_target_path(bindings[0].value)
     _require(type(artifacts) is tuple and all(type(item) is ConfigurationArtifact for item in artifacts))
-    selected = tuple(item for item in artifacts if item.target_path == bindings[0].value)
+    _require(type(requirements) is tuple and all(type(item) is ConfigurationArtifactRequirement for item in requirements))
+    for requirement in requirements:
+        _require(ConfigurationArtifactRequirement.from_descriptor(requirement.descriptor()) == requirement)
+    slots = (*artifacts, *requirements)
+    if requirements:
+        _require(len({item.artifact_id for item in slots}) == len(slots)
+                 and len({item.target_path for item in slots}) == len(slots))
+    selected = tuple(item for item in slots if item.target_path == bindings[0].value)
     _require(len(selected) == 1)
     artifact = selected[0]
-    _require(ConfigurationArtifact.from_descriptor(artifact.descriptor()) == artifact)
+    if type(artifact) is ConfigurationArtifact:
+        _require(ConfigurationArtifact.from_descriptor(artifact.descriptor()) == artifact)
     _require(artifact.media_type is ConfigurationMediaType.JSON and artifact.file_mode is ConfigurationFileMode.READ_ONLY)
     return artifact
 

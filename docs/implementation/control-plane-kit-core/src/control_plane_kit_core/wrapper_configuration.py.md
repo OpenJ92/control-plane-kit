@@ -7,6 +7,12 @@ validation and exact artifact-slot selection. The explicit V2 successor in
 codec, selector and wire shape remain unchanged; its selector still refuses V2.
 Neither selector performs profile fallback.
 
+The private structural helper also accepts an opt-in requirement tuple for the
+declared V2 selector. It validates exact requirement values and disjoint slot
+identity/path, without constructing dummy files or decoding nonexistent payloads.
+The public historical and actual selectors never supply this option and continue
+to require concrete artifact values and their exact profile.
+
 One shared `workload-node-control-configuration.v1` envelope reuses existing
 target/runtime/declaration and public-key values. Its purpose-separated verifier
 families are exact: surface-read always, workload command iff variables exist,

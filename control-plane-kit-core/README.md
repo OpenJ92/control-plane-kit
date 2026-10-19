@@ -35,6 +35,15 @@ receive no declaration. It uses `RuntimeAuthorityAccessDelivery` references, nev
 credentials or host socket paths. This instance setting does not alter the
 reusable `ProductRuntimeContract`.
 
+A product may declare payload-free `ConfigurationArtifactRequirement` values in
+the keyword-only `configuration_requirements` tuple. `product_configuration_slots`
+projects the canonical union of required and concrete declared slots. Every
+instance supplies concrete artifacts matching that union before topology
+compilation; `ProductInstanceConfiguration.from_contract` refuses unresolved
+requirements. Product documents use `control-plane-kit.product/v2` only when
+requirements are nonempty. Existing documents retain their original schema and
+bytes. See the [two-instance example](examples/external-product-descriptor.md).
+
 Adding or removing a declaration changes the graph and creates a node
 reconciliation plan. Empty declarations retain the existing canonical graph
 format. Runtime product material carries the declaration into intent commitments.

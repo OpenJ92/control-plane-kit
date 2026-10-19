@@ -249,6 +249,8 @@ class RuntimeProductMaterial:
             raise RuntimeEffectContractError("product must be ContainerServerProduct")
         if self.reference.identity != self.product.identity:
             raise RuntimeEffectContractError("product material identity mismatch")
+        if self.product.runtime_contract.configuration_requirements:
+            raise RuntimeEffectContractError("product material has unresolved configuration requirements")
         object.__setattr__(self, "secret_selections", normalize_secret_selections(
             self.product.runtime_contract.secret_deliveries, self.secret_selections))
         public_environment = tuple(sorted(self.public_environment))

@@ -1,5 +1,6 @@
 """Pure successor authoring; supplied product documents confer no authority."""
 from dataclasses import replace
+from control_plane_kit_core.configuration import ConfigurationArtifactRequirement
 from control_plane_kit_core.products import (
     ProductDescriptorCodec, ProductDescriptorDocument, ProductIdentity,
     ProductDescriptorDigest, OciImageReference,
@@ -120,23 +121,30 @@ def _declaration_compatible(before, after, documents):
     codec = ReceiverNodeControlConfigurationCodec()
     try:
         defaults = tuple(select_receiver_node_control_configuration_slot(
-            artifacts=value.configuration_artifacts, environment=value.public_environment,
+            artifacts=value.configuration_artifacts, requirements=value.configuration_requirements,
+            environment=value.public_environment,
             control_surfaces=value.control_surfaces) for value in (a, b))
         old_default, new_default = defaults
-        if replace(new_default, content=old_default.content, source_digest=old_default.source_digest) != old_default:
+        if type(old_default) is not type(new_default):
             return False
-        # Unchanged defaults may be opaque templates. Changed defaults preserve
-        # their own identity/trust; neither default confers installed identity.
-        if old_default != new_default:
-            prior, next_value = (codec.decode_bytes(value.content.encode("utf-8")) for value in defaults)
-            if (prior.declaration.surface != a.control_surfaces[0]
-                    or next_value.declaration.surface != b.control_surfaces[0]
-                    or not _receiver_health_declaration_successor(prior, next_value)):
+        if type(old_default) is ConfigurationArtifactRequirement:
+            if old_default != new_default or replace(b, control_surfaces=a.control_surfaces) != a:
                 return False
-        if replace(b, control_surfaces=a.control_surfaces, configuration_artifacts=tuple(
-                old_default if value.artifact_id == new_default.artifact_id else value
-                for value in b.configuration_artifacts)) != a:
-            return False
+        else:
+            if replace(new_default, content=old_default.content, source_digest=old_default.source_digest) != old_default:
+                return False
+            # Unchanged defaults may be opaque templates. Changed defaults preserve
+            # their own identity/trust; neither default confers installed identity.
+            if old_default != new_default:
+                prior, next_value = (codec.decode_bytes(value.content.encode("utf-8")) for value in defaults)
+                if (prior.declaration.surface != a.control_surfaces[0]
+                        or next_value.declaration.surface != b.control_surfaces[0]
+                        or not _receiver_health_declaration_successor(prior, next_value)):
+                    return False
+            if replace(b, control_surfaces=a.control_surfaces, configuration_artifacts=tuple(
+                    old_default if value.artifact_id == new_default.artifact_id else value
+                    for value in b.configuration_artifacts)) != a:
+                return False
         wrappers = tuple(select_receiver_node_control_configuration_artifact(
             artifacts=node.configuration_artifacts,
             environment=node.public_environment + node.socket_environment,

@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 import json
 
 from control_plane_kit_core._node_control_public_wire import canonical_json_bytes
-from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding
 from control_plane_kit_core.node_control import (
     NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor, WorkloadNodeControlSurfaceDescriptorCodec,
@@ -100,18 +100,17 @@ def select_receiver_node_control_configuration_slot(
     *, artifacts: tuple[ConfigurationArtifact, ...],
     environment: tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...],
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...],
-    requirements=(),
-) -> ConfigurationArtifact:
+    requirements: tuple[ConfigurationArtifactRequirement, ...] = (),
+) -> ConfigurationArtifact | ConfigurationArtifactRequirement:
     """Select declared structure, never receiver identity or verifier authority.
 
-    Payload retains ConfigurationArtifact integrity and bounds but need not be
-    receiver configuration. Actual material requires the strict V2 selector.
+    Concrete payload retains artifact integrity but need not be receiver
+    configuration. A requirement has no payload. Actual material requires V2.
     """
-    if requirements:
-        raise NotImplementedError("required receiver configuration slot")
     try:
         artifact = _select_wrapper_configuration_slot(
-            artifacts=artifacts, environment=environment, control_surfaces=control_surfaces)
+            artifacts=artifacts, requirements=requirements,
+            environment=environment, control_surfaces=control_surfaces)
         surface = control_surfaces[0]
         codec = WorkloadNodeControlSurfaceDescriptorCodec()
         _require(codec.decode(codec.encode(surface)) == surface)
