@@ -393,5 +393,27 @@ increase is introduced.
 The caller owns the UOW. Returned pins describe captured current truth and do not
 freeze subsequent workspace changes. Historical authority is provenance only;
 consumers must separately check fresh current authority and execution fences and
-close their UOW before effects. Native dispatch consumption remains a separate
-slice. The request and receipt are omitted from value representations.
+close their UOW before effects. The request and receipt are omitted from value
+representations.
+
+Native dispatch consumption (#2009): a supported `MANAGED_UPDATE_V1` connector
+observation acquires this proof inside its fresh dispatch UOW, after the existing
+worker/fence, accepted-plan, runtime-authority and lease checks. Current workspace
+pins must still match the execution base. A new immutable
+`ActivityRealizationContext.connector_installation` carries the original creation
+request/receipt; the observation request and event retain their own identities.
+The optional field is excluded from repr and remains `None` for fresh bootstrap
+and signed health reads. Historical installation credentials are provenance;
+current runtime authority is independently reloaded for dispatch.
+
+Only the proof read activates the existing run-owned evidence ledger, and its
+previous state is restored in `finally` before leaving the UOW or awaiting the
+provider. Its accumulated footprint is never reset. Closed `unavailable` or
+`capacity` results skip the provider and enter the existing guarded uncertain
+fold. With an exhausted ledger, the later bounded context reload can still raise
+`ExecutionCoordinatorConflict` after that uncertain outcome has been committed.
+Response failure therefore does not imply absence of a durable outcome. Exact
+command replay reports uncertainty without another proof read or provider call.
+Unexpected proof-reader exceptions propagate and retain the existing STARTED
+attempt; current-pin/authority denial likewise adds no retry path. This does not
+activate retained-container support in an external Interpreter.

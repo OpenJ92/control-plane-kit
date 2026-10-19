@@ -349,6 +349,26 @@ class PostgresConfigurationEvidenceTests(ConfigurationEvidenceHistoryFixture, un
             # Deliberate corruption is rolled back, never committed as history.
         self.assertEqual(self.complete_start_snapshot(), before)
 
+    def test_near_match_claim_cannot_replace_any_reciprocal_identity_coordinate(self):
+        ref, attempts = self.seed_recorded_claims(2)
+        self.assertEqual(self.read_allocation(ref).state, "complete")
+        key = ("run-a", attempts[1].state.identity.activity_id, 1, ref.artifact_id)
+        before = self.complete_start_snapshot()
+        for column, value in (("run_id", "other-run"), ("activity_id", "other-activity"),
+                ("attempt", 2), ("artifact_id", "other-artifact")):
+            with self.subTest(coordinate=column):
+                with self.unit_of_work() as uow:
+                    # Inspect a mismatched reciprocal key before rollback;
+                    # existing deferrable constraints remain enabled.
+                    uow.stores.connection.execute("SET CONSTRAINTS ALL DEFERRED")
+                    changed = uow.stores.connection.execute(
+                        "UPDATE cpk_configuration_claims SET " + column + "=%s "
+                        "WHERE (run_id,activity_id,attempt,artifact_id)=(%s,%s,%s,%s)",
+                        (value, *key))
+                    self.assertEqual(changed.rowcount, 1)
+                    self.assert_allocation_unavailable(self.allocation_reader(uow.stores)(ref))
+                self.assertEqual(self.complete_start_snapshot(), before)
+
     def test_current_validator_refuses_structurally_valid_wrong_birth_without_repair(self):
         ref, attempts = self.seed_recorded_claims(3)
         first, second = (attempt.state.identity.activity_id for attempt in attempts[1:])

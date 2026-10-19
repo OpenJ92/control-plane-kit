@@ -121,6 +121,24 @@ the corrected seven required lookup paths passed an index-only retry with
 compilation/import. These witnesses do not establish naturally reachable
 cold-budget exhaustion or promise an optimizer plan/latency bound.
 
+PR #2010 explicitly supersedes the selected-plan acceptance method above, with
+the user's approval recorded in the [criterion revision and replacement plan](https://github.com/OpenJ92/control-plane-kit/pull/2010#issuecomment-6271954268).
+Acceptance now combines real-owner behavior (exact scope and reciprocal identity,
+complete provenance, returned-evidence limits, closed refusal and unchanged truth)
+with the exact PostgreSQL schema/index contract. The genuine current/use/allocation
+read and reconciliation positive remains. Added regression cases distinguish each
+reciprocal identity coordinate and configuration-index prefix/predicate drift.
+They strengthen existing laws; they do not establish new production behavior.
+
+Chosen index paths, join algorithms, and full-query index eligibility are no longer
+required evidence for this slice. A semantically correct but expensive or
+nonsargable query can escape these checks. This is an explicitly accepted evidence
+limit, not equivalent proof of the previous plan assertions; workload performance
+investigation is deferred and adds no #2010 acceptance gate. No production SQL,
+schema, budgets, or transaction boundaries change. The unsuccessful `b80b4af5`
+fixture-ANALYZE experiment is removed, with its failed evidence retained in the
+[review record](https://github.com/OpenJ92/control-plane-kit/pull/2010#issuecomment-6268693915).
+
 Two final concurrency targets reuse this accepted history: distinct-key
 advancement must have one complete winner; a separate failed-run compensation
 binding replay must hold only its own attempts, block on advancement's workspace,

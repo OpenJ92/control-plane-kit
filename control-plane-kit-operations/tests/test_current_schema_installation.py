@@ -1187,6 +1187,52 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                     [("workspace-a",)],
                 )
 
+    def test_configuration_query_index_drift_refuses_without_repair_and_rolls_back(self) -> None:
+        postgres.install_schema(self.connection)
+        self.connection.execute("INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) "
+            "VALUES ('workspace-a','Workspace A','created')")
+        original = self._object_identities()
+        targets = (
+            ("cpk_configuration_refs_active_slot", "cpk_effect_configuration_refs", True),
+            ("cpk_configuration_claims_active_slot", "cpk_configuration_claims", True),
+            ("cpk_configuration_refs_allocation", "cpk_effect_configuration_refs", False),
+            ("cpk_configuration_claims_protecting", "cpk_configuration_claims", False),
+        )
+
+        class RollBackDrift(Exception):
+            pass
+
+        for index, table, partial in targets:
+            drifts = ("missing", "wrong-prefix", "wrong-predicate") if partial else ("missing", "wrong-prefix")
+            for drift in drifts:
+                with self.subTest(index=index, drift=drift):
+                    definition = self.connection.execute(
+                        "SELECT pg_get_indexdef(%s::regclass)", (index,)).fetchone()[0]
+                    with self.assertRaises(RollBackDrift):
+                        with self.connection.transaction():
+                            # Fixed names in this test's unique owned schema;
+                            # no constraint-owned index or production DDL.
+                            self.connection.execute("DROP INDEX " + index)
+                            if drift == "wrong-prefix":
+                                self.connection.execute("CREATE INDEX " + index + " ON " + table
+                                    + " (workspace_id)" + (" WHERE protective" if partial else ""))
+                            elif drift == "wrong-predicate":
+                                self.assertIn("WHERE protective", definition)
+                                self.connection.execute(definition.replace("WHERE protective", "WHERE NOT protective"))
+                            drifted = self._object_identities()
+                            recorder = _RecordingConnection(self.connection)
+                            error = _captured_install_error(recorder)
+                            self._assert_install_error(error, "operations schema reset is required")
+                            self._assert_calls_are_read_only(recorder.calls)
+                            self.assertEqual(self._object_identities(), drifted)
+                            self.assertEqual(self.connection.execute("SELECT workspace_id,name,lifecycle "
+                                "FROM cpk_workspaces").fetchall(), [("workspace-a", "Workspace A", "created")])
+                            raise RollBackDrift
+                    self.assertEqual(self._object_identities(), original)
+                    recorder = _RecordingConnection(self.connection)
+                    postgres.install_schema(recorder)
+                    self._assert_calls_are_read_only(recorder.calls)
+
     def test_expected_relation_replaced_by_view_rejects_before_relation_lock(self) -> None:
         postgres.install_schema(self.connection)
         self.connection.execute("DROP TABLE cpk_observations CASCADE")

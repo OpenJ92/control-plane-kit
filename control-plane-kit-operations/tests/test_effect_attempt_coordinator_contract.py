@@ -125,6 +125,10 @@ COORDINATOR_EXPORTS = {
 }
 COORDINATOR_DEPENDENCIES = {
     "control_plane_kit_operations._configuration_preparation",
+    "control_plane_kit_operations.connector_installation",
+    "control_plane_kit_operations.plan_derivation",
+    "control_plane_kit_core.planning.management_compiler",
+    "control_plane_kit_core.topology.validation",
     "control_plane_kit_core.identity",
     "control_plane_kit_core.node_health_read_results",
     "control_plane_kit_core.operations",
@@ -200,6 +204,15 @@ def _exact_imports(*rows: tuple[str, str | None, str | None]):
 
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
+    # #2009 consumes the existing closed proof and Core relation under the
+    # original command ledger. These are exact additional import occurrences.
+    ("control_plane_kit_core.topology.validation", "validate_graph", None),
+    ("control_plane_kit_core.planning.management_compiler", "resolve_management_observation", None),
+    ("control_plane_kit_operations.connector_installation", "CurrentConnectorInstallation", None),
+    ("control_plane_kit_operations.connector_installation", "CurrentConnectorInstallationRead", None),
+    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
+    ("control_plane_kit_operations._configuration_preparation", "_ACCOUNTING", None),
+    ("control_plane_kit_operations._configuration_preparation", "_execution_context", None),
     # #1911/#1964 normalizes managed replacement receipts at both dispatch
     # boundaries before the result can enter durable fold processing.
     ("control_plane_kit_core.configuration_installation", "ConfigurationInstallationDisposition", None),
@@ -509,6 +522,28 @@ def _exact_calls(*rows: tuple[str | None, int]):
 
 
 EXACT_COORDINATOR_CALLS = _exact_calls(
+    # #2009: strict witness validation and existing Core observation resolution.
+    ("dataclasses.field", 1),
+    ("type", 2),
+    ("control_plane_kit_operations.runtime_management_targets.is_native_connection_operation", 1),
+    ("control_plane_kit_operations.connector_installation.CurrentConnectorInstallation.__post_init__", 1),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 1),
+    ("_native_connector_observation", 2),
+    ("control_plane_kit_core.planning.management_compiler.resolve_management_observation", 1),
+    ("control_plane_kit_core.topology.validation.validate_graph", 2),
+    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 2),
+    ("realization.plan.activity", 1),
+    # Fresh plan/pins and same run ledger; no new ledger or provider call.
+    ("stores.activity_history.get_plan", 1),
+    ("self._native_connector_installation", 1),
+    ("stores.workspaces.get", 1),
+    ("control_plane_kit_operations._configuration_preparation._ACCOUNTING.get", 1),
+    ("control_plane_kit_operations._configuration_preparation._execution_context", 1),
+    ("stores.configuration_acceptance.read_current_connector_installation", 1),
+    ("control_plane_kit_operations.connector_installation.CurrentConnectorInstallationRead.__post_init__", 1),
+    ("dataclasses.replace", 1),
+    ("ExecutionCoordinatorDenied", 3),
+    ("ExecutionCoordinatorConflict", 1),
     # Exact-version dispatch qualification, authorization, and receipt admission.
     ("control_plane_kit_operations.runtime_adapter_registration.registered_adapter", 2),
     ("control_plane_kit_operations.runtime_adapter_registration.adapter_is_qualified", 1),
@@ -2102,6 +2137,7 @@ class EffectAttemptCoordinatorContractTests(
                 "tests/test_managed_application_chain.py",
                 "tests/test_managed_health_boundaries.py",
                 "tests/test_managed_reobservation_admission.py",
+                "tests/test_native_connector_installation_dispatch.py",
                 "tests/test_secret_installation_admission.py",
                 "tests/test_postgres_secret_installation_admission.py",
             },
