@@ -83,10 +83,45 @@ the existing managed-execute or reobserve entrance. `_configure_run` may activat
 that ledger for a plan containing configuration work. Immediately around awaited
 managed health I/O the coordinator pauses the same ledger and restores its prior
 active state in `finally`, including cancellation and error. It does not allocate
-a second ledger, discard cumulative usage, or add another private accounting
-import/call edge. ContextVar task isolation keeps unrelated command owners
+a second ledger or discard cumulative usage. ContextVar task isolation keeps unrelated command owners
 separate; child work for the selected health await observes the intended inactive
 state.
+
+For a supported retained connector observation (#2009), fresh dispatch also joins
+the accepted installation proof. The existing dispatch UoW still reloads and
+locks the request/run/attempt, checks worker/fence, accepted plan, current runtime
+registration and lease. It compares the native intent, original observation event
+and plan with the captured realization, then requires workspace current pins to
+equal the execution base. Core's existing management observation resolver selects
+the runtime/connector relation; the accepted-source store remains the sole owner
+of historical installation and generated-token proof.
+
+Only that public proof read briefly activates the same run ledger, checking its
+owner and execution context and restoring its prior state in `finally`. A complete
+proof creates a new immutable `ActivityRealizationContext` with the optional,
+repr-hidden `connector_installation` field. Strict validation binds its current
+pins and connector identity to the observation. Its embedded request/receipt
+identify original creation without transient grants; the current observation
+keeps its own event/activity identity. Historical credentials do not replace or
+constrain current runtime authority. Fresh bootstrap and signed health retain
+`None`, and all provider awaits remain outside UoWs with inactive accounting.
+
+Closed unavailable/capacity proof skips provider I/O and uses the existing guarded
+`NativeConnectionReadFailure` fold. The original ledger's used footprint remains
+charged. Exhaustion can therefore commit a durable UNCERTAIN attempt and then
+cause `ExecutionCoordinatorConflict` at the existing post-fold context reload.
+The response failure does not erase that outcome; exact command replay reports
+uncertainty without a new proof read, attempt or effect. There is no direct-result
+shortcut or budget reset. Unexpected proof-reader exceptions propagate unchanged
+and retain STARTED, as do admission denials; replay may report uncertainty while
+that durable attempt remains STARTED.
+
+`test_native_connector_installation_dispatch.py` covers real A→B dispatch,
+separate creation/observation identity, strict copied-witness negatives, scoped
+durable-proof corruption, exhausted shared accounting, exceptional restoration,
+pin drift, and explicit successors/replay. Existing current-connector installation
+and managed-admission tests continue to own full proof and topology/material
+validation. This source join does not activate a retained-container Interpreter.
 
 For the `managed-update-v1` gateway `ReconcileNode` only, a provider success is
 admitted only when Core reads a fully correlated installation receipt with
