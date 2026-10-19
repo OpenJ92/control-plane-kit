@@ -13,6 +13,7 @@ import psycopg
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import StartNode
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_core.secret_installation import secret_installation_receipt_for_result
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting
 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
@@ -104,6 +105,20 @@ class CurrentConnectorInstallationFixture(chain.ManagedApplicationFixture):
             self.assertNotIn(selection.reference.reference_id, repr(value))
         return installation
 
+    def assert_outcome_corruption_has_no_dependents(self, request):
+        """Admit test-only corruption without violating or disabling any FK."""
+        self.assertIs(request.kind, RuntimeEffectKind.REALIZE_ACTIVITY)
+        identity = request.source.run_id.value, request.activity_id.value, 1
+        for relation, prefix in (("cpk_effect_attempt_outcome_observations", ""),
+                ("cpk_configuration_accepted_slots", "source_"),
+                ("cpk_configuration_invocation_completions", ""),
+                ("cpk_failed_run_compensation_steps", "source_"),
+                ("cpk_configuration_cleanup_member_outcomes", "cleanup_")):
+            count, = self.connection.execute("SELECT count(*) FROM " + relation
+                + " WHERE " + prefix + "run_id=%s AND " + prefix + "activity_id=%s AND "
+                + prefix + "attempt=%s", identity).fetchone()
+            self.assertEqual(count, 0, "negative corruption requires no FK dependents: " + relation)
+
 
 class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
     async def test_artifactless_connector_returns_exact_original_without_effects_or_writes(self):
@@ -130,6 +145,7 @@ class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
         await self.complete_initial()
         installation = self.assert_original(self.read_installation())
         source = installation.original_request
+        self.assert_outcome_corruption_has_no_dependents(source)
         self.connection.execute("DELETE FROM cpk_effect_attempt_outcomes "
             "WHERE run_id=%s AND activity_id=%s AND attempt=1",
             (source.source.run_id.value, source.activity_id.value))
@@ -140,19 +156,22 @@ class CurrentConnectorInstallationTests(CurrentConnectorInstallationFixture):
     async def test_corrupt_bundle_or_original_outcome_is_unavailable_without_fallback(self):
         await self.complete_initial()
         installation = self.assert_original(self.read_installation())
+        self.assert_outcome_corruption_has_no_dependents(installation.original_request)
         revision = installation.current_revision
         preimage, = self.connection.execute("SELECT installation_sources_preimage FROM cpk_configuration_acceptances "
             "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (revision,)).fetchone()
         binding, = json.loads(preimage)["bindings"]
         source = binding["source"]
         identity = source["run_id"], source["activity_id"], source["attempt"]
-        fingerprint, = self.connection.execute("SELECT outcome_fingerprint FROM cpk_effect_attempt_outcomes "
+        fingerprint, status = self.connection.execute("SELECT outcome_fingerprint, status FROM cpk_effect_attempt_outcomes "
             "WHERE run_id=%s AND activity_id=%s AND attempt=%s", identity).fetchone()
         changes = (
             ("UPDATE cpk_configuration_acceptances SET installation_sources_preimage=%s "
                 "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (revision,), "{}", preimage),
             ("UPDATE cpk_effect_attempt_outcomes SET outcome_fingerprint=%s "
                 "WHERE run_id=%s AND activity_id=%s AND attempt=%s", identity, "0" * 64, fingerprint),
+            ("UPDATE cpk_effect_attempt_outcomes SET status=%s "
+                "WHERE run_id=%s AND activity_id=%s AND attempt=%s", identity, "uncertain", status),
         )
         for statement, key, corrupt, original in changes:
             with self.subTest(statement=statement):

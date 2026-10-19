@@ -372,3 +372,26 @@ compilation and clean import. This is combined full-run and focused-correction
 evidence, not a green full-suite run on the corrected candidate. Parent acceptance
 remains a separate gate. No published or live compatibility with an older
 installation is established.
+
+Current connector installation (#2007): the internal Operations store method
+`ConfigurationAcceptanceStore.read_current_connector_installation` takes the
+workspace, expected current graph and realized-projection pins, and exact runtime
+and connector node. Its strict `CurrentConnectorInstallationRead` result is
+`complete`, `unavailable`, or `capacity`; only `complete` carries an installation.
+This adds no cpk-server, HTTP, or MCP surface.
+
+The read proves the existing complete installation-source bundle under the same
+shared evidence budget, including original acceptance membership, exact original
+attempt/outcome and generated-token provenance. It returns the original Core
+request without secret-resolution grants and its typed secret installation
+receipt, even when the connector has no configuration artifacts. A supported
+workload content update preserves that origin while advancing the returned
+current pins/revision. Missing, corrupt, uncertain or nonconnector proof cannot
+fall back to an earlier success. No schema, provider call, write, lock or budget
+increase is introduced.
+
+The caller owns the UOW. Returned pins describe captured current truth and do not
+freeze subsequent workspace changes. Historical authority is provenance only;
+consumers must separately check fresh current authority and execution fences and
+close their UOW before effects. Native dispatch consumption remains a separate
+slice. The request and receipt are omitted from value representations.
