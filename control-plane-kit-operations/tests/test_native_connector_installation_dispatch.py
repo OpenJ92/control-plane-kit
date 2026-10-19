@@ -73,6 +73,37 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
             current = uow.stores.effect_attempts.get(attempt.state.identity)
         self.assertEqual(current.state.status.value, status)
 
+    async def execute_to_native(self, starts):
+        for number in range(1, len(self.record.plan.activities) + 2):
+            self.last_native_payload = {"claim_generation": self.update_generation,
+                "idempotency_key": f"native-boundary-{number}", "max_effects": 1}
+            result = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": self.update_run},
+                principal=self.worker, payload=self.last_native_payload)
+            if starts:
+                return result
+            self.assertEqual(result["coordinator_status"], "progressed")
+        self.fail("native start was not reached")
+
+    async def replay_native(self, expected=None):
+        before = self.durable_snapshot(), self.effects()
+        read = ConfigurationAcceptanceStore.read_current_connector_installation
+        reads = []
+
+        def observe(store, *args, **kwargs):
+            reads.append(True)
+            return read(store, *args, **kwargs)
+
+        with mock.patch.object(ConfigurationAcceptanceStore, "read_current_connector_installation", observe):
+            replay = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": self.update_run},
+                principal=self.worker, payload=self.last_native_payload, app=self.application())
+        if expected is not None:
+            self.assertEqual(replay, expected)
+        self.assertEqual(replay["coordinator_status"], "uncertain")
+        self.assertEqual((self.durable_snapshot(), self.effects()), before)
+        self.assertEqual(reads, [])
+
     async def test_update_carries_original_creation_but_fresh_observation_and_no_grants(self):
         with self.capture_ports() as calls:
             await self.prepare_content()
@@ -131,7 +162,7 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
         calls = tuple(self.health.native_reads)
         try:
             with self.after_native_start(corrupt) as starts:
-                result = await self.execute_content()
+                result = await self.execute_to_native(starts)
             self.assertEqual(len(starts), 1)
             self.assertEqual(tuple(self.health.native_reads), calls,
                 "unavailable accepted connector proof must prevent native I/O")
@@ -142,6 +173,7 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
                 "SET installation_sources_preimage=%s "
                 "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (preimage, revision))
         self.assertEqual(self.assert_original(self.read_installation()), origin)
+        await self.replay_native(result)
 
     async def proof_failure(self, *, exceptional):
         await self.prepare_content()
@@ -149,13 +181,14 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
         exit_unit = PostgresUnitOfWork.__exit__
         reads, exits = [], []
         charged = ConfigurationEvidenceFootprint(8192, 0, 0, 0)
+        interruption = RuntimeError("injected proof read interruption")
 
         def observe(store, *args, **kwargs):
             ledger = _ACCOUNTING.get()
             reads.append((ledger, ledger.active, ledger.used))
             ledger.used = charged  # Exact exhausted shared-ledger negative seam.
             if exceptional:
-                raise RuntimeError("injected proof read interruption")
+                raise interruption
             return read(store, *args, **kwargs)
 
         def leave(unit, *args):
@@ -169,7 +202,13 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
         with self.after_native_start(lambda attempt: None) as starts, \
                 mock.patch.object(ConfigurationAcceptanceStore, "read_current_connector_installation", observe), \
                 mock.patch.object(PostgresUnitOfWork, "__exit__", leave):
-            result = await self.execute_content()
+            if exceptional:
+                with self.assertRaises(RuntimeError) as caught:
+                    await self.execute_to_native(starts)
+                self.assertIs(caught.exception, interruption)
+                result = None
+            else:
+                result = await self.execute_to_native(starts)
         self.assertEqual(len(reads), 1, "native dispatch must acquire a fresh installation proof")
         self.assertEqual(len(starts), 1)
         self.assertIs(reads[0][0], starts[0][1])
@@ -178,8 +217,10 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
         self.assertTrue(exits)
         self.assertEqual(exits[0], (False, charged), "proof accounting must restore before UOW exit")
         self.assertEqual(tuple(self.health.native_reads), calls)
-        self.assertEqual(result["coordinator_status"], "uncertain")
-        self.assert_attempt_status(starts[0][0], "uncertain")
+        if result is not None:
+            self.assertEqual(result["coordinator_status"], "uncertain")
+        self.assert_attempt_status(starts[0][0], "started" if exceptional else "uncertain")
+        await self.replay_native(result)
 
     async def test_exhausted_original_ledger_skips_provider_without_reset(self):
         await self.proof_failure(exceptional=False)
@@ -200,7 +241,7 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
         try:
             with self.after_native_start(drift) as starts:
                 with self.assertRaises(ExecutionCoordinatorDenied):
-                    await self.execute_content()
+                    await self.execute_to_native(starts)
             self.assertEqual(len(starts), 1)
             self.assertEqual(tuple(self.health.native_reads), calls)
             self.assert_attempt_status(starts[0][0], "started")
@@ -209,6 +250,7 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
                 "current_realized_projection_id=%s WHERE workspace_id='workspace-a'",
                 (current.current_graph_id, current.current_realized_projection_id))
         self.assert_original(self.read_installation())
+        await self.replay_native()
 
     async def test_explicit_successors_reacquire_origin_with_distinct_observation_identity(self):
         await self.prepare_content()
@@ -255,6 +297,9 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
         self.assertEqual(len({id(call[1].connector_installation) for call in native_calls}), 3)
         for number, call in enumerate(native_calls, 1):
             self.assertEqual(call[1].connector_installation, origin)
+            self.assertEqual(call[4], 0)
+            self.assertFalse(call[6])
+            self.assertEqual(call[5].owner, self.update_run)
             with self.unit_of_work() as uow:
                 attempt = uow.stores.effect_attempts.get(EffectAttemptIdentity(
                     RunId(self.update_run), native.activity_id.value, number))
