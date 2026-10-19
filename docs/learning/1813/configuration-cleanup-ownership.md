@@ -4981,3 +4981,39 @@ bounded-loop, physical-accounting, forecast, freshness and durable-truth
 assertions remain. No production code or capacity limit changes again.
 Targeted corrected evidence and a reviewed full rerun are required; the failed
 full gate remains a HOLD and supplies no Servers acceptance credit.
+
+## #2010 query-test acceptance correction — 2026-10-19
+
+Jacob explicitly approved replacing frozen E3's selected-plan/full-query-index-
+eligibility evidence with real-owner behavioral laws plus the exact PostgreSQL
+schema/index contract. The [criterion revision and reviewed plan](https://github.com/OpenJ92/control-plane-kit/pull/2010#issuecomment-6271954268)
+supersede that acceptance method only. Scope/provenance, complete reciprocal
+identity, returned-evidence limits, refusal, atomicity and adapter schema integrity
+remain required. This is a narrower evidence boundary, not an equivalence claim.
+
+The genuine current/use/allocation read and reconciliation positive is retained
+with exact refs and original birth checks. Existing scope/corruption, 64/65 and 257
+sentinel, shared-budget and pre-CAS guards remain. Two coverage gaps receive
+strengthened regression cases: a near-match claim differing in each of the four
+identity coordinates must remain unavailable through the real public owner, and
+configuration-specific allocation/active-slot index prefix or predicate drift must
+be refused by the real schema installer without repair. Negative states are
+confined to rollback-only transactions in the ordinary disposable test database;
+constraints remain enabled and original data/catalog state must be restored.
+These cases may pass unchanged production; no missing-behavior red is fabricated.
+
+The chosen-plan test and its `enable_seqscan` control are removed, together with
+the unsuccessful 35-line `b80b4af5` ANALYZE/statistics experiment. No replacement SQL
+recognizer, optimizer-control experiment, production query/schema change or new
+performance gate is introduced. Correct-but-expensive or nonsargable SQL may pass
+semantic and catalog checks. Workload performance investigation is deferred; no
+universal selected-plan, internal-work or latency guarantee is claimed.
+
+Historical evidence remains intact: the first full run at `0e112d5e` failed three
+integration contracts; their `dfb6e118` correction passed 37 focused tests, but its
+full run failed the node-prefix plan assertion. The `b80b4af5` one-test statistics
+experiment failed at the reciprocal allocation join; its node path passed before
+and after ANALYZE, so stale statistics were never proved to cause the earlier
+failure. Both full failures and the focused experiment retain their immutable
+commits, logs and [PR dispositions](https://github.com/OpenJ92/control-plane-kit/pull/2010#issuecomment-6268693915).
+Source review and corrected validation remain separate from this design decision.
