@@ -1054,10 +1054,11 @@ class ProductDescriptorCodec:
         self,
         product: ContainerServerProduct,
     ) -> dict[str, object]:
+        descriptor = ContainerServerProductCodec().encode(product)
         return {
             "schema": (_REQUIRED_CONFIGURATION_PRODUCT_DOCUMENT_SCHEMA
-                       if product.runtime_contract.configuration_requirements else _PRODUCT_DOCUMENT_SCHEMA),
-            "product": ContainerServerProductCodec().encode(product),
+                       if "configuration_requirements" in descriptor["runtime_contract"] else _PRODUCT_DOCUMENT_SCHEMA),
+            "product": descriptor,
         }
 
     def _product_from_mapping(
