@@ -81,7 +81,7 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_for_request,
     runtime_effect_request_for_intent,
 )
-from control_plane_kit_core.runtime_effects import ImagePullAuthority
+from control_plane_kit_core.runtime_effects import ImagePullAuthority, RuntimeProductMaterial
 from control_plane_kit_core.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
@@ -147,6 +147,147 @@ from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
 class RuntimeEffectTranslationTests(unittest.TestCase):
+    def test_required_configuration_union_selects_two_real_payloads_and_round_trips(self):
+        from tests.health_receiver_trust_fixture import context as health_context
+        from tests.required_configuration_fixture import required_registration
+        from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+        _, _, selected = health_context(self, receiver=True)
+        codec = ReceiverNodeControlConfigurationCodec()
+        configured = codec.decode_bytes(selected["workload"].content.encode())
+        original = _configuration_product()
+        registered = required_registration(original, {"settings"})
+        declaration = registered.descriptor_document.content
+        seen = []
+        for receiver in ("a" * 32, "b" * 32):
+            actual = codec.encode_bytes(replace(configured,
+                target=replace(configured.target, receiver_id=receiver))).decode()
+            artifacts = tuple(replace(value, content=actual, source_digest="b" * 64)
+                if value.artifact_id == "settings" else value
+                for value in original.descriptor_document.product.runtime_contract.configuration_artifacts)
+            configuration = replace(ProductInstanceConfiguration.from_contract(
+                original.descriptor_document.product.runtime_contract), configuration_artifacts=artifacts)
+            block = instantiate_product(registered.descriptor_document.product, "api", configuration)
+            graph = compile_topology(DeploymentTopology("required-configuration",
+                DockerRuntime(runtime_id="docker", children=(block,))))
+            for operation_type in (StartNode, ReconcileNode):
+                request = runtime_effect_request_for_context(_context(desired_graph=graph,
+                    registered_products=(registered,), activity=PlannedActivity(
+                        ActivityId("required-material"), operation_type(NodeTarget("api")))))
+                material, = request.products
+                self.assertEqual(material.reference, registered.reference)
+                self.assertEqual(material.product.identity, registered.descriptor_document.product.identity)
+                self.assertEqual(material.product.image, registered.descriptor_document.product.image)
+                self.assertEqual(material.product.runtime_contract.configuration_requirements, ())
+                self.assertEqual(material.product.runtime_contract.configuration_artifacts, tuple(sorted(artifacts)))
+                self.assertEqual(RuntimeProductMaterial.from_descriptor(material.descriptor()), material)
+            seen.append(material.product.runtime_contract.configuration_artifacts)
+        self.assertNotEqual(seen[0], seen[1])
+        self.assertEqual(registered.descriptor_document.content, declaration)
+        self.assertEqual(len(registered.descriptor_document.product.runtime_contract.configuration_requirements), 1)
+
+    def test_required_configuration_exact_union_refuses_each_slot_substitution(self):
+        from tests.required_configuration_fixture import required_registration, bind_document
+        original = _configuration_product()
+        registered = required_registration(original, {"settings"})
+        graph = _configuration_graph(original, selection="selected")
+        node = bind_document(graph.node("api"), registered.descriptor_document)
+        graph = graph.update_node(node)
+        # Both the required and the concrete-default side are indispensable.
+        for operation_type in (StartNode, ReconcileNode):
+            positive = _context(desired_graph=graph, registered_products=(registered,),
+                activity=PlannedActivity(ActivityId("required-slots"), operation_type(NodeTarget("api"))))
+            self.assertEqual(runtime_effect_request_for_context(positive).products[0].reference, registered.reference)
+            candidates = [("missing-all", ()), ("extra", (*node.configuration_artifacts,
+                replace(node.configuration_artifacts[0], artifact_id="extra", target_path="/etc/cpk/extra.json")))]
+            for artifact in node.configuration_artifacts:
+                others = tuple(value for value in node.configuration_artifacts if value != artifact)
+                candidates.append(("missing-" + artifact.artifact_id, others))
+                for field, value in (("artifact_id", "wrong"), ("target_path", "/etc/cpk/wrong.json"),
+                        ("media_type", ConfigurationMediaType.TEXT), ("file_mode",
+                            ConfigurationFileMode.OWNER_READ_ONLY if artifact.file_mode is ConfigurationFileMode.READ_ONLY
+                            else ConfigurationFileMode.READ_ONLY)):
+                    candidates.append((artifact.artifact_id + "-" + field, (*others, replace(artifact, **{field: value}))))
+            for label, artifacts in candidates:
+                with self.subTest(operation=operation_type.__name__, mismatch=label):
+                    candidate = graph.update_node(replace(node, configuration_artifacts=artifacts))
+                    with self.assertRaises(InvalidOperationCommand) as caught:
+                        runtime_effect_request_for_context(_context(desired_graph=candidate,
+                            registered_products=(registered,), activity=positive.activity))
+                    self.assertEqual(str(caught.exception), "runtime effect configuration artifact contract is not satisfied")
+                    self.assertIsNone(caught.exception.__cause__)
+                    self.assertIsNone(caught.exception.__context__)
+
+    def test_required_configuration_history_discharges_without_start_prerequisites(self):
+        from tests.required_configuration_fixture import required_registration, bind_document
+        original = _configuration_product()
+        registered = required_registration(original)
+        base = _configuration_graph(original, selection="historical")
+        base = base.update_node(bind_document(base.node("api"), registered.descriptor_document))
+        desired = base.update_node(replace(base.node("api"), configuration_artifacts=tuple(
+            replace(value, content='{"selection":"future"}', source_digest=None)
+            for value in base.node("api").configuration_artifacts)))
+        for operation_type in (StopNode, RemoveNodeResource, WaitForHealthy):
+            for absent in (False, True):
+                with self.subTest(operation=operation_type.__name__, absent=absent):
+                    retained = base.update_node(replace(base.node("api"), configuration_artifacts=())) if absent else base
+                    request = runtime_effect_request_for_context(_context(
+                        base_graph=retained, desired_graph=retained if operation_type is WaitForHealthy else desired,
+                        registered_products=(registered,), ingress_authorities=(), ingress_resources=(),
+                        generated_ingress_secrets=(), activity=PlannedActivity(
+                            ActivityId("required-history"), operation_type(NodeTarget("api")))))
+                    material, = request.products
+                    self.assertEqual(material.product.runtime_contract.configuration_artifacts,
+                        tuple(sorted(retained.node("api").configuration_artifacts)))
+                    self.assertEqual(material.product.runtime_contract.configuration_requirements, ())
+                    self.assertEqual(material.reference, registered.reference)
+                    self.assertEqual(RuntimeProductMaterial.from_descriptor(material.descriptor()), material)
+
+    def test_required_configuration_keeps_generated_ingress_reference_and_version(self):
+        from tests.required_configuration_fixture import required_registration, bind_document
+        original = _registered_product(name="cloudflared-connector")
+        artifact = ConfigurationArtifact("settings", "/etc/cpk/settings.json", ConfigurationMediaType.JSON, "{}")
+        product = original.descriptor_document.product
+        document = ProductDescriptorCodec().encode_document(replace(product, runtime_contract=replace(
+            product.runtime_contract, configuration_artifacts=(artifact,))))
+        original = RegisteredProduct.from_document(workspace_id=original.workspace_id,
+            descriptor_document=document, source=original.source, imported_by=original.imported_by,
+            imported_at=original.imported_at)
+        registered = required_registration(original)
+        graph = _public_ingress_graph()
+        node = bind_document(replace(graph.node("cloudflared"), configuration_artifacts=(artifact,)),
+            registered.descriptor_document)
+        graph = graph.update_node(node)
+        generated = _generated_ingress_secret()
+        request = runtime_effect_request_for_context(_context(
+            activity=PlannedActivity(ActivityId("required-ingress"), StartNode(NodeTarget("cloudflared"))),
+            desired_graph=graph, registered_products=(registered,),
+            ingress_authorities=(_registered_ingress_authority(),), ingress_resources=(_cloudflare_resource(),),
+            generated_ingress_secrets=(generated,)))
+        material, = request.products
+        self.assertEqual(material.reference, registered.reference)
+        self.assertEqual(material.product.runtime_contract.configuration_requirements, ())
+        self.assertEqual(material.product.runtime_contract.configuration_artifacts, (artifact,))
+        self.assertEqual(material.secret_selections, (SecretVersionSelection(generated.secret_ref,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, generated.provider_version_id),))
+        self.assertEqual(tuple(value.reference for value in material.product.runtime_contract.secret_deliveries),
+            (generated.secret_ref,))
+        self.assertNotIn("tunnel-token-value", repr(request.descriptor()).lower())
+        retained = graph.update_node(replace(node,
+            secret_deliveries=material.product.runtime_contract.secret_deliveries,
+            secret_selections=material.secret_selections))
+        for operation_type in (StopNode, RemoveNodeResource):
+            with self.subTest(cleanup=operation_type.__name__):
+                cleanup = runtime_effect_request_for_context(_context(
+                    activity=PlannedActivity(ActivityId("required-ingress-cleanup"), operation_type(NodeTarget("cloudflared"))),
+                    base_graph=retained, desired_graph=graph, registered_products=(registered,),
+                    ingress_authorities=(), ingress_resources=(), generated_ingress_secrets=()))
+                historical, = cleanup.products
+                self.assertEqual(historical.product.runtime_contract.secret_deliveries,
+                    material.product.runtime_contract.secret_deliveries)
+                self.assertEqual(historical.secret_selections, material.secret_selections)
+                self.assertEqual(historical.product.runtime_contract.configuration_requirements, ())
+                self.assertEqual(historical.reference, registered.reference)
+
     def test_event_free_intent_projection_is_exact_and_uses_no_event_coordinate(
         self,
     ) -> None:

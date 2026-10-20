@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, replace
 from typing import Mapping
 
-from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import ActivityEventKind, RunId
 from control_plane_kit_core.planning.activity_plan import (
@@ -29,6 +29,7 @@ from control_plane_kit_core.products import (
     ProductDescriptorDigest,
     ProductIdentity,
     ProductReference,
+    product_configuration_slots,
 )
 from control_plane_kit_core.probe_intents import (
     EndpointContext,
@@ -509,7 +510,7 @@ def _product_material_for_node(
                 )
         if _configuration_artifact_contract_keys(
             node.configuration_artifacts
-        ) != _configuration_artifact_contract_keys(runtime_contract.configuration_artifacts):
+        ) != _configuration_artifact_contract_keys(product_configuration_slots(runtime_contract)):
             raise InvalidOperationCommand(
                 "runtime effect configuration artifact contract is not satisfied"
             )
@@ -519,13 +520,14 @@ def _product_material_for_node(
             runtime_contract,
             verification=node.block_spec.verification,
             configuration_artifacts=node.configuration_artifacts,
+            configuration_requirements=(),
             secret_deliveries=deliveries,
         ),
     )
 
 
 def _configuration_artifact_contract_keys(
-    artifacts: tuple[ConfigurationArtifact, ...],
+    artifacts: tuple[ConfigurationArtifact | ConfigurationArtifactRequirement, ...],
 ) -> tuple[tuple[str, str, str, str], ...]:
     # Payload and both digests are selected per instance; these fields define slots.
     return tuple(sorted(

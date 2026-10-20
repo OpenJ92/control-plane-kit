@@ -2,11 +2,13 @@
 
 from dataclasses import replace
 
+from control_plane_kit_core.configuration import ConfigurationArtifactRequirement
 from control_plane_kit_core.lifecycle import (
     ResourceLifecycle,
     ResourceOwnership,
 )
 from control_plane_kit_core.node_control import NodeHealthReadKind
+from control_plane_kit_core.products import product_configuration_slots
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec,
     select_receiver_node_control_configuration_artifact,
@@ -477,9 +479,17 @@ def _registered_declaration_successor(before, after) -> bool:
     if before.image != after.image or old.control_surfaces == new.control_surfaces:
         return False
     wrappers = tuple(select_receiver_node_control_configuration_slot(
-        artifacts=contract.configuration_artifacts, environment=contract.public_environment,
+        artifacts=contract.configuration_artifacts, requirements=contract.configuration_requirements,
+        environment=contract.public_environment,
         control_surfaces=contract.control_surfaces) for contract in (old, new))
     original, successor = wrappers
+    if isinstance(original, ConfigurationArtifactRequirement) or isinstance(successor, ConfigurationArtifactRequirement):
+        return (
+            isinstance(original, ConfigurationArtifactRequirement)
+            and isinstance(successor, ConfigurationArtifactRequirement)
+            and original == successor
+            and replace(new, control_surfaces=old.control_surfaces) == old
+        )
     if replace(successor, content=original.content, source_digest=original.source_digest) != original:
         return False
     if original != successor:
@@ -572,7 +582,7 @@ def _node_matches_product(node, product: RegisteredProduct) -> bool:
         and node.block_spec.control_surfaces == contract.control_surfaces
         and node.block_spec.gateway_transit == contract.gateway_transit
         and _configuration_slots(node.configuration_artifacts)
-            == _configuration_slots(contract.configuration_artifacts)
+            == _configuration_slots(product_configuration_slots(contract))
         and node.secret_deliveries == contract.secret_deliveries
     )
 

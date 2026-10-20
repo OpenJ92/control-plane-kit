@@ -79,6 +79,93 @@ class ManagedDeclarationUpdateAdmissionTests(unittest.TestCase):
         return RegisteredProduct.from_document(workspace_id="workspace-a", descriptor_document=document,
             source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-10-17T18:00:00Z")
 
+    def required_pair(self, *, reverse=False):
+        from tests.required_configuration_fixture import required_registration, bind_document
+        current, desired, products, before, after = self.pair(change_default=True, reverse=reverse)
+        wrapper, _ = selected_wrapper(current.node("api-x"))
+        required_before = required_registration(before, {wrapper.artifact_id})
+        required_after = required_registration(after, {wrapper.artifact_id})
+        products = tuple(required_before if value == before else required_after if value == after else value
+            for value in products)
+        return (current.update_node(bind_document(current.node("api-x"), required_before.descriptor_document)),
+            desired.update_node(bind_document(desired.node("api-x"), required_after.descriptor_document)),
+            products, required_before, required_after)
+
+    def assert_required_admitted(self, current, desired, products):
+        transition = self.transition(current, desired)
+        plan = derive_activity_plan(transition, profile=PROFILE)
+        self.assertTrue(plan.ready_for_execution)
+        self.assertIs(runtime_management_plan_profile(transition, registered_products=products), PROFILE)
+        self.assertFalse(runtime_management_execution_is_unsupported(current, desired, plan,
+            registered_products=products, derivation_profile=PROFILE))
+        for activity in plan.activities:
+            if type(activity.operation) is not ReconcileNode:
+                continue
+            context = _context(activity=replace(activity, dependencies=()), base_graph=current,
+                desired_graph=desired, registered_products=products)
+            context = replace(context, activity=activity, plan_record=replace(context.plan_record,
+                plan=plan, derivation_profile=PROFILE))
+            material, = runtime_effect_request_for_context(context).products
+            self.assertEqual(material.product.runtime_contract.configuration_requirements, ())
+            self.assertEqual(material.product.runtime_contract.configuration_artifacts,
+                tuple(sorted(desired.node(activity.operation.target.node_id).configuration_artifacts)))
+        return plan
+
+    def test_required_configuration_declaration_successor_admits_both_directions(self):
+        for reverse in (False, True):
+            with self.subTest(reverse=reverse):
+                current, desired, products, before, after = self.required_pair(reverse=reverse)
+                original = before.descriptor_document.content, after.descriptor_document.content
+                self.assert_required_admitted(current, desired, products)
+                self.assertEqual(before.descriptor_document.product.image, after.descriptor_document.product.image)
+                self.assertEqual((before.descriptor_document.content, after.descriptor_document.content), original)
+
+    def test_required_configuration_mixed_declarations_refuse_both_directions(self):
+        from tests.required_configuration_fixture import required_registration, bind_document
+        self.assert_required_admitted(*self.required_pair()[:3])
+        for required_side in ("before", "after"):
+            with self.subTest(required_side=required_side):
+                current, desired, products, before, after = self.pair(change_default=True)
+                selected = before if required_side == "before" else after
+                wrapper, _ = selected_wrapper(current.node("api-x"))
+                required = required_registration(selected, {wrapper.artifact_id})
+                products = tuple(required if value == selected else value for value in products)
+                if required_side == "before":
+                    current = current.update_node(bind_document(current.node("api-x"), required.descriptor_document))
+                else:
+                    desired = desired.update_node(bind_document(desired.node("api-x"), required.descriptor_document))
+                self.refused(current, desired, products)
+
+    def test_required_configuration_successor_preserves_complete_contract_and_registration(self):
+        from control_plane_kit_core.configuration import ConfigurationFileMode, ConfigurationMediaType
+        from tests.required_configuration_fixture import bind_document
+        current, desired, products, before, after = self.required_pair()
+        self.assert_required_admitted(current, desired, products)
+        for selected in (before, after):
+            with self.subTest(missing=selected.reference.identity.key):
+                self.refused(current, desired, tuple(value for value in products if value != selected))
+                self.refused(current, desired, tuple(replace(value, status=RegisteredProductStatus.REVOKED)
+                    if value == selected else value for value in products))
+        contract = after.descriptor_document.product.runtime_contract
+        requirement, = contract.configuration_requirements
+        changes = (
+            ("id", replace(requirement, artifact_id="other-control")),
+            ("path", replace(requirement, target_path="/etc/cpk/other-control.json")),
+            ("media", replace(requirement, media_type=ConfigurationMediaType.TEXT)),
+            ("mode", replace(requirement, file_mode=ConfigurationFileMode.OWNER_READ_ONLY
+                if requirement.file_mode is ConfigurationFileMode.READ_ONLY else ConfigurationFileMode.READ_ONLY)),
+        )
+        contracts = [(label, replace(contract, configuration_requirements=(value,))) for label, value in changes]
+        contracts.append(("default", replace(contract, configuration_artifacts=tuple(
+            replace(value, content='{"mode":"changed-default"}', source_digest=None)
+            for value in contract.configuration_artifacts))))
+        for label, candidate in contracts:
+            with self.subTest(change=label):
+                incompatible = self.registered(ProductDescriptorCodec().encode_document(replace(
+                    after.descriptor_document.product, runtime_contract=candidate)))
+                graph = desired.update_node(bind_document(desired.node("api-x"), incompatible.descriptor_document))
+                self.refused(current, graph, tuple(incompatible if value == after else value for value in products))
+
     def pair(self, *, change_default=False, opaque=False, reverse=False):
         graph, _, _, products = managed_update_graphs(self, application_artifacts=(APPLICATION,))
         before, = [value for value in products if value.reference.identity.key == graph.node("api-x").metadata["product_identity"]]

@@ -4,7 +4,7 @@ from dataclasses import replace
 from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.planning import PlanGraphSide
-from control_plane_kit_core.products import ProductReference
+from control_plane_kit_core.products import ProductReference, product_configuration_slots
 from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
     select_receiver_node_control_configuration_slot,
@@ -89,7 +89,8 @@ def _selection(registry, product, node, reference, purpose, workspace, authored,
         # surface to the actual node before validating the complete V2 material.
         _require(_same(contract.control_surfaces, node.block_spec.control_surfaces))
         declared = select_receiver_node_control_configuration_slot(
-            artifacts=contract.configuration_artifacts, environment=contract.public_environment,
+            artifacts=contract.configuration_artifacts, requirements=contract.configuration_requirements,
+            environment=contract.public_environment,
             control_surfaces=contract.control_surfaces)
         actual = select_receiver_node_control_configuration_artifact(
             artifacts=node.configuration_artifacts,
@@ -99,7 +100,7 @@ def _selection(registry, product, node, reference, purpose, workspace, authored,
         binding = None
     else:
         binding = registry.binding_for(reference, purpose)
-        declared = tuple(value for value in contract.configuration_artifacts if _slot(value) == _slot(binding))
+        declared = tuple(value for value in product_configuration_slots(contract) if _slot(value) == _slot(binding))
         selected = tuple(value for value in node.configuration_artifacts if _slot(value) == _slot(binding))
         _require(len(declared) == len(selected) == 1)
         actual = selected[0]

@@ -78,6 +78,116 @@ class PostgresSharedHealthReceiverTests(PostgresHealthEffectStartFixture, unitte
         documents["workload"] = document
         return nodes, documents, selected
 
+    def required_configuration_positive(self):
+        from tests.required_configuration_fixture import required_health_documents
+        self.transform = required_health_documents
+        self.changes = None
+        self.reset_health()
+        with self.observed_time("2030-01-01T00:00:00Z"):
+            result = self.start()
+        self.assertEqual(self.health_counts(), (1, 1, 2, 1))
+        return result
+
+    def test_required_configuration_health_uses_real_payloads_and_reloads_original_history(self):
+        result = self.required_configuration_positive()
+        for family, document in self.receiver_documents.items():
+            self.assertTrue(document.product.runtime_contract.configuration_requirements)
+            self.assertEqual(document.product.runtime_contract.configuration_artifacts, ())
+            with self.unit_of_work() as uow:
+                self.assertEqual(uow.stores.registered_products.get("workspace-a",
+                    ProductReference.from_document(document)).descriptor_document, document)
+        configured = ReceiverNodeControlConfigurationCodec().decode_bytes(
+            self.receiver_artifacts["workload"].content.encode())
+        self.assertEqual(result.preparation.request.target, configured.target)
+        self.assertEqual(result.preparation.request.declaration_identity, configured.declaration.identity())
+        self.assertEqual(len(self.registry().bindings), 1)
+        before = self.health_snapshot()
+        command = ReloadHealthSigningAuthority(request_id="request-a", identity=result.preparation.identity,
+            context=trusted_health_context(), authority=self.start_value.authority, fence=self.start_value.fence)
+        with self.observed_time("2030-01-01T00:00:00Z"):
+            pair = HealthSigningAuthorityReloadService(self.unit_of_work,
+                health_receiver_decoders=self.registry()).execute(command)
+        self.assertEqual(pair.preparation, result.preparation)
+        self.assertEqual(pair.workload.public_key, self.keys["workload"].public_key)
+        self.assertEqual(self.health_snapshot(), before)
+
+    def test_required_configuration_actual_inert_and_invalid_v2_refuse_without_history(self):
+        from tests.required_configuration_fixture import required_health_documents
+        for payload in ("{}", '{"profile":"receiver-node-control-configuration.v2"}'):
+            with self.subTest(payload=payload):
+                self.required_configuration_positive()
+                def invalid_actual(nodes, documents, selected):
+                    nodes, documents, selected = required_health_documents(nodes, documents, selected)
+                    chosen = replace(selected["workload"], content=payload, source_digest=None)
+                    selected["workload"] = chosen
+                    nodes["api"] = replace(nodes["api"], configuration_artifacts=(chosen,))
+                    return nodes, documents, selected
+                self.transform = invalid_actual
+                self.reset_health()
+                self.refused()
+
+    def test_required_configuration_slot_surface_and_binding_substitutions_refuse(self):
+        from control_plane_kit_core.configuration import ConfigurationFileMode, ConfigurationMediaType
+        from tests.required_configuration_fixture import required_health_documents, bind_document
+        for family in ("workload", "transit"):
+            for change in ("id", "path", "media", "mode", "surface"):
+                with self.subTest(family=family, change=change):
+                    self.required_configuration_positive()
+                    def different_declaration(nodes, documents, selected):
+                        nodes, documents, selected = required_health_documents(nodes, documents, selected)
+                        document = documents[family]
+                        contract = document.product.runtime_contract
+                        # Transit membership and each receiver's own-control slot have separate owners.
+                        artifact_id = "test-" + family
+                        requirement, = (value for value in contract.configuration_requirements
+                            if value.artifact_id == artifact_id)
+                        changes = {"id": {"artifact_id": "other-declared-slot"},
+                            "path": {"target_path": "/etc/test/other.json"},
+                            "media": {"media_type": ConfigurationMediaType.TEXT},
+                            "mode": {"file_mode": ConfigurationFileMode.OWNER_READ_ONLY}}
+                        if change == "surface":
+                            surface, = contract.control_surfaces
+                            kinds = (NodeHealthReadKind.READINESS,) if len(surface.health_reads) > 1 else (
+                                NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS)
+                            contract = replace(contract, control_surfaces=(replace(surface, health_reads=kinds),))
+                        else:
+                            contract = replace(contract, configuration_requirements=tuple(
+                                replace(value, **changes[change]) if value == requirement else value
+                                for value in contract.configuration_requirements))
+                        document = ProductDescriptorCodec().encode_document(replace(document.product, runtime_contract=contract))
+                        documents[family] = document
+                        node_id = "api" if family == "workload" else "gateway"
+                        nodes[node_id] = bind_document(nodes[node_id], document)
+                        return nodes, documents, selected
+                    self.transform = different_declaration
+                    self.reset_health()
+                    self.refused()
+        self.required_configuration_positive()
+        self.reset_health()
+        binding, = self.registry().bindings
+        wrong = replace(binding, product_reference=ProductReference.from_document(self.receiver_documents["workload"]))
+        ids = Sequence("must-not-allocate")
+        with self.observed_time("2030-01-01T00:00:00Z"):
+            before = self.health_snapshot()
+            with self.assertRaises(EffectAttemptStartDenied):
+                EffectAttemptStartService(self.unit_of_work, id_factory=ids,
+                    health_receiver_decoders=trust.HealthReceiverDecoders((wrong,))).execute_health(self.start_health_command())
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.health_snapshot(), before)
+
+    def test_required_configuration_current_key_coverage_and_issuer_remain_required(self):
+        from tests.health_receiver_trust_fixture import PUBLIC_KEY_C
+        from tests.required_configuration_fixture import required_health_documents
+        for family in ("workload", "transit"):
+            for change in ({"keys": [{"key_id": "health-" + family, "pem": PUBLIC_KEY_C}]},
+                    {"issuer": "other-issuer"}):
+                with self.subTest(family=family, change=next(iter(change))):
+                    self.required_configuration_positive()
+                    self.transform = required_health_documents
+                    self.changes = {family: change}
+                    self.reset_health()
+                    self.refused()
+
     def test_independently_named_registered_products_and_paths_start_and_reload_without_workload_decoder(self):
         for name, path, inert in (("new-application", "/opt/new/receiver.json", False),
                                   ("another-application", "/var/run/another.json", False),

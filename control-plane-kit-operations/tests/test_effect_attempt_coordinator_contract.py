@@ -417,6 +417,7 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("control_plane_kit_core.operations", "ActivityEventKind", None),
     ("__future__", "annotations", None),
     ("control_plane_kit_core.configuration", "ConfigurationArtifact", None),
+    ("control_plane_kit_core.configuration", "ConfigurationArtifactRequirement", None),
     ("control_plane_kit_core.environment", "PublicStaticEnvironmentBinding", None),
     ("control_plane_kit_core.operations", "RunId", None),
     ("control_plane_kit_core.planning.activity_plan", "AddSocketConnection", None),
@@ -439,6 +440,7 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("control_plane_kit_core.products", "ProductDescriptorDigest", None),
     ("control_plane_kit_core.products", "ProductIdentity", None),
     ("control_plane_kit_core.products", "ProductReference", None),
+    ("control_plane_kit_core.products", "product_configuration_slots", None),
     ("control_plane_kit_core.public_ingress", "PublicIngressExposure", None),
     ("control_plane_kit_core.runtime_authority", "RuntimeAuthorityAccessDelivery", None),
     ("control_plane_kit_core.runtime_authority", "RuntimeAuthorityReference", None),
@@ -920,6 +922,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("control_plane_kit_core.products.ProductDescriptorDigest", 1),
     ("control_plane_kit_core.products.ProductIdentity", 1),
     ("control_plane_kit_core.products.ProductReference", 1),
+    ("control_plane_kit_core.products.product_configuration_slots", 1),
     (
         "control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntent",
         1,
