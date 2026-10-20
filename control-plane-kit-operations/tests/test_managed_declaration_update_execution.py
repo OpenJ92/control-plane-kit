@@ -43,7 +43,8 @@ class ManagedDeclarationUpdateExecutionTests(chain.ManagedApplicationFixture):
             if value.purpose is DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ]
         self.register_public(family.purpose, family.public_keys[0], active=True)
         self.successor_graph, self.successor_document = declaration_successor(self.graph,
-            self.documents["api"].product, node_id="api", change_default=True)
+            self.documents["api"].product, node_id="api",
+            change_default=not self.documents["api"].product.runtime_contract.configuration_requirements)
         await self.invoke("command.product.import", ControlPlaneServiceRole.PLANNING,
             path={"workspace_id": "workspace-a"}, payload={
                 "descriptor_document": json.loads(self.successor_document.content),
@@ -80,7 +81,27 @@ class ManagedDeclarationUpdateExecutionTests(chain.ManagedApplicationFixture):
             if type(request.operation) is ObserveNodeHealth and request.operation.node_id == "api"
             and request.source.run_id.value == self.update_run]
 
+    def use_required_configuration(self):
+        from tests.required_configuration_fixture import required_document, bind_document
+        wrapper, _ = selected_wrapper(self.graph.node("api"))
+        document = required_document(self.documents["api"], {wrapper.artifact_id})
+        self.documents["api"] = document
+        self.graph = DEFAULT_GRAPH_CODEC.decode(DEFAULT_GRAPH_CODEC.encode(
+            self.graph.update_node(bind_document(self.graph.node("api"), document))))
+
     async def test_both_exact_installations_then_desired_health_replay_and_advance(self):
+        await self.assert_both_exact_installations_then_desired_health_replay_and_advance()
+
+    async def test_required_configuration_installations_health_replay_and_advance(self):
+        self.use_required_configuration()
+        await self.assert_both_exact_installations_then_desired_health_replay_and_advance()
+        self.assertTrue(self.documents["api"].product.runtime_contract.configuration_requirements)
+        self.assertTrue(self.successor_document.product.runtime_contract.configuration_requirements)
+        for request in self.runtime.calls:
+            for material in request.products:
+                self.assertEqual(material.product.runtime_contract.configuration_requirements, ())
+
+    async def assert_both_exact_installations_then_desired_health_replay_and_advance(self):
         await self.prepare_content()
         result = await self.execute_content()
         self.assertEqual((result["coordinator_status"], result["run_status"]), ("completed", "succeeded"))
@@ -164,6 +185,14 @@ class ManagedDeclarationUpdateExecutionTests(chain.ManagedApplicationFixture):
         await self.assert_locked_drift_refuses("api")
 
     async def test_authority_drift_after_gateway_proposal_preserves_workload_outcome(self):
+        await self.assert_locked_drift_refuses("gateway")
+
+    async def test_required_configuration_authority_drift_before_workload_start_refuses(self):
+        self.use_required_configuration()
+        await self.assert_locked_drift_refuses("api")
+
+    async def test_required_configuration_authority_drift_before_gateway_preserves_workload(self):
+        self.use_required_configuration()
         await self.assert_locked_drift_refuses("gateway")
 
     async def assert_bad_receipt(self, node_id, *, mismatch=False):
