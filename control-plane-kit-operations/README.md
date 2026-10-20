@@ -133,6 +133,29 @@ This is deliberately package-local. It creates and verifies CPK's durable
 operations tables; it does not inspect, reset, or modify application schemas
 deployed by CPK.
 
+## Required configuration material
+
+A registered product can declare `configuration_requirements` alongside concrete
+configuration defaults. Before Start or Reconcile, Operations compares the
+selected node's artifact slots with Core's `product_configuration_slots(contract)`:
+the exact union of both declarations, including artifact ID, path, media type
+and file mode. It then supplies the selected concrete artifacts in a separate
+material contract with no unresolved requirements. The original registered
+product reference, image and document remain unchanged; instance payloads do
+not become new registration identities.
+
+Stop and Remove continue selecting historical base-graph material, including
+incomplete artifacts, without new Start prerequisites or fresh token resolution.
+The existing non-Start observation behavior is preserved too. Requirements do
+not synthesize files or grant cleanup authority.
+
+Receiver admission binds declared slots to actual selected V2 configuration and
+preserves provenance, surface and current-key checks. Required declaration
+successors must keep identical slots and the complete contract after restoring
+only the permitted control surface. Mixed required/concrete transitions refuse;
+existing concrete-template behavior, including unchanged inert declarations,
+is retained. A declared slot never substitutes for installed receiver truth.
+
 ## Transaction Law
 
 ```text
