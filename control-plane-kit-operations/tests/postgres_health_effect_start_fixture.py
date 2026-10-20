@@ -156,7 +156,8 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
         node = self.health_graph.node(self.health_target.target_node_id)
         document = self.receiver_documents["workload"]
         product = replace(document.product, runtime_contract=replace(document.product.runtime_contract,
-            configuration_artifacts=node.configuration_artifacts, secret_deliveries=node.secret_deliveries))
+            configuration_artifacts=node.configuration_artifacts, configuration_requirements=(),
+            secret_deliveries=node.secret_deliveries))
         material = RuntimeProductMaterial(node.node_id, node.runtime_id,
             ProductReference.from_document(document), product,
             public_environment=node.public_environment, socket_environment=node.socket_environment,
