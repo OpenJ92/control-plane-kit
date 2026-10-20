@@ -25,3 +25,20 @@ transport are admitted by the downstream issues.
 
 Transit HTTP compatibility uses Protocol value equality: separately constructed
 equivalent Python protocol values have the same meaning as decoded values.
+
+`configuration_requirements` is a keyword-only tuple of payload-free file slots.
+The contract canonicalizes it and validates unique identities/paths across the
+required and concrete union. Retained resource identities remain disjoint; both
+configuration forms reject equal or segment-ancestor/descendant retained mount
+paths. Sibling prefixes such as `/data` and `/database` remain distinct.
+`product_configuration_slots(contract)` is the public canonical union projection;
+it loses concrete content/digests and preserves all four slot fields. Instance
+admission matches that union exactly, and `from_contract` cannot invent required
+payloads. Concrete graph material is complete before planning.
+
+Only nonempty requirements select `control-plane-kit.product/v2` and its required
+field. Empty declarations omit the field and retain the original document schema
+and canonical bytes. Explicit empty fields and mismatched discriminators refuse;
+mapping input normalizes order while byte input must already be canonical.
+Requirement-bearing nested product/contract codecs retain the same closed shape.
+Instance payload substitution does not rewrite the registered document/reference.

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 import hashlib
 import json
@@ -15,7 +15,7 @@ from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, Require
 from control_plane_kit_core.algebra import ApplicationBlock, BlockSpec, RuntimeContext
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.runtime_management import GatewayTransitDeclaration, GatewayTransitDeclarationCodec
-from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     environment_binding_from_descriptor,
@@ -90,6 +90,7 @@ _CONTAINER_PRODUCT_DESCRIPTOR_KEYS = frozenset(
 _PRODUCT_DOCUMENT_KEYS = frozenset({"schema", "product"})
 _PRODUCT_REFERENCE_KEYS = frozenset({"identity", "descriptor_sha256"})
 _PRODUCT_DOCUMENT_SCHEMA = "control-plane-kit.product"
+_REQUIRED_CONFIGURATION_PRODUCT_DOCUMENT_SCHEMA = "control-plane-kit.product/v2"
 _PRODUCT_DOCUMENT_MEDIA_TYPE = "application/vnd.cpk.product+json"
 _PRODUCT_DOCUMENT_FILENAME = "product.cpk.json"
 _MAX_PRODUCT_DOCUMENT_BYTES = 262_144
@@ -465,6 +466,7 @@ class ProductRuntimeContract:
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...] = ()
     gateway_transit: GatewayTransitDeclaration | None = field(default=None, kw_only=True)
+    configuration_requirements: tuple[ConfigurationArtifactRequirement, ...] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         sockets = self.sockets
@@ -536,6 +538,8 @@ class ProductRuntimeContract:
             tuple(value.target_path for value in configuration_artifacts),
             "configuration artifact target paths",
         )
+        configuration_requirements = _configuration_requirements(self.configuration_requirements)
+        configuration_slots = _configuration_slots(configuration_artifacts, configuration_requirements)
         secret_deliveries = tuple(
             sorted(self.secret_deliveries, key=secret_delivery_sort_key)
         )
@@ -624,12 +628,13 @@ class ProductRuntimeContract:
             raise ProductRuntimeContractError("lifecycle must be ResourceLifecycle")
         _validate_lifecycle_distinctions(
             self.lifecycle,
-            configuration_artifacts,
+            configuration_slots,
             retained_data_mounts,
         )
         object.__setattr__(self, "provider_ports", provider_ports)
         object.__setattr__(self, "public_environment", tuple(sorted(public_environment)))
         object.__setattr__(self, "configuration_artifacts", configuration_artifacts)
+        object.__setattr__(self, "configuration_requirements", configuration_requirements)
         object.__setattr__(self, "secret_deliveries", secret_deliveries)
         object.__setattr__(self, "retained_data_mounts", retained_data_mounts)
         object.__setattr__(self, "capabilities", capabilities)
@@ -660,7 +665,52 @@ class ProductRuntimeContract:
             ]
         if self.gateway_transit is not None:
             descriptor["gateway_transit"] = self.gateway_transit.descriptor()
+        if self.configuration_requirements:
+            descriptor["configuration_requirements"] = [
+                value.descriptor() for value in self.configuration_requirements
+            ]
         return descriptor
+
+
+def _configuration_requirements(values) -> tuple[ConfigurationArtifactRequirement, ...]:
+    valid = False
+    try:
+        if type(values) is tuple and all(type(value) is ConfigurationArtifactRequirement for value in values):
+            valid = all(ConfigurationArtifactRequirement.from_descriptor(value.descriptor()) == value for value in values)
+    except (TypeError, ValueError, AttributeError):
+        valid = False
+    if not valid:
+        raise ProductRuntimeContractError("configuration requirements are malformed")
+    return tuple(sorted(values, key=lambda value: (
+        value.artifact_id, value.target_path, value.media_type.value, value.file_mode.value)))
+
+
+def _configuration_slots(artifacts, requirements) -> tuple[ConfigurationArtifactRequirement, ...]:
+    required = _configuration_requirements(requirements)
+    projected = []
+    valid = False
+    try:
+        if all(type(value) is ConfigurationArtifact for value in artifacts):
+            valid = all(ConfigurationArtifact.from_descriptor(value.descriptor()) == value for value in artifacts)
+            if valid:
+                projected = [ConfigurationArtifactRequirement(value.artifact_id, value.target_path,
+                    value.media_type, value.file_mode) for value in artifacts]
+    except (TypeError, ValueError, AttributeError):
+        valid = False
+    if not valid:
+        raise ProductRuntimeContractError("configuration artifacts are malformed")
+    slots = _configuration_requirements((*required, *projected))
+    _require_unique(tuple(value.artifact_id for value in slots), "configuration slot identities")
+    _require_unique(tuple(value.target_path for value in slots), "configuration slot target paths")
+    return slots
+
+
+def product_configuration_slots(contract: ProductRuntimeContract) -> tuple[ConfigurationArtifactRequirement, ...]:
+    """Project the exact declared file slots, discarding only concrete payloads."""
+    if type(contract) is not ProductRuntimeContract:
+        raise ProductRuntimeContractError("configuration slots require ProductRuntimeContract")
+    checked = replace(contract)
+    return _configuration_slots(checked.configuration_artifacts, checked.configuration_requirements)
 
 
 class ProductRuntimeContractCodec:
@@ -669,7 +719,7 @@ class ProductRuntimeContractCodec:
     def encode(self, contract: ProductRuntimeContract) -> dict[str, object]:
         if not isinstance(contract, ProductRuntimeContract):
             raise ProductRuntimeContractError("encode requires ProductRuntimeContract")
-        return contract.descriptor()
+        return replace(contract).descriptor()
 
     def decode(self, descriptor: Mapping[str, object]) -> ProductRuntimeContract:
         try:
@@ -681,7 +731,12 @@ class ProductRuntimeContractCodec:
             )
             if "gateway_transit" in mapping:
                 expected_keys = expected_keys | {"gateway_transit"}
+            if "configuration_requirements" in mapping:
+                expected_keys = expected_keys | {"configuration_requirements"}
             _require_product_keys(mapping, expected_keys, "product runtime contract")
+            raw_requirements = _product_list(mapping, "configuration_requirements") if "configuration_requirements" in mapping else ()
+            if "configuration_requirements" in mapping and not raw_requirements:
+                raise ProductRuntimeContractError("configuration_requirements must be omitted when empty")
             raw_control_surfaces = (
                 _product_list(mapping, "control_surfaces")
                 if "control_surfaces" in mapping
@@ -696,6 +751,8 @@ class ProductRuntimeContractCodec:
                     "product runtime contract declares too many control surfaces"
                 )
             return ProductRuntimeContract(
+                configuration_requirements=tuple(ConfigurationArtifactRequirement.from_descriptor(value)
+                                                 for value in raw_requirements),
                 gateway_transit=GatewayTransitDeclarationCodec().decode(mapping["gateway_transit"])
                 if "gateway_transit" in mapping else None,
                 sockets=_sockets_from_descriptor(mapping["sockets"]),
@@ -997,9 +1054,11 @@ class ProductDescriptorCodec:
         self,
         product: ContainerServerProduct,
     ) -> dict[str, object]:
+        descriptor = ContainerServerProductCodec().encode(product)
         return {
-            "schema": _PRODUCT_DOCUMENT_SCHEMA,
-            "product": ContainerServerProductCodec().encode(product),
+            "schema": (_REQUIRED_CONFIGURATION_PRODUCT_DOCUMENT_SCHEMA
+                       if "configuration_requirements" in descriptor["runtime_contract"] else _PRODUCT_DOCUMENT_SCHEMA),
+            "product": descriptor,
         }
 
     def _product_from_mapping(
@@ -1009,14 +1068,19 @@ class ProductDescriptorCodec:
         mapping = _descriptor_mapping(document, "product descriptor")
         _require_descriptor_keys(mapping, _PRODUCT_DOCUMENT_KEYS, "product descriptor")
         schema = mapping["schema"]
-        if schema != _PRODUCT_DOCUMENT_SCHEMA:
+        if schema not in (_PRODUCT_DOCUMENT_SCHEMA, _REQUIRED_CONFIGURATION_PRODUCT_DOCUMENT_SCHEMA):
             raise ProductDescriptorError("product descriptor schema is unsupported")
         try:
-            return ContainerServerProductCodec().decode(
+            product = ContainerServerProductCodec().decode(
                 _container_mapping(mapping["product"], "product")
             )
         except Exception as error:
             raise ProductDescriptorError("product descriptor product is malformed") from error
+        expected_schema = (_REQUIRED_CONFIGURATION_PRODUCT_DOCUMENT_SCHEMA
+                           if product.runtime_contract.configuration_requirements else _PRODUCT_DOCUMENT_SCHEMA)
+        if schema != expected_schema:
+            raise ProductDescriptorError("product descriptor schema does not match configuration requirements")
+        return product
 
     def _json_mapping(self, content: bytes) -> Mapping[str, object]:
         try:
@@ -1380,6 +1444,8 @@ class ProductInstanceConfiguration:
     ) -> "ProductInstanceConfiguration":
         if not isinstance(contract, ProductRuntimeContract):
             raise ProductInstantiationError("configuration requires ProductRuntimeContract")
+        if contract.configuration_requirements:
+            raise ProductInstantiationError("configuration requirements need explicit instance artifacts")
         return cls(
             public_environment=contract.public_environment,
             configuration_artifacts=contract.configuration_artifacts,
@@ -1728,7 +1794,7 @@ def _validate_provider_ports(
 
 def _validate_lifecycle_distinctions(
     lifecycle: ResourceLifecycle,
-    configuration_artifacts: tuple[ConfigurationArtifact, ...],
+    configuration_artifacts: tuple[ConfigurationArtifactRequirement, ...],
     retained_data_mounts: tuple[RetainedDataMount, ...],
 ) -> None:
     retained_data_ids = {value.resource_id for value in lifecycle.data}
@@ -1749,6 +1815,13 @@ def _validate_lifecycle_distinctions(
             "retained data mount references unknown retained data resource: "
             + ", ".join(unknown_mounts)
         )
+    for artifact in configuration_artifacts:
+        config_path = PurePosixPath(artifact.target_path)
+        for mount in retained_data_mounts:
+            retained_path = PurePosixPath(mount.target_path)
+            if (config_path == retained_path or config_path in retained_path.parents
+                    or retained_path in config_path.parents):
+                raise ProductRuntimeContractError("configuration slots must not overlap retained data mounts")
 
 
 def _require_unique(values: tuple[str, ...], label: str) -> None:
@@ -2080,7 +2153,7 @@ def _validate_instance_configuration(
         "public environment",
     )
     _require_same_keys(
-        _configuration_artifact_keys(contract.configuration_artifacts),
+        _configuration_artifact_keys(product_configuration_slots(contract)),
         _configuration_artifact_keys(configuration.configuration_artifacts),
         "configuration artifacts",
     )
@@ -2111,7 +2184,7 @@ def _public_environment_keys(
 
 
 def _configuration_artifact_keys(
-    values: tuple[ConfigurationArtifact, ...],
+    values: tuple[ConfigurationArtifact | ConfigurationArtifactRequirement, ...],
 ) -> tuple[tuple[str, str, str, str], ...]:
     return tuple(
         sorted(

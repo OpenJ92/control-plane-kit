@@ -51,3 +51,11 @@ owns loading and verification. No adopter is released by this pure Core child.
 Tests cover variable-only and mixed declarations, forged/private inputs, exact
 family and byte limits, malformed JSON, profile isolation, slot ambiguity and
 two independently named product/graph round trips. No live readiness is claimed.
+
+The declared selector additionally accepts `requirements=()` and returns the
+selected original artifact or `ConfigurationArtifactRequirement`. Requirements
+have no payload to decode. The shared structural helper accepts them only through
+this opt-in path, validates nominal fields and disjoint union identity/path, and
+retains the sole public binding, one surface, JSON/0444 and cause-free refusal
+laws. Actual V2 and historical V1 public selectors still accept concrete artifacts
+only. A selected structural requirement grants no identity or verifier authority.

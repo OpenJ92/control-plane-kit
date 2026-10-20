@@ -42,6 +42,15 @@ Core #1793 supplies this language; Operations #1794 owns atomic recipient matchi
 and active workspace admission. This Core slice alone does not correct existing
 runtime delivery, authorize replay of historical effects, or migrate stored graphs.
 
+A product may declare payload-free `ConfigurationArtifactRequirement` values in
+the keyword-only `configuration_requirements` tuple. `product_configuration_slots`
+projects the canonical union of required and concrete declared slots. Every
+instance supplies concrete artifacts matching that union before topology
+compilation; `ProductInstanceConfiguration.from_contract` refuses unresolved
+requirements. Product documents use `control-plane-kit.product/v2` only when
+requirements are nonempty. Existing documents retain their original schema and
+bytes. See the [two-instance example](examples/external-product-descriptor.md).
+
 ## Language Families
 
 ### Deployment-instance Secret Versions

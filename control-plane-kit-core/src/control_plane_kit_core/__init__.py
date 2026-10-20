@@ -2,6 +2,8 @@
 
 __version__ = "0.1.0"
 
+from control_plane_kit_core.configuration import ConfigurationArtifactRequirement
+
 from control_plane_kit_core.operations import (
     ActivityHistoryPolicy,
     ActivityEventContract,
@@ -304,6 +306,7 @@ from control_plane_kit_core.products import (
     UnknownProductIdentity,
     instantiate_catalog_product,
     instantiate_product,
+    product_configuration_slots,
     require_unique_product_identities,
 )
 from control_plane_kit_core.public_ingress import (
@@ -838,6 +841,7 @@ from control_plane_kit_core.configuration_installation import (
     configuration_installation_receipt_for_observation,
 )
 __all__ += [
+    "ConfigurationArtifactRequirement", "product_configuration_slots",
     "ConfigurationInstallationDisposition", "ConfigurationInstallationReceipt",
     "ConfigurationInstallationReceiptCodec", "configuration_installation_receipt_for_result",
     "configuration_installation_receipt_for_observation",
