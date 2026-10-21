@@ -13,6 +13,7 @@ from control_plane_kit_core.planning import (
     compile_activity_plan,
     compile_graph_activity_plan,
     compile_managed_update_activity_plan,
+    compile_retained_image_ingress_activity_plan,
 )
 from control_plane_kit_core.planning.codec import (
     ACTIVITY_PLAN_SCHEMA,
@@ -36,6 +37,7 @@ class PlanDerivationProfile(StrEnum):
     STRUCTURAL_V1 = "structural-v1"
     MANAGEMENT_GRAPH_PAIR_V1 = "management-graph-pair-v1"
     MANAGED_UPDATE_V1 = "managed-update-v1"
+    RETAINED_IMAGE_INGRESS_V1 = "retained-image-ingress-v1"
     CONFIGURATION_CLEANUP_V1 = "configuration-cleanup-v1"
     CONFIGURATION_CLEANUP_V2 = "configuration-cleanup-v2"
 
@@ -74,6 +76,10 @@ def derive_activity_plan(
         return compile_graph_activity_plan(transition.current, transition.desired)
     if profile is PlanDerivationProfile.MANAGED_UPDATE_V1:
         return compile_managed_update_activity_plan(
+            transition.current, transition.desired,
+        )
+    if profile is PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1:
+        return compile_retained_image_ingress_activity_plan(
             transition.current, transition.desired,
         )
     return compile_activity_plan(transition.diff)

@@ -167,3 +167,17 @@ boundary. Both indexed probes and all repeated paired/source reads use the same
 ledger. All current claims remain protective; no closure, release or cleanup
 execution is added. The stronger paired schema changes are empty-install-only;
 current drift is refused without migration, repair, reset or backfill.
+
+## Retained image profile continuation
+
+Both managed-update-v1 and retained-image-ingress-v1 are explicit retained
+continuations: base receiver origins must already be accepted; newly introduced
+desired receivers must still be pending. The original-plan SQL reader recognizes
+the new identity only in the existing version-1 envelope. Cleanup versions and
+all original configuration-instance/source joins are unchanged.
+
+This changes application query recognition, not a database enum/check or schema.
+Existing JSONB plan rows are not rewritten. New-profile readers/workers must be
+available before admitting new records; an older binary cannot resume them by
+rewriting the profile. Caller-owned transaction, ledger, lock, retry and
+uncertainty boundaries remain unchanged.

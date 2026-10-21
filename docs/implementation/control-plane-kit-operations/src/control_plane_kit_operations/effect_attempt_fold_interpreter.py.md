@@ -30,3 +30,9 @@ that a fresh fold waits at L before allocating IDs; full package acceptance and
 independent review remain pending on PR #1925.
 
 #1931 source checkpoint (unvalidated): D1 joins the existing fold-owned accounting after routing without resetting its prelude. Fresh ordinary configuration completion is prepared before IDs, bound to the actual terminal outcome, and inserted after event/outcome/CAS in the same UoW. Replay validates present linkage without admission or late lifecycle locking. Both cleanup execution refusals remain closed.
+
+The retained-image-ingress profile participates in canonical managed observation
+admission and the independent managed replacement-receipt check. Existing plan,
+request, operation, current authority, fencing and correlation joins are unchanged.
+A forged success without replacement installation evidence must still refuse
+before durable folding. Other declaration/verifier/cleanup profiles are not widened.

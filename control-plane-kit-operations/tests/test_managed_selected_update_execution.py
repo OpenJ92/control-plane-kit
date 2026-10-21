@@ -13,6 +13,7 @@ from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.cpk_server import CpkServerApplicationError
 from control_plane_kit_operations.graph_authoring import SecretVersionMetadata
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from tests import test_managed_application_chain as chain
 from tests.secret_selection_authoring_fixture import admit_selection_reference
 from tests.test_managed_configuration_update_admission import APPLICATION
@@ -34,6 +35,10 @@ class ManagedSelectedUpdateExecutionTests(chain.ManagedApplicationFixture):
         self.metadata_reader = self
         self.metadata_calls = []
         self.family = "version"
+
+    def expected_derivation_profile(self):
+        return (PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1 if self.family == "image"
+            else PlanDerivationProfile.MANAGED_UPDATE_V1)
 
     def authored_graph(self):
         graph, documents, registry = super().authored_graph()

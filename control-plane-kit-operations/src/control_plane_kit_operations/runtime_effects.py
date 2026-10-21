@@ -212,7 +212,8 @@ def _runtime_effect_intent_for_material(context: _RuntimeEffectMaterial, activit
     runtime_id = _runtime_id_for_context(context, graph, operation)
     authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
     products = _products_for_context(context, graph, runtime_id, operation)
-    if (context.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_UPDATE_V1
+    if (context.plan_record.derivation_profile in (
+                PlanDerivationProfile.MANAGED_UPDATE_V1, PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1)
             and type(operation) is ReconcileNode
             and operation.target.node_id != graph.runtimes[runtime_id].management.gateway_node_id
             and any(value.pull_authority is not None for value in products)):

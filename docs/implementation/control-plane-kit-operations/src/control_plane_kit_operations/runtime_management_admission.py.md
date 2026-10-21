@@ -7,7 +7,14 @@ using graph_authoring's authoritative per-node extractor. A second pure call to
 the shared graph-pair derivation proves canonical emptiness; this preserves the
 existing no-op exception without trusting a supplied plan or execution policy.
 
-Managed-update profile selection is a narrow opt-in. A structural prefilter
+Fresh retained-image preparation first selects `retained-image-ingress-v1` only
+when its separate Core compiler returns a nonempty ready plan and exact active
+registered products have identical full runtime contracts and matching image
+references. The existing participant/route checks still apply. Eligibility is
+independent of application brand; no Hello name, image, route or HTML is inspected.
+The declaration-successor exception does not apply to this new profile.
+
+Other managed-update profile selection remains a narrow opt-in. A structural prefilter
 recognizes only the retained single managed runtime/gateway family with exactly
 one node introduced or removed and no non-artifact gateway change, or a retained
 workload content, immutable-image or secret-selection candidate. The common Core compiler owns the
@@ -26,7 +33,11 @@ receiver. The complete configured route set must equal the scoped expected set.
 No workload count or same-product X/Y condition is imposed on this relation.
 Unrelated runtimes do not contribute routes or effects to the retained update.
 Current plan selection and independent execution admission both enforce these
-facts; the supplied plan must equal the ready canonical current derivation.
+facts; the supplied plan must equal the ready canonical recorded derivation.
+Recorded V1 plans continue to use V1 even if fresh selection for the same graph
+pair would now choose the new profile. The new recorded profile is checked before
+generic no-management/empty exemptions and refuses equal, initial, teardown and
+unmanaged pairs. Core's empty no-op return alone never establishes its eligibility.
 
 The selection prefilter inspects retained nodes and management on both graph
 sides, including malformed candidates that move the consumer or remove

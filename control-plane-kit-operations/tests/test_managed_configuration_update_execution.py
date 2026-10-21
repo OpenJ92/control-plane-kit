@@ -28,9 +28,13 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
             for value in node.configuration_artifacts
         )))
 
-    async def prepare_content(self):
+    async def prepare_content(self, *, prepare_only=False):
+        # Image subclasses select the new profile; content retains the exact V1 law.
+        expected_profile = (self.expected_derivation_profile()
+            if hasattr(self, "expected_derivation_profile") else PlanDerivationProfile.MANAGED_UPDATE_V1)
         self.probe_forged_managed_fold = True
         await self.complete_initial()
+        initial_execution = self.rows("cpk_execution_requests"), self.rows("cpk_effect_attempts")
         self.origin_calls = tuple(self.runtime.calls)
         self.origin_history = self.history()
         with self.unit_of_work() as uow:
@@ -58,7 +62,16 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
         self.assertEqual(prepared["status"], "approval-required")
         detail = await self.invoke("read.plan-detail", ControlPlaneServiceRole.READS,
             path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]})
-        self.assertEqual(detail["plan"]["derivation_profile"], "managed-update-v1")
+        self.assertEqual(detail["plan"]["derivation_profile"], expected_profile.value)
+        self.update_plan = detail["plan"]
+        with self.unit_of_work() as uow:
+            self.record = uow.stores.activity_history.get_plan(prepared["plan_id"])
+        self.assertIs(self.record.derivation_profile, expected_profile)
+        if prepare_only:
+            self.assertEqual((self.rows("cpk_execution_requests"), self.rows("cpk_effect_attempts")),
+                initial_execution)
+            self.assertFalse(any(row[3] == self.record.plan_id for row in self.rows("cpk_execution_requests")))
+            return
         await self.invoke("command.approval.decide", ControlPlaneServiceRole.APPROVAL,
             path={"workspace_id": "workspace-a", "approval_id": prepared["approval_request_id"]},
             payload={"session_id": detail["plan"]["session_id"], "decision": "approved",
@@ -76,10 +89,6 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
         await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
             path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
             payload={"claim_generation": self.update_generation, "idempotency_key": "start-content"})
-        self.update_plan = detail["plan"]
-        with self.unit_of_work() as uow:
-            self.record = uow.stores.activity_history.get_plan(prepared["plan_id"])
-        self.assertIs(self.record.derivation_profile, PlanDerivationProfile.MANAGED_UPDATE_V1)
         self.health.responses.append(NativeConnectionOutcome.CONNECTED)
         # Reconstruct services: update execution consumes persisted facts.
         self.app = self.application()
@@ -171,21 +180,29 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
                 self.rows("cpk_configuration_claims"))
         before = mutation_snapshot()
         native_before, signed_before = len(self.health.native_reads), len(self.health.signed_reads)
+
+        def assert_no_replacement():
+            self.assertEqual(mutation_snapshot(), before)
+            observed = (*self.health.native_reads[native_before:],
+                *(request for request, _, _ in self.health.signed_reads[signed_before:]))
+            for request in observed:
+                self.assertIs(type(request.operation), ObserveManagementBootstrap)
+                self.assertEqual(request.source.run_id.value, self.update_run)
+                self.assertEqual(request.operation, self.record.plan.activity(request.activity_id).operation)
+            with self.unit_of_work() as uow:
+                self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
+                    self.before_update.current_graph_id)
+
         with self.assertRaisesRegex(InvalidOperationCommand,
                 "^managed content update requires no image pull authority$"):
-            await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
-                path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
-                payload={"claim_generation": self.update_generation,
-                    "idempotency_key": "execute-pull-refused", "max_effects": 1})
-        self.assertEqual(mutation_snapshot(), before)
-        # Independent authorized management observations may precede the refused
-        # mutation; they cannot become desired workload health or advancement.
-        observed = (*self.health.native_reads[native_before:],
-            *(request for request, _, _ in self.health.signed_reads[signed_before:]))
-        for request in observed:
-            self.assertIs(type(request.operation), ObserveManagementBootstrap)
-            self.assertEqual(request.source.run_id.value, self.update_run)
-            self.assertEqual(request.operation, self.record.plan.activity(request.activity_id).operation)
-        with self.unit_of_work() as uow:
-            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
-                self.before_update.current_graph_id)
+            for number in range(len(self.record.plan.activities) + 1):
+                observed_before = len(self.health.native_reads) + len(self.health.signed_reads)
+                result = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                    path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
+                    payload={"claim_generation": self.update_generation,
+                        "idempotency_key": f"execute-pull-refused-{number}", "max_effects": 1})
+                self.assertEqual(result["coordinator_status"], "progressed")
+                self.assertGreater(len(self.health.native_reads) + len(self.health.signed_reads), observed_before)
+                assert_no_replacement()
+            self.fail("ordinary preflight never reached the forbidden replacement boundary")
+        assert_no_replacement()

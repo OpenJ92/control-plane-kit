@@ -55,6 +55,17 @@ Operations composition only; actual provider metadata and installed bytes remain
 Interpreter/Servers evidence. Operations source now adds the bounded profile
 candidate and reuses canonical Core admission; no store or schema changes.
 
+For #2017, fresh selected-consumer image updates explicitly expect
+RETAINED_IMAGE_INGRESS_V1; version and content continue to expect MANAGED_UPDATE_V1.
+The admission test exercises exact derivation, stored encoding, execution
+admission and selected effect material for the fresh image profile and the
+explicit historical V1 image profile. Its family-specific selection assertion
+does not accept either profile loosely. The execution fixture uses the existing
+expected-profile hook only; its public preparation/approval/execution and exact
+version, immutable digest, configuration and metadata-read-count assertions stay
+unchanged. The original full-gate failures exposed these two stale expectations;
+the corrected deeper assertions still require green execution.
+
 The shared tracking UoW in `test_ingress_realization.py` explicitly forwards
 `read_snapshot` to the actual fresh Postgres UoW and counts its active duration
 with a finally decrement. It does not enter an ordinary transaction first,

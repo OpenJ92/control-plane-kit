@@ -777,7 +777,8 @@ def _require_original_observation_plan(original, plan, *, request=None):
                         request.identity.plan_id, request.identity.session_id) !=
                         (original.workspace_id, original.request_id, plan.plan_id, plan.session_id)):
                 raise ValueError
-        return plan.derivation_profile is PlanDerivationProfile.MANAGED_UPDATE_V1
+        return plan.derivation_profile in (
+            PlanDerivationProfile.MANAGED_UPDATE_V1, PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1)
     except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
         pass
     raise OperationsRecordError("effect outcome original plan is invalid") from None

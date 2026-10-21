@@ -478,7 +478,9 @@ class ActivityRealizationContext:
             try:
                 installation = self.connector_installation
                 if (type(installation) is not CurrentConnectorInstallation
-                        or self.plan_record.derivation_profile is not PlanDerivationProfile.MANAGED_UPDATE_V1
+                        or self.plan_record.derivation_profile not in (
+                            PlanDerivationProfile.MANAGED_UPDATE_V1,
+                            PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1)
                         or not is_native_connection_operation(self.activity.operation)):
                     raise ValueError
                 CurrentConnectorInstallation.__post_init__(installation)
@@ -1222,7 +1224,9 @@ class ExecutionCoordinator:
 
     def _native_connector_installation(self, stores, realization):
         """Join accepted provenance inside fresh admission, never across effects."""
-        if realization.plan_record.derivation_profile is not PlanDerivationProfile.MANAGED_UPDATE_V1:
+        if realization.plan_record.derivation_profile not in (
+                PlanDerivationProfile.MANAGED_UPDATE_V1,
+                PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1):
             return realization
         resolved = _native_connector_observation(realization)
         workspace = stores.workspaces.get(realization.request.identity.workspace_id)
@@ -2653,7 +2657,7 @@ def _admit_managed_installation_result(context, request, result):
     if (
         type(context) is not ActivityRealizationContext
         or context.plan_record.derivation_profile
-        is not PlanDerivationProfile.MANAGED_UPDATE_V1
+        not in (PlanDerivationProfile.MANAGED_UPDATE_V1, PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1)
         or type(request.operation) is not ReconcileNode
         or result.kind is not EffectResultKind.SUCCEEDED
     ):

@@ -114,6 +114,17 @@ def runtime_management_plan_profile(
     management graph-pair derivation.
     """
 
+    if type(transition) is UpdateDeployment:
+        retained = derive_activity_plan(
+            transition, profile=PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1,
+        )
+        if retained.activities and retained.ready_for_execution:
+            if (_registered_retained_image_shape(transition.current.graph, transition.desired.graph,
+                    registered_products)
+                    and not runtime_management_planning_is_unsupported(
+                        transition, registered_products=registered_products)):
+                return PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1
+            return None
     if type(transition) is not UpdateDeployment or not (
         _managed_update_candidate_shape(transition.current.graph, transition.desired.graph)
         or _managed_content_runtime(transition.current.graph, transition.desired.graph) is not None
@@ -162,6 +173,21 @@ def runtime_management_execution_is_unsupported(
         )
     except ValueError:
         return True
+    # This closed recorded profile cannot inherit legacy no-management/empty exemptions.
+    # Revalidate its own compiler, never the fresh-preparation profile selector.
+    if derivation_profile is PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1:
+        if plan is None:
+            return True
+        validated_current = validate_graph(current, codec=codec)
+        validated_desired = validate_graph(desired, codec=codec)
+        if not validated_current.valid or not validated_desired.valid:
+            return True
+        transition = Deploy(validated_current, validated_desired)
+        canonical = derive_activity_plan(transition, profile=derivation_profile)
+        return (type(transition) is not UpdateDeployment
+            or not canonical.activities or not canonical.ready_for_execution
+            or plan != canonical
+            or not _registered_retained_image_shape(current, desired, registered_products))
     registered_management = any(
         product.reference in references
         and (
@@ -412,6 +438,29 @@ def _managed_selection_nodes(current, desired):
         and any(runtime is not None and runtime.management is not None
             for runtime in (current.runtimes.get(current.nodes[name].runtime_id),
                 desired.runtimes.get(node.runtime_id))))
+
+
+def _registered_retained_image_shape(current, desired, registered_products):
+    """Bind the separate Core image relation to exact active full-contract truth."""
+    try:
+        nodes = _managed_image_nodes(current, desired)
+        if len(nodes) != 1:
+            return False
+        after = nodes[0]
+        before = current.nodes[after.node_id]
+        old = _selected_product(before, registered_products)
+        new = _selected_product(after, registered_products)
+        if old is None or new is None:
+            return False
+        old_product, new_product = old.descriptor_document.product, new.descriptor_document.product
+        if (old_product.runtime_contract != new_product.runtime_contract
+                or before.metadata["oci_image"] != old_product.image.execution_reference
+                or after.metadata["oci_image"] != new_product.image.execution_reference):
+            return False
+        return _managed_retained_participants_are_exact(
+            current, desired, after.runtime_id, registered_products)
+    except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
+        return False
 
 
 def _managed_image_nodes(current, desired):

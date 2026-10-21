@@ -12,8 +12,15 @@ comparison-driven fallback. The existing `Deploy` language owns classification.
 validated graph values. It is a distinct stored semantic identity for A -> B and
 B -> C update ordering; it does not change `MANAGEMENT_GRAPH_PAIR_V1`, structural
 or absent-profile meaning. The profile alone grants no planning or execution
-admission. Existing runtime-management guards continue to reject it until the
-separate Operations eligibility and permission work is accepted.
+admission. Runtime-management guards enforce its registered-product eligibility
+and canonical recorded plan independently.
+
+`RETAINED_IMAGE_INGRESS_V1` calls the separate Core retained-image ingress
+compiler. Only fresh nonempty eligible image preparation selects it; historical
+V1 records continue to dispatch to V1. This identity uses the same strict v1
+envelope, with no new Core wire shape or database migration. Workers/readers must
+understand the new enum before new-profile actions are admitted: older binaries
+reject it, and rewriting old/new profile markers is not rollback.
 
 Typed APIs require the exact closed enum or historical None. Wire/action values
 require plain declared strings. Action key presence matters: only absent record
@@ -48,5 +55,5 @@ New readers understand legacy and profiled records. Old readers reject the new
 envelope, including empty plans. Reader support must precede profiled writes;
 old-reader rollback after those writes requires separate reviewed work. Removing
 markers or rewriting historical rows is not rollback. No schema change, backfill,
-reset or live rollout occurs here. Fresh service policy remains structural in
-#1837; #1834 owns later graph-pair adoption.
+reset or live rollout occurs here. Historical #1837 introduced the structural
+profile; current fresh selection belongs to runtime-management admission.
