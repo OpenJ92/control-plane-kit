@@ -197,3 +197,12 @@ proposal selection. The corrected regression pairs real uncertainty with
 independently ready configuration work; after real failure Core blocks the
 pending work, so that subcase protects disposition only. Both forbid fresh
 proposal selection while checking public status and unchanged protection.
+
+## Retained image ingress derivation
+
+The new explicit profile shares only the retained-update original connector
+installation join and independent replacement receipt obligation with V1. Exact
+workspace/current graph/projection/runtime/node/accounting checks remain intact;
+incomplete origin never becomes a usable native realization. A succeeded runtime
+replacement still requires a REPLACED configuration receipt, or remains uncertain.
+No grant window, retry policy, health mapping or current authorization is changed.

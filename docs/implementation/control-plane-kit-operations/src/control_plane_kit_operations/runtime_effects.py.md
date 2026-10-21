@@ -87,3 +87,9 @@ configuration preparation can commit an attempt. Gateway reconciliation retains
 its existing material contract, including unchanged connector ingress custody.
 Original attempt replay still uses the original durable intent rather than
 today's selections. No credentials are resolved, returned or logged here.
+
+The retained-image-ingress profile preserves V1's prohibition on fresh image-pull
+authority for a retained workload reconcile. Adding the durable identity does not
+add a secret/provider capability. Generic exact registered material and the
+recorded canonical plan remain authoritative; no application-specific decoder is
+introduced.

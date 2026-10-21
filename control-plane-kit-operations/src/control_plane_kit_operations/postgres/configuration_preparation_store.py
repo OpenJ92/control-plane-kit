@@ -230,9 +230,10 @@ class _OrdinaryStartReadBoundsOwner:
         bindings = {pair: binding_set(pair, projection) for pair, projection in pairs.items()}
         base_pair = (material.base_graph.source_authored_graph_id, material.base_graph.projection_id)
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
-        managed_update = material.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_UPDATE_V1
+        managed_update = material.plan_record.derivation_profile in (
+            PlanDerivationProfile.MANAGED_UPDATE_V1, PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1)
         # Ordinary initial execution still starts without accepted receiver
-        # history. The closed managed-update profile is the sole continuation:
+        # history. The closed retained-update profiles are the only continuations:
         # its base receivers must already have accepted origins and its new
         # desired receivers must still be pending.
         _require(not bindings[base_pair] or managed_update)
@@ -657,7 +658,8 @@ class ConfigurationPreparationStore:
                       AND payload->>'schema'='control-plane-kit.operations.activity-plan-record'
                       AND jsonb_typeof(payload->'version')='number'
                       AND ((payload->>'version'='1' AND payload->>'derivation_profile'
-                            IN ('structural-v1','management-graph-pair-v1','managed-update-v1'))
+                            IN ('structural-v1','management-graph-pair-v1','managed-update-v1',
+                                'retained-image-ingress-v1'))
                         OR (payload->>'version'='2' AND payload->>'derivation_profile'
                             IN ('configuration-cleanup-v1','configuration-cleanup-v2')))
                     THEN payload->'plan'

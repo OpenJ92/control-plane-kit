@@ -701,6 +701,7 @@ def _require_managed_plan(stores, intent_record, request):
         if (plan.derivation_profile not in (
                     PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
                     PlanDerivationProfile.MANAGED_UPDATE_V1,
+                    PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1,
                 )
                 or plan.status is not ActivityPlanStatus.PLANNED
                 or plan.session_id != request.identity.session_id
@@ -762,7 +763,8 @@ def _require_managed_installation_receipt(stores, intent_record, request, outcom
         intent = intent_record.intent
         plan = stores.activity_history.get_plan(request.identity.plan_id)
         if (
-            plan.derivation_profile is not PlanDerivationProfile.MANAGED_UPDATE_V1
+            plan.derivation_profile not in (
+                PlanDerivationProfile.MANAGED_UPDATE_V1, PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1)
             or type(intent.operation) is not ReconcileNode
         ):
             return
