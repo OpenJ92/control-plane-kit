@@ -28,12 +28,13 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
             for value in node.configuration_artifacts
         )))
 
-    async def prepare_content(self):
+    async def prepare_content(self, *, prepare_only=False):
         # Image subclasses select the new profile; content retains the exact V1 law.
         expected_profile = (self.expected_derivation_profile()
             if hasattr(self, "expected_derivation_profile") else PlanDerivationProfile.MANAGED_UPDATE_V1)
         self.probe_forged_managed_fold = True
         await self.complete_initial()
+        initial_execution = self.rows("cpk_execution_requests"), self.rows("cpk_effect_attempts")
         self.origin_calls = tuple(self.runtime.calls)
         self.origin_history = self.history()
         with self.unit_of_work() as uow:
@@ -62,6 +63,15 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
         detail = await self.invoke("read.plan-detail", ControlPlaneServiceRole.READS,
             path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]})
         self.assertEqual(detail["plan"]["derivation_profile"], expected_profile.value)
+        self.update_plan = detail["plan"]
+        with self.unit_of_work() as uow:
+            self.record = uow.stores.activity_history.get_plan(prepared["plan_id"])
+        self.assertIs(self.record.derivation_profile, expected_profile)
+        if prepare_only:
+            self.assertEqual((self.rows("cpk_execution_requests"), self.rows("cpk_effect_attempts")),
+                initial_execution)
+            self.assertFalse(any(row[3] == self.record.plan_id for row in self.rows("cpk_execution_requests")))
+            return
         await self.invoke("command.approval.decide", ControlPlaneServiceRole.APPROVAL,
             path={"workspace_id": "workspace-a", "approval_id": prepared["approval_request_id"]},
             payload={"session_id": detail["plan"]["session_id"], "decision": "approved",
@@ -79,10 +89,6 @@ class ManagedConfigurationUpdateExecutionTests(chain.ManagedApplicationFixture):
         await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
             path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
             payload={"claim_generation": self.update_generation, "idempotency_key": "start-content"})
-        self.update_plan = detail["plan"]
-        with self.unit_of_work() as uow:
-            self.record = uow.stores.activity_history.get_plan(prepared["plan_id"])
-        self.assertIs(self.record.derivation_profile, expected_profile)
         self.health.responses.append(NativeConnectionOutcome.CONNECTED)
         # Reconstruct services: update execution consumes persisted facts.
         self.app = self.application()

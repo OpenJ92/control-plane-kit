@@ -247,7 +247,7 @@ class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecuti
             id_factory=no_identity_allocation).execute(command)
 
     async def test_retained_image_ingress_and_original_v1_replay_keep_recorded_plan_and_fingerprint(self):
-        await self.prepare_content()
+        await self.prepare_content(prepare_only=True)
         # New-profile evidence is the real prepared action; V1 is distinct historical pending intent.
         cases = (self.prepared_planning_case(),
             self.historical_planning_case(PlanDerivationProfile.MANAGED_UPDATE_V1, "v1"))
@@ -284,7 +284,7 @@ class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecuti
                     original_payloads[record.plan_id])
 
     async def test_retained_image_ingress_durable_profile_and_plan_substitution_refuse(self):
-        await self.prepare_content()
+        await self.prepare_content(prepare_only=True)
         profile = self.expected_derivation_profile()
         command, record, _ = self.historical_planning_case(profile, "new-pending")
         _, old, _ = self.historical_planning_case(PlanDerivationProfile.MANAGED_UPDATE_V1, "v1")

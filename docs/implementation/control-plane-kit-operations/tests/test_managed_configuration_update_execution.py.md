@@ -4,6 +4,13 @@ The existing content execution fixture keeps MANAGED_UPDATE_V1 as its explicit d
 
 All existing stale-current refusal, approval/admission, claim/start, durable reload, replacement receipt, wrapper origin, history, no-fresh-pull and replay assertions remain. No runtime history is fabricated to bypass normal Operations owners. The unchanged owning Docker test.sh governs execution.
 
+The two planning replay tests use prepare_only=True. This preserves genuine
+initial completion and public desired preparation, loads the stored plan/detail,
+then returns before update approval, admission, claim or start. It asserts the
+initial execution requests and attempts are unchanged and no request belongs to
+the new plan. Default execution setup still continues through its existing path.
+This avoids creating an affecting run that correctly blocks desired-graph edits.
+
 The pull-authority control traverses bounded ordinary max_effects=1 commands with
 distinct keys until it reaches the forbidden reconcile. Each preceding call must
 progress through actual approved management observations, with no reconcile

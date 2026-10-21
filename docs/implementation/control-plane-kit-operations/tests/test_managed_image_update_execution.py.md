@@ -14,8 +14,10 @@ Independent target review refinement: each failure case captures the exact updat
 
 The two durable replay laws now run here against genuine current graph/projection
 ownership produced by complete_initial's normal command, approval, execution and
-public advancement path. prepare_content normally authors the desired image and
-its new-profile plan/action. The actual prepared new-profile intent is replayed;
+public advancement path. prepare_content(prepare_only=True) publicly authors the
+desired image and its new-profile plan/action, asserts no update execution request
+or attempt, and returns before approval/admission/claim/start. The actual prepared
+new-profile intent is replayed;
 a distinct V1 plan/action is an explicit historical pending-intent fixture over
 the same owned pins, not an approved plan retag or fabricated success.
 
@@ -24,6 +26,6 @@ expectations) and CloseOperationSession move the pointer and close the session.
 Reconstructed planning services must preserve exact record/action, request
 fingerprint, payload bytes and complete durable/effect snapshots without identity
 allocation. The substitution test corrupts only separate pending fixture rows;
-the actual approved/admitted new plan remains unchanged. No private graph save,
+the actual prepared new plan remains unchanged. No private graph save,
 raw receiver introduction/acceptance, stripped wrapper or new state machine is
 used. The generic replay file returns to its exact original contents.
