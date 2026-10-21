@@ -22,6 +22,7 @@ EXPECTED_OWNERSHIP = """Postgres stores
     - observations
     - authority_secrets
     - gateway_security
+    - product_directory
   -> InstanceReadService (explicit composition only)
     -> CpkServerReadService
       -> shared CpkServerOperationsApplication

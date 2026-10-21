@@ -18,6 +18,7 @@ from control_plane_kit_operations.read_pages import (
     ReadPageRequest,
 )
 
+from .product_directory import _ProductDirectoryReadProjection
 from .authority_secrets import _AuthoritySecretReadProjection
 from .gateway_security import _GatewaySecurityReadProjection
 from .models import FocusedDetailReadModel, OperatorOverviewReadModel
@@ -35,6 +36,7 @@ from .protocols import (
     GraphTopologyStore,
     IngressAuthorityStore,
     ObservedStateStore,
+    RegisteredProductStore,
     RuntimeAuthorityDeliveryStore,
     RuntimeAuthorityStore,
     SecretProviderStore,
@@ -71,6 +73,7 @@ class InstanceReadService:
         runtime_authority_store: RuntimeAuthorityStore | None = None,
         runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
         ingress_authority_store: IngressAuthorityStore | None = None,
+        registered_product_store: RegisteredProductStore | None = None,
         secret_provider_store: SecretProviderStore | None = None,
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
@@ -109,6 +112,7 @@ class InstanceReadService:
             clock=clock,
             freshness=observation_freshness,
         )
+        self._product_directory = _ProductDirectoryReadProjection(self._workspace_graph.require_workspace, registered_product_store)
         self._authority_secrets = _AuthoritySecretReadProjection(
             self._workspace_graph.require_workspace,
             runtime_authority_store=runtime_authority_store,
@@ -131,6 +135,12 @@ class InstanceReadService:
 
     def desired_topology_draft_revision_history(self, request: ReadPageRequest):
         return self._revision_history.page(request)
+
+    def products(self, request):
+        return self._product_directory.page(request)
+
+    def product_detail(self, workspace_id, digest):
+        return self._product_directory.detail(workspace_id, digest)
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)

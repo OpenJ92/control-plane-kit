@@ -12,6 +12,7 @@ Postgres stores
     - observations
     - authority_secrets
     - gateway_security
+    - product_directory
   -> InstanceReadService (explicit composition only)
     -> CpkServerReadService
       -> shared CpkServerOperationsApplication
@@ -19,7 +20,7 @@ Postgres stores
         -> MCP resources/tools
 ```
 
-The five private families own projection behavior according to the durable
+The private families own projection behavior according to the durable
 truth they read. `workspace_graph` owns workspace, graph, operator, and control
 surface views. `operations_history` owns sessions, actions, plans, approvals,
 runs, events, risk, and recovery views. `observations` owns freshness
@@ -27,6 +28,16 @@ interpretation against an injected trusted clock. `authority_secrets` owns
 runtime authority, delivery, ingress authority, secret-provider, and
 secret-reference metadata. `gateway_security` owns gateway probes, delegation
 signing-key inventory, and verifier configuration.
+
+`product_directory` owns workspace-scoped active product summaries and exact
+descriptor-digest detail, including revoked registrations. It exposes the original
+ProductReference separately from a noncanonical display projection. It omits
+configuration contents, actual environment values, concrete secret handles, and
+registration metadata. Names and descriptions are untrusted prose, not authority;
+matching protocols do not prove application compatibility. Pages seek immutable
+digest identities (limit 1–100), with live membership rather than a snapshot.
+Detail preserves the existing 262144-byte descriptor limit; serialized responses
+are capped at 1048576 bytes including the envelope and fail without truncation.
 
 `InstanceReadService` is the single public composition facade. Its methods make
 explicit one-hop calls to those owners; it does not implement projection

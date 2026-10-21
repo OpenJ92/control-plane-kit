@@ -105,8 +105,12 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             self.assertNotIn(None, revision, "missing revision history collections")
             legacy = {case.collection for case in cases}
             self.assertFalse(legacy & revision)
-            self.assertEqual(legacy | revision, set(ReadCollection))
-            self.assertEqual(len(ReadCollection), 20)
+            # Product admission traversal/direct+HTTP+MCP parity over 201 rows
+            # is owned by test_product_directory with canonical product documents.
+            products = {ReadCollection.REGISTERED_PRODUCTS}
+            self.assertFalse((legacy | revision) & products)
+            self.assertEqual(legacy | revision | products, set(ReadCollection))
+            self.assertEqual(len(ReadCollection), 21)
 
             for case in cases:
                 with self.subTest(collection=case.collection.value):
