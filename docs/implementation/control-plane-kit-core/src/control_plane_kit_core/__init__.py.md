@@ -52,3 +52,9 @@ authority. Existing public exports and dependency direction are preserved.
 Core #2011 exports `ConfigurationArtifactRequirement` from configuration and
 `product_configuration_slots` from products. They are pure slot language and
 projection, with no Operations dependency, material preparation or effects.
+
+Core #2016 exports `compile_retained_image_ingress_activity_plan` from the
+existing planning.management_compiler owner, also available through planning.
+It is a distinct pure interpretation for exact retained image replacements;
+existing compiler exports/defaults and admitted-plan descriptors are unchanged.
+The export adds no Operations, provider or SDK dependency and grants no authority.

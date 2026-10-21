@@ -263,3 +263,36 @@ Route comparison operates on normalized binding tuples, without constructing a
 hypothetical aggregate. This preserves bounded refusal when actual current and
 desired documents each fit the route limit but an implied declaration-only
 intermediate would exceed it; unrelated shortening remains unsupported.
+
+## #2016 explicit retained-image ingress interpretation
+
+`compile_retained_image_ingress_activity_plan(current, desired)` is a separate
+pure entry point. The existing graph and managed-update compilers are unchanged.
+It reuses the exact image relation and retained workload eligibility: restoring
+only product identity, descriptor digest and immutable image must restore the
+whole old graph. Distinct canonical revision is required, not increasing revision.
+Registered full runtime-contract truth belongs to Operations, not this predicate.
+
+Equal pairs return the existing empty plan. Changed out-of-family pairs are
+review-blocked, including families accepted by the old managed-update compiler.
+An already blocked base or missing exact observation/reconcile/health shape is
+never relaxed into support. Operations2017 must require nonempty eligible new
+preparation before selecting its distinct persisted profile; old plans keep their
+recorded compiler and meaning.
+
+For the eligible pair, the actual base plan is refined to connected ->
+authenticated management path -> gateway ingress readiness -> workload reconcile
+-> protected desired health. Existing reconcile and health identity/risk/impact
+and all unrelated operations/dependencies survive. Only the matched local stage
+is replaced. Its prior prerequisites remain before native preflight; other users
+of its readiness dependency now depend on ingress readiness. ActivityPlan remains
+responsible for cycle rejection. No production activity-count rule is inferred
+from the five-activity teaching fixture.
+
+All observation pins remain the exact desired graph/runtime/management relation;
+unchanged management declarations do not prove the new image is installed.
+The executable teaching example is RetainedImageIngressPlanningTests using the
+existing generic image pair, reverse transition and complete secret selection.
+The pure plan supplies no authority, original connector installation proof,
+successful observation or execution history. Core/Operations provenance review
+and Interpreters214/Servers291 adoption remain downstream.

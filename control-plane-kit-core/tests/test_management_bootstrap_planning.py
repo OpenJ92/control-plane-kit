@@ -1855,5 +1855,167 @@ class ManagedDeclarationUpdateTests(unittest.TestCase):
                 self.refused(*pair)
 
 
+class RetainedImageIngressPlanningTests(unittest.TestCase):
+    """#2016: a distinct interpretation, preserving existing V1 methods above."""
+
+    pair = ManagedImageUpdateTests.pair
+
+    def compile(self, current, desired):
+        pair = validate_graph(current), validate_graph(desired)
+        for value in pair:
+            self.assertTrue(value.valid, value.descriptor())
+        compiler = getattr(core, "compile_retained_image_ingress_activity_plan", None)
+        self.assertTrue(callable(compiler), "#2016 retained-image ingress compiler is missing")
+        return compiler(*pair)
+
+    def refused(self, current, desired):
+        plan = self.compile(current, desired)
+        self.assertFalse(plan.ready_for_execution)
+        self.assertTrue(any(isinstance(value.operation, ReviewChange) for value in plan.activities))
+
+    def test_complete_preflight_chain_precedes_one_reconcile_preserving_operations(self):
+        current, desired, _, _ = self.pair()
+        self.compile(current, desired)  # Missing-interface red outside subtests.
+        pairs = ((current, desired), (desired, current), ManagedSelectedConsumerUpdateTests().pair("image"))
+        for index, pair in enumerate(pairs):
+            with self.subTest(case=index):
+                original = tuple(GraphDescriptorCodec().encode(value) for value in pair)
+                legacy = core.compile_managed_update_activity_plan(*(validate_graph(value) for value in pair))
+                plan = self.compile(*pair)
+                self.assertTrue(plan.ready_for_execution)
+                observations = [value for value in plan.activities
+                    if isinstance(value.operation, core.ObserveManagementBootstrap)]
+                stages = {value.operation.stage: value for value in observations}
+                self.assertEqual(len(observations), 3)
+                self.assertEqual(set(stages), {core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+                    core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+                    core.ManagementBootstrapStage.GATEWAY_INGRESS_READY})
+                connected = stages[core.ManagementBootstrapStage.CONNECTOR_CONNECTED]
+                path = stages[core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH]
+                ingress = stages[core.ManagementBootstrapStage.GATEWAY_INGRESS_READY]
+                reconcile, = (value for value in plan.activities if isinstance(value.operation, ReconcileNode))
+                health, = (value for value in plan.activities if isinstance(value.operation, core.ObserveNodeHealth))
+                self.assertEqual(len(plan.activities), 5)
+                self.assertEqual(reconcile.operation.target.node_id, "workload")
+                self.assertEqual(reconcile.impact.value, "disruptive")
+                chain = (connected, path, ingress, reconcile, health)
+                for before, after in zip(chain, chain[1:]):
+                    self.assertIn(before.activity_id, {edge.predecessor for edge in after.dependencies})
+                    self.assertIn(before.activity_id, predecessors(plan, after))
+                    self.assertNotIn(after.activity_id, predecessors(plan, before))
+                for stage in observations:
+                    self.assertIn(stage.activity_id, predecessors(plan, reconcile))
+                    self.assertEqual(stage.operation.target, health.operation.target)
+                    self.assertIs(stage.operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
+                old_local, = (value for value in legacy.activities
+                    if isinstance(value.operation, core.ObserveManagementBootstrap)
+                    and value.operation.stage is core.ManagementBootstrapStage.GATEWAY_LOCAL_READY)
+                self.assertEqual(ingress.operation, replace(old_local.operation,
+                    stage=core.ManagementBootstrapStage.GATEWAY_INGRESS_READY))
+                self.assertEqual({edge.predecessor for edge in ingress.dependencies}, {path.activity_id})
+                for unchanged in (connected, path, reconcile, health):
+                    old = legacy.activity(unchanged.activity_id)
+                    self.assertEqual(replace(unchanged, dependencies=()), replace(old, dependencies=()))
+                    expected = {edge.predecessor for edge in old.dependencies}
+                    if unchanged is connected:
+                        expected.remove(old_local.activity_id)
+                    if unchanged is reconcile:
+                        expected.add(ingress.activity_id)
+                    self.assertEqual({edge.predecessor for edge in unchanged.dependencies}, expected)
+                self.assertFalse(any(isinstance(value.operation, (StartNode, StartRuntime, AllocatePublicIngress,
+                    StopNode, RemoveNodeResource, ReconcileRuntime, RemovePublicIngress, StopRuntime))
+                    for value in plan.activities))
+                self.assertEqual(tuple(GraphDescriptorCodec().encode(value) for value in pair), original)
+
+    def test_roundtrips_and_resolver_pin_the_exact_desired_graph(self):
+        current, desired, _, _ = self.pair()
+        plan = self.compile(current, desired)
+        self.assertTrue(plan.ready_for_execution)
+        codec = GraphDescriptorCodec()
+        original = codec.encode(current), codec.encode(desired)
+        self.assertEqual(plan, self.compile(current, desired))
+        self.assertEqual(plan, self.compile(*(codec.decode(value) for value in original)))
+        plan_codec = ActivityPlanDescriptorCodec()
+        self.assertEqual(plan_codec.decode(plan_codec.encode(plan)), plan)
+        for activity in plan.activities:
+            operation = activity.operation
+            if not isinstance(operation, (core.ObserveManagementBootstrap, core.ObserveNodeHealth)):
+                continue
+            resolved = core.resolve_management_observation(operation,
+                validate_graph(current), validate_graph(desired), expected_operation=operation)
+            self.assertEqual(resolved.selected_graph.graph, desired)
+            forged = replace(operation, target=replace(operation.target, relation_digest="0" * 64))
+            with self.assertRaises(ValueError):
+                core.resolve_management_observation(forged,
+                    validate_graph(current), validate_graph(desired), expected_operation=forged)
+        self.assertEqual((codec.encode(current), codec.encode(desired)), original)
+
+    def test_exact_canonical_image_relation_preserves_all_existing_metadata_refusals(self):
+        current, desired, _, _ = self.pair()
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
+        # Re-exercise the existing public relation law through this class's new
+        # compiler, including explicit reverse revision. No copied planner.
+        ManagedImageUpdateTests.test_image_metadata_is_exact_canonical_and_an_actual_same_family_digest_transition(self)
+
+    def test_only_three_image_fields_may_change_in_the_whole_graph(self):
+        current, desired, _, _ = self.pair()
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
+        ManagedImageUpdateTests.test_other_graph_and_configuration_changes_are_not_image_only(self)
+        cases = (desired.update_node(replace(desired.node("gateway"), configuration_artifacts=(
+                ConfigurationArtifact("routes", "/etc/gateway/routes.json", ConfigurationMediaType.JSON,
+                    '{"changed":true}'),))),
+            replace(desired, public_ingresses=(replace(desired.public_ingresses[0],
+                hostname="different.example.invalid"),)),
+            replace(desired, runtimes={"runtime": replace(desired.runtimes["runtime"],
+                authority_ref=core.RuntimeAuthorityReference("different-authority"))}))
+        for index, changed in enumerate(cases):
+            with self.subTest(case=index):
+                self.refused(current, changed)
+        selected_current, selected_desired = ManagedSelectedConsumerUpdateTests().pair("image")
+        node = selected_desired.node("workload")
+        self.refused(selected_current, selected_desired.update_node(replace(node,
+            secret_selections=(replace(node.secret_selections[0], version_id="different-version"),))))
+
+    def test_eligible_retained_workload_and_exact_receiver_laws_survive(self):
+        current, desired, _, _ = self.pair()
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
+        ManagedImageUpdateTests.test_image_relation_preserves_c1_eligibility_and_exact_wrapper_target(self)
+        for side in (0, 1):
+            pair = list(ManagedSelectedConsumerUpdateTests().pair("image"))
+            node = pair[side].node("workload")
+            selection = node.secret_selections[0]
+            pair[side] = pair[side].update_node(replace(node,
+                secret_selections=(UnselectedSecretUse(selection.reference, selection.intent),)))
+            with self.subTest(unresolved_side=side):
+                self.refused(*pair)
+
+    def test_new_interpretation_refuses_other_families_without_reinterpreting_v1(self):
+        current, desired, _, _ = self.pair()
+        self.assertTrue(self.compile(current, desired).ready_for_execution)
+        a, b, c = managed_update_graphs()
+        pairs = ((empty(), graph()), (a, b), (b, c), ManagedConfigurationUpdateTests().pair(),
+            ManagedSelectedConsumerUpdateTests().pair("version"), ManagedVerifierRefreshTests().pair(),
+            ManagedDeclarationUpdateTests().pair())
+        for index, pair in enumerate(pairs):
+            with self.subTest(family=index):
+                snapshots = tuple(validate_graph(value) for value in pair)
+                for snapshot in snapshots:
+                    self.assertTrue(snapshot.valid, snapshot.descriptor())
+                before = tuple(compiler(*snapshots) for compiler in
+                    (core.compile_graph_activity_plan, core.compile_managed_update_activity_plan))
+                self.refused(*pair)
+                self.assertEqual(tuple(compiler(*snapshots) for compiler in
+                    (core.compile_graph_activity_plan, core.compile_managed_update_activity_plan)), before)
+        legacy = core.compile_managed_update_activity_plan(validate_graph(current), validate_graph(desired))
+        old_stages = {value.operation.stage for value in legacy.activities
+            if isinstance(value.operation, core.ObserveManagementBootstrap)}
+        self.assertEqual(old_stages, {core.ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+            core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+            core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH})
+        wire = ActivityPlanDescriptorCodec().encode(legacy)
+        self.assertEqual(ActivityPlanDescriptorCodec().encode(ActivityPlanDescriptorCodec().decode(wire)), wire)
+        self.assertEqual(self.compile(current, current).activities, ())
+
+
 if __name__ == "__main__":
     unittest.main()
