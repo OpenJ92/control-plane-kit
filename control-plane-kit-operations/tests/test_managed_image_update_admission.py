@@ -2,9 +2,12 @@
 from dataclasses import replace
 import unittest
 
-from control_plane_kit_core.planning import ActivityPlan, ReconcileNode
+from control_plane_kit_core.algebra import DeploymentTopology, ExternalRuntime
+from control_plane_kit_core.planning import (
+    ActivityPlan, ReconcileNode, compile_retained_image_ingress_activity_plan,
+)
 from control_plane_kit_core.products import ProductDescriptorCodec
-from control_plane_kit_core.topology import validate_graph
+from control_plane_kit_core.topology import DeploymentGraph, compile_topology, validate_graph
 from control_plane_kit_operations.deployment_transitions import Deploy
 from control_plane_kit_operations.plan_derivation import (
     PlanDerivationProfile, derive_activity_plan, decode_stored_activity_plan, encode_stored_activity_plan,
@@ -20,6 +23,13 @@ from tests.test_runtime_effect_translation import _context
 
 
 PROFILE = PlanDerivationProfile.MANAGED_UPDATE_V1
+
+
+def retained_image_profile(test):
+    profile = getattr(PlanDerivationProfile, "RETAINED_IMAGE_INGRESS_V1", None)
+    test.assertIsNotNone(profile, "retained-image ingress derivation profile is missing")
+    test.assertEqual(profile.value, "retained-image-ingress-v1")
+    return profile
 
 
 def registered_successor(predecessor, *, contract=None):
@@ -65,7 +75,9 @@ class ManagedImageUpdateAdmissionTests(unittest.TestCase):
     def test_exact_active_pair_selects_profile_and_successor_material(self):
         current, desired, products, before, after = self.pair()
         transition = self.transition(current, desired)
-        self.assertIs(runtime_management_plan_profile(transition, registered_products=products), PROFILE)
+        # Fresh preparation advances; explicitly recorded V1 still means V1.
+        self.assertIs(runtime_management_plan_profile(transition, registered_products=products),
+            retained_image_profile(self))
         plan = derive_activity_plan(transition, profile=PROFILE)
         self.assertTrue(plan.ready_for_execution)
         self.assertEqual(decode_stored_activity_plan(encode_stored_activity_plan(plan, profile=PROFILE)), (plan, PROFILE))
@@ -123,3 +135,103 @@ class ManagedImageUpdateAdmissionTests(unittest.TestCase):
         self.assertEqual(current.node("api-x").configuration_artifacts, desired.node("api-x").configuration_artifacts)
         desired = desired.update_node(replace(desired.node("api-x"), metadata=selected_metadata(incompatible)))
         self.refused(current, desired, tuple(incompatible if value == after else value for value in products))
+
+
+class RetainedImageIngressAdmissionTests(unittest.TestCase):
+    pair = ManagedImageUpdateAdmissionTests.pair
+    transition = ManagedImageUpdateAdmissionTests.transition
+
+    def refused(self, current, desired, products):
+        profile = retained_image_profile(self)
+        transition = self.transition(current, desired)
+        plan = derive_activity_plan(transition, profile=profile)
+        self.assertTrue(plan.ready_for_execution,
+            "registered counterexample must retain the valid Core image relation")
+        self.assertIsNone(runtime_management_plan_profile(transition, registered_products=products))
+        self.assertTrue(runtime_management_execution_is_unsupported(current, desired, plan,
+            registered_products=products, derivation_profile=profile))
+
+    def test_exact_new_profile_derivation_wire_and_registered_material(self):
+        profile = retained_image_profile(self)
+        current, desired, products, before, after = self.pair()
+        for left, right, selected in ((current, desired, after), (desired, current, before)):
+            with self.subTest(selected=selected.reference.identity.key):
+                transition = self.transition(left, right)
+                self.assertIs(runtime_management_plan_profile(transition,
+                    registered_products=products), profile)
+                plan = derive_activity_plan(transition, profile=profile)
+                self.assertEqual(plan, compile_retained_image_ingress_activity_plan(
+                    transition.current, transition.desired))
+                self.assertTrue(plan.activities)
+                self.assertTrue(plan.ready_for_execution)
+                self.assertNotEqual(plan, derive_activity_plan(transition, profile=PROFILE))
+                wire = encode_stored_activity_plan(plan, profile=profile)
+                self.assertEqual(wire["version"], 1)
+                self.assertEqual(wire["derivation_profile"], profile.value)
+                self.assertEqual(decode_stored_activity_plan(wire), (plan, profile))
+                self.assertFalse(runtime_management_execution_is_unsupported(left, right, plan,
+                    registered_products=products, derivation_profile=profile))
+                activity, = (value for value in plan.activities if type(value.operation) is ReconcileNode)
+                context = _context(activity=replace(activity, dependencies=()), base_graph=left,
+                    desired_graph=right, registered_products=products)
+                context = replace(context, activity=activity, plan_record=replace(context.plan_record,
+                    plan=plan, derivation_profile=profile))
+                material, = runtime_effect_request_for_context(context).products
+                self.assertEqual(material.reference, selected.reference)
+                self.assertEqual(material.product, selected.descriptor_document.product)
+                self.assertIsNone(material.pull_authority)
+
+    def test_exact_active_registration_image_and_full_contract_negative_laws(self):
+        retained_image_profile(self)
+        ManagedImageUpdateAdmissionTests.test_both_exact_registrations_must_be_available_and_active(self)
+        ManagedImageUpdateAdmissionTests.test_each_graph_image_must_match_its_selected_registered_document(self)
+        ManagedImageUpdateAdmissionTests.test_full_registered_contract_must_agree_beyond_selected_graph_slots(self)
+
+    def test_recorded_profile_cannot_inherit_empty_fresh_teardown_or_unmanaged_exemptions(self):
+        profile = retained_image_profile(self)
+        current, desired, products, _, _ = self.pair()
+        empty = DeploymentGraph("empty")
+        unmanaged = compile_topology(DeploymentTopology("external-runtime", ExternalRuntime()))
+        cases = ((current, current), (empty, desired), (current, empty),
+            (empty, empty), (empty, unmanaged), (unmanaged, unmanaged))
+        for left, right in cases:
+            with self.subTest(left=left.name, right=right.name):
+                transition = self.transition(left, right)
+                for plan in (None, ActivityPlan(()), derive_activity_plan(transition, profile=profile)):
+                    self.assertTrue(runtime_management_execution_is_unsupported(left, right, plan,
+                        registered_products=products, derivation_profile=profile))
+        self.assertIs(runtime_management_plan_profile(self.transition(current, current),
+            registered_products=products), PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)
+        self.assertFalse(runtime_management_execution_is_unsupported(empty, empty, ActivityPlan(())))
+
+    def test_new_profile_wire_remains_strict_and_action_marker_is_exact(self):
+        from control_plane_kit_operations.plan_derivation import planning_derivation_matches_action
+        profile = retained_image_profile(self)
+        current, desired, _, _, _ = self.pair()
+        plan = derive_activity_plan(self.transition(current, desired), profile=profile)
+        wire = encode_stored_activity_plan(plan, profile=profile)
+        for changed in ({**wire, "version": True}, {**wire, "version": 2},
+                {**wire, "derivation_profile": profile}, {**wire, "derivation_profile": "unknown"},
+                {**wire, "extra": "CANARY"}, {**wire, "plan": wire}):
+            with self.subTest(keys=tuple(changed)), self.assertRaises(ValueError):
+                decode_stored_activity_plan(changed)
+        self.assertTrue(planning_derivation_matches_action(profile, {"derivation_profile": profile.value}))
+        for evidence in ({}, {"derivation_profile": None}, {"derivation_profile": PROFILE.value},
+                {"derivation_profile": profile}):
+            self.assertFalse(planning_derivation_matches_action(profile, evidence))
+
+    def test_recorded_profile_and_plan_substitution_refuse_without_reinterpreting_v1(self):
+        profile = retained_image_profile(self)
+        current, desired, products, _, _ = self.pair()
+        transition = self.transition(current, desired)
+        old = derive_activity_plan(transition, profile=PROFILE)
+        new = derive_activity_plan(transition, profile=profile)
+        self.assertNotEqual(old, new)
+        for recorded, canonical, foreign in ((PROFILE, old, new), (profile, new, old)):
+            with self.subTest(recorded=recorded):
+                self.assertFalse(runtime_management_execution_is_unsupported(current, desired, canonical,
+                    registered_products=products, derivation_profile=recorded))
+                for candidate in (foreign, ActivityPlan(()),
+                        replace(canonical, activities=canonical.activities[:-1])):
+                    self.assertTrue(runtime_management_execution_is_unsupported(current, desired, candidate,
+                        registered_products=products, derivation_profile=recorded))

@@ -316,8 +316,9 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         )
         return command
 
-    def _store_historical_derivation(self, current, desired, *, profile=None, plan=None):
-        command = self.prepare(current, desired)
+    def _store_historical_derivation(self, current, desired, *, profile=None, plan=None,
+            registered_products=()):
+        command = self.prepare(current, desired, registered_products=registered_products)
         transition = Deploy(validate_graph(current), validate_graph(desired))
         arguments = {} if profile is None else {"derivation_profile": profile}
         record = ActivityPlanRecord(
@@ -350,6 +351,62 @@ class PlanningTransitionReplayTests(unittest.TestCase):
             uow.stores.activity_history.add_action(action)
             uow.commit()
         return command, record, action
+
+    def test_retained_image_ingress_and_original_v1_replay_keep_recorded_plan_and_fingerprint(self):
+        from tests.test_managed_image_update_admission import (
+            ManagedImageUpdateAdmissionTests, retained_image_profile,
+        )
+        from control_plane_kit_operations.plan_derivation import derive_activity_plan, PlanDerivationProfile
+        from control_plane_kit_operations.runtime_management_admission import runtime_management_plan_profile
+        new_profile = retained_image_profile(self)
+        current, desired, products, _, _ = ManagedImageUpdateAdmissionTests.pair(self)
+        transition = Deploy(validate_graph(current), validate_graph(desired))
+        self.assertIs(runtime_management_plan_profile(transition, registered_products=products), new_profile)
+        for profile in (PlanDerivationProfile.MANAGED_UPDATE_V1, new_profile):
+            with self.subTest(profile=profile):
+                self._reset()
+                plan = derive_activity_plan(transition, profile=profile)
+                command, record, action = self._store_historical_derivation(current, desired,
+                    profile=profile, plan=plan, registered_products=products)
+                before_payload = self.connection.execute(
+                    "SELECT payload FROM cpk_activity_plans WHERE plan_id=%s", (record.plan_id,)).fetchone()[0]
+                self._move_pointer_and_close()
+                before = self._durable_counts()
+                replay = self.planning_service().execute(command)
+                self.assertTrue(replay.replayed)
+                self.assertEqual(replay.plan_record, record)
+                self.assertEqual(replay.action, action)
+                self.assertEqual(replay.action.intent_fingerprint, action.intent_fingerprint)
+                self.assertEqual(replay.plan_record.plan, plan)
+                self.assertIs(replay.plan_record.derivation_profile, profile)
+                self.assertEqual(self._durable_counts(), before)
+                self.assertEqual(self.connection.execute(
+                    "SELECT payload FROM cpk_activity_plans WHERE plan_id=%s", (record.plan_id,)).fetchone()[0],
+                    before_payload)
+
+    def test_retained_image_ingress_durable_profile_and_plan_substitution_refuse(self):
+        from tests.test_managed_image_update_admission import (
+            ManagedImageUpdateAdmissionTests, retained_image_profile,
+        )
+        from control_plane_kit_operations.plan_derivation import (
+            derive_activity_plan, encode_stored_activity_plan, PlanDerivationProfile,
+        )
+        profile = retained_image_profile(self)
+        current, desired, products, _, _ = ManagedImageUpdateAdmissionTests.pair(self)
+        transition = Deploy(validate_graph(current), validate_graph(desired))
+        canonical = derive_activity_plan(transition, profile=profile)
+        old = derive_activity_plan(transition, profile=PlanDerivationProfile.MANAGED_UPDATE_V1)
+        command, record, _ = self._store_historical_derivation(current, desired,
+            profile=profile, plan=canonical, registered_products=products)
+        for foreign_plan, foreign_profile in ((old, profile),
+                (canonical, PlanDerivationProfile.MANAGED_UPDATE_V1)):
+            with self.subTest(profile=foreign_profile):
+                self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id=%s",
+                    (Jsonb(encode_stored_activity_plan(foreign_plan, profile=foreign_profile)), record.plan_id))
+                before = self._durable_counts()
+                with self.assertRaises(ActivityPlanningGraphStateConflict):
+                    self.planning_service().execute(command)
+                self.assertEqual(self._durable_counts(), before)
 
     def _move_pointer_and_close(self):
         with self.unit_of_work() as uow:

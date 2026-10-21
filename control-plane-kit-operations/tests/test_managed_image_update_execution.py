@@ -3,15 +3,25 @@ from dataclasses import replace
 import json
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole
-from control_plane_kit_core.planning import ObserveNodeHealth, ReconcileNode, StartNode
+from control_plane_kit_core.planning import (
+    ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth, ReconcileNode, StartNode,
+)
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductReference
 from tests import test_managed_configuration_update_execution as content
 from tests import test_managed_application_chain as chain
+from tests.test_managed_image_update_admission import retained_image_profile
+from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
+from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
+from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
+from tests import test_native_connector_installation_dispatch as proof
 
 
 class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecutionTests):
     # Inherit the maintained missing-receipt and fresh-pull-authority controls.
     # Only selected desired material differs; command/replay/receipt owners do not.
+    def expected_derivation_profile(self):
+        return retained_image_profile(self)
+
     def authored_graph(self):
         graph, documents, registry = super().authored_graph()
         node = graph.node("api")
@@ -79,3 +89,69 @@ class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecuti
                 "expected_desired_graph_revision": plan["desired_graph_revision"],
                 "claim_generation": self.update_generation, "idempotency_key": "advance-image"})
         self.assertEqual(advanced["to_graph_id"], plan["desired_graph_id"])
+
+    async def assert_preflight_stops_replacement(self, *, native=None, public=None):
+        await self.prepare_content()
+        if native is not None:
+            self.health.responses[:] = [native]
+        if public is not None:
+            observe = self.health.observe_signed
+
+            async def selected_outcome(realization, request, authority):
+                result = await observe(realization, request, authority)
+                if (type(request.operation) is ObserveManagementBootstrap
+                        and request.operation.stage is ManagementBootstrapStage.GATEWAY_INGRESS_READY):
+                    return ReceiverHealthReadResult(result.request, result.declaration, public)
+                return result
+
+            self.health.observe_signed = selected_outcome
+        before = tuple(self.runtime.calls)
+        terminal = None
+        for number in range(len(self.record.plan.activities) + 2):
+            payload = {"claim_generation": self.update_generation,
+                "idempotency_key": f"preflight-refusal-{number}", "max_effects": 1}
+            result = await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": self.update_run},
+                principal=self.worker, payload=payload)
+            if result["coordinator_status"] != "progressed":
+                terminal = result
+                snapshot = self.durable_snapshot(), self.effects()
+                self.assertEqual(await self.invoke("command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+                    path={"workspace_id": "workspace-a", "run_id": self.update_run},
+                    principal=self.worker, payload=payload, app=self.application()), result)
+                self.assertEqual((self.durable_snapshot(), self.effects()), snapshot)
+                break
+        self.assertIsNotNone(terminal, "preflight failure must reach a wait/failure boundary")
+        self.assertNotEqual(terminal["run_status"], "succeeded")
+        self.assertEqual(tuple(self.runtime.calls), before)
+        self.assertFalse(any(type(request.operation) is ObserveNodeHealth
+            and request.source.run_id.value == self.update_run
+            for request, _, _ in self.health.signed_reads))
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
+                self.before_update.current_graph_id)
+
+    async def test_disconnected_native_preflight_has_zero_reconciles(self):
+        await self.assert_preflight_stops_replacement(native=NativeConnectionOutcome.DISCONNECTED)
+
+    async def test_unknown_native_preflight_has_zero_reconciles(self):
+        await self.assert_preflight_stops_replacement(native=NativeConnectionOutcome.UNKNOWN)
+
+    async def test_unhealthy_public_preflight_has_zero_reconciles(self):
+        await self.assert_preflight_stops_replacement(public=NodeHealthReadOutcome.UNHEALTHY)
+
+    async def test_unknown_public_preflight_has_zero_reconciles(self):
+        await self.assert_preflight_stops_replacement(public=NodeHealthReadOutcome.UNKNOWN)
+
+
+class RetainedImageIngressConnectorProofTests(proof.NativeConnectorInstallationDispatchTests):
+    """Run the maintained origin/race/ledger laws with the new image profile."""
+    expected_derivation_profile = ManagedImageUpdateExecutionTests.expected_derivation_profile
+    desired_update = ManagedImageUpdateExecutionTests.desired_update
+
+    def authored_graph(self):
+        graph, documents, registry = super().authored_graph()
+        node = graph.node("api")
+        graph = graph.update_node(replace(node, metadata={**node.metadata,
+            "oci_image": documents["api"].product.image.execution_reference}))
+        return self.native_before_path_graph(graph), documents, registry
