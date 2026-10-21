@@ -1,6 +1,8 @@
 """Immutable image transitions reuse the real Operations/Postgres command flow."""
 from dataclasses import replace
+import hashlib
 import json
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import (
@@ -14,6 +16,18 @@ from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcom
 from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from tests import test_native_connector_installation_dispatch as proof
+from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, validate_graph
+from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.plan_derivation import (
+    PlanDerivationProfile, derive_activity_plan, encode_stored_activity_plan,
+)
+from control_plane_kit_operations.planning import (
+    ActivityPlanningCommandService, ActivityPlanningGraphStateConflict,
+    DesiredGraphCommandService, RequestActivityPlan, SetDesiredGraph,
+)
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
+from control_plane_kit_operations.workflows import CloseOperationSession, IdempotencyKey
 
 
 class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecutionTests):
@@ -176,6 +190,113 @@ class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecuti
 
     async def test_unknown_public_preflight_has_zero_reconciles(self):
         await self.assert_preflight_stops_replacement(public=NodeHealthReadOutcome.UNKNOWN)
+
+    def prepared_planning_case(self):
+        with self.unit_of_work() as uow:
+            record = uow.stores.activity_history.get_plan(self.record.plan_id)
+            action, = (value for value in uow.stores.activity_history.actions_for_session(record.session_id)
+                if value.action_type is OperatorCommandKind.REQUEST_ACTIVITY_PLAN
+                and value.payload.get("plan_id") == record.plan_id)
+        command = RequestActivityPlan(record.session_id, "workspace-a", action.actor_id,
+            record.base_graph_id, record.desired_graph_id, IdempotencyKey(action.idempotency_key),
+            expected_current_realized_projection_id=record.base_realized_projection_id,
+            expected_desired_realized_projection_id=record.desired_realized_projection_id,
+            expected_desired_graph_revision=record.desired_graph_revision)
+        self.assertEqual(action.intent_fingerprint, hashlib.sha256(json.dumps(
+            command.descriptor(), sort_keys=True, separators=(",", ":")).encode()).hexdigest())
+        return command, record, action
+
+    def historical_planning_case(self, profile, suffix):
+        """Only pending intent is recorded; graph ownership comes from real initial execution."""
+        command, prepared, original_action = self.prepared_planning_case()
+        command = replace(command, idempotency_key=IdempotencyKey("historical-image-" + suffix))
+        with self.unit_of_work() as uow:
+            current = DEFAULT_GRAPH_CODEC.decode(uow.stores.realized_graphs.get(
+                prepared.base_realized_projection_id).graph_descriptor)
+            desired = DEFAULT_GRAPH_CODEC.decode(uow.stores.realized_graphs.get(
+                prepared.desired_realized_projection_id).graph_descriptor)
+            plan = derive_activity_plan(Deploy(validate_graph(current), validate_graph(desired)), profile=profile)
+            self.assertTrue(plan.activities)
+            self.assertTrue(plan.ready_for_execution)
+            record = replace(prepared, plan_id="historical-image-" + suffix, plan=plan,
+                derivation_profile=profile, created_at=chain.now())
+            history = uow.stores.activity_history
+            action = replace(original_action, action_id="historical-image-action-" + suffix,
+                ordinal=history.next_action_ordinal(record.session_id), created_at=chain.now(),
+                idempotency_key=command.idempotency_key.value,
+                intent_fingerprint=hashlib.sha256(json.dumps(command.descriptor(),
+                    sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                payload={**original_action.payload, "plan_id": record.plan_id,
+                    "activity_count": len(plan.activities), "derivation_profile": profile.value})
+            history.add_plan(record)
+            history.add_action(action)
+            uow.commit()
+        self.assertNotEqual(record.plan_id, prepared.plan_id)
+        self.assertNotEqual(action.action_id, original_action.action_id)
+        return command, record, action
+
+    def replay_snapshot(self):
+        return (self.durable_snapshot(), self.effects(), tuple((name, self.rows(name)) for name in (
+            "cpk_operation_actions", "cpk_activity_plans", "cpk_graph_versions",
+            "cpk_realized_graph_projections", "cpk_operation_sessions", "cpk_workspaces")))
+
+    def replay_planning(self, command):
+        def no_identity_allocation():
+            self.fail("planning replay must not allocate a new identity")
+        return ActivityPlanningCommandService(self.unit_of_work, clock=chain.now,
+            id_factory=no_identity_allocation).execute(command)
+
+    async def test_retained_image_ingress_and_original_v1_replay_keep_recorded_plan_and_fingerprint(self):
+        await self.prepare_content()
+        # New-profile evidence is the real prepared action; V1 is distinct historical pending intent.
+        cases = (self.prepared_planning_case(),
+            self.historical_planning_case(PlanDerivationProfile.MANAGED_UPDATE_V1, "v1"))
+        self.assertNotEqual(cases[0][1].plan, cases[1][1].plan)
+        original_payloads = {record.plan_id: self.connection.execute(
+            "SELECT payload FROM cpk_activity_plans WHERE plan_id=%s", (record.plan_id,)).fetchone()[0]
+            for _, record, _ in cases}
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+        identities = iter(("replay-graph-moved", "replay-action-moved"))
+        DesiredGraphCommandService(self.unit_of_work, clock=chain.now, id_factory=lambda: next(identities)).execute(
+            SetDesiredGraph(self.record.session_id, "workspace-a", "operator-a", DeploymentGraph("later"),
+                workspace.desired_graph_id, IdempotencyKey("move-image-replay"),
+                expected_desired_realized_projection_id=workspace.desired_realized_projection_id,
+                expected_desired_graph_revision=workspace.desired_graph_revision,
+                receiver_lifecycle=ReceiverLifecycleExpectation(workspace.current_graph_id,
+                    workspace.current_realized_projection_id, workspace.desired_graph_id,
+                    workspace.desired_realized_projection_id, workspace.desired_graph_revision)))
+        self.operation_service("close-image-replay").execute(CloseOperationSession(
+            self.record.session_id, "operator-a", IdempotencyKey("close-image-replay")))
+        before = self.replay_snapshot()
+        for command, record, action in cases:
+            with self.subTest(profile=record.derivation_profile):
+                replay = self.replay_planning(command)
+                self.assertTrue(replay.replayed)
+                self.assertEqual(replay.plan_record, record)
+                self.assertEqual(replay.action, action)
+                self.assertEqual(replay.action.intent_fingerprint, action.intent_fingerprint)
+                self.assertIs(replay.plan_record.derivation_profile, record.derivation_profile)
+                self.assertEqual(self.replay_snapshot(), before)
+                self.assertEqual(self.connection.execute(
+                    "SELECT payload FROM cpk_activity_plans WHERE plan_id=%s", (record.plan_id,)).fetchone()[0],
+                    original_payloads[record.plan_id])
+
+    async def test_retained_image_ingress_durable_profile_and_plan_substitution_refuse(self):
+        await self.prepare_content()
+        profile = self.expected_derivation_profile()
+        command, record, _ = self.historical_planning_case(profile, "new-pending")
+        _, old, _ = self.historical_planning_case(PlanDerivationProfile.MANAGED_UPDATE_V1, "v1")
+        for foreign_plan, foreign_profile in ((old.plan, profile),
+                (record.plan, PlanDerivationProfile.MANAGED_UPDATE_V1)):
+            with self.subTest(profile=foreign_profile):
+                # Negative-only corruption of the separate pending fixture, never the approved plan.
+                self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id=%s",
+                    (Jsonb(encode_stored_activity_plan(foreign_plan, profile=foreign_profile)), record.plan_id))
+                before = self.replay_snapshot()
+                with self.assertRaises(ActivityPlanningGraphStateConflict):
+                    self.replay_planning(command)
+                self.assertEqual(self.replay_snapshot(), before)
 
 
 class RetainedImageIngressConnectorProofTests(proof.NativeConnectorInstallationDispatchTests):
