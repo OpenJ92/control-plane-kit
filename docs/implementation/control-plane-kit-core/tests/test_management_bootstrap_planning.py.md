@@ -132,3 +132,11 @@ after execution. This is an unexecuted target-only checkpoint under issue2016
 interface review6306204025; exact target review and the unchanged owning Core
 Docker gate precede any application implementation. No registry truth, provider
 authority, observed readiness or live acceptance is claimed.
+
+The target checkpoint84d87a12 produced the intended owner red in run39531968517,
+Core job118999724412:21 support passed,1082 Core methods with exactly six new
+missing-callable failures and no errors;1076 existing methods passed. Initial
+graph validation reached the missing symbol. Deeper assertions and later Core
+compile/import phases did not execute. Kepler independently accepted this causal
+evidence before source implementation. The six targets are unchanged in the
+source checkpoint; independent source review and full green are still required.

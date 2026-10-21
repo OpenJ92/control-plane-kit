@@ -620,6 +620,61 @@ def _matching_activity(plan, operation_type, predicate):
     return matches[0] if len(matches) == 1 else None
 
 
+def compile_retained_image_ingress_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
+    """Plan an exact image replacement after observing its retained ingress."""
+    _require_pair(current, desired)
+    diff = diff_graphs(current, desired)
+    base = compile_graph_activity_plan(current, desired)
+    if not diff.changes:
+        return base
+    if not _managed_image_update_shape(current, desired, diff):
+        return _review_blocked(base, diff)
+    if not base.ready_for_execution:
+        return base
+
+    node_id = diff.changes[0].subject.owner.node_id
+    runtime_id = desired.graph.nodes[node_id].runtime_id
+    stages = tuple(_matching_activity(base, ObserveManagementBootstrap,
+        lambda value, stage=stage: value.target.runtime_id == runtime_id and value.stage is stage)
+        for stage in (ManagementBootstrapStage.GATEWAY_LOCAL_READY,
+            ManagementBootstrapStage.CONNECTOR_CONNECTED,
+            ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH))
+    reconcile = _matching_activity(base, ReconcileNode, lambda value: value.target.node_id == node_id)
+    health = _matching_activity(base, ObserveNodeHealth, lambda value: value.node_id == node_id)
+    if any(value is None for value in (*stages, reconcile, health)):
+        return _review_blocked(base, diff)
+    local, connected, path = stages
+    if (local.operation.target.graph_side is not PlanGraphSide.DESIRED_GRAPH
+            or any(value.operation.target != local.operation.target for value in (connected, path, health))
+            or local.activity_id not in {value.predecessor for value in connected.dependencies}
+            or connected.activity_id not in {value.predecessor for value in path.dependencies}):
+        return _review_blocked(base, diff)
+
+    local_parents = {value.predecessor for value in local.dependencies}
+    ingress = _observation_activity(
+        ObserveManagementBootstrap(local.operation.target, ManagementBootstrapStage.GATEWAY_INGRESS_READY),
+        tuple(sorted(local_parents | {path.activity_id})),
+    )
+    finished = []
+    for activity in base.activities:
+        if activity.activity_id == local.activity_id:
+            finished.append(ingress)
+            continue
+        parents = {value.predecessor for value in activity.dependencies}
+        if activity.activity_id == connected.activity_id:
+            # Retain any prerequisites of the replaced local stage before the
+            # new native preflight; never erase independent structural work.
+            parents.remove(local.activity_id)
+            parents.update(local_parents)
+        else:
+            parents = {ingress.activity_id if value == local.activity_id else value for value in parents}
+        if activity.activity_id == reconcile.activity_id:
+            parents.add(ingress.activity_id)
+        finished.append(replace(activity, dependencies=tuple(ActivityDependency(value) for value in sorted(parents))))
+    # Existing DAG validation refuses cycles; this interpretation never repairs one.
+    return ActivityPlan(tuple(finished))
+
+
 def compile_managed_update_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
     """Derive closed managed updates, including coupled declaration/route changes."""
     _require_pair(current, desired)
