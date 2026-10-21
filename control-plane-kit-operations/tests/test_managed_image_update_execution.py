@@ -27,7 +27,7 @@ from control_plane_kit_operations.planning import (
     DesiredGraphCommandService, RequestActivityPlan, SetDesiredGraph,
 )
 from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
-from control_plane_kit_operations.workflows import CloseOperationSession, IdempotencyKey
+from control_plane_kit_operations.workflows import CloseOperationSession, IdempotencyKey, OperationCommandService
 
 
 class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecutionTests):
@@ -266,7 +266,8 @@ class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecuti
                 receiver_lifecycle=ReceiverLifecycleExpectation(workspace.current_graph_id,
                     workspace.current_realized_projection_id, workspace.desired_graph_id,
                     workspace.desired_realized_projection_id, workspace.desired_graph_revision)))
-        self.operation_service("close-image-replay").execute(CloseOperationSession(
+        OperationCommandService(self.unit_of_work, clock=chain.now,
+            id_factory=lambda: "close-image-replay").execute(CloseOperationSession(
             self.record.session_id, "operator-a", IdempotencyKey("close-image-replay")))
         before = self.replay_snapshot()
         for command, record, action in cases:
