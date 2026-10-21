@@ -61,20 +61,26 @@ class ManagedSelectedUpdateAdmissionTests(unittest.TestCase):
             with self.subTest(family=family):
                 current, desired, products = selected_update_graphs(self, family)
                 transition = self.transition(current, desired)
-                self.assertIs(runtime_management_plan_profile(transition, registered_products=products), PROFILE)
-                plan = derive_activity_plan(transition, profile=PROFILE)
-                self.assertTrue(plan.ready_for_execution)
-                self.assertFalse(runtime_management_execution_is_unsupported(current, desired, plan,
-                    registered_products=products, derivation_profile=PROFILE))
-                self.assertEqual(decode_stored_activity_plan(encode_stored_activity_plan(plan, profile=PROFILE)),
-                    (plan, PROFILE))
-                activity, = (value for value in plan.activities if type(value.operation) is ReconcileNode)
-                context = _context(activity=replace(activity, dependencies=()), base_graph=current,
-                    desired_graph=desired, registered_products=products)
-                context = replace(context, activity=activity, plan_record=replace(context.plan_record,
-                    plan=plan, derivation_profile=PROFILE))
-                material, = runtime_effect_request_for_context(context).products
-                self.assertEqual(material.secret_selections, desired.node("api-x").secret_selections)
+                expected = (PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1
+                    if family == "image" else PROFILE)
+                self.assertIs(runtime_management_plan_profile(transition, registered_products=products), expected)
+                # Fresh image selection changes; explicitly recorded V1 image plans stay valid.
+                profiles = (expected, PROFILE) if family == "image" else (expected,)
+                for profile in profiles:
+                    with self.subTest(profile=profile):
+                        plan = derive_activity_plan(transition, profile=profile)
+                        self.assertTrue(plan.ready_for_execution)
+                        self.assertFalse(runtime_management_execution_is_unsupported(current, desired, plan,
+                            registered_products=products, derivation_profile=profile))
+                        self.assertEqual(decode_stored_activity_plan(encode_stored_activity_plan(plan, profile=profile)),
+                            (plan, profile))
+                        activity, = (value for value in plan.activities if type(value.operation) is ReconcileNode)
+                        context = _context(activity=replace(activity, dependencies=()), base_graph=current,
+                            desired_graph=desired, registered_products=products)
+                        context = replace(context, activity=activity, plan_record=replace(context.plan_record,
+                            plan=plan, derivation_profile=profile))
+                        material, = runtime_effect_request_for_context(context).products
+                        self.assertEqual(material.secret_selections, desired.node("api-x").secret_selections)
                 self.assertIs(runtime_management_plan_profile(self.transition(desired, desired),
                     registered_products=products), PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)
 
