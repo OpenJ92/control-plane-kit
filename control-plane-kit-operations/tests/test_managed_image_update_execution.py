@@ -2,7 +2,7 @@
 from dataclasses import replace
 import json
 
-from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import (
     ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth, ReconcileNode, StartNode,
 )
@@ -92,19 +92,27 @@ class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecuti
 
     async def assert_preflight_stops_replacement(self, *, native=None, public=None):
         await self.prepare_content()
+        returned = []
+        observe_native, observe_signed = self.health.observe_connection, self.health.observe_signed
         if native is not None:
             self.health.responses[:] = [native]
-        if public is not None:
-            observe = self.health.observe_signed
 
-            async def selected_outcome(realization, request, authority):
-                result = await observe(realization, request, authority)
-                if (type(request.operation) is ObserveManagementBootstrap
-                        and request.operation.stage is ManagementBootstrapStage.GATEWAY_INGRESS_READY):
-                    return ReceiverHealthReadResult(result.request, result.declaration, public)
-                return result
+        async def native_outcome(realization, request, authority):
+            result = await observe_native(realization, request, authority)
+            returned.append((request, result))
+            return result
 
-            self.health.observe_signed = selected_outcome
+        async def signed_outcome(realization, request, authority):
+            result = await observe_signed(realization, request, authority)
+            if (public is not None and type(request.operation) is ObserveManagementBootstrap
+                    and request.operation.stage is ManagementBootstrapStage.GATEWAY_INGRESS_READY):
+                result = ReceiverHealthReadResult(result.request, result.declaration, public)
+            # Capture what the seam actually RETURNS, independently of the delegate's recording list.
+            returned.append((request, result))
+            return result
+
+        self.health.observe_connection = native_outcome
+        self.health.observe_signed = signed_outcome
         before = tuple(self.runtime.calls)
         terminal = None
         for number in range(len(self.record.plan.activities) + 2):
@@ -122,12 +130,38 @@ class ManagedImageUpdateExecutionTests(content.ManagedConfigurationUpdateExecuti
                 self.assertEqual((self.durable_snapshot(), self.effects()), snapshot)
                 break
         self.assertIsNotNone(terminal, "preflight failure must reach a wait/failure boundary")
+        expected_stages = [ManagementBootstrapStage.CONNECTOR_CONNECTED]
+        if public is not None:
+            expected_stages += [ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+                ManagementBootstrapStage.GATEWAY_INGRESS_READY]
+        self.assertEqual([request.operation.stage for request, _ in returned], expected_stages)
+        self.assertTrue(all(request.source.run_id.value == self.update_run for request, _ in returned))
+        selected_request, selected_result = returned[-1]
+        self.assertIs(selected_result.outcome, native if native is not None else public)
+        self.assertEqual(terminal["coordinator_status"], "blocked" if native is not None else "failed")
         self.assertNotEqual(terminal["run_status"], "succeeded")
         self.assertEqual(tuple(self.runtime.calls), before)
         self.assertFalse(any(type(request.operation) is ObserveNodeHealth
             and request.source.run_id.value == self.update_run
             for request, _, _ in self.health.signed_reads))
         with self.unit_of_work() as uow:
+            identity = EffectAttemptIdentity(RunId(self.update_run), selected_request.activity_id.value, 1)
+            attempt = uow.stores.effect_attempts.get(identity)
+            self.assertEqual(attempt.state.status.value, "not_ready" if native is not None else "failed")
+            self.assertEqual(attempt.latest_transition_event.kind.value,
+                "step_observation_not_ready" if native is not None else "step_failed")
+            retained = uow.stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id).outcome
+            if native is not None:
+                self.assertEqual(retained.observation, selected_result)
+                self.assertEqual(retained.acceptance_reason, native.value)
+            else:
+                self.assertIs(returned[0][1].outcome, NativeConnectionOutcome.CONNECTED)
+                self.assertEqual(retained.result.failure.code, "node-health-not-healthy")
+                self.assertEqual(retained.result.failure.details["health"], selected_result.descriptor())
+                for predecessor, _ in returned[:-1]:
+                    prior = uow.stores.effect_attempts.get(EffectAttemptIdentity(
+                        RunId(self.update_run), predecessor.activity_id.value, 1))
+                    self.assertEqual(prior.state.status.value, "succeeded")
             self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
                 self.before_update.current_graph_id)
 
