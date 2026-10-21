@@ -105,3 +105,30 @@ bytes, and the implied declaration-only successor would exceed that limit.
 Desired material fits only by removing an unrelated route, so the public planner
 must return review-blocked instead of raising during an intermediate aggregate
 construction. The fixture proves its strict-valid and oversized controls first.
+
+## #2016 retained-image ingress targets
+
+Six target methods exercise the separately proposed public
+`compile_retained_image_ingress_activity_plan` without changing existing V1 tests
+or application implementation. The exact original image relation remains generic,
+including explicit reverse revisions and unchanged complete secret selection.
+The new plan must contain exactly connected -> authenticated path -> ingress
+readiness -> one disruptive workload reconcile -> desired protected health.
+Targets inspect direct dependencies and ancestry, the complete stage set,
+unchanged operation identity/risk/impact and graph preservation. They do not
+implement another compiler or simulate provider outcomes.
+
+Actual graph/plan codecs and resolver checks establish deterministic pinned
+desired-graph material. Three existing image relation/refusal test methods are
+re-exercised unchanged through the new class's public compiler adapter; their
+original V1 executions remain intact. Additional valid graph-pair negatives cover
+management/ingress/runtime edits and changed/unresolved selection. Other managed
+families remain review-blocked in this new entry point. Equal graphs are empty;
+Operations separately requires a nonempty eligible preparation for its profile.
+
+The callable assertion occurs inside collected test methods and is the intended
+initial red for the absent public compiler. Deeper assertions earn evidence only
+after execution. This is an unexecuted target-only checkpoint under issue2016
+interface review6306204025; exact target review and the unchanged owning Core
+Docker gate precede any application implementation. No registry truth, provider
+authority, observed readiness or live acceptance is claimed.
