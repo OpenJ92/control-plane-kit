@@ -2,7 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import asdict, replace
 import asyncio
 import importlib
 import importlib.util
@@ -162,6 +162,15 @@ class DelegationKeyGenerationCommandTests(unittest.TestCase):
             with self.assertRaises(GenerationAttemptConflict):
                 self.service().generate(command)
         self.assertEqual(len(self.calls), 1)
+
+    def test_typed_receipt_contents_exclude_internal_authority_not_only_wire_descriptor(self):
+        result = self.service().generate(self.command())
+        for representation in (repr(result), json.dumps(asdict(result)), json.dumps(result.descriptor())):
+            for forbidden in ("provider-token", "secrets-endpoint", "credential_reference",
+                              "custody_grant", "operator-issuer", "operator-a"):
+                self.assertNotIn(forbidden, representation)
+        self.assertEqual(result.descriptor()["state"], "admitted")
+        self.assertEqual(result.descriptor()["receipt"]["version_id"], "version-a")
 
     def test_current_denial_and_unavailable_authority_precede_provider(self):
         for scopes in ((SCOPES[0],), (SCOPES[1],), ()):

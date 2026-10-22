@@ -110,7 +110,7 @@ class DelegationKeyGenerationCommandService:
 
     def _bounded(self, operation):
         try:
-            return GeneratedDelegationKeyReceipt(operation())
+            return GeneratedDelegationKeyReceipt.from_attempt(operation())
         except GenerationAttemptError:
             raise
         except Exception:

@@ -56,7 +56,7 @@ class _GatewaySecurityReadProjection:
         if self._generation_attempt_store is None:
             raise ReadModelError("generation attempt store is not configured")
         try:
-            return GeneratedDelegationKeyReceipt(self._generation_attempt_store.get(workspace_id, request_id))
+            return GeneratedDelegationKeyReceipt.from_attempt(self._generation_attempt_store.get(workspace_id, request_id))
         except GenerationAttemptNotFound:
             failure = "missing generation request"
         except GenerationAttemptError:

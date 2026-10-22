@@ -78,8 +78,8 @@ other read surfaces
   forbid: private-key references
 ```
 
-Public verification material is disclosed only by the verifier-configuration
-projection that needs it. Calling public PEM non-secret does not make it part of
+Public verification material is disclosed by verifier-configuration projections
+and the exact authorized generation receipt. Calling public PEM non-secret does not make it part of
 general signing-key inventory or permit disclosure of any private or resolved
 credential material.
 

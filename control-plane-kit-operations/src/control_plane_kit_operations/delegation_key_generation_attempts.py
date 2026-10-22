@@ -253,25 +253,50 @@ class GenerationAttemptAdmissionService:
 class GeneratedDelegationKeyReceipt:
     """Exact authorized request result; provider receipt is not CPK admission."""
 
-    attempt: DelegationKeyGenerationAttempt
+    attempt_id: str
+    workspace_id: str
+    request_id: str
+    state: GenerationAttemptState
+    purpose: DelegationKeyPurpose
+    issuer: str
+    correlation_id: str
+    created_at: str
+    updated_at: str
+    receipt: DelegationKeyGenerationEvidence | None
+    reference_registration_id: str | None
+    key_registration_id: str | None
+
+    @classmethod
+    def from_attempt(cls, attempt: DelegationKeyGenerationAttempt) -> "GeneratedDelegationKeyReceipt":
+        if type(attempt) is not DelegationKeyGenerationAttempt:
+            raise GenerationAttemptError("generation receipt requires a typed attempt")
+        intent = attempt.intent
+        return cls(
+            attempt_id=intent.attempt_id, workspace_id=intent.workspace_id,
+            request_id=intent.request_id, state=attempt.state,
+            purpose=intent.grant.purpose, issuer=intent.grant.issuer,
+            correlation_id=intent.grant.correlation_id,
+            created_at=attempt.created_at, updated_at=attempt.updated_at,
+            receipt=attempt.receipt,
+            reference_registration_id=attempt.reference_registration_id,
+            key_registration_id=attempt.key_registration_id,
+        )
 
     def descriptor(self) -> dict[str, object]:
-        attempt = self.attempt
-        intent = attempt.intent
         return {
-            "attempt_id": intent.attempt_id,
-            "workspace_id": intent.workspace_id,
-            "request_id": intent.request_id,
-            "state": attempt.state.value,
-            "purpose": intent.grant.purpose.value,
-            "issuer": intent.grant.issuer,
-            "correlation_id": intent.grant.correlation_id,
-            "created_at": attempt.created_at,
-            "updated_at": attempt.updated_at,
-            "receipt": None if attempt.receipt is None else receipt_descriptor(attempt.receipt),
-            "admission": None if attempt.state is not GenerationAttemptState.ADMITTED else {
-                "reference_registration_id": attempt.reference_registration_id,
-                "key_registration_id": attempt.key_registration_id,
+            "attempt_id": self.attempt_id,
+            "workspace_id": self.workspace_id,
+            "request_id": self.request_id,
+            "state": self.state.value,
+            "purpose": self.purpose.value,
+            "issuer": self.issuer,
+            "correlation_id": self.correlation_id,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "receipt": None if self.receipt is None else receipt_descriptor(self.receipt),
+            "admission": None if self.state is not GenerationAttemptState.ADMITTED else {
+                "reference_registration_id": self.reference_registration_id,
+                "key_registration_id": self.key_registration_id,
             },
         }
 
