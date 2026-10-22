@@ -2006,3 +2006,37 @@ ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_tran
 ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_selection_fingerprint_check CHECK ((selection_fingerprint ~ '^[0-9a-f]{64}$'::text));
 ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_outcome_fingerprint_check CHECK ((outcome_fingerprint ~ '^[0-9a-f]{64}$'::text));
 ALTER TABLE ONLY cpk_configuration_claim_transfers ADD CONSTRAINT cpk_claim_transfers_acceptance_revision_check CHECK (((acceptance_revision >= 0) AND (acceptance_revision <= '9007199254740991'::bigint)));
+
+CREATE TABLE cpk_delegation_key_generation_attempts (
+    workspace_id text NOT NULL,
+    command_kind text NOT NULL,
+    request_id text NOT NULL,
+    intent_descriptor jsonb NOT NULL,
+    intent_fingerprint text NOT NULL,
+    state text NOT NULL,
+    fence bigint NOT NULL,
+    claim_kind text,
+    receipt_descriptor jsonb,
+    reference_registration_id text,
+    key_registration_id text,
+    created_at timestamp(6) with time zone NOT NULL,
+    updated_at timestamp(6) with time zone NOT NULL,
+    CONSTRAINT cpk_delegation_key_generation_attempts_workspace_check CHECK ((workspace_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
+    CONSTRAINT cpk_delegation_key_generation_attempts_kind_check CHECK ((command_kind = 'delegation-key.generate'::text)),
+    CONSTRAINT cpk_delegation_key_generation_attempts_request_check CHECK ((request_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
+    CONSTRAINT cpk_delegation_key_generation_attempts_intent_check CHECK (((jsonb_typeof(intent_descriptor) = 'object'::text) AND (octet_length((intent_descriptor)::text) <= 16384))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_fingerprint_check CHECK ((intent_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_delegation_key_generation_attempts_state_check CHECK ((state = ANY (ARRAY['intended'::text, 'dispatching'::text, 'uncertain'::text, 'receipt-recorded'::text, 'admitted'::text, 'refused'::text, 'failed-definite'::text]))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_fence_check CHECK ((fence >= 0)),
+    CONSTRAINT cpk_delegation_key_generation_attempts_claim_check CHECK ((claim_kind = ANY (ARRAY['initial'::text, 'reconcile-provider'::text, 'reconcile-admission'::text]))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_dispatch_check CHECK ((((state = 'intended'::text) AND (fence = 0) AND (claim_kind IS NULL)) OR ((state <> 'intended'::text) AND (fence > 0) AND (claim_kind IS NOT NULL)))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_receipt_check CHECK (((jsonb_typeof(receipt_descriptor) = 'object'::text) AND (octet_length((receipt_descriptor)::text) <= 16384))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_receipt_state_check CHECK (((state = ANY (ARRAY['receipt-recorded'::text, 'admitted'::text])) = (receipt_descriptor IS NOT NULL))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_admission_check CHECK ((((state = 'admitted'::text) = (reference_registration_id IS NOT NULL)) AND ((state = 'admitted'::text) = (key_registration_id IS NOT NULL)))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_admission_claim_check CHECK (((claim_kind <> 'reconcile-admission'::text) OR (receipt_descriptor IS NOT NULL))),
+    CONSTRAINT cpk_delegation_key_generation_attempts_time_check CHECK ((updated_at >= created_at)),
+    CONSTRAINT cpk_delegation_key_generation_attempts_pkey PRIMARY KEY (workspace_id, command_kind, request_id),
+    CONSTRAINT cpk_delegation_key_generation_attempts_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces (workspace_id) ON DELETE CASCADE,
+    CONSTRAINT cpk_delegation_key_generation_attempts_reference_fk FOREIGN KEY (reference_registration_id, workspace_id) REFERENCES cpk_secret_references (registration_id, workspace_id),
+    CONSTRAINT cpk_delegation_key_generation_attempts_key_fk FOREIGN KEY (key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys (registration_id, workspace_id)
+);

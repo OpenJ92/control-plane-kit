@@ -266,6 +266,45 @@ class DelegationKeyGenerationAttemptTests(unittest.TestCase):
             self.assertEqual(uow.stores.secret_references.list_active("workspace-a"), ())
             self.assertEqual(uow.stores.delegation_signing_keys.list_workspace("workspace-a"), ())
 
+    def test_stale_fence_after_tentative_fold_rolls_back_reference_and_key(self):
+        from control_plane_kit_operations.delegation_key_generation import admit_generated_in_unit_of_work
+        self.reserve()
+        old = self.claim()
+        self.receipt(old)
+        self.claim(reconcile=True, fence=old.fence)
+        retained = self.read()
+        with self.assertRaises(self.api.GenerationAttemptConflict):
+            with self.fixture.unit_of_work() as uow:
+                admitted = admit_generated_in_unit_of_work(uow, AdmitGeneratedDelegationSigningKey(
+                    self.grant, retained.receipt, "operator-a", LATER, SCOPES
+                ))
+                uow.stores.delegation_key_generation_attempts.record_admitted(old, admitted, admitted_at=LATER)
+                uow.commit()
+        self.assertEqual(self.read(), retained)
+        with self.fixture.unit_of_work() as uow:
+            self.assertEqual(uow.stores.secret_references.list_active("workspace-a"), ())
+            self.assertEqual(uow.stores.delegation_signing_keys.list_workspace("workspace-a"), ())
+
+    def test_physical_commit_failure_rolls_back_all_admission_but_retains_receipt(self):
+        self.reserve()
+        claim = self.claim()
+        retained = self.receipt(claim)
+
+        @contextmanager
+        def failing_commit():
+            with self.fixture.unit_of_work() as uow:
+                connection = uow.stores.connection
+                connection.execute("CREATE TEMP TABLE generation_commit_guard (value integer UNIQUE DEFERRABLE INITIALLY DEFERRED)")
+                yield uow
+                connection.execute("INSERT INTO generation_commit_guard VALUES (1),(1)")
+
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            self.admit(claim, factory=failing_commit)
+        self.assertEqual(self.read(), retained)
+        with self.fixture.unit_of_work() as uow:
+            self.assertEqual(uow.stores.secret_references.list_active("workspace-a"), ())
+            self.assertEqual(uow.stores.delegation_signing_keys.list_workspace("workspace-a"), ())
+
     def test_nonempty_pre_attempt_schema_refuses_without_repair_or_row_loss(self):
         schema = "generation_attempt_" + uuid.uuid4().hex
         with psycopg.connect(self.fixture.database_url, autocommit=True) as connection:

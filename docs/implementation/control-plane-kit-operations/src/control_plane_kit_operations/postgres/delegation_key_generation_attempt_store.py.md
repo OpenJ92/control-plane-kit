@@ -1,0 +1,21 @@
+Source: [delegation_key_generation_attempt_store.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/delegation_key_generation_attempt_store.py).
+
+The store shares its caller's connection and never commits. Exact workspace,
+command kind and request identify one immutable intent. Reserve-or-read conflicts
+on changed fingerprint, including full actor identity. Row locks and expected
+fences serialize initial and explicit reconciliation claims; one invocation makes
+one claim attempt. There is no lease, timer or automatic redispatch.
+
+Native state/fence/time/admission columns constrain closed typed intent and
+receipt descriptors. Reads reconstruct exact values and fingerprint, bound JSON
+before transfer, and verify admitted references against stored key/public identity
+and provider-version metadata. Historical admission remains readable through
+later key/reference lifecycle changes. Schema reentry scans these records in
+bounded pages; corrupt semantics refuse rather than repair.
+
+The new relation installs only through the existing object-free current-schema
+program. A nonempty older namespace without it is incompatible and returns the
+existing bounded reset-required refusal without performing reset or migration.
+Workspace deletion uses the existing parent cascade; no independent cleanup or
+retention process is introduced. Core #2024 tests own the durable concurrency,
+receipt retention and atomic admission laws; #2025 owns provider execution.

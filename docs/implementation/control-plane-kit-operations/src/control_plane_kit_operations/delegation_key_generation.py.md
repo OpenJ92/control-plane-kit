@@ -24,7 +24,10 @@ legacy mappings and refuses direct cross-intent relabeling. The focused red
 failed at the old health-purpose restriction before health admission assertions
 were reached; green evidence must exercise those later assertions.
 
-Core #2024 owns typed durable attempts and the transaction-participating admission
-seam; #2025 owns the complete public generation/status/reconciliation service.
-This leaf adds no table, route, automatic retry, provider I/O or live-effect
-authority. Existing public types and the single-UoW reference/key fold remain.
+`admit_generated_in_unit_of_work` joins an existing active caller transaction and
+never requests commit. The existing `admit_generated` method validates first,
+opens its normal UoW, invokes that shared fold, and requests commit. The typed
+attempt owner uses the same fold to commit reference, key and admitted attempt
+together. A retained public receipt lives in a prior transaction and survives a
+failed admission. Core #2025 still owns complete public generation/status/
+reconciliation, with provider I/O outside transactions and separate activation.
