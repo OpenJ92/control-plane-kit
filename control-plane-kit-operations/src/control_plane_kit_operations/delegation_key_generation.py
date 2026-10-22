@@ -17,6 +17,7 @@ from control_plane_kit_core.secrets import (
     SecretCustodyStatus,
     SecretReference,
     SecretUseIntent,
+    health_signing_intent_for,
 )
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisterDelegationSigningKeyCommand,
@@ -87,11 +88,10 @@ class DelegationKeyGenerationGrant:
             raise DelegationKeyGenerationError(
                 "generation grant requires secret custody authority"
             )
-        if self.custody_grant.intent is not SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY:
+        if self.custody_grant.intent is not _generation_intent_for(self.purpose):
             raise DelegationKeyGenerationError(
                 "generation grant has an unsupported secret intent"
             )
-        _require_generation_purpose(self.purpose)
         _identifier(self.issuer, "issuer")
         _text(self.requested_at, "requested_at")
 
@@ -245,7 +245,7 @@ class DelegationKeyGenerationService:
         if not isinstance(command, GenerateDelegationSigningKey):
             raise TypeError("command must be GenerateDelegationSigningKey")
         _scope(command.actor_scopes, PolicyScope.DELEGATION_KEY_GENERATE)
-        _require_generation_purpose(command.purpose)
+        intent = _generation_intent_for(command.purpose)
         with self._unit_of_work_factory() as unit_of_work:
             try:
                 provider = unit_of_work.stores.secret_providers.require_active_registration(
@@ -260,7 +260,7 @@ class DelegationKeyGenerationService:
                 provider=provider,
                 workspace_id=command.workspace_id,
                 reference=command.reference,
-                intent=SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
+                intent=intent,
                 actor_subject=command.actor_subject,
                 actor_scopes=command.actor_scopes,
                 correlation_id=command.correlation_id,
@@ -284,7 +284,7 @@ class DelegationKeyGenerationService:
                 "command must be AdmitGeneratedDelegationSigningKey"
             )
         _scope(command.actor_scopes, PolicyScope.DELEGATION_KEY_REGISTER)
-        _require_generation_purpose(command.grant.purpose)
+        _generation_intent_for(command.grant.purpose)
         _match(command.grant, command.evidence)
         receipt = SecretCustodyReceipt(
             custody_id=command.grant.custody_grant.custody_id,
@@ -348,15 +348,21 @@ class DelegationKeyGenerationService:
         )
 
 
-def _require_generation_purpose(purpose: DelegationKeyPurpose) -> None:
-    # Storage support does not grant provider-generation authority.
-    if type(purpose) is DelegationKeyPurpose and purpose in (
-        DelegationKeyPurpose.GATEWAY_PROBE,
-        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
-        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
-        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
-    ):
-        return
+def _generation_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
+    if type(purpose) is DelegationKeyPurpose:
+        if purpose in (
+            DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT,
+        ):
+            return health_signing_intent_for(purpose)
+        # Preserve existing internal generation semantics for legacy purposes.
+        if purpose in (
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+        ):
+            return SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY
     raise DelegationKeyGenerationError("generation purpose is unsupported")
 
 
