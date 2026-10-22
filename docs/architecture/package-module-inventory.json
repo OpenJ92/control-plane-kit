@@ -2,6 +2,34 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.delegation_key_generation_attempts",
+      "destination": "control_plane_kit_operations.delegation_key_generation_attempts",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_key_generation_attempts.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "validation", "admission"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["GenerationAttemptIntent", "DelegationKeyGenerationAttempt", "GenerationAttemptClaim", "GenerationAttemptAdmissionService"],
+      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.delegation_key_generation"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.delegation_key_generation_attempt_store"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_delegation_key_generation_attempts.py"],
+      "motivation": "Typed generation intent and receipt with full original actor identity; atomic admission without provider execution."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.delegation_key_generation_attempt_store",
+      "destination": "control_plane_kit_operations.postgres.delegation_key_generation_attempt_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/delegation_key_generation_attempt_store.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["persistence", "validation"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["DelegationKeyGenerationAttemptStore"],
+      "internal_dependencies": ["control_plane_kit_operations.delegation_key_generation", "control_plane_kit_operations.delegation_key_generation_attempts", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.temporal", "control_plane_kit_operations.postgres.secret_provider_store", "control_plane_kit_operations.postgres.delegation_signing_key_store"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.stores", "control_plane_kit_operations.postgres.current_data_validation"],
+      "optional_external_dependencies": ["psycopg"],
+      "protecting_tests": ["tests/test_delegation_key_generation_attempts.py", "tests/test_current_schema_installation.py"],
+      "motivation": "Caller-transaction generation attempt store with fenced explicit claims, immutable receipt retention and verified atomic admission."
+    },
+    {
       "module": "control_plane_kit_operations._workload_verifier_authority",
       "destination": "control_plane_kit_operations._workload_verifier_authority",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_workload_verifier_authority.py",

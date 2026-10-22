@@ -33,6 +33,9 @@ from control_plane_kit_operations.postgres.failed_run_compensation_attempt_store
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
 )
+from control_plane_kit_operations.postgres.delegation_key_generation_attempt_store import (
+    DelegationKeyGenerationAttemptStore,
+)
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresRealizedGraphProjectionStore,
@@ -128,9 +131,11 @@ class PostgresStoreBundle:
         init=False
     )
     delegation_signing_keys: DelegationSigningKeyStore = field(init=False)
+    delegation_key_generation_attempts: DelegationKeyGenerationAttemptStore = field(init=False)
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "delegation_key_generation_attempts", DelegationKeyGenerationAttemptStore(self.connection))
         object.__setattr__(self, "configuration_preparation", ConfigurationPreparationStore(self.connection))
         object.__setattr__(self, "configuration_completions", ConfigurationCompletionStore(self.connection))
         object.__setattr__(self, "configuration_acceptance", ConfigurationAcceptanceStore(self.connection))
