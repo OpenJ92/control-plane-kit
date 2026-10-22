@@ -34,6 +34,7 @@ from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_sc
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
     SecretProviderKind,
+    SecretProviderRegistrationError,
     SecretProviderRegistrationService,
 )
 
@@ -68,6 +69,15 @@ class _ProviderResult:
 
 
 class DelegationKeyGenerationTests(unittest.TestCase):
+    purpose = DelegationKeyPurpose.GATEWAY_PROBE
+    intent = SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY
+    compatible_purposes = (
+        DelegationKeyPurpose.GATEWAY_PROBE,
+        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+    )
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -102,7 +112,7 @@ class DelegationKeyGenerationTests(unittest.TestCase):
                 allowed_reference_prefixes=(
                     SecretReference("secret://workspace-secrets/keys"),
                 ),
-                allowed_intents=(SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,),
+                allowed_intents=(self.intent,),
                 admitted_by="operator-a",
                 admitted_at="2026-08-01T11:00:00Z",
                 actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
@@ -134,7 +144,8 @@ class DelegationKeyGenerationTests(unittest.TestCase):
         grant = self.service().prepare(command)
 
         self.assertEqual(grant.workspace_id, "workspace-a")
-        self.assertEqual(grant.purpose, DelegationKeyPurpose.GATEWAY_PROBE)
+        self.assertEqual(grant.purpose, self.purpose)
+        self.assertEqual(grant.custody_grant.intent, self.intent)
         self.assertEqual(grant.issuer, "cpk-server")
         self.assertEqual(grant.reference, command.reference)
         self.assertEqual(
@@ -144,44 +155,52 @@ class DelegationKeyGenerationTests(unittest.TestCase):
         self.assertNotIn("private", repr(grant).lower())
         self.assertNotIn("token-value", repr(grant).lower())
 
-    def test_health_generation_is_refused_before_unit_of_work(self) -> None:
-        calls = []
-
-        def counted_unit_of_work():
-            calls.append("entered")
-            return self.unit_of_work()
-
-        service = DelegationKeyGenerationService(counted_unit_of_work)
-        for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
-                        DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT):
+    def test_prepare_preserves_exact_purpose_intent_mapping(self) -> None:
+        for purpose in self.compatible_purposes:
             with self.subTest(purpose=purpose):
-                with self.assertRaisesRegex(DelegationKeyGenerationError,
-                                            "^generation purpose is unsupported$") as raised:
-                    service.prepare(replace(self.generate_command(), purpose=purpose))
-                self.assertIsNone(raised.exception.__cause__)
-                self.assertIsNone(raised.exception.__context__)
-                self.assertEqual(calls, [])
+                grant = self.service().prepare(
+                    replace(self.generate_command(), purpose=purpose)
+                )
+                self.assertEqual(grant.purpose, purpose)
+                self.assertEqual(grant.custody_grant.intent, self.intent)
+
+    def test_prepare_refuses_provider_intent_mismatch_without_admission(self) -> None:
+        purpose = (
+            DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ
+            if self.purpose is DelegationKeyPurpose.GATEWAY_PROBE
+            else DelegationKeyPurpose.GATEWAY_PROBE
+        )
+        with self.assertRaisesRegex(
+            SecretProviderRegistrationError,
+            "^secret reference intents exceed provider admission$",
+        ):
+            self.service().prepare(replace(self.generate_command(), purpose=purpose))
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.secret_references.list_active("workspace-a"), ())
             self.assertEqual(uow.stores.delegation_signing_keys.list_workspace("workspace-a"), ())
 
-    def test_direct_health_generation_grant_cannot_relabel_probe_custody(self) -> None:
+    def test_direct_generation_grant_cannot_relabel_other_intent_custody(self) -> None:
         grant = self.service().prepare(self.generate_command())
-        for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+        for purpose in (DelegationKeyPurpose.GATEWAY_PROBE,
+                        DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
                         DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT):
+            if purpose is self.purpose:
+                continue
             with self.subTest(purpose=purpose):
                 with self.assertRaisesRegex(DelegationKeyGenerationError,
-                                            "^generation purpose is unsupported$") as raised:
+                                            "^generation grant has an unsupported secret intent$") as raised:
                     replace(grant, purpose=purpose)
                 self.assertIsNone(raised.exception.__cause__)
                 self.assertIsNone(raised.exception.__context__)
+        with self.assertRaisesRegex(DelegationKeyGenerationError,
+                                    "^generation purpose is unsupported$"):
+            replace(grant, purpose=self.purpose.value)
 
     def test_fold_atomically_admits_reference_and_public_identity(self) -> None:
         grant = self.service().prepare(self.generate_command())
-        evidence = DelegationKeyGenerationEvidence.from_provider_result(
-            grant,
-            _ProviderResult(),
-        )
+        result = _ProviderResult()
+        result.purpose = self.purpose
+        evidence = DelegationKeyGenerationEvidence.from_provider_result(grant, result)
 
         admitted = self.service().admit_generated(
             AdmitGeneratedDelegationSigningKey(
@@ -194,7 +213,10 @@ class DelegationKeyGenerationTests(unittest.TestCase):
         )
 
         self.assertEqual(admitted.secret_reference.reference, evidence.reference)
+        self.assertEqual(admitted.secret_reference.allowed_intents, (self.intent,))
         self.assertEqual(admitted.signing_key.public_key, evidence.public_key)
+        self.assertEqual(admitted.signing_key.purpose, self.purpose)
+        self.assertIsNone(admitted.signing_key.activated_at)
         self.assertEqual(admitted.provider_version_id, "version-a")
         self.assertEqual(admitted.provider_version_number, 1)
         self.assertFalse(admitted.replayed)
@@ -205,7 +227,7 @@ class DelegationKeyGenerationTests(unittest.TestCase):
             )
             stored_key = unit_of_work.stores.delegation_signing_keys.get(
                 "workspace-a",
-                DelegationKeyPurpose.GATEWAY_PROBE,
+                self.purpose,
                 "cpk-server",
                 evidence.public_key.key_id,
             )
@@ -249,7 +271,7 @@ class DelegationKeyGenerationTests(unittest.TestCase):
         conflicting_evidence = DelegationKeyGenerationEvidence(
             workspace_id="workspace-a",
             reference=second_reference,
-            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            purpose=self.purpose,
             issuer="cpk-server",
             correlation_id="rotation-gateway-b-replacement",
             version_id="version-b",
@@ -283,6 +305,11 @@ class DelegationKeyGenerationTests(unittest.TestCase):
         grant = self.service().prepare(self.generate_command())
         mismatches = (
             replace(self.evidence(), workspace_id="workspace-b"),
+            replace(self.evidence(), purpose=(
+                DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ
+                if self.purpose is DelegationKeyPurpose.GATEWAY_PROBE
+                else DelegationKeyPurpose.GATEWAY_PROBE
+            )),
             replace(self.evidence(), issuer="other-issuer"),
             replace(self.evidence(), correlation_id="rotation-other"),
             replace(
@@ -329,7 +356,7 @@ class DelegationKeyGenerationTests(unittest.TestCase):
             reference=SecretReference(
                 "secret://workspace-secrets/keys/gateway-b"
             ),
-            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            purpose=self.purpose,
             issuer="cpk-server",
             actor_subject="operator-a",
             correlation_id="rotation-gateway-b",
@@ -343,7 +370,7 @@ class DelegationKeyGenerationTests(unittest.TestCase):
             reference=SecretReference(
                 "secret://workspace-secrets/keys/gateway-b"
             ),
-            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            purpose=self.purpose,
             issuer="cpk-server",
             correlation_id="rotation-gateway-b",
             version_id="version-a",
@@ -355,6 +382,18 @@ class DelegationKeyGenerationTests(unittest.TestCase):
             ),
             replayed=False,
         )
+
+
+class WorkloadHealthDelegationKeyGenerationTests(DelegationKeyGenerationTests):
+    purpose = DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ
+    intent = SecretUseIntent.WORKLOAD_NODE_HEALTH_READ_SIGNING_KEY
+    compatible_purposes = (purpose,)
+
+
+class GatewayHealthDelegationKeyGenerationTests(DelegationKeyGenerationTests):
+    purpose = DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT
+    intent = SecretUseIntent.GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY
+    compatible_purposes = (purpose,)
 
 
 if __name__ == "__main__":
