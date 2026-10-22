@@ -731,6 +731,40 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                     self.assertEqual(observed_index[field], expected_index[field])
         postgres.install_schema(self.connection)
 
+    def test_generation_attempt_schema_matches_frozen_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import current_schema_verification, schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        # This test owns a fresh namespace. Observe the current SQL before the
+        # installer rolls a mismatched schema back; never repair existing truth.
+        self.connection.execute(schema._CURRENT_SCHEMA_SQL)
+        query, separator, _ = current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
+            "\nSELECT\n  COALESCE(")
+        self.assertTrue(separator, "semantic verifier query boundary changed")
+        sections = ("relations", "columns", "constraints", "indexes")
+        limits = tuple(len(getattr(contract, section)) + 1 for section in sections)
+        relation = "cpk_delegation_key_generation_attempts"
+        for section, order in zip(sections, ("relname", "attnum", "conname", "index_name")):
+            expected = [json.loads(json.dumps(dataclasses.asdict(item)))
+                for item in getattr(contract, section)
+                if (item.name if section == "relations" else item.relation) == relation]
+            rows = self.connection.execute(
+                query + f"\nSELECT value FROM semantic_{section} "
+                f"WHERE relname=%s ORDER BY {order} LIMIT %s",
+                (*limits, relation, len(expected) + 1),
+            ).fetchall()
+            self.assertEqual(len(rows), len(expected), section)
+            for row, declared in zip(rows, expected):
+                observed = row[0]
+                self.assertEqual(set(observed), set(declared), section)
+                for field in sorted(declared):
+                    self.assertEqual(observed[field], declared[field],
+                        f"{section}/{declared['name']}/{field}: "
+                        f"expected={declared[field]!r}; actual={observed[field]!r}")
+        self.assertTrue(current_schema_verification.current_schema_contract_is_exact(self.connection))
+        postgres.install_schema(self.connection)
+
     def test_version_authorization_schema_matches_frozen_contract(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract
         from control_plane_kit_operations.postgres import current_schema_verification, schema
