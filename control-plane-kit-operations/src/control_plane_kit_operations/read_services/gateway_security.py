@@ -14,6 +14,9 @@ from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKey,
     RegisteredDelegationSigningKeyStatus,
 )
+from control_plane_kit_operations.delegation_key_generation_attempts import (
+    GeneratedDelegationKeyReceipt, GenerationAttemptError, GenerationAttemptNotFound,
+)
 from control_plane_kit_operations.gateway_probes import (
     GatewayProbeError,
     GatewayProbeVerifierConfiguration,
@@ -23,7 +26,7 @@ from control_plane_kit_operations.records import WorkspaceRecord
 
 from .errors import ReadModelError
 from .models import FocusedDetailReadModel
-from .protocols import DelegationSigningKeyStore, GatewayProbeStore
+from .protocols import DelegationSigningKeyStore, GatewayProbeStore, GenerationAttemptStore
 
 
 _WORKLOAD_PURPOSES = (
@@ -41,10 +44,24 @@ class _GatewaySecurityReadProjection:
         *,
         gateway_probe_store: GatewayProbeStore | None,
         delegation_signing_key_store: DelegationSigningKeyStore | None,
+        generation_attempt_store: GenerationAttemptStore | None = None,
     ) -> None:
         self._require_workspace = require_workspace
         self._gateway_probe_store = gateway_probe_store
         self._delegation_signing_key_store = delegation_signing_key_store
+        self._generation_attempt_store = generation_attempt_store
+
+    def delegation_key_generation(self, workspace_id: str, request_id: str) -> GeneratedDelegationKeyReceipt:
+        self._require_workspace(workspace_id)
+        if self._generation_attempt_store is None:
+            raise ReadModelError("generation attempt store is not configured")
+        try:
+            return GeneratedDelegationKeyReceipt(self._generation_attempt_store.get(workspace_id, request_id))
+        except GenerationAttemptNotFound:
+            failure = "missing generation request"
+        except GenerationAttemptError:
+            failure = "generation request is unavailable"
+        raise ReadModelError(failure)
 
     def gateway_probe_timeline(
         self,

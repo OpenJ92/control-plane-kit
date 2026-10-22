@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import replace
+import asyncio
 import importlib
 import importlib.util
 import json
@@ -16,13 +17,18 @@ from control_plane_kit_core.identity import (
     PrincipalKind, WorkspaceGrant,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.secrets import SecretProviderId, SecretReference
+from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.secrets import SecretProviderId, SecretReference, SecretUseIntent
 from control_plane_kit_operations.delegation_key_generation_attempts import (
     GenerationAttemptAuthorizationDenied, GenerationAttemptConflict,
     GenerationAttemptError, GenerationAttemptState,
 )
 from control_plane_kit_operations.secret_providers import (
+    RegisterSecretReferenceCommand, RevokeSecretReferenceCommand,
     RevokeSecretProviderCommand, SecretProviderRegistrationService,
+)
+from control_plane_kit_operations.cpk_server import (
+    CpkServerApplicationError, CpkServerExecutionService, CpkServerReadService,
 )
 import test_delegation_key_generation as generation_fixture
 
@@ -201,6 +207,24 @@ class DelegationKeyGenerationCommandTests(unittest.TestCase):
                 release.set()
             self.assertEqual(initial.result(timeout=15).descriptor()["state"], "admitted")
 
+    def test_current_denial_after_claim_commit_prevents_provider_invocation(self):
+        original = self.authorizer
+
+        def authorize(principal, workspace):
+            rows = self.fixture.connection.execute(
+                "SELECT state FROM cpk_delegation_key_generation_attempts "
+                "WHERE workspace_id='workspace-a' AND request_id='request-a'"
+            ).fetchall()
+            if rows == [("dispatching",)]:
+                original.available = False
+            return original.authorize(principal, workspace)
+
+        self.authorizer = SimpleNamespace(authorize=authorize)
+        with self.assertRaises(GenerationAttemptAuthorizationDenied):
+            self.service().generate(self.command())
+        self.assertEqual(self.read().state, GenerationAttemptState.DISPATCHING)
+        self.assertEqual(self.calls, [])
+
     def test_process_loss_requires_explicit_original_correlation_reconciliation(self):
         def interrupted(grant):
             raise _ProcessLoss()
@@ -292,3 +316,178 @@ class DelegationKeyGenerationCommandTests(unittest.TestCase):
         with self.assertRaises(GenerationAttemptError):
             self.service().generate(replace(self.command(), purpose=DelegationKeyPurpose.GATEWAY_PROBE))
         self.assertEqual(self.calls, [])
+
+    def test_previously_revoked_destination_refuses_before_reserve_or_effect(self):
+        owner = SecretProviderRegistrationService(self.fixture.unit_of_work)
+        reference = owner.register_reference(RegisterSecretReferenceCommand(
+            workspace_id="workspace-a", reference=self.command().secret_reference,
+            provider_registration_id=self.fixture.provider.registration_id,
+            allowed_intents=(self.fixture.intent,), admitted_by="operator-a",
+            admitted_at=NOW, actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+        ))
+        owner.revoke_reference(RevokeSecretReferenceCommand(
+            workspace_id="workspace-a", registration_id=reference.registration_id,
+            revoked_by="operator-a", revoked_at=NOW,
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+        ))
+        with self.assertRaises(GenerationAttemptConflict):
+            self.service().generate(self.command())
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.fixture.connection.execute(
+            "SELECT count(*) FROM cpk_delegation_key_generation_attempts"
+        ).fetchone(), (0,))
+
+    def test_all_public_purposes_require_their_exact_provider_intent(self):
+        families = (
+            (DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT,
+             SecretUseIntent.GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY),
+            (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+             SecretUseIntent.WORKLOAD_NODE_HEALTH_READ_SIGNING_KEY),
+            (DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+             SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY),
+        )
+        for index, (purpose, intent) in enumerate(families):
+            with self.subTest(purpose=purpose):
+                fixture = generation_fixture.DelegationKeyGenerationTests()
+                fixture.purpose, fixture.intent = purpose, intent
+                fixture.setUp()
+                self.addCleanup(fixture.tearDown)
+                self.fixture, self.calls = fixture, []
+                with self.assertRaises(GenerationAttemptConflict):
+                    self.service().generate(replace(self.command(), purpose=families[(index + 1) % 3][0]))
+                self.assertEqual(self.calls, [])
+                result = self.service().generate(self.command()).descriptor()
+                self.assertEqual(result["state"], "admitted")
+                self.assertEqual(result["purpose"], purpose.value)
+                self.assertEqual(self.calls[0].custody_grant.intent, intent)
+
+    def test_reconciliation_requires_full_original_actor(self):
+        self.behavior = lambda grant: (_ for _ in ()).throw(_ProcessLoss())
+        with self.assertRaises(_ProcessLoss):
+            self.service().generate(self.command())
+        for identity in (
+            replace(self.context.principal.identity, issuer="other-issuer"),
+            replace(self.context.principal.identity, kind=PrincipalKind.SERVICE),
+        ):
+            context = replace(self.context.principal, identity=identity).command_context("workspace-a")
+            with self.assertRaises(GenerationAttemptAuthorizationDenied):
+                self.service().reconcile(self.api.ReconcileDelegationKeyGenerationCommand(context, "request-a"))
+        self.assertEqual(len(self.calls), 1)
+
+    def test_post_effect_reference_conflict_retains_receipt_and_does_not_reinvoke(self):
+        def competing_admission(grant):
+            SecretProviderRegistrationService(self.fixture.unit_of_work).register_reference(
+                RegisterSecretReferenceCommand(
+                    workspace_id="workspace-a", reference=grant.reference,
+                    provider_registration_id=self.fixture.provider.registration_id,
+                    allowed_intents=(self.fixture.intent,), admitted_by="operator-a",
+                    admitted_at=NOW, actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+                ))
+            return self.provider_result(grant)
+
+        self.behavior = competing_admission
+        result = self.service().generate(self.command()).descriptor()
+        self.assertEqual(result["state"], "receipt-recorded")
+        self.assertIsNone(result["admission"])
+        self.assertEqual(self.reconcile().descriptor()["state"], "receipt-recorded")
+        self.assertEqual(len(self.calls), 1)
+        with self.fixture.unit_of_work() as uow:
+            self.assertEqual(uow.stores.delegation_signing_keys.list_workspace("workspace-a"), ())
+
+    def test_competing_explicit_reconciliation_cannot_overwrite_newer_completion(self):
+        self.behavior = lambda grant: (_ for _ in ()).throw(_ProcessLoss())
+        with self.assertRaises(_ProcessLoss):
+            self.service().generate(self.command())
+        entered, release = threading.Event(), threading.Event()
+
+        def competing(grant):
+            result = self.provider_result(grant)
+            if len(self.calls) == 2:
+                entered.set()
+                if not release.wait(timeout=15):
+                    raise AssertionError("test did not release old reconciliation")
+                result.metadata.version_id = "stale-version"
+            return result
+
+        self.behavior = competing
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            old = pool.submit(self.reconcile)
+            try:
+                self.assertTrue(entered.wait(timeout=10))
+                current = pool.submit(self.reconcile).result(timeout=10).descriptor()
+                self.assertEqual(current["state"], "admitted")
+                self.assertEqual(current["receipt"]["version_id"], "version-a")
+            finally:
+                release.set()
+            self.assertEqual(old.result(timeout=10).descriptor(), current)
+        self.assertEqual(len(self.calls), 3)
+        self.assertTrue(all(grant == self.calls[0] for grant in self.calls))
+
+    def route_request(self, route, *, surface="http", payload=None, principal=None):
+        path = {"workspace_id": "workspace-a"}
+        if route != "command.delegation-key.generate":
+            path["request_id"] = "request-a"
+        payload = dict(payload or {})
+        if surface == "mcp":
+            payload = {**path, **payload}
+            path = {}
+        return SimpleNamespace(
+            surface=surface, route_id=route,
+            service_role=ControlPlaneServiceRole.READS if route.startswith("read.") else ControlPlaneServiceRole.EXECUTION,
+            path_parameters=path, payload=payload,
+            principal=principal or self.context.principal,
+        )
+
+    def public_payload(self):
+        command = self.command()
+        return {"request_id": command.request_id,
+                "provider_registration_id": command.provider_registration_id,
+                "secret_reference": command.secret_reference.reference_id,
+                "purpose": command.purpose.value, "issuer": command.issuer}
+
+    def test_http_mcp_sync_async_and_exact_status_share_durable_owner(self):
+        adapter = CpkServerExecutionService(None, delegation_key_generation=self.service())
+        first = adapter.handle(self.route_request("command.delegation-key.generate", payload=self.public_payload()))
+        duplicate = asyncio.run(adapter.handle_async(self.route_request(
+            "command.delegation-key.generate", surface="mcp", payload=self.public_payload())))
+        self.assertEqual(first, duplicate)
+        self.assertEqual(len(self.calls), 1)
+        read_principal = replace(self.context.principal, workspace_grants=(WorkspaceGrant(
+            "workspace-a", (PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),))
+        reads = CpkServerReadService(self.fixture.unit_of_work)
+        for surface in ("http", "mcp"):
+            request = self.route_request("read.delegation-key-generation", surface=surface, principal=read_principal)
+            self.assertEqual(reads.handle(request), first)
+        self.assertEqual(adapter.handle(self.route_request("command.delegation-key-generation.reconcile")), first)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_public_extra_fields_and_missing_service_fail_before_provider(self):
+        adapter = CpkServerExecutionService(None, delegation_key_generation=self.service())
+        for surface in ("http", "mcp"):
+            for name in ("actor_id", "actor_scopes", "requested_at", "provider_url", "credentials", "labels"):
+                with self.subTest(surface=surface, field=name):
+                    request = self.route_request("command.delegation-key.generate", surface=surface,
+                        payload={**self.public_payload(), name: "untrusted"})
+                    with self.assertRaises(CpkServerApplicationError) as raised:
+                        adapter.handle(request)
+                    self.assertEqual(raised.exception.status, 400)
+            request = self.route_request("command.delegation-key.generate", surface=surface,
+                                         payload=self.public_payload())
+            with self.assertRaises(CpkServerApplicationError) as raised:
+                CpkServerExecutionService(None).handle(request)
+            self.assertEqual(raised.exception.status, 501)
+        self.assertEqual(self.calls, [])
+
+    def test_exact_status_requires_both_read_scopes_and_closed_request(self):
+        reads = CpkServerReadService(self.fixture.unit_of_work)
+        for scopes in ((PolicyScope.DELEGATION_KEY_READ,), (PolicyScope.INSTANCE_WORKSPACE_READ,)):
+            principal = replace(self.context.principal, workspace_grants=(WorkspaceGrant("workspace-a", scopes),))
+            with self.assertRaises(CpkServerApplicationError) as raised:
+                reads.handle(self.route_request("read.delegation-key-generation", principal=principal))
+            self.assertEqual(raised.exception.status, 403)
+        principal = replace(self.context.principal, workspace_grants=(WorkspaceGrant(
+            "workspace-a", (PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),))
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            reads.handle(self.route_request("read.delegation-key-generation", principal=principal,
+                                            payload={"limit": 10}))
+        self.assertEqual(raised.exception.status, 400)

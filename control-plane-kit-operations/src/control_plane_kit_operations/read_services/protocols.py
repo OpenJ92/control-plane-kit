@@ -11,6 +11,7 @@ from control_plane_kit_core.secrets import SecretProviderId
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKey,
 )
+from control_plane_kit_operations.delegation_key_generation_attempts import DelegationKeyGenerationAttempt
 from control_plane_kit_operations.read_pages import ReadPage, ReadPageRequest
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -34,6 +35,10 @@ from control_plane_kit_operations.secret_providers import (
 
 class SavedPreparationSourceStore(Protocol):
     def get(self, workspace_id: str, session_id: str) -> SavedPreparationSourceRecord | None: ...
+
+
+class GenerationAttemptStore(Protocol):
+    def get(self, workspace_id: str, request_id: str) -> DelegationKeyGenerationAttempt: ...
 
 
 class WorkspaceStore(Protocol):

@@ -818,6 +818,10 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.delegation-key-generation", "read.delegation-key-generation",
+        "get_delegation_key_generation", "GeneratedDelegationKeyReceipt",
+    ),
+    (
         "read.receiver-authoring-context",
         "read.receiver-authoring-context",
         "get_receiver_authoring_context",
@@ -1055,6 +1059,16 @@ _OPERATOR_READ_PROJECTIONS = (
 
 
 _OPERATOR_COMMANDS = (
+    (
+        "delegation-key.generate", "command.delegation-key.generate", "generate_delegation_key",
+        ControlPlaneServiceRole.EXECUTION, "GenerateDelegationKeyRequest",
+        "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "delegation-key-generation.reconcile", "command.delegation-key-generation.reconcile",
+        "reconcile_delegation_key_generation", ControlPlaneServiceRole.EXECUTION,
+        "ReconcileDelegationKeyGenerationRequest", "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+    ),
     (
         "delegation-key.register",
         "command.delegation-key.register",

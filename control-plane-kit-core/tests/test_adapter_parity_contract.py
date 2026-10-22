@@ -54,6 +54,10 @@ class AdapterParityContractTests(unittest.TestCase):
                     "GraphReadResponse",
                 ),
                 (
+                    "read.delegation-key-generation", "read.delegation-key-generation",
+                    "get_delegation_key_generation", "GeneratedDelegationKeyReceipt",
+                ),
+                (
                     "read.delegation-keys",
                     "read.delegation-keys",
                     "list_delegation_keys",

@@ -2,6 +2,20 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.delegation_key_generation_commands",
+      "destination": "control_plane_kit_operations.delegation_key_generation_commands",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_key_generation_commands.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "authorization", "effects"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["GenerateDelegationKeyCommand", "ReconcileDelegationKeyGenerationCommand", "DelegationKeyGenerationCommandService"],
+      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.delegation_key_generation", "control_plane_kit_operations.delegation_key_generation_attempts", "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.secret_providers"],
+      "known_package_consumers": ["control_plane_kit_operations.cpk_server"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_delegation_key_generation_commands.py"],
+      "motivation": "Explicit generation and reconciliation through existing durable owners with current authority, bounded evidence, and no transaction across provider IO."
+    },
+    {
       "module": "control_plane_kit_operations.delegation_key_generation_attempts",
       "destination": "control_plane_kit_operations.delegation_key_generation_attempts",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_key_generation_attempts.py",

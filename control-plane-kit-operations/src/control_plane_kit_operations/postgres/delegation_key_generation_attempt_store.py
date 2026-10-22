@@ -11,7 +11,8 @@ from control_plane_kit_operations.delegation_key_generation import AdmittedGener
 from control_plane_kit_operations.delegation_key_generation_attempts import (
     COMMAND_KIND, MAX_DESCRIPTOR_BYTES, MAX_FENCE,
     DelegationKeyGenerationAttempt, GenerationAttemptClaim, GenerationAttemptConflict,
-    GenerationAttemptError, GenerationAttemptIntent, GenerationAttemptState, GenerationClaimKind,
+    GenerationAttemptError, GenerationAttemptIntent, GenerationAttemptNotFound,
+    GenerationAttemptState, GenerationClaimKind,
     _identifier, decode_intent, decode_receipt, receipt_descriptor, validated_receipt,
 )
 from .schema import PostgresConnection
@@ -72,7 +73,7 @@ class DelegationKeyGenerationAttemptStore:
             (workspace_id, COMMAND_KIND, request_id),
         ).fetchone()
         if row is None:
-            raise GenerationAttemptConflict("generation attempt is unavailable")
+            raise GenerationAttemptNotFound("generation attempt is unavailable")
         result = _decode(row)
         if result.state is GenerationAttemptState.ADMITTED:
             self._verify_admission(result)

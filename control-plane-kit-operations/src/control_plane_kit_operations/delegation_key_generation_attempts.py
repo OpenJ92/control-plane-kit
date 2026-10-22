@@ -39,6 +39,10 @@ class GenerationAttemptConflict(GenerationAttemptError):
     """Immutable intent, claim or durable outcome conflicts."""
 
 
+class GenerationAttemptNotFound(GenerationAttemptConflict):
+    """The exact request has no durable record; corruption is not absence."""
+
+
 class GenerationAttemptAuthorizationDenied(GenerationAttemptError):
     """Original operator identity or current admission authority is absent."""
 
@@ -92,6 +96,15 @@ def _hash(value: dict[str, object]) -> str:
     ).encode("ascii")).hexdigest()
 
 
+def generation_attempt_id_for(workspace_id: str, request_id: str) -> str:
+    """Derive the original provider correlation from the durable request identity."""
+    _identifier(workspace_id)
+    _identifier(request_id)
+    return "gkat_" + _hash({
+        "workspace_id": workspace_id, "kind": COMMAND_KIND, "request_id": request_id,
+    })
+
+
 @dataclass(frozen=True)
 class GenerationAttemptIntent:
     request_id: str
@@ -123,9 +136,7 @@ class GenerationAttemptIntent:
 
     @property
     def attempt_id(self) -> str:
-        return "gkat_" + _hash({
-            "workspace_id": self.workspace_id, "kind": COMMAND_KIND, "request_id": self.request_id,
-        })
+        return generation_attempt_id_for(self.workspace_id, self.request_id)
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -236,6 +247,33 @@ class GenerationAttemptAdmissionService:
             result = store.record_admitted(claim, admitted, admitted_at=admitted_at)
             uow.commit()
         return result
+
+
+@dataclass(frozen=True)
+class GeneratedDelegationKeyReceipt:
+    """Exact authorized request result; provider receipt is not CPK admission."""
+
+    attempt: DelegationKeyGenerationAttempt
+
+    def descriptor(self) -> dict[str, object]:
+        attempt = self.attempt
+        intent = attempt.intent
+        return {
+            "attempt_id": intent.attempt_id,
+            "workspace_id": intent.workspace_id,
+            "request_id": intent.request_id,
+            "state": attempt.state.value,
+            "purpose": intent.grant.purpose.value,
+            "issuer": intent.grant.issuer,
+            "correlation_id": intent.grant.correlation_id,
+            "created_at": attempt.created_at,
+            "updated_at": attempt.updated_at,
+            "receipt": None if attempt.receipt is None else receipt_descriptor(attempt.receipt),
+            "admission": None if attempt.state is not GenerationAttemptState.ADMITTED else {
+                "reference_registration_id": attempt.reference_registration_id,
+                "key_registration_id": attempt.key_registration_id,
+            },
+        }
 
 
 def receipt_descriptor(evidence: DelegationKeyGenerationEvidence) -> dict[str, object]:
