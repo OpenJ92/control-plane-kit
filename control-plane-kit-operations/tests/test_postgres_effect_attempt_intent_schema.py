@@ -109,14 +109,14 @@ class PostgresEffectAttemptIntentSchemaTests(
         self.require_intent_schema()
         contract = CURRENT_POSTGRES_SCHEMA_CONTRACT
         relations = tuple(value.name for value in contract.relations)
-        self.assertEqual(len(relations), 56)
+        self.assertEqual(len(relations), 57)
         self.assertEqual(relations.count(RELATION), 1)
-        self.assertEqual(len(contract.columns), 722)
-        self.assertEqual(len(contract.constraints), 636)
-        self.assertEqual(len(contract.indexes), 194)
+        self.assertEqual(len(contract.columns), 735)
+        self.assertEqual(len(contract.constraints), 654)
+        self.assertEqual(len(contract.indexes), 195)
         self.assertEqual(
             sum(value.kind == "f" for value in contract.constraints),
-            166,
+            169,
         )
         columns = tuple(
             value.name for value in contract.columns if value.relation == RELATION

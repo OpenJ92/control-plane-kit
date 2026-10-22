@@ -31,3 +31,9 @@ attempt owner uses the same fold to commit reference, key and admitted attempt
 together. A retained public receipt lives in a prior transaction and survives a
 failed admission. Core #2025 still owns complete public generation/status/
 reconciliation, with provider I/O outside transactions and separate activation.
+
+The shared fold takes the purpose lifecycle lock before either registration.
+The existing node-control source inspection follows that shared owner after the
+extraction, while retaining checks that the legacy wrapper opens its UoW,
+delegates, and requests commit afterward. Behavioral fold and rollback tests
+remain the evidence for transaction effects.

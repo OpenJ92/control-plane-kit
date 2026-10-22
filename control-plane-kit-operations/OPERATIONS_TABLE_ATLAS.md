@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=98ff2912b5bde9c53127bfdc6e541408d25ddd82fa1cff22badcb20247ffc64b relations=56 columns=722 constraints=636 indexes=194 foreign-keys=166 -->
+<!-- current-schema-contract: sha256=22ddb392067d3ed8482779893f777cd791bb43f73b70f1ab2e7261a51c29f671 relations=57 columns=735 constraints=654 indexes=195 foreign-keys=169 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -120,7 +120,11 @@ foreign key and the accepted lineage cycle:
 3. Restore `cpk_realized_graph_projections`, then the retained original
    `cpk_workspace_initializations` receipts after their exact initial graphs and
    projections exist. Restore provider supersession descendants, then root and
-   descendant `cpk_secret_references`.
+   descendant `cpk_secret_references`. Restore retained
+   `cpk_delegation_key_generation_attempts` after their workspace and any admitted
+   reference/key registrations; verify the original intent and public receipt
+   against those exact identities. Restoring an unresolved attempt does not
+   authorize provider dispatch or automatic reconciliation.
 4. Set each workspace's paired current/desired graph and projection heads and
    desired revision after every selected projection exists.
 5. Restore draft heads and all retained draft revisions in one transaction after
@@ -413,6 +417,9 @@ cpk_configuration_invocation_closures -->|cpk_invocation_closures_completion_fk|
 cpk_configuration_invocation_closures -->|cpk_invocation_closures_reservation_fk| cpk_configuration_cleanup_reservations
 cpk_configuration_invocation_completions -->|cpk_configuration_completions_intent_fk| cpk_effect_attempt_intents
 cpk_configuration_invocation_completions -->|cpk_configuration_completions_outcome_fk| cpk_effect_attempt_outcomes
+cpk_delegation_key_generation_attempts -->|cpk_delegation_key_generation_attempts_key_fk| cpk_delegation_signing_keys
+cpk_delegation_key_generation_attempts -->|cpk_delegation_key_generation_attempts_reference_fk| cpk_secret_references
+cpk_delegation_key_generation_attempts -->|cpk_delegation_key_generation_attempts_workspace_fk| cpk_workspaces
 cpk_delegation_signing_keys -->|cpk_delegation_signing_keys_workspace_id_fkey| cpk_workspaces
 cpk_desired_topology_draft_revisions -->|cpk_desired_topology_draft_revisions_draft_fkey| cpk_desired_topology_drafts
 cpk_desired_topology_draft_revisions -->|cpk_desired_topology_draft_revisions_graph_fkey| cpk_graph_versions
@@ -590,6 +597,9 @@ order is semantically significant for every composite identity.
 | `cpk_invocation_closures_reservation_fk` | `cpk_configuration_invocation_closures` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | `cpk_configuration_cleanup_reservations` | `cleanup_run_id, cleanup_activity_id, cleanup_attempt, workspace_id` | Retains exact cleanup ownership and reciprocal disposition; no release or provider authority. |
 | `cpk_configuration_completions_intent_fk` | `cpk_configuration_invocation_completions` | `run_id, activity_id, attempt` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt` | Every completion retains its exact original invocation intent; owner validation proves the full selection. |
 | `cpk_configuration_completions_outcome_fk` | `cpk_configuration_invocation_completions` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt, workspace_id, request_fingerprint, outcome_fingerprint` | Completion pins the exact immutable direct outcome and its workspace/request commitments; typed completion and original-event correlation remain owner-validated. |
+| `cpk_delegation_key_generation_attempts_key_fk` | `cpk_delegation_key_generation_attempts` | `key_registration_id, workspace_id` | `cpk_delegation_signing_keys` | `registration_id, workspace_id` | An admitted attempt retains its exact signing-key registration in the same workspace; owner validation also binds its public identity to the receipt. |
+| `cpk_delegation_key_generation_attempts_reference_fk` | `cpk_delegation_key_generation_attempts` | `reference_registration_id, workspace_id` | `cpk_secret_references` | `registration_id, workspace_id` | An admitted attempt retains its exact reference registration in the same workspace; owner validation binds provider/version and original destination. |
+| `cpk_delegation_key_generation_attempts_workspace_fk` | `cpk_delegation_key_generation_attempts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every immutable generation intent belongs to its retained workspace; restrictive deletion preserves attempt history. |
 | `cpk_delegation_signing_keys_workspace_id_fkey` | `cpk_delegation_signing_keys` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Delegation signing-key registrations are workspace scoped. |
 | `cpk_desired_topology_draft_revisions_draft_fkey` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id` | `cpk_desired_topology_drafts` | `workspace_id, draft_id` | Every immutable revision belongs to the exact workspace-scoped draft. |
 | `cpk_desired_topology_draft_revisions_graph_fkey` | `cpk_desired_topology_draft_revisions` | `workspace_id, graph_id` | `cpk_graph_versions` | `workspace_id, graph_id` | Saved graph evidence belongs to the same workspace as its revision. |
@@ -932,18 +942,32 @@ deleting its retained draft history.
 - **Sensitive material:** Invocation and workspace identities are protected operational context. No configuration material, secrets, credentials, addresses or provider response bodies are copied.
 - **Future impact:** D2 must combine completion with all other cleanup requirements under lifecycle L. Parent D still requires incremental accepted-current transfer and bounded-growth evidence; D1 alone cannot release I177.
 
+### `cpk_delegation_key_generation_attempts`
+
+- **Durable meaning and owner:** `DelegationKeyGenerationAttemptStore` owns immutable generation intent, fenced dispatch/reconciliation claims, validated public receipt and terminal admission identity. A dispatch record alone does not prove provider success.
+- **Identity and cardinality:** `(workspace_id, command_kind, request_id)` is primary; command kind is fixed to `delegation-key.generate`. One request binds the full original principal and reference-only grant. Arrival timestamps do not change duplicate intent identity.
+- **Outgoing foreign keys:** Workspace ownership is mandatory. Admitted attempts additionally retain exact same-workspace reference and signing-key registrations through two composite FKs; all three use restrictive NO ACTION behavior.
+- **Inbound dependents:** No current relation references the attempt. The future authenticated generate/status/reconcile service consumes exact request identity through the owner.
+- **Writers and transactions:** Reserve and claim commit before provider I/O in the caller's orchestration. Public receipt retention commits separately before admission. The admission service joins reference registration, key registration and admitted-attempt state in one UoW; stores never commit independently.
+- **Readers and projections:** Exact lookup reconstructs closed typed intent/receipt and verifies admitted reference/key identity. Schema reentry visits all rows in strict workspace/request keyset pages of at most 100. No public listing is introduced.
+- **Mutation, locks, retries, and idempotency:** Row locks plus expected fences admit one initial claim and fence explicit reconciliation. Stale completion refuses; receipts are monotonic; admitted identity is terminal. No lease or restart reopens initial dispatch, and a newer database fence does not stop prior external I/O.
+- **Lifecycle, retention, deletion, and restore:** Retain unresolved attempts and public receipts across restart and failed admission. Restore the workspace and any admitted reference/key rows first. No cleanup, pruning, migration, reset, automatic retry or activation is provided.
+- **JSON boundary:** Closed intent/receipt descriptors are limited to 16,384 bytes and reconstructed through typed codecs. The fingerprint covers non-secret immutable semantics, including exact principal issuer/subject/kind; it excludes arrival time. Native fields constrain state, fence and admission presence.
+- **Sensitive material:** Credential and endpoint references are protected metadata; no credential bytes, private keys, raw provider bodies or exceptions are retained. Receipt key material is validated public material only.
+- **Future impact:** #2025 adds authenticated commands, current authority/provider-binding checks and explicit same-correlation replay outside transactions. A retained receipt allows admission-only reconciliation. Servers #311 owns provider composition; no live effect follows from this table.
+
 ### `cpk_delegation_signing_keys`
 - **Durable meaning and owner:** `DelegationSigningKeyStore` owns workspace-scoped public signing-key registrations and lifecycle state.
 - **Identity and cardinality:** `registration_id` is primary; `(workspace_id, purpose, issuer, key_id)` uniquely identifies one authority key.
 - **Outgoing foreign keys:** `workspace_id` binds the registration to its workspace.
-- **Inbound dependents:** `cpk_health_effect_preparations` and `cpk_node_control_attempts` retain exact same-workspace signing-key registrations through foreign keys. Signed grants also carry issuer and key identifiers resolved through this store.
+- **Inbound dependents:** `cpk_health_effect_preparations`, `cpk_node_control_attempts` and admitted `cpk_delegation_key_generation_attempts` retain exact same-workspace signing-key registrations through foreign keys. Signed grants also carry issuer and key identifiers resolved through this store.
 - **Writers and transactions:** Admission, activation, retirement, and revocation use explicit guarded store operations in caller-owned transactions.
 - **Readers and projections:** Grant admission and key-rotation workflows read immutable public key snapshots and lifecycle status.
 - **Mutation, locks, retries, and idempotency:** Lifecycle changes are compare-and-set; registration identity prevents cross-purpose or cross-issuer substitution.
 - **Lifecycle, retention, deletion, and restore:** Retired and revoked registrations remain for audit and verification; restore workspaces before registrations.
 - **JSON boundary:** None; public key material and references use bounded typed text columns.
 - **Sensitive material:** `public_key_pem` and its fingerprint are public material; `private_key_reference` is a sensitive locator, never a private key or signing result.
-- **Future impact:** #1842 admits both health purposes with exact reference intents; health generation and deployment rotation remain refused. #1846 must preserve purpose separation and reload immediate-use authority before private-key resolution.
+- **Future impact:** Both health purposes retain exact reference intents. #2023 supplies purpose-bound internal generation and #2024 retains durable attempts; #2025 supplies the authenticated generation surface. Deployment rotation and immediate-use authority remain separate from admission.
 
 ### `cpk_desired_topology_draft_revisions`
 - **Durable meaning and owner:** `PostgresDesiredTopologyDraftStore` owns append-only saved topology revisions; Core owns the referenced graph language.
@@ -1406,7 +1430,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `SecretReferenceStore` owns admitted opaque secret references, allowed uses, provider binding, status, and supersession lineage.
 - **Identity and cardinality:** `registration_id` is primary and `(registration_id, workspace_id)` is the composite used by authorizations.
 - **Outgoing foreign keys:** Workspace and same-workspace provider must exist; a superseded reference must be in the same workspace.
-- **Inbound dependents:** Secret-use authorizations bind the exact registered reference and workspace.
+- **Inbound dependents:** Secret-use authorizations and admitted `cpk_delegation_key_generation_attempts` bind the exact registered reference and workspace.
 - **Writers and transactions:** Admission, replacement, and revocation are explicit store operations with provider and policy validation.
 - **Readers and projections:** Secret policy and authorized effects read opaque reference identity, provider binding, allowed intents, and status.
 - **Mutation, locks, retries, and idempotency:** Reference registrations are immutable; replacement appends a successor and revocation is guarded.

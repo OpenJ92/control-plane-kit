@@ -1,6 +1,14 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.delegation_key_generation_attempt_store"
+selector = "validate_current_rows"
+category = "exact-verifier"
+sql = "Strict workspace_id/request_id keyset ordered pages; LIMIT 100; bounded intent/receipt JSON; visits every retained generation attempt"
+consumer_kind = "production"
+consumer = "Current schema row validation reconstructs exact generation intent/receipt and verifies admitted reference/key identity without repair"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.configuration_evidence"
 selector = "_EvidenceRead.query"
 category = "fixed-cardinality"

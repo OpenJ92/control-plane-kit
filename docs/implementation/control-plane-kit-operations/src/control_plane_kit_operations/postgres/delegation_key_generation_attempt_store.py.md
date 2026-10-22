@@ -13,6 +13,13 @@ and provider-version metadata. Historical admission remains readable through
 later key/reference lifecycle changes. Schema reentry scans these records in
 bounded pages; corrupt semantics refuse rather than repair.
 
+`POSTGRES_READ_CARDINALITY.toml` classifies `validate_current_rows` as an exact
+verifier: strict `(workspace_id, request_id)` keyset pages with `LIMIT 100`,
+bounded descriptors, and complete exhaustion before schema admission succeeds.
+`OPERATIONS_TABLE_ATLAS.md` records the new relation and its three restrictive
+foreign keys, admission transaction and restore dependencies. These inventories
+describe the owner; they add no query or mutation behavior.
+
 The new relation installs only through the existing object-free current-schema
 program. A nonempty older namespace without it is incompatible and returns the
 existing bounded reset-required refusal without performing reset or migration.
