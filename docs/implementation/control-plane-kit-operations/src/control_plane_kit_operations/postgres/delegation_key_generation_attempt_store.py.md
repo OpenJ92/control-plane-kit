@@ -16,6 +16,6 @@ bounded pages; corrupt semantics refuse rather than repair.
 The new relation installs only through the existing object-free current-schema
 program. A nonempty older namespace without it is incompatible and returns the
 existing bounded reset-required refusal without performing reset or migration.
-Workspace deletion uses the existing parent cascade; no independent cleanup or
-retention process is introduced. Core #2024 tests own the durable concurrency,
+Foreign keys retain the existing default NO ACTION behavior; no independent
+cleanup or retention process is introduced. Core #2024 tests own the durable concurrency,
 receipt retention and atomic admission laws; #2025 owns provider execution.

@@ -2036,7 +2036,7 @@ CREATE TABLE cpk_delegation_key_generation_attempts (
     CONSTRAINT cpk_delegation_key_generation_attempts_admission_claim_check CHECK (((claim_kind <> 'reconcile-admission'::text) OR (receipt_descriptor IS NOT NULL))),
     CONSTRAINT cpk_delegation_key_generation_attempts_time_check CHECK ((updated_at >= created_at)),
     CONSTRAINT cpk_delegation_key_generation_attempts_pkey PRIMARY KEY (workspace_id, command_kind, request_id),
-    CONSTRAINT cpk_delegation_key_generation_attempts_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces (workspace_id) ON DELETE CASCADE,
+    CONSTRAINT cpk_delegation_key_generation_attempts_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces (workspace_id),
     CONSTRAINT cpk_delegation_key_generation_attempts_reference_fk FOREIGN KEY (reference_registration_id, workspace_id) REFERENCES cpk_secret_references (registration_id, workspace_id),
     CONSTRAINT cpk_delegation_key_generation_attempts_key_fk FOREIGN KEY (key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys (registration_id, workspace_id)
 );
