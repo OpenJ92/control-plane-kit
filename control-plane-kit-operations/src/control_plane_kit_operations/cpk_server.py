@@ -61,6 +61,14 @@ from control_plane_kit_operations.approvals import (
 from control_plane_kit_operations.coordinator import (
     ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator, ReobserveConnectorConnection,
 )
+from control_plane_kit_operations.delegation_key_generation_commands import (
+    DelegationKeyGenerationCommandService, GenerateDelegationKeyCommand,
+    ReconcileDelegationKeyGenerationCommand, GenerationCommandUnavailable,
+)
+from control_plane_kit_operations.delegation_key_generation_attempts import (
+    GenerationAttemptAuthorizationDenied, GenerationAttemptConflict,
+    GenerationAttemptError, GenerationAttemptNotFound,
+)
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
@@ -272,6 +280,12 @@ _WORKER_OPERATION = RouteAuthorizationPolicy(
 )
 
 _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
+    "command.delegation-key.generate": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_GENERATE, PolicyScope.DELEGATION_KEY_REGISTER)),
+    "command.delegation-key-generation.reconcile": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_GENERATE, PolicyScope.DELEGATION_KEY_REGISTER)),
+    "read.delegation-key-generation": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),
     "read.receiver-authoring-context": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),
     "read.desired-topology-drafts": _WORKSPACE_READ,
@@ -535,6 +549,8 @@ class CpkServerReadService:
                 kwargs["revision_history_store"] = stores.revision_history
             if request.route_id == "read.operator-overview":
                 kwargs["saved_preparation_source_store"] = stores.saved_preparation_sources
+            if request.route_id == "read.delegation-key-generation":
+                kwargs["generation_attempt_store"] = stores.delegation_key_generation_attempts
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)
@@ -1384,9 +1400,11 @@ class CpkServerExecutionService:
         service: ExecutionCoordinator,
         *,
         lifecycle: RunLifecycleCommandService | None = None,
+        delegation_key_generation: DelegationKeyGenerationCommandService | None = None,
     ) -> None:
         self._service = service
         self._lifecycle = lifecycle
+        self._delegation_key_generation = delegation_key_generation
 
     async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         if request.route_id not in ("command.deployment.execute", "command.deployment.reobserve-connector"):
@@ -1410,6 +1428,8 @@ class CpkServerExecutionService:
         return result.descriptor()
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id in ("command.delegation-key.generate", "command.delegation-key-generation.reconcile"):
+            return self._generation_command(request)
         context = _trusted_context(request)
         if request.route_id == "command.run.start":
             if self._lifecycle is None:
@@ -1443,6 +1463,37 @@ class CpkServerExecutionService:
             )
         )
         return result.descriptor()
+
+    def _generation_command(self, request):
+        payload = _closed_generation_arguments(request)
+        context = _trusted_context(request, values=payload)
+        if self._delegation_key_generation is None:
+            raise _service_not_configured(request)
+        try:
+            if request.route_id == "command.delegation-key.generate":
+                result = self._delegation_key_generation.generate(GenerateDelegationKeyCommand(
+                    context=context, request_id=_text(payload, "request_id"),
+                    provider_registration_id=_text(payload, "provider_registration_id"),
+                    secret_reference=SecretReference(_text(payload, "secret_reference")),
+                    purpose=DelegationKeyPurpose(_text(payload, "purpose")),
+                    issuer=_text(payload, "issuer"),
+                ))
+            else:
+                result = self._delegation_key_generation.reconcile(ReconcileDelegationKeyGenerationCommand(
+                    context=context, request_id=_text(payload, "request_id"),
+                ))
+            return result.descriptor()
+        except GenerationAttemptAuthorizationDenied:
+            failure = (403, "current generation authority is unavailable or denied")
+        except GenerationAttemptNotFound:
+            failure = (404, "generation request is unavailable")
+        except GenerationAttemptConflict:
+            failure = (409, "generation request conflicts with current or recorded truth")
+        except GenerationCommandUnavailable:
+            failure = (503, "generation outcome could not be durably completed")
+        except (GenerationAttemptError, ValueError, TypeError):
+            failure = (400, "generation request is malformed")
+        raise CpkServerApplicationError(*failure)
 
 
 class CpkServerGatewayProbeService:
@@ -1523,6 +1574,7 @@ def cpk_server_services(
     ingress_authorities: IngressAuthorityRegistrationService | None = None,
     secret_providers: SecretProviderRegistrationService | None = None,
     delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
+    delegation_key_generation: DelegationKeyGenerationCommandService | None = None,
     desired_topology_drafts: DesiredTopologyDraftCommandService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
@@ -1576,6 +1628,7 @@ def cpk_server_services(
         ControlPlaneServiceRole.EXECUTION: CpkServerExecutionService(
             execution,
             lifecycle=lifecycle,
+            delegation_key_generation=delegation_key_generation,
         ),
         ControlPlaneServiceRole.READS: CpkServerReadService(
             unit_of_work_factory,
@@ -1754,6 +1807,8 @@ def _read_model(
                 ReadCollection.DELEGATION_SIGNING_KEYS,
             )
         )
+    if route_id == "read.delegation-key-generation":
+        return service.delegation_key_generation(_workspace_id(args), _text(args, "request_id"))
     if route_id == "read.gateway-verifier-configuration":
         return service.gateway_verifier_configuration(
             _workspace_id(args),
@@ -1810,6 +1865,7 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 
 _CLOSED_READ_ARGUMENTS = {
+    "read.delegation-key-generation": ("request_id", False),
     "read.receiver-authoring-context": (None, False),
     "read.workload-verifier-configuration": ("purposes", False),
     "read.desired-topology-drafts": (None, True),
@@ -1936,6 +1992,26 @@ def _required_page_request(
     if request is None or request.collection is not collection:
         raise ReadPageError("prepared read page request is incongruent")
     return request
+
+
+def _closed_generation_arguments(request):
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise CpkServerApplicationError(400, "generation arguments are malformed")
+    path, payload = request.path_parameters, request.payload
+    if request.route_id == "command.delegation-key.generate":
+        path_fields = {"workspace_id"}
+        body_fields = {"request_id", "provider_registration_id", "secret_reference", "purpose", "issuer"}
+    else:
+        path_fields = {"workspace_id", "request_id"}
+        body_fields = set()
+    valid = (
+        request.surface == "http" and set(path) == path_fields and set(payload) == body_fields
+    ) or (
+        request.surface == "mcp" and not path and set(payload) == path_fields | body_fields
+    )
+    if not valid:
+        raise CpkServerApplicationError(400, "generation arguments are malformed")
+    return {**path, **payload}
 
 
 def _trusted_context(
@@ -2274,6 +2350,7 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing ingress authority",
             "missing secret provider",
             "missing secret reference",
+            "missing generation request",
         )
     ):
         return 404

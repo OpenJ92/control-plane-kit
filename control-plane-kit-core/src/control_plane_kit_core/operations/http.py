@@ -414,6 +414,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "DelegationSigningKeyCollectionReadResponse",
             ),
             (
+                "read.delegation-key-generation",
+                "/workspaces/{workspace_id}/delegation-key-generations/{request_id}",
+                "GeneratedDelegationKeyReceipt",
+            ),
+            (
                 "read.gateway-verifier-configuration",
                 "/workspaces/{workspace_id}/gateways/{gateway_node_id}/verifier-configuration",
                 "GatewayVerifierConfigurationReadResponse",
@@ -568,6 +573,20 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "GatewayProbeCommandRequest",
                 "GatewayProbeCommandResponse",
+            ),
+            (
+                "command.delegation-key.generate",
+                "/workspaces/{workspace_id}/delegation-keys/generate",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "GenerateDelegationKeyRequest", "GeneratedDelegationKeyReceipt",
+            ),
+            (
+                "command.delegation-key-generation.reconcile",
+                "/workspaces/{workspace_id}/delegation-key-generations/{request_id}/reconcile",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ReconcileDelegationKeyGenerationRequest", "GeneratedDelegationKeyReceipt",
             ),
             (
                 "command.workspace.create",

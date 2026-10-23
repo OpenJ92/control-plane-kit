@@ -164,6 +164,11 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.delegation-key-generation", ReadProjectionKind.DELEGATION_KEY_GENERATION,
+                    "GeneratedDelegationKeyReceipt", ReadProjectionPolicy.AUTHORIZED_GENERATION_RECEIPT,
+                    True, False,
+                ),
+                (
                     "read.delegation-keys",
                     ReadProjectionKind.DELEGATION_KEYS,
                     "DelegationSigningKeyCollectionReadResponse",

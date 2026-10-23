@@ -99,12 +99,22 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.SUBMITS_FOR_APPROVAL,
                 ),
                 (
+                    "delegation-key-generation.reconcile", "command.delegation-key-generation.reconcile",
+                    "reconcile_delegation_key_generation", ControlPlaneServiceRole.EXECUTION,
+                    CommandIdempotencyPolicy.REQUIRED, ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
                     "delegation-key.activate",
                     "command.delegation-key.activate",
                     "activate_delegation_key",
                     ControlPlaneServiceRole.PLANNING,
                     CommandIdempotencyPolicy.REQUIRED,
                     ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
+                    "delegation-key.generate", "command.delegation-key.generate",
+                    "generate_delegation_key", ControlPlaneServiceRole.EXECUTION,
+                    CommandIdempotencyPolicy.REQUIRED, ApprovalPolicy.NOT_REQUIRED,
                 ),
                 (
                     "delegation-key.register",

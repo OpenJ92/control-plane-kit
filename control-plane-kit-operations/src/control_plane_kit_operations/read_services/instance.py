@@ -32,6 +32,7 @@ from .protocols import (
     DelegationSigningKeyStore,
     ExecutionStore,
     GatewayProbeStore,
+    GenerationAttemptStore,
     GraphTopologyStore,
     IngressAuthorityStore,
     ObservedStateStore,
@@ -75,6 +76,7 @@ class InstanceReadService:
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
         delegation_signing_key_store: DelegationSigningKeyStore | None = None,
+        generation_attempt_store: GenerationAttemptStore | None = None,
         desired_topology_draft_store: DesiredTopologyDraftStore | None = None,
         saved_preparation_source_store: SavedPreparationSourceStore | None = None,
         revision_history_store: RevisionHistoryStore | None = None,
@@ -121,6 +123,7 @@ class InstanceReadService:
             self._workspace_graph.require_workspace,
             gateway_probe_store=gateway_probe_store,
             delegation_signing_key_store=delegation_signing_key_store,
+            generation_attempt_store=generation_attempt_store,
         )
 
     def desired_topology_drafts(self, request: ReadPageRequest):
@@ -343,6 +346,9 @@ class InstanceReadService:
             workspace_id,
             gateway_node_id,
         )
+
+    def delegation_key_generation(self, workspace_id: str, request_id: str):
+        return self._gateway_security.delegation_key_generation(workspace_id, request_id)
 
     def workload_verifier_configuration(
         self,
