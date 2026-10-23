@@ -2040,3 +2040,31 @@ CREATE TABLE cpk_delegation_key_generation_attempts (
     CONSTRAINT cpk_delegation_key_generation_attempts_reference_fk FOREIGN KEY (reference_registration_id, workspace_id) REFERENCES cpk_secret_references (registration_id, workspace_id),
     CONSTRAINT cpk_delegation_key_generation_attempts_key_fk FOREIGN KEY (key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys (registration_id, workspace_id)
 );
+
+CREATE TABLE cpk_secret_material_provision_attempts (
+    workspace_id text NOT NULL,
+    command_kind text NOT NULL,
+    request_id text NOT NULL,
+    provider_registration_id text NOT NULL,
+    intent_descriptor jsonb NOT NULL,
+    intent_fingerprint text NOT NULL,
+    state text NOT NULL,
+    receipt_descriptor jsonb,
+    reference_registration_id text,
+    created_at timestamp(6) with time zone NOT NULL,
+    updated_at timestamp(6) with time zone NOT NULL,
+    CONSTRAINT cpk_secret_material_provision_attempts_admission_check CHECK (((state = 'admitted'::text) = (reference_registration_id IS NOT NULL))),
+    CONSTRAINT cpk_secret_material_provision_attempts_fingerprint_check CHECK ((intent_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_secret_material_provision_attempts_intent_check CHECK (((jsonb_typeof(intent_descriptor) = 'object'::text) AND (octet_length((intent_descriptor)::text) <= 16384))),
+    CONSTRAINT cpk_secret_material_provision_attempts_kind_check CHECK ((command_kind = 'secret-material.provision'::text)),
+    CONSTRAINT cpk_secret_material_provision_attempts_pkey PRIMARY KEY (workspace_id, command_kind, request_id),
+    CONSTRAINT cpk_secret_material_provision_attempts_provider_fk FOREIGN KEY (provider_registration_id, workspace_id) REFERENCES cpk_secret_providers (registration_id, workspace_id),
+    CONSTRAINT cpk_secret_material_provision_attempts_receipt_check CHECK (((jsonb_typeof(receipt_descriptor) = 'object'::text) AND (octet_length((receipt_descriptor)::text) <= 16384))),
+    CONSTRAINT cpk_secret_material_provision_attempts_receipt_state_check CHECK (((state = ANY (ARRAY['receipt-recorded'::text, 'admitted'::text])) = (receipt_descriptor IS NOT NULL))),
+    CONSTRAINT cpk_secret_material_provision_attempts_reference_fk FOREIGN KEY (reference_registration_id, workspace_id) REFERENCES cpk_secret_references (registration_id, workspace_id),
+    CONSTRAINT cpk_secret_material_provision_attempts_request_check CHECK ((request_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
+    CONSTRAINT cpk_secret_material_provision_attempts_state_check CHECK ((state = ANY (ARRAY['intended'::text, 'dispatching'::text, 'uncertain'::text, 'receipt-recorded'::text, 'admitted'::text, 'refused'::text, 'failed-definite'::text]))),
+    CONSTRAINT cpk_secret_material_provision_attempts_time_check CHECK ((updated_at >= created_at)),
+    CONSTRAINT cpk_secret_material_provision_attempts_workspace_check CHECK ((workspace_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
+    CONSTRAINT cpk_secret_material_provision_attempts_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces (workspace_id)
+);

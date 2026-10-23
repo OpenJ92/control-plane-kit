@@ -2,6 +2,34 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.secret_material_provision_attempts",
+      "destination": "control_plane_kit_operations.secret_material_provision_attempts",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/secret_material_provision_attempts.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "validation", "admission"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["ProvisionAttemptIntent", "SecretMaterialProvisionAttempt", "ProvisionAttemptClaim", "ProvisionAttemptAdmissionService", "ProvisionedSecretMaterialReceipt"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.secret_providers"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.secret_material_provision_attempt_store"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_secret_material_provision_attempts.py"],
+      "motivation": "Safe original-operator custody intent and receipt with atomic create-only admission and no provider IO or raw material."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.secret_material_provision_attempt_store",
+      "destination": "control_plane_kit_operations.postgres.secret_material_provision_attempt_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/secret_material_provision_attempt_store.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["persistence", "validation"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["SecretMaterialProvisionAttemptStore"],
+      "internal_dependencies": ["control_plane_kit_operations.secret_material_provision_attempts", "control_plane_kit_operations.postgres.secret_provider_store", "control_plane_kit_operations.postgres.temporal"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.stores", "control_plane_kit_operations.postgres.current_data_validation"],
+      "optional_external_dependencies": ["psycopg"],
+      "protecting_tests": ["tests/test_secret_material_provision_attempts.py", "tests/test_current_schema_installation.py"],
+      "motivation": "Insert-only custody reservations, one initial dispatch, immutable receipt and retained admission truth in caller-owned transactions."
+    },
+    {
       "module": "control_plane_kit_operations.delegation_key_generation_commands",
       "destination": "control_plane_kit_operations.delegation_key_generation_commands",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_key_generation_commands.py",

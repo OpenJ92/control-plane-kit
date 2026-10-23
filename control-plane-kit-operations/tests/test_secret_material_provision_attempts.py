@@ -264,6 +264,28 @@ class SecretMaterialProvisionAttemptTests(unittest.TestCase):
                 uow.commit()
             self.assertEqual(future.result(timeout=15), created)
 
+    def test_reference_fk_can_finish_while_intake_waits_for_destination(self):
+        claim = self.pending()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with self.fixture.unit_of_work() as uow:
+                # Reproduce ordinary registration after destination lock acquisition
+                # but before its FK-bearing INSERT. Both remaining paths use owners.
+                uow.stores.connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                    (f"secret-reference:workspace-a:{self.grant.reference.reference_id}",))
+                factory = lambda: PostgresUnitOfWork(lambda: psycopg.connect(
+                    self.fixture.database_url, application_name="provision-fk-cycle"))
+                future = pool.submit(self.admit, claim, factory=factory)
+                self.fixture.wait_for_database_lock("provision-fk-cycle")
+                original = uow.stores.secret_references.register(self.candidate())
+                uow.commit()
+            with self.assertRaises((self.api.ProvisionAttemptConflict, SecretProviderRegistrationConflict)):
+                future.result(timeout=15)
+        self.assertEqual(self.read().state.value, "receipt-recorded")
+        with self.fixture.unit_of_work() as uow:
+            self.assertEqual(uow.stores.secret_references.list_history(
+                "workspace-a", self.grant.reference), (original,))
+
     def test_provider_revocation_preserves_pending_receipt(self):
         claim = self.pending()
         self.fixture.service().revoke_provider(RevokeSecretProviderCommand(
@@ -275,6 +297,29 @@ class SecretMaterialProvisionAttemptTests(unittest.TestCase):
         self.assertEqual(self.read().state.value, "receipt-recorded")
         with self.fixture.unit_of_work() as uow:
             self.assertEqual(uow.stores.secret_references.list_history("workspace-a", self.grant.reference), ())
+
+    def test_admission_provider_lock_allows_reference_fk_but_blocks_revocation(self):
+        def register():
+            with self.fixture.unit_of_work() as uow:
+                result = uow.stores.secret_references.register(self.candidate())
+                uow.commit()
+            return result
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with self.fixture.unit_of_work() as uow:
+                provider = uow.stores.secret_providers.require_active_registration_for_admission(
+                    "workspace-a", self.provider.registration_id)
+                self.assertEqual(provider, self.provider)
+                # A new FK may acquire KEY SHARE while admission stabilizes the provider.
+                self.assertEqual(pool.submit(register).result(timeout=10).reference, self.grant.reference)
+                service = self.fixture.concurrent_service("provision-provider-revocation")
+                future = pool.submit(service.revoke_provider, RevokeSecretProviderCommand(
+                    workspace_id="workspace-a", provider_id=self.provider.provider_id,
+                    revoked_by="operator-a", revoked_at=LATER,
+                    actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)))
+                self.fixture.wait_for_database_lock("provision-provider-revocation")
+                self.assertFalse(future.done())
+                uow.commit()
+            self.assertEqual(future.result(timeout=10).status.value, "revoked")
 
     def test_physical_commit_failure_rolls_back_admission_not_receipt(self):
         claim = self.pending()
@@ -297,8 +342,15 @@ class SecretMaterialProvisionAttemptTests(unittest.TestCase):
         self.fixture.connection.execute(
             "UPDATE cpk_secret_material_provision_attempts SET intent_descriptor=intent_descriptor || %s::jsonb",
             (json.dumps({"value_base64": "forbidden-input"}),))
-        with self.assertRaises(self.api.ProvisionAttemptError):
-            self.read()
+        try:
+            with self.assertRaises(self.api.ProvisionAttemptError):
+                self.read()
+            with self.assertRaises(SchemaInstallationError):
+                install_schema(self.fixture.connection)
+        finally:
+            self.fixture.connection.execute(
+                "UPDATE cpk_secret_material_provision_attempts SET intent_descriptor=%s::jsonb",
+                (json.dumps(self.intent.descriptor()),))
 
     def test_pre_intake_schema_refuses_without_reset_or_row_loss(self):
         schema = "provision_attempt_" + uuid.uuid4().hex
