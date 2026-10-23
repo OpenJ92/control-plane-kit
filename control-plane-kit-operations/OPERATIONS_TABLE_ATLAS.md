@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=22ddb392067d3ed8482779893f777cd791bb43f73b70f1ab2e7261a51c29f671 relations=57 columns=735 constraints=654 indexes=195 foreign-keys=169 -->
+<!-- current-schema-contract: sha256=4d41ce4d0ad21796b4c54d9c866de1d70087866fb2e96b9613bee4989d658673 relations=58 columns=746 constraints=668 indexes=196 foreign-keys=172 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -519,6 +519,9 @@ cpk_runtime_authorities -->|cpk_runtime_authorities_workspace_id_fkey| cpk_works
 cpk_runtime_authority_deliveries -->|cpk_runtime_authority_deliveries_workspace_id_fkey| cpk_workspaces
 cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_revision_fkey| cpk_desired_topology_draft_revisions
 cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_session_fkey| cpk_operation_sessions
+cpk_secret_material_provision_attempts -->|cpk_secret_material_provision_attempts_provider_fk| cpk_secret_providers
+cpk_secret_material_provision_attempts -->|cpk_secret_material_provision_attempts_reference_fk| cpk_secret_references
+cpk_secret_material_provision_attempts -->|cpk_secret_material_provision_attempts_workspace_fk| cpk_workspaces
 cpk_secret_providers -->|cpk_secret_providers_supersedes_fk| cpk_secret_providers
 cpk_secret_providers -->|cpk_secret_providers_workspace_id_fkey| cpk_workspaces
 cpk_secret_references -->|cpk_secret_references_provider_fk| cpk_secret_providers
@@ -699,6 +702,9 @@ order is semantically significant for every composite identity.
 | `cpk_runtime_authority_deliveries_workspace_id_fkey` | `cpk_runtime_authority_deliveries` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime authority delivery records are workspace scoped. |
 | `cpk_saved_preparation_sources_revision_fkey` | `cpk_saved_preparation_sources` | `workspace_id, draft_id, revision` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id, revision` | Saved admission names one immutable same-workspace revision. |
 | `cpk_saved_preparation_sources_session_fkey` | `cpk_saved_preparation_sources` | `session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | Source and preparation session belong to the same workspace. |
+| `cpk_secret_material_provision_attempts_provider_fk` | `cpk_secret_material_provision_attempts` | `provider_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | Custody intent pins an existing provider registration in its exact workspace. |
+| `cpk_secret_material_provision_attempts_reference_fk` | `cpk_secret_material_provision_attempts` | `reference_registration_id, workspace_id` | `cpk_secret_references` | `registration_id, workspace_id` | Only an admitted attempt names its exact same-workspace reference registration. |
+| `cpk_secret_material_provision_attempts_workspace_fk` | `cpk_secret_material_provision_attempts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Each protected-material request belongs to an existing workspace. |
 | `cpk_secret_providers_supersedes_fk` | `cpk_secret_providers` | `supersedes_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | A provider replacement can supersede only a same-workspace registration. |
 | `cpk_secret_providers_workspace_id_fkey` | `cpk_secret_providers` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Secret-provider registrations are workspace scoped. |
 | `cpk_secret_references_provider_fk` | `cpk_secret_references` | `provider_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | A secret reference names a provider in the same workspace. |
@@ -1413,11 +1419,24 @@ deleting its retained draft history.
 - **Sensitive material:** Only bounded identifiers and revision ordinal; no graph body, credentials or provider output. Errors omit malformed retained values.
 - **Future impact:** #1773 may consume this fact for bounded history; it must distinguish saved input from target graph association and accepted advancement. No per-HTTP global scan or repair engine. Complete erased saved evidence plus missing source is inherently indistinguishable.
 
+### `cpk_secret_material_provision_attempts`
+- **Durable meaning and owner:** `SecretMaterialProvisionAttemptStore` owns safe protected-material custody intent, one initial dispatch, immutable custody receipt and exact reference admission; it never receives material or calls the provider.
+- **Identity and cardinality:** Primary key `(workspace_id, command_kind, request_id)` is one attempt; all duplicate reservations conflict, even when safe intent matches. Intent binds full original operator issuer/subject/kind and deterministic correlation.
+- **Outgoing foreign keys:** Workspace and exact same-workspace provider registration must exist; admitted attempts additionally pin an exact same-workspace secret reference registration.
+- **Inbound dependents:** None; the public receipt is an authorized projection rather than another durable owner.
+- **Writers and transactions:** Caller-owned UoWs commit reservation, initial dispatch, and receipt separately. `ProvisionAttemptAdmissionService` atomically creates the reference and records admission after current authority is supplied by its command owner.
+- **Readers and projections:** Exact workspace/request lookup reconstructs bounded typed records and verifies admitted reference metadata; current schema validation walks 100-row keyset pages. The public receipt retains explicit status/version/admitted-reference fields only. HTTP/MCP status is added by #2030.
+- **Mutation, locks, retries, and idempotency:** One initial state CAS, no reclaim or opaque-write replay. Admission locks attempt, provider `FOR SHARE`, then the existing reference advisory key. Shared provider locking allows FK `KEY SHARE` while blocking lifecycle mutation. Create-only reference admission rejects all history before ordinary registration's replay path, without locking existing reference rows. Post-invocation failures stay uncertain; only the command owner can establish pre-invocation refusal.
+- **Lifecycle, retention, deletion, and restore:** Restore workspace/provider and any admitted reference first, then the original attempt/receipt. Keep uncertain and receipt-recorded pending outcomes; no automatic retry, completion, revoke, deletion, reset or adoption API. Strict foreign keys preserve history.
+- **JSON boundary:** Closed bounded immutable intent and optional exact ACTIVE custody receipt, each at most 16 KiB. State/receipt/admission constraints and source codecs enforce consistency; final reference metadata must match retained custody version.
+- **Sensitive material:** No value, base64, plaintext digest, body-derived fingerprint or provider body is accepted. Safe intent contains protected endpoint/credential references and actor identity; the public receipt does not retain those owner-internal fields. `SecretValue` belongs only to the later confidential command's ephemeral input.
+- **Future impact:** #2030 adds the protected HTTP command over these facts; Servers #311 proves actual transport/current-authority composition. No record or receipt alone proves token usefulness, deployment success or live acceptance.
+
 ### `cpk_secret_providers`
 - **Durable meaning and owner:** `SecretProviderStore` owns workspace-scoped provider registrations, allowed use policy, status, and supersession lineage.
 - **Identity and cardinality:** `registration_id` is primary and `(registration_id, workspace_id)` is the exact composite referenced by secret records.
 - **Outgoing foreign keys:** The workspace must exist, and a superseded provider must be another registration in the same workspace.
-- **Inbound dependents:** Secret references and secret-use authorizations bind exact provider registration and workspace.
+- **Inbound dependents:** Secret references, secret-use authorizations and protected-material provision attempts bind exact provider registration and workspace.
 - **Writers and transactions:** Admission, revocation, and replacement are explicit unit-of-work operations before any provider I/O.
 - **Readers and projections:** Secret policy and effect services read provider kind, endpoint and credential references, allowed intents/prefixes, and status.
 - **Mutation, locks, retries, and idempotency:** Registrations are immutable policy snapshots; supersession appends a new row and guarded revocation closes old authority.
@@ -1430,7 +1449,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `SecretReferenceStore` owns admitted opaque secret references, allowed uses, provider binding, status, and supersession lineage.
 - **Identity and cardinality:** `registration_id` is primary and `(registration_id, workspace_id)` is the composite used by authorizations.
 - **Outgoing foreign keys:** Workspace and same-workspace provider must exist; a superseded reference must be in the same workspace.
-- **Inbound dependents:** Secret-use authorizations and admitted `cpk_delegation_key_generation_attempts` bind the exact registered reference and workspace.
+- **Inbound dependents:** Secret-use authorizations and admitted `cpk_delegation_key_generation_attempts` and `cpk_secret_material_provision_attempts` bind the exact registered reference and workspace.
 - **Writers and transactions:** Admission, replacement, and revocation are explicit store operations with provider and policy validation.
 - **Readers and projections:** Secret policy and authorized effects read opaque reference identity, provider binding, allowed intents, and status.
 - **Mutation, locks, retries, and idempotency:** Reference registrations are immutable; replacement appends a successor and revocation is guarded.
