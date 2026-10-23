@@ -404,7 +404,9 @@ The service commits safe intent and its one initial claim before invoking
 `SecretCustodian.store` outside a database transaction. It then commits exact
 custody evidence before atomic new-reference admission. Every duplicate POST
 conflicts, including identical submissions. Provider exceptions or malformed
-receipts leave uncertainty; crashes may leave dispatching. A retained receipt
+receipts are recorded as uncertain when the outcome commit succeeds. Failed
+outcome persistence or process loss can leave dispatching; persistence failure
+returns bounded unavailability. A retained receipt
 survives denied or failed admission. There is no automatic retry, adoption,
 overwrite, revocation or admission-completion command.
 

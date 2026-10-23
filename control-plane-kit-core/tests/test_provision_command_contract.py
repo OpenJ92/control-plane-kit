@@ -1,5 +1,6 @@
 """Confidential intake has one HTTP command and a separately authorized safe read."""
 
+from dataclasses import replace
 import unittest
 
 from control_plane_kit_core import operations
@@ -7,6 +8,22 @@ from test_command_parity_contract import _uow
 
 
 class ProvisionCommandContractTests(unittest.TestCase):
+    def test_http_only_command_cannot_be_advertised_by_custom_paired_contract(self):
+        routes = operations.HttpApiContract(operations.operator_command_http_routes())
+        paired = operations.operator_command_parity(routes, operations.McpStreamableHttpContract(), _uow())
+        binding = operations.AdapterCommandBinding(
+            operation_id="secret-material.provision", service_role=operations.ControlPlaneServiceRole.EXECUTION,
+            request_schema="ProvisionSecretMaterialRequest", response_schema="ProvisionedSecretMaterialReceipt",
+            http_route_id="command.secret-material.provision", mcp_tool_name="provision_secret_material",
+            idempotency=operations.CommandIdempotencyPolicy.REQUIRED, approval=operations.ApprovalPolicy.NOT_REQUIRED,
+        )
+        descriptor = paired.descriptor()
+        descriptor["commands"].append(binding.descriptor())
+        for build in (lambda: replace(paired, commands=(*paired.commands, binding)),
+                      lambda: operations.AdapterCommandParityContract.from_descriptor(descriptor)):
+            with self.subTest(construction=build), self.assertRaises(operations.InvalidAdapterParityContract):
+                build()
+
     def test_intake_is_canonical_http_only_with_confidential_payload_and_bound(self):
         routes = operations.HttpApiContract(operations.operator_command_http_routes())
         route_id = "command.secret-material.provision"
