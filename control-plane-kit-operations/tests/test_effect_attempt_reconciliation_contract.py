@@ -540,8 +540,8 @@ class EffectAttemptReconciliationContractTests(
         self.assertEqual(
             {str(error) for error in errors},
             {
-                "realization intent must be step_started or "
-                "step_compensation_started"
+                "realization intent must start an effect, compensation, "
+                "or native connection reobservation"
             },
         )
         for error in errors:
@@ -571,8 +571,8 @@ class EffectAttemptReconciliationContractTests(
                     dataclasses.replace(base, intent_event=event)
                 self.assertEqual(
                     str(caught.exception),
-                    "realization intent must be step_started or "
-                    "step_compensation_started",
+                    "realization intent must start an effect, compensation, "
+                    "or native connection reobservation",
                 )
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
@@ -635,15 +635,19 @@ class EffectAttemptReconciliationContractTests(
                 "control_plane_kit_core.policies",
                 "control_plane_kit_core.runtime_authority",
                 "control_plane_kit_core.runtime_effect_observation",
-                "control_plane_kit_core.secrets",
+                "control_plane_kit_core.secret_version_grants",
+                "control_plane_kit_core.secret_installation",
+                "control_plane_kit_operations._configuration_preparation",
                 "control_plane_kit_operations.effect_attempt_fold",
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 LANGUAGE_MODULE,
                 "control_plane_kit_operations.effect_attempts",
                 "control_plane_kit_operations.effect_outcome_evidence",
+                "control_plane_kit_operations.postgres.configuration_evidence",
                 "control_plane_kit_operations.records",
                 "control_plane_kit_operations.runtime_authorities",
                 "control_plane_kit_operations.runtime_effects",
+                "control_plane_kit_operations.runtime_adapter_registration",
                 "control_plane_kit_operations.secret_providers",
                 "control_plane_kit_operations.workflows",
             },
@@ -661,6 +665,7 @@ class EffectAttemptReconciliationContractTests(
                 "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
                 "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
                 "tests/test_postgres_effect_attempt_reconciliation_rollback.py",
+                "tests/test_postgres_secret_installation_admission.py",
             },
         )
         self.assertEqual(

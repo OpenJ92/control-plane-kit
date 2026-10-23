@@ -54,6 +54,11 @@ from effect_outcome_evidence_fixture import (
 ROOT_EXPORTS = {
     "EffectOutcomeProfile",
     "ExecutionEffectOutcome",
+    "NativeConnectionEffectOutcome",
+    "NativeConnectionObservation",
+    "NativeConnectionOutcome",
+    "NativeConnectionReadFailure",
+    "NativeConnectionRefused",
     "ObservedEffectOutcome",
     "EffectAttemptOutcome",
     "EffectAttemptOutcomeRecord",
@@ -271,10 +276,13 @@ EXACT_IMPORT_SURFACE = (
         "ProbeOutcome",
         None,
     ),
+    architecture_testing.ImportSurfaceEntry("control_plane_kit_operations.records", "_validate_text", None),
     architecture_testing.ImportSurfaceEntry("dataclasses", "dataclass", None),
     architecture_testing.ImportSurfaceEntry("dataclasses", "field", None),
+    architecture_testing.ImportSurfaceEntry("datetime", "datetime", None),
     architecture_testing.ImportSurfaceEntry("enum", "StrEnum", None),
     architecture_testing.ImportSurfaceEntry("hashlib", None, None),
+    architecture_testing.ImportSurfaceEntry("re", None, None),
     architecture_testing.ImportSurfaceEntry("rfc8785", None, None),
 )
 EXACT_CALL_SURFACE = (
@@ -286,6 +294,7 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("_http_verification_category"),
     architecture_testing.ResolvedCallTarget("_http_verification_record"),
     architecture_testing.ResolvedCallTarget("_legacy_effect_outcome_failure"),
+    architecture_testing.ResolvedCallTarget("_require_correlated_outcome"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("_verification_record_matches"),
@@ -393,6 +402,80 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("value.encode"),
     architecture_testing.ResolvedCallTarget("zip"),
 )
+
+
+# Exact additional pure calls for native observation admission and immutable
+# timestamp classification. No clock reads, provider calls or storage enter it.
+NATIVE_VALUE_CALL_SURFACE = (
+    architecture_testing.UnresolvedCallTarget(),  # digest.hexdigest()
+    architecture_testing.UnresolvedCallTarget(),  # normalized fraction.ljust()
+    *(architecture_testing.ResolvedCallTarget(name) for name in (
+        "_native_acceptance_reason", "_native_acceptance_reason",
+        "_native_timestamp_ns", "_native_timestamp_ns", "_native_timestamp_ns", "_native_timestamp_ns",
+        "any", "any", "any", "cls",
+        *("control_plane_kit_operations.records.OperationsRecordError",) * 14,
+        "control_plane_kit_operations.records._validate_text",
+        "dataclasses.dataclass", "dataclasses.dataclass", "dataclasses.dataclass", "dataclasses.dataclass",
+        "dataclasses.field",
+        "datetime.datetime.fromisoformat", "hashlib.sha256", "int", "int", "int",
+        "len", "matched.groups", "observation.__post_init__", "ord", "parsed.toordinal",
+        "re.fullmatch", "re.fullmatch", "re.fullmatch", "re.fullmatch",
+        "rfc8785.dumps", "self.acceptance_descriptor", "self.identity.__post_init__",
+        "self.observation.descriptor", "str", *("type",) * 12,
+    )),
+)
+
+# Canonicalize the explicitly enumerated expected occurrences; never derive an
+# expectation from the source being checked. Multiplicity remains significant.
+MANAGED_CALL_SURFACE = tuple(sorted(EXACT_CALL_SURFACE + NATIVE_VALUE_CALL_SURFACE,
+    key=lambda target: (0, "") if type(target) is architecture_testing.UnresolvedCallTarget
+    else (1, target.qualified_name)))
+
+# Reconcile the existing original-installation reader, then enumerate the new
+# managed-observation policy. Expected occurrences remain independent of source.
+EXACT_IMPORT_SURFACE = tuple(sorted((*EXACT_IMPORT_SURFACE,
+    *(architecture_testing.ImportSurfaceEntry(module, name, None) for module, name in (
+        ("control_plane_kit_core.runtime_effect_observation", "runtime_effect_request_for_intent"),
+        ("control_plane_kit_core.secret_installation", "secret_installation_receipt_for_result"),
+        ("control_plane_kit_core.secret_installation", "secret_installation_receipt_for_observation"),
+        ("control_plane_kit_core.configuration_installation", "ConfigurationInstallationDisposition"),
+        ("control_plane_kit_core.configuration_installation", "configuration_installation_receipt_for_observation"),
+        ("control_plane_kit_core.configuration_invocation", "ConfigurationInvocationCorrelation"),
+        ("control_plane_kit_core.planning", "ActivityId"),
+        ("control_plane_kit_core.planning", "ReconcileNode"),
+        ("control_plane_kit_core.runtime_effects", "RuntimeEffectKind"),
+        ("control_plane_kit_operations.records", "ActivityPlanRecord"),
+        ("control_plane_kit_operations.records", "ActivityPlanStatus"),
+        ("control_plane_kit_operations.records", "ExecutionRequestRecord"),
+        ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile"),
+    ))), key=lambda item: (item.module, item.imported_name or "", item.alias_name or "")))
+MANAGED_CALL_SURFACE = tuple(sorted((*MANAGED_CALL_SURFACE,
+    architecture_testing.UnresolvedCallTarget(),  # existing type(outcome).__post_init__
+    *(architecture_testing.ResolvedCallTarget(name) for name in (
+        # Existing original installation validation at the accepted baseline.
+        *("type",) * 6,
+        "control_plane_kit_operations.effect_attempt_intent_evidence.EffectAttemptIntentRecord.__post_init__",
+        "control_plane_kit_operations.effect_attempts.EffectAttemptRecord.__post_init__",
+        "control_plane_kit_core.runtime_effect_observation.runtime_effect_request_for_intent",
+        "control_plane_kit_core.secret_installation.secret_installation_receipt_for_result",
+        "control_plane_kit_core.secret_installation.secret_installation_receipt_for_observation",
+        "control_plane_kit_operations.records.OperationsRecordError",
+        # New pure original-plan and actual-observation checks.
+        *("type",) * 6,
+        "_observed_configuration_candidate",
+        "_require_original_observation_plan",
+        "_require_observed_configuration_receipt",
+        "plan.plan.activity",
+        "observation.evidence.descriptor",
+        "control_plane_kit_operations.effect_attempt_intent_evidence.EffectAttemptIntentRecord.__post_init__",
+        "control_plane_kit_operations.records.ActivityPlanRecord.__post_init__",
+        "control_plane_kit_core.planning.ActivityId",
+        "control_plane_kit_core.configuration_invocation.ConfigurationInvocationCorrelation",
+        "control_plane_kit_core.configuration_installation.configuration_installation_receipt_for_observation",
+        "control_plane_kit_operations.records.OperationsRecordError",
+        "control_plane_kit_operations.records.OperationsRecordError",
+    ))), key=lambda item: (0, "") if type(item) is architecture_testing.UnresolvedCallTarget
+    else (1, item.qualified_name)))
 
 
 def inventory_path() -> Path:
@@ -560,7 +643,7 @@ class EffectOutcomeEvidenceContractTest(
 
         self.assertEqual(
             tuple(member.value for member in EffectOutcomeProfile),
-            ("execution-result", "provider-observation"),
+            ("execution-result", "provider-observation", "native-connection"),
         )
         self.assertEqual(
             tuple(field.name for field in fields(ExecutionEffectOutcome)),
@@ -1911,12 +1994,12 @@ class EffectOutcomeEvidenceContractTest(
                     architecture_testing.RuleId("exact"),
                     OUTCOME_SOURCE_PATH,
                     MODULE_NAME,
-                    EXACT_CALL_SURFACE,
+                    MANAGED_CALL_SURFACE,
                     "effect outcome lexical call surface differs",
                 ),
             ),
         )
-        self.assertEqual(findings, ())
+        self.assertEqual(findings, (), msg=repr(tuple(call.target for call in facts.calls)))
 
         inventory = json.loads(inventory_path().read_text())
         row = next(
@@ -1930,6 +2013,9 @@ class EffectOutcomeEvidenceContractTest(
         self.assertEqual(
             set(row["internal_dependencies"]),
             {
+                "control_plane_kit_core.configuration_installation",
+                "control_plane_kit_core.configuration_invocation",
+                "control_plane_kit_core.planning",
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.probe_intents",
                 "control_plane_kit_core.runtime_effect_observation",
@@ -1937,6 +2023,8 @@ class EffectOutcomeEvidenceContractTest(
                 "control_plane_kit_core.types",
                 "control_plane_kit_operations.effect_attempts",
                 "control_plane_kit_operations.records",
+                "control_plane_kit_core.secret_installation",
+                "control_plane_kit_operations.plan_derivation",
             },
         )
         self.assertEqual(row["optional_external_dependencies"], [])

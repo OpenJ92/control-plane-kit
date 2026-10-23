@@ -388,17 +388,9 @@ class CommittedOrdinalAppendTests(unittest.TestCase):
                     'plan:approve', '2026-08-12T12:12:00Z');
             """
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
-                    'operator-a', '2026-08-12T12:13:00Z', 'approval-a',
-                    'decision-a', 'execute-a', 'fingerprint-a');
-            """
-        )
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        insert_recorded_request(self.connection, requested_at="2026-08-12T12:13:00Z",
+            approval_request_id="approval-a", approval_decision_id="decision-a")
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs

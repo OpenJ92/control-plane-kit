@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import json
 from typing import Callable
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_operations._workload_verifier_authority import (
+    WorkloadVerifierAuthorityUnavailable, current_workload_verifiers,
+)
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyNotFound,
     RegisteredDelegationSigningKey,
     RegisteredDelegationSigningKeyStatus,
+)
+from control_plane_kit_operations.delegation_key_generation_attempts import (
+    GeneratedDelegationKeyReceipt, GenerationAttemptError, GenerationAttemptNotFound,
 )
 from control_plane_kit_operations.gateway_probes import (
     GatewayProbeError,
@@ -19,7 +26,15 @@ from control_plane_kit_operations.records import WorkspaceRecord
 
 from .errors import ReadModelError
 from .models import FocusedDetailReadModel
-from .protocols import DelegationSigningKeyStore, GatewayProbeStore
+from .protocols import DelegationSigningKeyStore, GatewayProbeStore, GenerationAttemptStore
+
+
+_WORKLOAD_PURPOSES = (
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+    DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+)
+_WORKLOAD_UNAVAILABLE = "workload verifier configuration is unavailable"
 
 
 class _GatewaySecurityReadProjection:
@@ -29,10 +44,24 @@ class _GatewaySecurityReadProjection:
         *,
         gateway_probe_store: GatewayProbeStore | None,
         delegation_signing_key_store: DelegationSigningKeyStore | None,
+        generation_attempt_store: GenerationAttemptStore | None = None,
     ) -> None:
         self._require_workspace = require_workspace
         self._gateway_probe_store = gateway_probe_store
         self._delegation_signing_key_store = delegation_signing_key_store
+        self._generation_attempt_store = generation_attempt_store
+
+    def delegation_key_generation(self, workspace_id: str, request_id: str) -> GeneratedDelegationKeyReceipt:
+        self._require_workspace(workspace_id)
+        if self._generation_attempt_store is None:
+            raise ReadModelError("generation attempt store is not configured")
+        try:
+            return GeneratedDelegationKeyReceipt.from_attempt(self._generation_attempt_store.get(workspace_id, request_id))
+        except GenerationAttemptNotFound:
+            failure = "missing generation request"
+        except GenerationAttemptError:
+            failure = "generation request is unavailable"
+        raise ReadModelError(failure)
 
     def gateway_probe_timeline(
         self,
@@ -135,6 +164,54 @@ class _GatewaySecurityReadProjection:
                 }
             },
         )
+
+    def workload_verifier_configuration(
+        self,
+        workspace_id: str,
+        purposes: tuple[DelegationKeyPurpose, ...],
+    ) -> FocusedDetailReadModel:
+        if (
+            type(purposes) is not tuple
+            or not 1 <= len(purposes) <= 3
+            or any(
+                type(value) is not DelegationKeyPurpose or value not in _WORKLOAD_PURPOSES
+                for value in purposes
+            )
+            or len(set(purposes)) != len(purposes)
+            or DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ not in purposes
+        ):
+            raise ReadModelError("workload verifier purposes are malformed")
+        self._require_workspace(workspace_id)
+        store = self._delegation_signing_key_store
+        if store is None:
+            raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+        try:
+            families = current_workload_verifiers(store, workspace_id, purposes)
+        except WorkloadVerifierAuthorityUnavailable:
+            unavailable = True
+        else:
+            unavailable = False
+        if unavailable:
+            raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+        model = FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="workload-verifier-configuration",
+            payload={"workload_verifier_configuration": {"verifiers": [
+                {
+                    "purpose": family.purpose.value,
+                    "issuer": family.issuer,
+                    "public_keys": [
+                        {"key_id": key.key_id, "algorithm": key.algorithm.value,
+                         "public_key_pem": key.public_key_pem}
+                        for key in family.public_keys
+                    ],
+                }
+                for family in families
+            ]}},
+        )
+        if len(json.dumps(model.descriptor()).encode("utf-8")) > 65_536:
+            raise ReadModelError(_WORKLOAD_UNAVAILABLE)
+        return model
 
 
 def _public_delegation_signing_key(

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from control_plane_kit_operations.secret_material_provision_attempts import SecretMaterialProvisionAttempt
+
+
+class ProvisionAttemptStore(Protocol):
+    def get(self, workspace_id: str, request_id: str) -> SecretMaterialProvisionAttempt: ...
+
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
@@ -11,6 +17,7 @@ from control_plane_kit_core.secrets import SecretProviderId
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKey,
 )
+from control_plane_kit_operations.delegation_key_generation_attempts import DelegationKeyGenerationAttempt
 from control_plane_kit_operations.read_pages import ReadPage, ReadPageRequest
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -34,6 +41,10 @@ from control_plane_kit_operations.secret_providers import (
 
 class SavedPreparationSourceStore(Protocol):
     def get(self, workspace_id: str, session_id: str) -> SavedPreparationSourceRecord | None: ...
+
+
+class GenerationAttemptStore(Protocol):
+    def get(self, workspace_id: str, request_id: str) -> DelegationKeyGenerationAttempt: ...
 
 
 class WorkspaceStore(Protocol):
@@ -165,4 +176,6 @@ class DelegationSigningKeyStore(Protocol):
         workspace_id: str,
         purpose: DelegationKeyPurpose,
         issuer: str,
+        *,
+        limit: int | None = None,
     ) -> tuple[RegisteredDelegationSigningKey, ...]: ...

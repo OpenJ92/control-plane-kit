@@ -374,25 +374,13 @@ class NativeTemporalOrderingTests(unittest.TestCase):
             FROM cpk_approval_requests
             """
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES
-              ('request-earlier', 'workspace-a', 'session-earlier', 'plan-earlier',
-               'cancelled', 'operator-a', %s, 'approval-earlier',
-               'decision-approval-earlier', 'key-earlier', 'fingerprint-earlier'),
-              ('request-later-a', 'workspace-a', 'session-earlier', 'plan-earlier',
-               'cancelled', 'operator-a', %s, 'approval-later-a',
-               'decision-approval-later-a', 'key-later-a', 'fingerprint-later-a'),
-              ('request-later-z', 'workspace-a', 'session-earlier', 'plan-earlier',
-               'cancelled', 'operator-a', %s, 'approval-later-z',
-               'decision-approval-later-z', 'key-later-z', 'fingerprint-later-z')
-            """,
-            (_EARLIER, _LATER, _LATER),
-        )
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        for suffix, timestamp in (("earlier", _EARLIER), ("later-a", _LATER), ("later-z", _LATER)):
+            insert_recorded_request(self.connection, request_id="request-" + suffix,
+                session_id="session-earlier", plan_id="plan-earlier", status="cancelled",
+                requested_at=timestamp, approval_request_id="approval-" + suffix,
+                approval_decision_id="decision-approval-" + suffix, idempotency_key="key-" + suffix,
+                intent_fingerprint="fingerprint-" + suffix)
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs

@@ -192,12 +192,12 @@ class FailedRunCompensationCommandService:
 
     def _admit(self, stores, command) -> FailedRunCompensationResult:
         try:
-            request = stores.execution.get_request_for_update(command.request_id)
+            locator = stores.execution.get_request(command.request_id)
         except KeyError as error:
             raise FailedRunCompensationNotFound(
                 "execution request was not found"
             ) from error
-        identity = request.identity
+        identity = locator.identity
         if (
             identity.workspace_id != command.workspace_id
             or identity.plan_id != command.plan_id
@@ -214,13 +214,21 @@ class FailedRunCompensationCommandService:
             command.idempotency_key.value,
         )
         if existing is not None:
+            _require_replay_intent(command, existing)
+            locked = stores.execution.get_request_for_update(command.request_id)
+            if locked.identity != identity:
+                raise FailedRunCompensationConflict("execution request ownership changed")
             return _replay(stores, command, existing)
+        guard = stores.graphs.lock_receiver_lifecycle(identity.workspace_id)
         try:
+            request = stores.execution.get_request_for_update(command.request_id)
+            if request.identity != identity:
+                raise FailedRunCompensationConflict("execution request ownership changed")
+            run = stores.execution.get_run_for_update(command.run_id.value)
             session = stores.activity_history.get_session_for_update(
                 identity.session_id
             )
             plan_record = stores.activity_history.get_plan(command.plan_id)
-            run = stores.execution.get_run_for_update(command.run_id.value)
             workspace = stores.workspaces.get_for_update(command.workspace_id)
         except KeyError as error:
             raise FailedRunCompensationNotFound(
@@ -253,6 +261,7 @@ class FailedRunCompensationCommandService:
                 "workspace or execution intent changed"
             )
         events = stores.execution.events_for_run(command.run_id.value)
+        _require_compensation_receiver_permission(stores, request, guard)
         if (
             not events
             or events[-1].kind is not ActivityEventKind.RUN_FAILED
@@ -383,7 +392,7 @@ class FailedRunCompensationCommandService:
         stores.execution.add_event(event)
         stores.activity_history.add_action(action)
         stores.failed_run_compensations.insert(record, program)
-        updated = stores.execution.compare_and_set_run_status(
+        updated = stores.execution._compare_and_set_run_status(
             command.run_id.value,
             expected=ActivityRunStatus.FAILED,
             replacement=ActivityRunStatus.COMPENSATING,
@@ -392,6 +401,7 @@ class FailedRunCompensationCommandService:
             raise FailedRunCompensationConflict(
                 "failed run changed during compensation admission"
             )
+        _require_compensation_receiver_permission(stores, request, guard)
         return FailedRunCompensationResult(
             record,
             program,
@@ -401,7 +411,18 @@ class FailedRunCompensationCommandService:
         )
 
 
-def _replay(stores, command, action) -> FailedRunCompensationResult:
+def _require_compensation_receiver_permission(stores, request, guard):
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_execution
+    try:
+        _validate_receiver_execution(stores, request, guard)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise FailedRunCompensationConflict("fresh compensation permission is unavailable")
+
+
+def _require_replay_intent(command, action) -> None:
     if (
         action.action_type is not LifecycleOperationKind.BEGIN_COMPENSATION
         or action.intent_fingerprint != command.intent_fingerprint()
@@ -419,6 +440,10 @@ def _replay(stores, command, action) -> FailedRunCompensationResult:
         raise FailedRunCompensationIdempotencyConflict(
             "compensation idempotency key was reused"
         )
+
+
+def _replay(stores, command, action) -> FailedRunCompensationResult:
+    _require_replay_intent(command, action)
     try:
         record, program = stores.failed_run_compensations.get(
             action.payload["program_id"]

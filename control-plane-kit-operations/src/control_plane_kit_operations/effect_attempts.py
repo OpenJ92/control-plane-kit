@@ -96,6 +96,10 @@ def _record_is_valid(record: EffectAttemptRecord) -> bool:
 
     if original.kind is ActivityEventKind.STEP_STARTED:
         compensation = False
+    elif original.kind is ActivityEventKind.STEP_OBSERVATION_RESTARTED:
+        if state.identity.attempt <= 1 or state.prior_attempt is None:
+            return False
+        compensation = False
     elif original.kind is ActivityEventKind.STEP_COMPENSATION_STARTED:
         compensation = True
     else:
@@ -246,6 +250,7 @@ def _event_commits_to(
 _EVENT_KIND_BY_STATE = {
     (False, EffectAttemptStatus.STARTED, False): ActivityEventKind.STEP_STARTED,
     (False, EffectAttemptStatus.SUCCEEDED, False): ActivityEventKind.STEP_SUCCEEDED,
+    (False, EffectAttemptStatus.NOT_READY, False): ActivityEventKind.STEP_OBSERVATION_NOT_READY,
     (False, EffectAttemptStatus.FAILED, False): ActivityEventKind.STEP_FAILED,
     (False, EffectAttemptStatus.UNSUPPORTED, False): (
         ActivityEventKind.STEP_UNSUPPORTED

@@ -53,11 +53,20 @@ bounded models for:
 - runtime and ingress authorities;
 - runtime authority deliveries;
 - secret-provider and secret-reference metadata;
+- exact protected-material provision status, including uncertainty or pending admission;
 - gateway probe history and verifier configuration;
 - delegation signing-key metadata.
 
 Read models contain no raw secret values. Authority and secret-provider reads
 expose bounded metadata and references only.
+
+`read.secret-material-provision` is an unpaged exact workspace/request lookup,
+available through HTTP and MCP. It requires workspace visibility and
+`secret-provider:read` independently of the provision command. Its public DTO
+includes only state, safe correlation/timestamps, retained version metadata and,
+after successful admission, the admitted reference. It excludes raw material,
+the original actor/grant and provider credentials. A conflict's status navigation
+does not authorize this read; a custody receipt alone does not imply admission.
 
 ## Public Material Disclosure
 
@@ -69,11 +78,17 @@ gateway verifier configuration
   includes: bounded public_key_pem, derived public environment
   disclosure: purpose-limited public verification material, not a secret
 all read surfaces
-  forbid: private-key bytes, private-key references, provider credentials, resolved secret values
+  forbid: private-key bytes, provider credentials, resolved secret values
+exact delegation-key generation receipt
+  requires: workspace visibility and delegation-key:read
+  includes: authorized destination reference, validated public key/version, distinct provider/admission status
+  omits: provider endpoint/credential references and raw provider responses
+other read surfaces
+  forbid: private-key references
 ```
 
-Public verification material is disclosed only by the verifier-configuration
-projection that needs it. Calling public PEM non-secret does not make it part of
+Public verification material is disclosed by verifier-configuration projections
+and the exact authorized generation receipt. Calling public PEM non-secret does not make it part of
 general signing-key inventory or permit disclosure of any private or resolved
 credential material.
 
@@ -343,3 +358,77 @@ bounds memory and transfer, not total work or lock duration; no global scan runs
 per HTTP read. An older schema is rejected without writes. The retained acceptance
 installation stays pinned; no migration, reset, backfill, history import or
 new-UI compatibility with that installation is implied.
+
+Original installation sources (#1987): each new configuration acceptance retains
+a private canonical `accepted-installation-sources.v1` document alongside its
+existing artifact slots. Advancement events and actions expose only the source
+count and document digest. Explicit empty documents are valid; missing commitments
+are not interpreted as empty legacy evidence. Full acceptance, command replay and
+current-schema validation prove the document and its exact original attempts.
+Artifact-scoped configuration and cleanup reads retain their existing semantics.
+
+Unchanged consumers carry the original acceptance revision and both request and
+outcome fingerprints verbatim. Generated connector material additionally commits
+the original allocation start, its direct successful terminal and all six durable
+event columns through that terminal. Fresh discovery examines the full available
+bounded journal; historical proof reads the retained prefix. Neither path uses a
+latest-success search or today's credential permissions as historical evidence.
+
+An actual qualifying provider observation may prove installation for publication.
+It does not produce a direct completion or release outstanding claims. Schema
+changes add three required fields and three checks to the existing acceptance
+table, with no migration, backfill, reset or production-data repair. This local
+implementation has passing focused Docker evidence. The first full Operations
+gate reported 2,781 tests with 64 failure and 216 error entries; all 280 entries
+subsequently received reviewed focused green evidence. The second full gate ran
+2,781 tests with one failure and no errors: a stale atlas-digest test expectation.
+The one-literal correction then passed all ten existing atlas-reader tests,
+compilation and clean import. This is combined full-run and focused-correction
+evidence, not a green full-suite run on the corrected candidate. Parent acceptance
+remains a separate gate. No published or live compatibility with an older
+installation is established.
+
+Current connector installation (#2007): the internal Operations store method
+`ConfigurationAcceptanceStore.read_current_connector_installation` takes the
+workspace, expected current graph and realized-projection pins, and exact runtime
+and connector node. Its strict `CurrentConnectorInstallationRead` result is
+`complete`, `unavailable`, or `capacity`; only `complete` carries an installation.
+This adds no cpk-server, HTTP, or MCP surface.
+
+The read proves the existing complete installation-source bundle under the same
+shared evidence budget, including original acceptance membership, exact original
+attempt/outcome and generated-token provenance. It returns the original Core
+request without secret-resolution grants and its typed secret installation
+receipt, even when the connector has no configuration artifacts. A supported
+workload content update preserves that origin while advancing the returned
+current pins/revision. Missing, corrupt, uncertain or nonconnector proof cannot
+fall back to an earlier success. No schema, provider call, write, lock or budget
+increase is introduced.
+
+The caller owns the UOW. Returned pins describe captured current truth and do not
+freeze subsequent workspace changes. Historical authority is provenance only;
+consumers must separately check fresh current authority and execution fences and
+close their UOW before effects. The request and receipt are omitted from value
+representations.
+
+Native dispatch consumption (#2009): a supported `MANAGED_UPDATE_V1` connector
+observation acquires this proof inside its fresh dispatch UOW, after the existing
+worker/fence, accepted-plan, runtime-authority and lease checks. Current workspace
+pins must still match the execution base. A new immutable
+`ActivityRealizationContext.connector_installation` carries the original creation
+request/receipt; the observation request and event retain their own identities.
+The optional field is excluded from repr and remains `None` for fresh bootstrap
+and signed health reads. Historical installation credentials are provenance;
+current runtime authority is independently reloaded for dispatch.
+
+Only the proof read activates the existing run-owned evidence ledger, and its
+previous state is restored in `finally` before leaving the UOW or awaiting the
+provider. Its accumulated footprint is never reset. Closed `unavailable` or
+`capacity` results skip the provider and enter the existing guarded uncertain
+fold. With an exhausted ledger, the later bounded context reload can still raise
+`ExecutionCoordinatorConflict` after that uncertain outcome has been committed.
+Response failure therefore does not imply absence of a durable outcome. Exact
+command replay reports uncertainty without another proof read or provider call.
+Unexpected proof-reader exceptions propagate and retain the existing STARTED
+attempt; current-pin/authority denial likewise adds no retry path. This does not
+activate retained-container support in an external Interpreter.

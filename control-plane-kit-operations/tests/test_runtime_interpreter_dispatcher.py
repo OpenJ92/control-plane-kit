@@ -45,6 +45,13 @@ from control_plane_kit_core.probe_intents import (
     RuntimeEndpointObservation,
 )
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_for_request, runtime_effect_intent_fingerprint,
+)
+from control_plane_kit_core.secret_installation import secret_material_selection_fingerprint
+from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant
+from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectFailure,
     RuntimeEffectRequest,
@@ -76,8 +83,9 @@ from control_plane_kit_operations.runtime_authorities import (
 )
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
+    AuthorizeSecretVersionUse,
     SecretProviderAuthorizationDenied,
-    secret_use_correlation_for,
+    secret_version_use_correlation_for,
 )
 from control_plane_kit_operations.runtime_effects import (
     runtime_effect_request_for_context,
@@ -238,6 +246,38 @@ class RecordingSecretUseAuthorizer:
             activity_id=command.activity_id,
             effect_id=command.effect_id,
             probe_id=command.probe_id,
+        )
+
+
+class RecordingSecretVersionAuthorizer(RecordingSecretUseAuthorizer):
+    """Exact-version fake, opted into only by consumer dispatch laws."""
+
+    def __init__(self, *, denied: bool = False) -> None:
+        super().__init__(denied=denied)
+        self.version_commands: list[AuthorizeSecretVersionUse] = []
+
+    def authorize_version_resolution(self, command):
+        self.version_commands.append(command)
+        if self.denied:
+            raise SecretProviderAuthorizationDenied("denied")
+        return SecretVersionResolutionGrant(
+            authorization_id="suse_" + "a" * 64,
+            workspace_id=command.workspace_id,
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference("secret://bootstrap/provider-a-token"),
+            selection=command.selection,
+            actor_subject=command.actor_subject,
+            correlation_id=command.correlation_id,
+            intent_fingerprint="d" * 64,
+            operation_id=command.operation_id,
+            session_id=command.session_id,
+            run_id=command.run_id,
+            activity_id=command.activity_id,
+            effect_id=command.effect_id,
+            request_fingerprint=command.request_fingerprint,
+            selection_fingerprint=command.selection_fingerprint,
         )
 
 
@@ -465,22 +505,18 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
     def test_live_grant_correlation_matches_reconciliation_without_session(
         self,
     ) -> None:
+        from tests.test_secret_version_dispatch import selected_context
+
         interpreter = RecordingInterpreter("docker")
-        authorizer = RecordingSecretUseAuthorizer()
+        authorizer = RecordingSecretVersionAuthorizer()
         dispatcher = RuntimeInterpreterDispatcher(
-            {RuntimeKind.DOCKER: interpreter},
+            {RuntimeKind.DOCKER: RuntimeAdapterRegistration(
+                interpreter, exact_version_execute=True)},
             secret_use_authorizer=authorizer,
         )
         execute_runtime = getattr(dispatcher, "execute_runtime", None)
         self.assertIsNotNone(execute_runtime, "runtime adapter arm is missing")
-        first = context_for(
-            StartNode(NodeTarget("api")),
-            secret_delivery=True,
-            worker_scopes=(
-                PolicyScope.EXECUTION_OPERATE,
-                PolicyScope.SECRET_PROVIDER_USE,
-            ),
-        )
+        first = selected_context()
         later_event = replace(first.intent_event, occurred_at="2026-07-22T10:03:00Z")
         later = replace(first, intent_event=later_event)
         worker_b_authority = ExecutionWorkerAuthority(
@@ -512,8 +548,8 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             request = runtime_effect_request_for_context(context)
             execute_runtime(context, request)
 
-        self.assertEqual(len(authorizer.commands), 3)
-        first_command, later_command, worker_b_command = authorizer.commands
+        self.assertEqual(len(authorizer.version_commands), 3)
+        first_command, later_command, worker_b_command = authorizer.version_commands
         self.assertEqual(first_command.correlation_id, later_command.correlation_id)
         self.assertNotEqual(
             first_command.requested_at,
@@ -523,7 +559,7 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             first_command.correlation_id,
             worker_b_command.correlation_id,
         )
-        for command in authorizer.commands:
+        for command in authorizer.version_commands:
             self.assertEqual(command.workspace_id, "workspace-a")
             self.assertEqual(command.operation_id, "request-a")
             self.assertEqual(command.run_id, "run-a")
@@ -532,10 +568,11 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             self.assertIsNone(command.session_id)
             self.assertEqual(
                 command.correlation_id,
-                secret_use_correlation_for(
+                secret_version_use_correlation_for(
                     workspace_id=command.workspace_id,
-                    reference=command.reference,
-                    intent=command.intent,
+                    selection=command.selection,
+                    request_fingerprint=command.request_fingerprint,
+                    selection_fingerprint=command.selection_fingerprint,
                     actor_subject=command.actor_subject,
                     operation_id=command.operation_id,
                     run_id=command.run_id,
@@ -543,6 +580,8 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                     effect_id=command.effect_id,
                 ),
             )
+        self.assertEqual(authorizer.commands, [])
+
 
     def test_activity_dispatcher_preserves_handled_ingress_failure(self) -> None:
         ingress_failure = ActivityExecutionOutcome.unsupported(
@@ -914,39 +953,41 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         self.assertIs(result.observations[0], endpoint)
 
     def test_secret_use_is_authorized_before_runtime_interpreter_io(self) -> None:
-        interpreter = RecordingInterpreter("docker")
-        authorizer = RecordingSecretUseAuthorizer()
+        from tests.test_secret_version_dispatch import selected_context
+        from tests.secret_installation_receipt_fixture import installation_evidence
+        from control_plane_kit_core.secret_installation import secret_installation_receipt_for_result
+
+        context = selected_context()
+        request = runtime_effect_request_for_context(context)
+        result = RuntimeEffectResult.succeeded(request.effect_id,
+            evidence={"interpreter": "docker", **installation_evidence(request)})
+        self.assertIsNotNone(secret_installation_receipt_for_result(request, result))
+        interpreter = RecordingInterpreter("docker", result)
+        authorizer = RecordingSecretVersionAuthorizer()
         dispatcher = RuntimeInterpreterDispatcher(
-            {RuntimeKind.DOCKER: interpreter},
+            {RuntimeKind.DOCKER: RuntimeAdapterRegistration(
+                interpreter, exact_version_execute=True)},
             secret_use_authorizer=authorizer,
         )
 
-        context = context_for(
-            StartNode(NodeTarget("api")),
-            secret_delivery=True,
-            worker_scopes=(
-                PolicyScope.EXECUTION_OPERATE,
-                PolicyScope.SECRET_PROVIDER_USE,
-            ),
-        )
         result = self.execute_runtime(dispatcher, context)
 
         self.assertIs(type(result), RuntimeEffectResult)
         self.assertIs(result.kind, EffectResultKind.SUCCEEDED)
-        self.assertEqual(len(authorizer.commands), 1)
-        command = authorizer.commands[0]
+        self.assertEqual(len(authorizer.version_commands), 1)
+        command = authorizer.version_commands[0]
         self.assertEqual(
-            command.reference,
+            command.selection.reference,
             SecretReference("secret://provider-a/application/token"),
         )
-        self.assertEqual(command.intent, SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        self.assertEqual(command.selection.intent, SecretUseIntent.APPLICATION_CONTROL_TOKEN)
         self.assertEqual(command.actor_subject, "worker-a")
         self.assertEqual(command.effect_id, "event-intent")
         self.assertEqual(len(interpreter.requests), 1)
         self.assertEqual(
             interpreter.requests[0].secret_resolution_grants,
             (
-                SecretResolutionGrant(
+                SecretVersionResolutionGrant(
                     authorization_id="suse_" + "a" * 64,
                     workspace_id="workspace-a",
                     reference_registration_id="sref_" + "b" * 64,
@@ -955,10 +996,11 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                     credential_reference=SecretReference(
                         "secret://bootstrap/provider-a-token"
                     ),
-                    reference=SecretReference(
-                        "secret://provider-a/application/token"
+                    selection=SecretVersionSelection(
+                        SecretReference("secret://provider-a/application/token"),
+                        SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                        "version-dispatch",
                     ),
-                    intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
                     actor_subject="worker-a",
                     correlation_id=command.correlation_id,
                     intent_fingerprint="d" * 64,
@@ -967,9 +1009,15 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                     run_id="run-a",
                     activity_id="activity-a",
                     effect_id="event-intent",
+                    request_fingerprint=runtime_effect_intent_fingerprint(
+                        runtime_effect_intent_for_request(runtime_effect_request_for_context(context))),
+                    selection_fingerprint=secret_material_selection_fingerprint(
+                        runtime_effect_request_for_context(context)),
                 ),
             ),
         )
+        self.assertEqual(authorizer.commands, [])
+
 
     def test_malformed_retained_run_fails_at_record_boundary_before_dispatch(
         self,
@@ -1004,13 +1052,13 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         self.assertNotIn("retained/run-canary", rendered)
 
     def test_missing_secret_authorizer_fails_before_runtime_io(self) -> None:
-        interpreter = RecordingInterpreter("docker")
-        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+        from tests.test_secret_version_dispatch import selected_context
 
-        context = context_for(
-            StartNode(NodeTarget("api")),
-            secret_delivery=True,
-        )
+        interpreter = RecordingInterpreter("docker")
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: RuntimeAdapterRegistration(
+                interpreter, exact_version_execute=True)})
+
+        context = selected_context()
         result = self.execute_runtime(dispatcher, context)
 
         self.assertIs(type(result), RuntimeEffectResult)
@@ -1023,51 +1071,52 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         self.assertEqual(interpreter.requests, [])
 
     def test_denied_secret_use_fails_before_runtime_io(self) -> None:
+        from tests.test_secret_version_dispatch import selected_context
+
         interpreter = RecordingInterpreter("docker")
-        authorizer = RecordingSecretUseAuthorizer(denied=True)
+        authorizer = RecordingSecretVersionAuthorizer(denied=True)
         dispatcher = RuntimeInterpreterDispatcher(
-            {RuntimeKind.DOCKER: interpreter},
+            {RuntimeKind.DOCKER: RuntimeAdapterRegistration(
+                interpreter, exact_version_execute=True)},
             secret_use_authorizer=authorizer,
         )
 
-        context = context_for(
-            StartNode(NodeTarget("api")),
-            secret_delivery=True,
-        )
+        context = selected_context()
         result = self.execute_runtime(dispatcher, context)
 
         self.assertIs(type(result), RuntimeEffectResult)
         self.assertIs(result.kind, EffectResultKind.UNSUPPORTED)
         assert result.failure is not None
         self.assertEqual(result.failure.code, "secret.use-not-authorized")
+        self.assertEqual(len(authorizer.version_commands), 1)
         self.assertEqual(interpreter.requests, [])
+        self.assertEqual(authorizer.commands, [])
+
 
     def test_secret_use_retry_correlation_is_deterministic(self) -> None:
+        from tests.test_secret_version_dispatch import selected_context
+
         interpreter = RecordingInterpreter("docker")
-        authorizer = RecordingSecretUseAuthorizer()
+        authorizer = RecordingSecretVersionAuthorizer()
         dispatcher = RuntimeInterpreterDispatcher(
-            {RuntimeKind.DOCKER: interpreter},
+            {RuntimeKind.DOCKER: RuntimeAdapterRegistration(
+                interpreter, exact_version_execute=True)},
             secret_use_authorizer=authorizer,
         )
-        context = context_for(
-            StartNode(NodeTarget("api")),
-            secret_delivery=True,
-            worker_scopes=(
-                PolicyScope.EXECUTION_OPERATE,
-                PolicyScope.SECRET_PROVIDER_USE,
-            ),
-        )
+        context = selected_context()
 
         self.execute_runtime(dispatcher, context)
         self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(len(authorizer.commands), 2)
+        self.assertEqual(len(authorizer.version_commands), 2)
         self.assertEqual(
-            authorizer.commands[0].correlation_id,
-            authorizer.commands[1].correlation_id,
+            authorizer.version_commands[0].correlation_id,
+            authorizer.version_commands[1].correlation_id,
         )
-        self.assertIsNone(authorizer.commands[0].session_id)
-        self.assertIsNone(authorizer.commands[1].session_id)
+        self.assertIsNone(authorizer.version_commands[0].session_id)
+        self.assertIsNone(authorizer.version_commands[1].session_id)
+        self.assertEqual(authorizer.commands, [])
+
 
 
 def context_for(

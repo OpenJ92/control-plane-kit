@@ -309,6 +309,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "WorkspaceReadResponse",
             ),
             (
+                "read.receiver-authoring-context",
+                "/workspaces/{workspace_id}/receiver-authoring-context",
+                "ReceiverAuthoringContextReadResponse",
+            ),
+            (
                 "read.current-graph",
                 "/workspaces/{workspace_id}/graphs/current",
                 "GraphReadResponse",
@@ -409,9 +414,24 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "DelegationSigningKeyCollectionReadResponse",
             ),
             (
+                "read.delegation-key-generation",
+                "/workspaces/{workspace_id}/delegation-key-generations/{request_id}",
+                "GeneratedDelegationKeyReceipt",
+            ),
+            (
+                "read.secret-material-provision",
+                "/workspaces/{workspace_id}/secret-material-provisions/{request_id}",
+                "ProvisionedSecretMaterialReceipt",
+            ),
+            (
                 "read.gateway-verifier-configuration",
                 "/workspaces/{workspace_id}/gateways/{gateway_node_id}/verifier-configuration",
                 "GatewayVerifierConfigurationReadResponse",
+            ),
+            (
+                "read.workload-verifier-configuration",
+                "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}",
+                "WorkloadVerifierConfigurationReadResponse",
             ),
             (
                 "read.pending-approvals",
@@ -558,6 +578,27 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "GatewayProbeCommandRequest",
                 "GatewayProbeCommandResponse",
+            ),
+            (
+                "command.delegation-key.generate",
+                "/workspaces/{workspace_id}/delegation-keys/generate",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "GenerateDelegationKeyRequest", "GeneratedDelegationKeyReceipt",
+            ),
+            (
+                "command.secret-material.provision",
+                "/workspaces/{workspace_id}/secret-material/provision",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ProvisionSecretMaterialRequest", "ProvisionedSecretMaterialReceipt",
+            ),
+            (
+                "command.delegation-key-generation.reconcile",
+                "/workspaces/{workspace_id}/delegation-key-generations/{request_id}/reconcile",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ReconcileDelegationKeyGenerationRequest", "GeneratedDelegationKeyReceipt",
             ),
             (
                 "command.workspace.create",
@@ -830,6 +871,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "ExecutionRunResponse",
             ),
             (
+                "command.deployment.reobserve-connector",
+                "/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector",
+                ControlPlaneServiceRole.EXECUTION,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "ReobserveConnectorConnectionRequest",
+                "ExecutionRunResponse",
+            ),
+            (
                 "command.graph.advance-current",
                 "/workspaces/{workspace_id}/runs/{run_id}/advance-current-graph",
                 ControlPlaneServiceRole.LIFECYCLE,
@@ -863,7 +913,10 @@ def _read_route(
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
+        request_schema=HttpSchemaRef("ReceiverAuthoringContextReadRequest", max_bytes=16384)
+        if route_id == "read.receiver-authoring-context" else HttpSchemaRef("EmptyRequest", max_bytes=1024),
         response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
+            "read.receiver-authoring-context",
             "read.desired-topology-draft-revision-preparations",
             "read.desired-topology-draft-revision-attempts",
         } else 65536),
@@ -887,7 +940,8 @@ def _command_route(
         service_role=service_role,
         auth_scope=auth_scope,
         safety=safety,
-        request_schema=HttpSchemaRef(request_schema),
+        request_schema=HttpSchemaRef(request_schema, max_bytes=98304
+            if route_id == "command.secret-material.provision" else 65536),
         response_schema=HttpSchemaRef(response_schema),
     )
 

@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
-from control_plane_kit_core.planning import ActivityPlan, ReconcileNode, StartNode, compile_activity_plan
+from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.planning import (
+    ActivityPlan,
+    InvalidActivityPlan,
+    ReconcileNode,
+    StartNode,
+)
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
@@ -27,9 +35,21 @@ from control_plane_kit_operations.deployment_transitions import (
 )
 from control_plane_kit_operations.graph_authoring import (
     GraphAuthoringError,
+    GraphAuthoringService,
+    SecretVersionMetadataReader,
     SetDesiredGraphCommand,
-    SetDesiredGraphResult,
-    set_desired_graph_in_unit_of_work,
+    _consume_secret_preparation,
+    validate_proposed_graph_id,
+    product_references_in_graph,
+    admit_graph_secret_selections,
+    original_carried_secret_graph,
+)
+from control_plane_kit_operations.products import ProductRegistrationNotFound, RegisteredProductStatus
+from control_plane_kit_operations.receiver_lifecycle import (
+    ReceiverLifecycleExpectation, ReceiverLifecycleStorageError, _expectation_member,
+    _receiver_action_payload, _receiver_replay_payload, _check_receiver_expectation,
+    _receiver_sources, _validate_receiver_admission, _validate_receiver_reference,
+    derive_receiver_bindings,
 )
 from control_plane_kit_operations.records import (
     ActivityPlanRecord,
@@ -37,10 +57,22 @@ from control_plane_kit_operations.records import (
     OperationActionRecord,
     OperationSessionStatus,
     OperationsRecordError,
+    GraphVersionRecord,
+    RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityRegistrationError,
     _admitted_runtime_authority_deliveries,
+)
+from control_plane_kit_operations.runtime_management_admission import (
+    runtime_management_plan_profile,
+    runtime_management_planning_is_unsupported,
+)
+from control_plane_kit_operations.plan_derivation import (
+    PlanDerivationError,
+    PlanDerivationProfile,
+    derive_activity_plan,
+    planning_derivation_matches_action,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -112,6 +144,11 @@ class SetDesiredGraph:
     idempotency_key: IdempotencyKey
     expected_desired_realized_projection_id: str | None = None
     expected_desired_graph_revision: int = 0
+    proposed_graph_id: str | None = None
+    receiver_lifecycle: ReceiverLifecycleExpectation | None = field(default=None, kw_only=True)
+    actor_scopes: tuple[PolicyScope, ...] = field(default=(), kw_only=True)
+    explicit_secret_choices: Mapping[str, tuple[SecretVersionSelection, ...]] = field(
+        default_factory=dict, kw_only=True)
 
     def __post_init__(self) -> None:
         _required_text(self.session_id, "session_id")
@@ -137,9 +174,24 @@ class SetDesiredGraph:
                 "expected_desired_graph_revision must be nonnegative"
             )
         _require_idempotency_key(self.idempotency_key)
+        try:
+            admitted = _secret_authoring_command(self)
+        except GraphAuthoringError:
+            raise InvalidOperationCommand("desired graph secret choices are malformed") from None
+        object.__setattr__(self, "explicit_secret_choices", admitted.explicit_secret_choices)
+        if self.proposed_graph_id is not None:
+            invalid_proposal = False
+            try:
+                validate_proposed_graph_id(self.proposed_graph_id)
+            except GraphAuthoringError:
+                invalid_proposal = True
+            if invalid_proposal:
+                raise InvalidOperationCommand(
+                    "proposed_graph_id must be a bounded public graph reference"
+                )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        result = {
             "command": OperatorCommandKind.SET_DESIRED_GRAPH.value,
             "session_id": self.session_id,
             "workspace_id": self.workspace_id,
@@ -152,6 +204,11 @@ class SetDesiredGraph:
             "idempotency_key": self.idempotency_key.value,
             "graph": _graph_summary(self.graph),
         }
+        if self.proposed_graph_id is not None:
+            result["proposed_graph_id"] = self.proposed_graph_id
+        result.update(_expectation_member(self.receiver_lifecycle))
+        result.update(_explicit_secret_choice_member(self))
+        return result
 
 
 @dataclass(frozen=True)
@@ -332,13 +389,19 @@ class ActivityPlanningResult:
             raise InvalidOperationCommand(
                 "action evidence must reference a bounded workspace"
             )
-        if compile_activity_plan(self.transition.diff) != self.plan_record.plan:
+        if not planning_derivation_matches_action(
+            self.plan_record.derivation_profile, evidence,
+        ):
+            raise InvalidOperationCommand("plan and action derivation evidence must match")
+        if derive_activity_plan(
+            self.transition, profile=self.plan_record.derivation_profile,
+        ) != self.plan_record.plan:
             raise InvalidOperationCommand(
                 "deployment transition must compile to the persisted plan"
             )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "plan_id": self.plan_record.plan_id,
             "session_id": self.plan_record.session_id,
             "base_graph_id": self.plan_record.base_graph_id,
@@ -356,6 +419,9 @@ class ActivityPlanningResult:
             "action_ordinal": self.action.ordinal,
             "replayed": self.replayed,
         }
+        if self.plan_record.derivation_profile is not None:
+            descriptor["derivation_profile"] = self.plan_record.derivation_profile.value
+        return descriptor
 
 
 class DesiredGraphCommandService:
@@ -367,51 +433,89 @@ class DesiredGraphCommandService:
         *,
         clock: Callable[[], str],
         id_factory: Callable[[], str],
+        secret_metadata_reader: SecretVersionMetadataReader | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
         self._id_factory = id_factory
+        # Reuse the existing private preparation owner, never its action-free writer.
+        self._secret_preparation = GraphAuthoringService(unit_of_work_factory,
+            graph_id_factory=id_factory, clock=clock, secret_metadata_reader=secret_metadata_reader)
+
+    def _retained_child_action(self, session_id, idempotency_key):
+        """Exact immutable receipt lookup for the owning preparation composition."""
+        with self._unit_of_work_factory() as unit_of_work:
+            return unit_of_work.stores.activity_history.action_for_idempotency(session_id, idempotency_key)
 
     def execute(self, command: SetDesiredGraph) -> DesiredGraphEditResult:
         fingerprint = _desired_graph_fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work:
+        coordinate = (command.session_id, command.idempotency_key.value)
+        with self._command_unit_of_work(command, fingerprint, coordinate) as (unit_of_work, prepared):
+            # The intent digest excludes the action key. Bind both before lookup/replay.
+            if (coordinate != (command.session_id, command.idempotency_key.value)
+                    or fingerprint != _desired_graph_fingerprint(command)):
+                raise DesiredGraphCommandError("desired graph intent changed during preparation")
             history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            existing = history.action_for_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
+            history.lock_action_idempotency(*coordinate)
+            existing = history.action_for_idempotency(*coordinate)
             if existing is not None:
-                result = _desired_graph_replay(unit_of_work, existing, fingerprint)
+                result = _desired_graph_replay(unit_of_work, existing, fingerprint, command)
                 unit_of_work.commit()
                 return result
+            lifecycle_guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(
+                command.workspace_id
+            )
             session = _desired_session(unit_of_work, command)
             if session.status is not OperationSessionStatus.OPEN:
                 raise DesiredGraphSessionConflict("operation session is not open")
             created_at = self._clock()
             try:
-                graph_result = set_desired_graph_in_unit_of_work(
-                    unit_of_work,
-                    SetDesiredGraphCommand(
-                        workspace_id=command.workspace_id,
-                        actor_id=command.actor_id,
-                        graph=command.graph,
-                        expected_desired_graph_id=command.expected_desired_graph_id,
-                        expected_desired_realized_projection_id=(
-                            command.expected_desired_realized_projection_id
-                        ),
-                        expected_desired_graph_revision=(
-                            command.expected_desired_graph_revision
-                        ),
-                    ),
-                    graph_id=self._id_factory(),
-                    created_at=created_at,
-                )
+                # Preserve original input/product admission while this action
+                # owner, rather than the action-free helper, owns all writes.
+                SetDesiredGraphCommand(command.workspace_id, command.actor_id, command.graph,
+                    command.expected_desired_graph_id, command.expected_desired_realized_projection_id,
+                    command.expected_desired_graph_revision)
+                stores = unit_of_work.stores
+                workspace = stores.workspaces.get_for_update(command.workspace_id)
+                if (workspace.desired_graph_id, workspace.desired_realized_projection_id,
+                        workspace.desired_graph_revision) != (command.expected_desired_graph_id,
+                        command.expected_desired_realized_projection_id, command.expected_desired_graph_revision):
+                    raise StaleDesiredGraph("stale desired graph pointer")
+                _check_receiver_expectation(workspace, command.receiver_lifecycle)
+                references = product_references_in_graph(command.graph)
+                for reference in references:
+                    try:
+                        registered = stores.registered_products.get(command.workspace_id, reference)
+                    except ProductRegistrationNotFound as error:
+                        raise GraphAuthoringError(f"unregistered product {reference.identity.key}") from error
+                    if registered.status is not RegisteredProductStatus.ACTIVE:
+                        raise GraphAuthoringError(f"unregistered product {reference.identity.key}")
+                selected_input = command.graph
+                if prepared is not None:
+                    _consume_secret_preparation(unit_of_work, prepared.command, prepared)
+                    selected_input = prepared.command.graph
+                selected_graph = admit_graph_secret_selections(stores, workspace, selected_input,
+                    prepared=prepared)
+                graph = GraphVersionRecord.from_graph(
+                    graph_id=command.proposed_graph_id or self._id_factory(), workspace_id=command.workspace_id,
+                    version=stores.graphs.next_version_for_workspace(command.workspace_id), graph=selected_graph,
+                    created_by=command.actor_id, created_at=created_at)
+                projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
+                bindings = derive_receiver_bindings(command.workspace_id, graph.graph_id,
+                    projection.projection_id, projection.graph_descriptor)
+                _validate_receiver_admission(stores, workspace, command.receiver_lifecycle, bindings, lifecycle_guard)
+                payload = _receiver_action_payload({
+                    "workspace_id": command.workspace_id,
+                    "previous_desired_graph_id": command.expected_desired_graph_id,
+                    "desired_graph_id": graph.graph_id,
+                    "desired_realized_projection_id": projection.projection_id,
+                    "desired_graph_revision": workspace.desired_graph_revision + 1,
+                    "product_references": [reference.descriptor() for reference in references],
+                }, command.receiver_lifecycle)
             except KeyError as error:
                 raise DesiredGraphWorkspaceNotFound("workspace was not found") from error
+            except (ReceiverLifecycleStorageError, OperationsRecordError):
+                raise DesiredGraphCommandError("receiver graph admission is unavailable") from None
             except GraphAuthoringError as error:
                 if "stale desired graph" in str(error):
                     raise StaleDesiredGraph(str(error)) from error
@@ -424,38 +528,79 @@ class DesiredGraphCommandService:
                 ),
                 action_type=OperatorCommandKind.SET_DESIRED_GRAPH,
                 actor_id=command.actor_id,
-                payload={
-                    "workspace_id": command.workspace_id,
-                    "previous_desired_graph_id": command.expected_desired_graph_id,
-                    "desired_graph_id": graph_result.graph_version.graph_id,
-                    "desired_realized_projection_id": (
-                        graph_result.realized_projection.projection_id
-                    ),
-                    "desired_graph_revision": (
-                        graph_result.workspace.desired_graph_revision
-                    ),
-                    "product_references": [
-                        reference.descriptor()
-                        for reference in graph_result.product_references
-                    ],
-                },
+                payload=payload,
                 created_at=created_at,
                 idempotency_key=command.idempotency_key.value,
                 intent_fingerprint=fingerprint,
             )
-            unit_of_work.stores.activity_history.add_action(action)
+            try:
+                stores.graphs._save(graph)
+                stores.realized_graphs._save(projection)
+                stores.activity_history.add_action(action)
+                held = stores.workspaces.get_for_update(command.workspace_id)
+                if held != workspace:
+                    raise DesiredGraphCommandError("workspace graph truth changed")
+                new_ids = _validate_receiver_admission(stores, held, command.receiver_lifecycle,
+                    bindings, lifecycle_guard)
+                stores.graphs._reserve_new_receiver_introductions(graph, projection,
+                    action_id=action.action_id, session_id=action.session_id,
+                    new_receiver_ids=new_ids, lifecycle_guard=lifecycle_guard)
+                stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=lifecycle_guard)
+                _receiver_sources(stores, held)
+                _check_receiver_expectation(stores.workspaces.get_for_update(command.workspace_id),
+                    command.receiver_lifecycle)
+                updated = stores.workspaces._set_desired_graph(command.workspace_id,
+                    graph.graph_id, projection.projection_id)
+            except ReceiverLifecycleStorageError:
+                raise DesiredGraphCommandError("receiver graph admission is unavailable") from None
+            except GraphAuthoringError as error:
+                raise DesiredGraphCommandError(str(error)) from None
             unit_of_work.commit()
             return DesiredGraphEditResult(
                 workspace_id=command.workspace_id,
                 previous_desired_graph_id=command.expected_desired_graph_id,
-                graph_version_id=graph_result.graph_version.graph_id,
-                graph_version=graph_result.graph_version.version,
+                graph_version_id=graph.graph_id,
+                graph_version=graph.version,
                 action=action,
                 desired_realized_projection_id=(
-                    graph_result.realized_projection.projection_id
+                    projection.projection_id
                 ),
-                desired_graph_revision=graph_result.workspace.desired_graph_revision,
+                desired_graph_revision=updated.desired_graph_revision,
             )
+
+    @contextmanager
+    def _command_unit_of_work(self, command, fingerprint, coordinate):
+        if not command.explicit_secret_choices:
+            with self._unit_of_work_factory() as uow:
+                yield uow, None
+            return
+        # Exact history wins before fresh authority/metadata. Keep replay on this UoW.
+        with self._unit_of_work_factory() as uow:
+            history = uow.stores.activity_history
+            history.lock_action_idempotency(*coordinate)
+            existing = history.action_for_idempotency(*coordinate)
+            if existing is not None:
+                _desired_graph_replay(uow, existing, fingerprint, command)
+                yield uow, None
+                return
+            session = _desired_session(uow, command)
+            if session.status is not OperationSessionStatus.OPEN:
+                raise DesiredGraphSessionConflict("operation session is not open")
+            try:
+                workspace = uow.stores.workspaces.get(command.workspace_id)
+            except KeyError:
+                raise DesiredGraphWorkspaceNotFound("workspace was not found") from None
+            if (workspace.desired_graph_id, workspace.desired_realized_projection_id,
+                    workspace.desired_graph_revision) != (command.expected_desired_graph_id,
+                    command.expected_desired_realized_projection_id, command.expected_desired_graph_revision):
+                raise StaleDesiredGraph("stale desired graph pointer")
+        try:
+            authoring = _secret_authoring_command(command)
+            with self._secret_preparation._prepare_secret_selections(authoring) as prepared:
+                with self._secret_preparation._secret_selection_unit_of_work(prepared) as uow:
+                    yield uow, prepared
+        except GraphAuthoringError:
+            raise DesiredGraphCommandError("secret selection preparation is invalid or unavailable") from None
 
 
 class ActivityPlanningCommandService:
@@ -495,6 +640,7 @@ class ActivityPlanningCommandService:
                 )
                 unit_of_work.commit()
                 return result
+            unit_of_work.stores.graphs.lock_receiver_lifecycle(command.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
             except KeyError as error:
@@ -551,19 +697,83 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningGraphStateConflict(
                     "workspace graph pointers changed"
                 )
-            transition, plan = _planning_transition(
-                unit_of_work,
-                workspace_id=command.workspace_id,
-                base_graph_id=command.expected_current_graph_id,
-                desired_graph_id=command.expected_desired_graph_id,
-                base_projection_id=expected_current_projection_id,
-                desired_projection_id=expected_desired_projection_id,
-                graph_codec=self._graph_codec,
-            )
+            profile = PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
+            invalid_plan = False
+            try:
+                transition, plan = _planning_transition(
+                    unit_of_work,
+                    workspace_id=command.workspace_id,
+                    base_graph_id=command.expected_current_graph_id,
+                    desired_graph_id=command.expected_desired_graph_id,
+                    base_projection_id=expected_current_projection_id,
+                    desired_projection_id=expected_desired_projection_id,
+                    graph_codec=self._graph_codec,
+                    profile=profile,
+                )
+                selected_profile = runtime_management_plan_profile(
+                    transition,
+                    registered_products=unit_of_work.stores.registered_products.list_active(
+                        command.workspace_id,
+                    ),
+                )
+                if selected_profile is None:
+                    raise InvalidOperationCommand(
+                        "runtime management planning is unsupported"
+                    )
+                if selected_profile is not profile:
+                    profile = selected_profile
+                    transition, plan = _planning_transition(
+                        unit_of_work,
+                        workspace_id=command.workspace_id,
+                        base_graph_id=command.expected_current_graph_id,
+                        desired_graph_id=command.expected_desired_graph_id,
+                        base_projection_id=expected_current_projection_id,
+                        desired_projection_id=expected_desired_projection_id,
+                        graph_codec=self._graph_codec,
+                        profile=profile,
+                    )
+            except InvalidActivityPlan:
+                invalid_plan = True
+            if invalid_plan:
+                raise ActivityPlanningGraphInvalid(
+                    "persisted graph pair cannot produce an activity plan"
+                )
+            # Preserve the graph owner's malformed-material classification.
+            # Receiver provenance is checked after pure derivation but before
+            # publishing any plan/action or granting execution authority.
+            invalid_receiver = False
+            try:
+                _validate_receiver_reference(unit_of_work.stores, workspace,
+                    command.expected_current_graph_id, expected_current_projection_id)
+                _validate_receiver_reference(unit_of_work.stores, workspace,
+                    command.expected_desired_graph_id, expected_desired_projection_id)
+            except (ValueError, KeyError):
+                invalid_receiver = True
+            if invalid_receiver:
+                raise ActivityPlanningError("receiver reference admission is unavailable")
+            if runtime_management_planning_is_unsupported(
+                transition,
+                registered_products=unit_of_work.stores.registered_products.list_active(
+                    command.workspace_id,
+                ),
+            ):
+                raise InvalidOperationCommand("runtime management planning is unsupported")
             _require_fresh_plan_delivery_admission(
                 unit_of_work, plan, transition.desired.graph,
                 workspace_id=command.workspace_id,
             )
+            from control_plane_kit_operations._workload_verifier_authority import (
+                WorkloadVerifierAuthorityUnavailable, require_verifier_refresh_authority,
+            )
+            try:
+                require_verifier_refresh_authority(unit_of_work.stores, command.workspace_id,
+                    transition.current.graph, transition.desired.graph, plan, profile)
+            except WorkloadVerifierAuthorityUnavailable:
+                unavailable_verifiers = True
+            else:
+                unavailable_verifiers = False
+            if unavailable_verifiers:
+                raise ActivityPlanningError("workload verifier configuration is unavailable")
             created_at = self._clock()
             plan_record = ActivityPlanRecord(
                 plan_id=self._id_factory(),
@@ -576,6 +786,7 @@ class ActivityPlanningCommandService:
                 base_realized_projection_id=expected_current_projection_id,
                 desired_realized_projection_id=expected_desired_projection_id,
                 desired_graph_revision=expected_desired_revision,
+                derivation_profile=profile,
             )
             unit_of_work.stores.activity_history.add_plan(plan_record)
             action = OperationActionRecord(
@@ -600,6 +811,7 @@ class ActivityPlanningCommandService:
                     "desired_graph_revision": plan_record.desired_graph_revision,
                     "ready_for_execution": plan.ready_for_execution,
                     "activity_count": len(plan.activities),
+                    "derivation_profile": profile.value,
                 },
                 created_at=created_at,
                 idempotency_key=command.idempotency_key.value,
@@ -628,6 +840,7 @@ def _desired_graph_replay(
     unit_of_work: Any,
     action: OperationActionRecord,
     fingerprint: str,
+    command,
 ) -> DesiredGraphEditResult:
     if action.action_type is not OperatorCommandKind.SET_DESIRED_GRAPH:
         raise DesiredGraphIdempotencyConflict(
@@ -637,6 +850,13 @@ def _desired_graph_replay(
         raise DesiredGraphIdempotencyConflict(
             "idempotency key was already used for different desired graph intent"
         )
+    try:
+        _receiver_replay_payload(action.payload, command.receiver_lifecycle, {
+            "workspace_id", "previous_desired_graph_id", "desired_graph_id",
+            "desired_realized_projection_id", "desired_graph_revision", "product_references",
+        })
+    except (ValueError, TypeError):
+        raise DesiredGraphCommandError("desired graph replay evidence is malformed") from None
     graph_id = action.payload.get("desired_graph_id")
     workspace_id = action.payload.get("workspace_id")
     previous = action.payload.get("previous_desired_graph_id")
@@ -648,7 +868,24 @@ def _desired_graph_replay(
         raise DesiredGraphCommandError("desired graph action has invalid previous pointer")
     if not isinstance(projection_id, str) or type(desired_revision) is not int:
         raise DesiredGraphCommandError("desired graph lineage evidence is incomplete")
-    graph = unit_of_work.stores.graphs.get(graph_id)
+    try:
+        graph = unit_of_work.stores.graphs.get(graph_id)
+        projection = unit_of_work.stores.realized_graphs.get(projection_id)
+    except KeyError:
+        raise DesiredGraphCommandError("desired graph replay material is unavailable") from None
+    try:
+        original_material = original_carried_secret_graph(unit_of_work.stores, command)
+    except (KeyError, ValueError, TypeError):
+        raise DesiredGraphCommandError("desired graph replay material is unavailable") from None
+    if (graph.workspace_id != command.workspace_id or workspace_id != command.workspace_id
+            or graph.graph_descriptor != DEFAULT_GRAPH_CODEC.encode(original_material)
+            or projection != RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
+            or action.payload["product_references"] != [
+                reference.descriptor() for reference in product_references_in_graph(command.graph)]
+            or action.actor_id != command.actor_id or action.session_id != command.session_id
+            or previous != command.expected_desired_graph_id
+            or desired_revision != command.expected_desired_graph_revision + 1):
+        raise DesiredGraphCommandError("desired graph replay evidence is incongruent")
     return DesiredGraphEditResult(
         workspace_id=workspace_id,
         previous_desired_graph_id=previous,
@@ -681,12 +918,17 @@ def _activity_plan_replay(
             "planning replay evidence is incongruent"
         )
     missing_plan = False
+    malformed_plan = False
     try:
         plan_record = unit_of_work.stores.activity_history.get_plan(plan_id)
     except KeyError:
         missing_plan = True
+    except PlanDerivationError:
+        malformed_plan = True
     if missing_plan:
         raise ActivityPlanningGraphStateConflict("planning replay truth is missing")
+    if malformed_plan:
+        raise ActivityPlanningGraphStateConflict("persisted plan evidence is invalid")
     if not _planning_evidence_matches(action, plan_record):
         raise ActivityPlanningGraphStateConflict(
             "planning replay evidence is incongruent"
@@ -720,6 +962,7 @@ def _activity_plan_replay(
         base_projection_id=plan_record.base_realized_projection_id,
         desired_projection_id=plan_record.desired_realized_projection_id,
         graph_codec=graph_codec,
+        profile=plan_record.derivation_profile,
     )
     if replayed_plan != plan_record.plan:
         raise ActivityPlanningGraphStateConflict(
@@ -742,6 +985,7 @@ def _planning_transition(
     base_projection_id: str,
     desired_projection_id: str,
     graph_codec: GraphDescriptorCodec,
+    profile: PlanDerivationProfile | None = None,
 ) -> tuple[DeploymentTransition, ActivityPlan]:
     malformed = False
     try:
@@ -779,7 +1023,7 @@ def _planning_transition(
     if invalid:
         raise ActivityPlanningGraphInvalid("persisted graph pair is invalid")
     transition = Deploy(current, desired)
-    plan = compile_activity_plan(transition.diff)
+    plan = derive_activity_plan(transition, profile=profile)
     return transition, plan
 
 
@@ -855,24 +1099,43 @@ def _planning_evidence_matches(
         and evidence.get("desired_graph_revision")
         == plan_record.desired_graph_revision
         and _bounded_text(evidence.get("workspace_id"))
+        and planning_derivation_matches_action(plan_record.derivation_profile, evidence)
     )
+
+
+def _secret_authoring_command(command):
+    return SetDesiredGraphCommand(command.workspace_id, command.actor_id, command.graph,
+        command.expected_desired_graph_id, command.expected_desired_realized_projection_id,
+        command.expected_desired_graph_revision, actor_scopes=command.actor_scopes,
+        explicit_secret_choices=command.explicit_secret_choices)
+
+
+def _explicit_secret_choice_member(command):
+    if not command.explicit_secret_choices:
+        return {}
+    return {"explicit_secret_choices": {
+        node_id: [selection.descriptor() for selection in values]
+        for node_id, values in sorted(command.explicit_secret_choices.items())}}
 
 
 def _desired_graph_fingerprint(command: SetDesiredGraph) -> str:
-    return _fingerprint(
-        {
-            "command": OperatorCommandKind.SET_DESIRED_GRAPH.value,
-            "session_id": command.session_id,
-            "workspace_id": command.workspace_id,
-            "actor_id": command.actor_id,
-            "expected_desired_graph_id": command.expected_desired_graph_id,
-            "expected_desired_realized_projection_id": (
-                command.expected_desired_realized_projection_id
-            ),
-            "expected_desired_graph_revision": command.expected_desired_graph_revision,
-            "graph": DEFAULT_GRAPH_CODEC.encode(command.graph),
-        }
-    )
+    intent = {
+        "command": OperatorCommandKind.SET_DESIRED_GRAPH.value,
+        "session_id": command.session_id,
+        "workspace_id": command.workspace_id,
+        "actor_id": command.actor_id,
+        "expected_desired_graph_id": command.expected_desired_graph_id,
+        "expected_desired_realized_projection_id": (
+            command.expected_desired_realized_projection_id
+        ),
+        "expected_desired_graph_revision": command.expected_desired_graph_revision,
+        "graph": DEFAULT_GRAPH_CODEC.encode(command.graph),
+    }
+    if command.proposed_graph_id is not None:
+        intent["proposed_graph_id"] = command.proposed_graph_id
+    intent.update(_expectation_member(command.receiver_lifecycle))
+    intent.update(_explicit_secret_choice_member(command))
+    return _fingerprint(intent)
 
 
 def _activity_plan_fingerprint(command: RequestActivityPlan) -> str:

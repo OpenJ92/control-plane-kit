@@ -54,6 +54,10 @@ class AdapterParityContractTests(unittest.TestCase):
                     "GraphReadResponse",
                 ),
                 (
+                    "read.delegation-key-generation", "read.delegation-key-generation",
+                    "get_delegation_key_generation", "GeneratedDelegationKeyReceipt",
+                ),
+                (
                     "read.delegation-keys",
                     "read.delegation-keys",
                     "list_delegation_keys",
@@ -168,6 +172,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "PlanRunsReadResponse",
                 ),
                 (
+                    "read.receiver-authoring-context",
+                    "read.receiver-authoring-context",
+                    "get_receiver_authoring_context",
+                    "ReceiverAuthoringContextReadResponse",
+                ),
+                (
                     "read.run-events",
                     "read.run-events",
                     "list_run_events",
@@ -196,6 +206,10 @@ class AdapterParityContractTests(unittest.TestCase):
                     "read.runtime-authority-detail",
                     "get_runtime_authority_detail",
                     "RuntimeAuthorityDetailReadResponse",
+                ),
+                (
+                    "read.secret-material-provision", "read.secret-material-provision",
+                    "get_secret_material_provision", "ProvisionedSecretMaterialReceipt",
                 ),
                 (
                     "read.secret-provider-detail",
@@ -244,6 +258,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "read.session-plans",
                     "list_session_plans",
                     "SessionPlansReadResponse",
+                ),
+                (
+                    "read.workload-verifier-configuration",
+                    "read.workload-verifier-configuration",
+                    "get_workload_verifier_configuration",
+                    "WorkloadVerifierConfigurationReadResponse",
                 ),
                 (
                     "read.workspace",

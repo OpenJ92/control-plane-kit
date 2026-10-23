@@ -27,6 +27,7 @@ EXPECTED_COMMANDS = {
     "set-desired-graph",
     "publish-desired-realized-projection",
     "request-activity-plan",
+    "request-configuration-cleanup-plan",
     "request-approval",
     "request-gateway-key-rotation-approval",
     "decide-approval",
@@ -88,7 +89,12 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
             )
             calls = writers[item["writer"]]
             with self.subTest(command=item["command"]):
-                identity = calls.index("lock_action_idempotency")
+                # Publication consumes a same-transaction prepared key/guard;
+                # its real PostgreSQL composition is covered by lifecycle locks.
+                identity = calls.index(
+                    "require" if item["command"] == "publish-desired-realized-projection"
+                    else "lock_action_idempotency"
+                )
                 session = calls.index("get_session_for_update")
                 if item["command"] in {
                     "record-recovery-decision",
@@ -119,6 +125,26 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
         rotation = source.index("gateway_key_rotations.get_for_update")
         self.assertLess(locator, workspace)
         self.assertLess(workspace, rotation)
+
+    def test_approval_identity_prefix_rejects_missing_or_post_yield_lock(self) -> None:
+        source = (SOURCE_ROOT / "postgres/configuration_cleanup_store.py").read_text(encoding="utf-8")
+        lock = "                self._stores.activity_history.lock_action_idempotency(command.session_id, command.idempotency_key.value)\n"
+        self.assertIn(lock, source)
+        self.assertEqual(_approval_identity_prefix(source), ("lock_action_idempotency",))
+        for replacement in ("", "                yield\n" + lock):
+            with self.subTest(replacement=replacement), self.assertRaises(AssertionError):
+                _approval_identity_prefix(source.replace(lock, replacement, 1))
+
+    def test_approval_identity_prefix_requires_entered_owner_helper(self) -> None:
+        call = "unit_of_work.stores.configuration_cleanup.approval_evidence(command)"
+        for statement, acquired in ((f"with {call}:\n        pass", True),
+                                    (call, False),
+                                    ("with other.approval_evidence(command):\n        pass", False)):
+            method = ast.parse(f"def _request(command):\n    {statement}\n").body[0]
+            with self.subTest(statement=statement):
+                calls = _writer_calls(method, "approvals.py:ApprovalCommandService._request",
+                                      ("lock_action_idempotency",))
+                self.assertEqual("lock_action_idempotency" in calls, acquired)
 
     def test_each_command_uses_a_strict_global_order_subsequence(self) -> None:
         order = {
@@ -163,6 +189,9 @@ def _operation_action_writers() -> set[str]:
 
 def _writer_call_sequences() -> dict[str, tuple[str, ...]]:
     writers: dict[str, tuple[str, ...]] = {}
+    approval_prefix = _approval_identity_prefix(
+        (SOURCE_ROOT / "postgres/configuration_cleanup_store.py").read_text(encoding="utf-8")
+    )
     for source_path in SOURCE_ROOT.rglob("*.py"):
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         relative = source_path.relative_to(SOURCE_ROOT).as_posix()
@@ -175,19 +204,50 @@ def _writer_call_sequences() -> dict[str, tuple[str, ...]]:
                 class_names.pop()
 
             def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-                calls = tuple(
-                    _call_name(candidate)
-                    for candidate in sorted(
-                        (item for item in ast.walk(node) if isinstance(item, ast.Call)),
-                        key=lambda item: (item.lineno, item.col_offset),
-                    )
-                )
-                if "add_action" in calls:
-                    owner = ".".join((*class_names, node.name))
-                    writers[f"{relative}:{owner}"] = calls
+                owner = ".".join((*class_names, node.name))
+                writer = f"{relative}:{owner}"
+                calls = _writer_calls(node, writer, approval_prefix)
+                if {"add_action", "_add_advancement_action"}.intersection(calls):
+                    writers[writer] = calls
 
         WriterVisitor().visit(tree)
     return writers
+
+
+def _writer_calls(node: ast.FunctionDef, writer: str,
+                  approval_prefix: tuple[str, ...]) -> tuple[str, ...]:
+    entered = {item.context_expr for scope in ast.walk(node) if isinstance(scope, ast.With)
+               for item in scope.items}
+    known_approval = writer in {"approvals.py:ApprovalCommandService._request",
+                               "approvals.py:ApprovalCommandService._decide"}
+    return tuple(name for candidate in sorted(
+        (item for item in ast.walk(node) if isinstance(item, ast.Call)),
+        key=lambda item: (item.lineno, item.col_offset),
+    ) for name in (approval_prefix if known_approval and candidate in entered
+                   and ast.unparse(candidate) == "unit_of_work.stores.configuration_cleanup.approval_evidence(command)"
+                   else (_call_name(candidate),)))
+
+
+def _approval_identity_prefix(source: str) -> tuple[str, ...]:
+    """Resolve the known entered helper; require its actual unconditional A."""
+    tree = ast.parse(source)
+    owner = next(node for node in tree.body
+                 if isinstance(node, ast.ClassDef) and node.name == "ConfigurationCleanupStore")
+    method = next(node for node in owner.body
+                  if isinstance(node, ast.FunctionDef) and node.name == "approval_evidence")
+    guarded = next(node for node in method.body if isinstance(node, ast.Try))
+    scope = guarded.body[0]
+    assert isinstance(scope, ast.With)
+    assert _call_name(scope.items[0].context_expr) == "_composed_read"
+    first = scope.body[0]
+    assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
+    assert ast.unparse(first.value.func) == "self._stores.activity_history.lock_action_idempotency"
+    assert all(first.lineno < node.lineno for node in ast.walk(method)
+               if isinstance(node, (ast.Yield, ast.YieldFrom))
+               or isinstance(node, ast.Call) and _call_name(node) == "_bounded_approval_route")
+    # A must be the first unconditional statement in the entered evidence
+    # context, before routing or any yield; a later/conditional A is rejected.
+    return (_call_name(first.value),)
 
 
 def _call_name(node: ast.AST) -> str:

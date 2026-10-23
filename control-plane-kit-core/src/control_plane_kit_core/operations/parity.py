@@ -24,6 +24,9 @@ class InvalidAdapterParityContract(ValueError):
     """Raised when adapter parity is incoherent."""
 
 
+HTTP_ONLY_COMMAND_ROUTE_IDS = frozenset(("command.secret-material.provision",))
+
+
 class CommandIdempotencyPolicy(StrEnum):
     """Closed command retry and duplicate-request policy."""
 
@@ -412,6 +415,8 @@ class AdapterCommandParityContract:
         object.__setattr__(self, "commands", ordered)
 
     def _validate_binding(self, binding: AdapterCommandBinding) -> None:
+        if binding.http_route_id in HTTP_ONLY_COMMAND_ROUTE_IDS:
+            raise InvalidAdapterParityContract("confidential HTTP-only command cannot be paired with MCP")
         route = self.http_api.route(binding.http_route_id)
         if route.service_role is not binding.service_role:
             raise InvalidAdapterParityContract(
@@ -786,7 +791,7 @@ def operator_command_parity(
     mcp: McpStreamableHttpContract,
     unit_of_work: UnitOfWorkBoundary,
 ) -> AdapterCommandParityContract:
-    """Bind operator command routes to MCP tools and service policy."""
+    """Bind paired commands; confidential HTTP-only intake is explicitly excluded."""
 
     return AdapterCommandParityContract(
         http_api=http_api,
@@ -818,6 +823,20 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.secret-material-provision", "read.secret-material-provision",
+        "get_secret_material_provision", "ProvisionedSecretMaterialReceipt",
+    ),
+    (
+        "read.delegation-key-generation", "read.delegation-key-generation",
+        "get_delegation_key_generation", "GeneratedDelegationKeyReceipt",
+    ),
+    (
+        "read.receiver-authoring-context",
+        "read.receiver-authoring-context",
+        "get_receiver_authoring_context",
+        "ReceiverAuthoringContextReadResponse",
+    ),
+    (
         "read.delegation-keys",
         "read.delegation-keys",
         "list_delegation_keys",
@@ -828,6 +847,12 @@ _OPERATOR_READ_PROJECTIONS = (
         "read.gateway-verifier-configuration",
         "get_gateway_verifier_configuration",
         "GatewayVerifierConfigurationReadResponse",
+    ),
+    (
+        "read.workload-verifier-configuration",
+        "read.workload-verifier-configuration",
+        "get_workload_verifier_configuration",
+        "WorkloadVerifierConfigurationReadResponse",
     ),
     (
         "read.gateway-probe-detail",
@@ -1043,6 +1068,16 @@ _OPERATOR_READ_PROJECTIONS = (
 
 
 _OPERATOR_COMMANDS = (
+    (
+        "delegation-key.generate", "command.delegation-key.generate", "generate_delegation_key",
+        ControlPlaneServiceRole.EXECUTION, "GenerateDelegationKeyRequest",
+        "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "delegation-key-generation.reconcile", "command.delegation-key-generation.reconcile",
+        "reconcile_delegation_key_generation", ControlPlaneServiceRole.EXECUTION,
+        "ReconcileDelegationKeyGenerationRequest", "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+    ),
     (
         "delegation-key.register",
         "command.delegation-key.register",
@@ -1355,6 +1390,15 @@ _OPERATOR_COMMANDS = (
         "execute_deployment",
         ControlPlaneServiceRole.EXECUTION,
         "ExecuteDeploymentRequest",
+        "ExecutionRunResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+    ),
+    (
+        "deployment.reobserve-connector",
+        "command.deployment.reobserve-connector",
+        "reobserve_connector_connection",
+        ControlPlaneServiceRole.EXECUTION,
+        "ReobserveConnectorConnectionRequest",
         "ExecutionRunResponse",
         ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
     ),

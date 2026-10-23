@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
+import json
 from typing import Mapping, TypeAlias
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.secret_selections import SecretSelection, secret_selection_key
 from control_plane_kit_core.delegation_authority import DelegationVerifierProjection
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
@@ -16,6 +18,7 @@ from control_plane_kit_core.environment import (
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityAccessDelivery
+from control_plane_kit_core.runtime_management import RuntimeManagement
 from control_plane_kit_core.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit_core.topology.graph import (
     Edge,
@@ -49,6 +52,7 @@ class StructuralField(StrEnum):
     RUNTIME_KIND = "runtime-kind"
     RUNTIME_CONTAINMENT = "runtime-containment"
     RUNTIME_AUTHORITY = "runtime-authority"
+    RUNTIME_MANAGEMENT = "runtime-management"
     RUNTIME_METADATA = "runtime-metadata"
     BLOCK_FAMILY = "block-family"
     BLOCK_SPECIFICATION = "block-specification"
@@ -61,6 +65,7 @@ class StructuralField(StrEnum):
     NODE_METADATA = "node-metadata"
     CONFIGURATION_ARTIFACTS = "configuration-artifacts"
     SECRET_DELIVERIES = "secret-deliveries"
+    SECRET_SELECTIONS = "secret-selections"
     RUNTIME_AUTHORITY_DELIVERIES = "runtime-authority-deliveries"
     DELEGATION_AUTHORITIES = "delegation-authorities"
     DELEGATION_VERIFIER_PROJECTION = "delegation-verifier-projection"
@@ -170,6 +175,19 @@ class SecretDeliveriesValue:
 
 
 @dataclass(frozen=True)
+class SecretSelectionsValue:
+    values: tuple[SecretSelection, ...]
+
+    def descriptor(self) -> list[dict[str, object]]:
+        return [{"reference_id": _REDACTED, "intent": value.intent.value,
+                 "version_id": _REDACTED,
+                 "selection_fingerprint": hashlib.sha256(
+                     b"control-plane-kit.secret-selection-diff.v1\x00" + json.dumps(
+                         value.descriptor(), sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()}
+                for value in sorted(self.values, key=secret_selection_key)]
+
+
+@dataclass(frozen=True)
 class RuntimeAuthorityDeliveriesValue:
     values: tuple[RuntimeAuthorityAccessDelivery, ...]
 
@@ -273,17 +291,32 @@ class BlockSpecValue:
 
 
 @dataclass(frozen=True)
+class RuntimeManagementValue:
+    management: RuntimeManagement | None
+
+    def __post_init__(self) -> None:
+        if self.management is not None and not isinstance(self.management, RuntimeManagement):
+            raise TypeError("runtime management change requires a typed selection")
+
+    def descriptor(self) -> dict[str, str] | None:
+        return None if self.management is None else self.management.descriptor()
+
+
+@dataclass(frozen=True)
 class RuntimeValue:
     runtime: RuntimeRecord
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "runtime_id": self.runtime.runtime_id,
             "kind": self.runtime.kind.value,
             "children": list(self.runtime.children),
             "metadata": _redact_mapping(self.runtime.metadata),
             "lifecycle": self.runtime.lifecycle.descriptor(),
         }
+        if self.runtime.management is not None:
+            descriptor["management"] = self.runtime.management.descriptor()
+        return descriptor
 
 
 @dataclass(frozen=True)
@@ -317,6 +350,7 @@ class NodeValue:
             "secret_deliveries": SecretDeliveriesValue(
                 self.node.secret_deliveries
             ).descriptor(),
+            "secret_selections": SecretSelectionsValue(self.node.secret_selections).descriptor(),
             **({"runtime_authority_deliveries": RuntimeAuthorityDeliveriesValue(
                 self.node.runtime_authority_deliveries
             ).descriptor()} if self.node.runtime_authority_deliveries else {}),
@@ -364,11 +398,13 @@ DiffValue: TypeAlias = (
     | EnvironmentBindingsValue
     | ConfigurationArtifactsValue
     | SecretDeliveriesValue
+    | SecretSelectionsValue
     | RuntimeAuthorityDeliveriesValue
     | EndpointValue
     | SocketContractValue
     | BlockSpecValue
     | RuntimeValue
+    | RuntimeManagementValue
     | NodeValue
     | EdgeValue
     | PublicIngressValue

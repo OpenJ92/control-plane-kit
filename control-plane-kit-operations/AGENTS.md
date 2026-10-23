@@ -56,6 +56,17 @@ used by CI. Establish that checkout before invocation; mount it read-only as the
 suite does. Do not install it into host Python or substitute a custom runner or
 database.
 
+The same script supports optional repeatable `-k unittest-name-pattern` filters
+for focused evidence. For example:
+
+```bash
+./control-plane-kit-operations/test.sh -k PostgresConfigurationPreparationTests
+```
+
+This retains the owning Docker setup and existing phases. Quote shell
+metacharacters in patterns. Selected runs do not establish full package
+acceptance; no arguments preserve the full owning gate and CI.
+
 Operations tests prove durable records, transaction boundaries, policy,
 planning/execution, idempotency, history, and projections. They should not
 duplicate Core algebra or server route/authentication behavior.

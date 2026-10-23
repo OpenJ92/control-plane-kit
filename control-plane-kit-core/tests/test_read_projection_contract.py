@@ -164,6 +164,11 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.delegation-key-generation", ReadProjectionKind.DELEGATION_KEY_GENERATION,
+                    "GeneratedDelegationKeyReceipt", ReadProjectionPolicy.AUTHORIZED_GENERATION_RECEIPT,
+                    True, False,
+                ),
+                (
                     "read.delegation-keys",
                     ReadProjectionKind.DELEGATION_KEYS,
                     "DelegationSigningKeyCollectionReadResponse",
@@ -316,6 +321,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.receiver-authoring-context",
+                    getattr(ReadProjectionKind, "RECEIVER_AUTHORING_CONTEXT", None),
+                    "ReceiverAuthoringContextReadResponse",
+                    getattr(ReadProjectionPolicy, "PUBLIC_RECEIVER_AUTHORING_CONTEXT", None),
+                    True,
+                    False,
+                ),
+                (
                     "read.run-events",
                     ReadProjectionKind.RUN_EVENTS,
                     "RunEventsReadResponse",
@@ -352,6 +365,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionKind.RUNTIME_AUTHORITY_DETAIL,
                     "RuntimeAuthorityDetailReadResponse",
                     ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+                    True,
+                    False,
+                ),
+                (
+                    "read.secret-material-provision",
+                    ReadProjectionKind.SECRET_MATERIAL_PROVISION,
+                    "ProvisionedSecretMaterialReceipt",
+                    ReadProjectionPolicy.AUTHORIZED_PROVISION_RECEIPT,
                     True,
                     False,
                 ),
@@ -418,6 +439,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
                     True,
                     True,
+                ),
+                (
+                    "read.workload-verifier-configuration",
+                    ReadProjectionKind.WORKLOAD_VERIFIER_CONFIGURATION,
+                    "WorkloadVerifierConfigurationReadResponse",
+                    ReadProjectionPolicy.PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION,
+                    True,
+                    False,
                 ),
                 (
                     "read.workspace",

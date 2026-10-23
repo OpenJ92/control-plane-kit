@@ -22,11 +22,16 @@ _EXPECTED_MODULES = {
     "operations_history",
     "operator_overview",
     "protocols",
+    "receiver_authoring_context",
     "revision_history",
     "workspace_graph",
 }
 
 _PUBLIC_OWNERS = {
+    "ReceiverAuthoringContext": "receiver_authoring_context",
+    "ReceiverAuthoringContextError": "receiver_authoring_context",
+    "ReceiverAuthoringContextQuery": "receiver_authoring_context",
+    "ReceiverAuthoringContextReadService": "receiver_authoring_context",
     "ControlSurfaceReadModel": "workspace_graph",
     "FocusedDetailReadModel": "models",
     "GraphPointerReadModel": "workspace_graph",
@@ -40,6 +45,8 @@ _PUBLIC_OWNERS = {
 }
 
 _INTERNAL_PROTOCOLS = {
+    "ProvisionAttemptStore",
+    "GenerationAttemptStore",
     "ActivityHistoryStore",
     "DelegationSigningKeyStore",
     "ExecutionStore",
@@ -68,9 +75,11 @@ _EXPECTED_FOUNDATION_IMPORTS = {
         "control_plane_kit_core.runtime_authority",
         "control_plane_kit_core.secrets",
         "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.delegation_key_generation_attempts",
         "control_plane_kit_operations.read_pages",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.secret_providers",
+        "control_plane_kit_operations.secret_material_provision_attempts",
     },
 }
 
@@ -138,6 +147,7 @@ class ReadServicesPackageTests(unittest.TestCase):
                     "models",
                     "observations",
                     "protocols",
+                    "receiver_authoring_context",
                     "workspace_graph",
                 }
             }
