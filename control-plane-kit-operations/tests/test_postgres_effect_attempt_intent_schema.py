@@ -397,7 +397,7 @@ class PostgresEffectAttemptIntentSchemaTests(
         )
         self.assertIn("### `cpk_effect_attempt_intents`", atlas)
         self.assertIn(
-            "sha256=4d41ce4d0ad21796b4c54d9c866de1d70087866fb2e96b9613bee4989d658673",
+            "sha256=c8cc42059c06c898275ba19aa2a6bf8df3d0e93474bb23340bab7b49bcfc9141",
             atlas,
         )
         self.assertIn("foreign-keys=172", atlas)

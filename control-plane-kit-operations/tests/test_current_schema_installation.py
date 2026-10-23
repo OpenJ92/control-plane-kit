@@ -13,6 +13,8 @@ import uuid
 
 import psycopg
 
+from control_plane_kit_core.policies import PolicyScope
+
 import control_plane_kit_operations.postgres as postgres
 
 
@@ -136,10 +138,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "4d41ce4d0ad21796b4c54d9c866de1d70087866fb2e96b9613bee4989d658673"
+    "c8cc42059c06c898275ba19aa2a6bf8df3d0e93474bb23340bab7b49bcfc9141"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "fe750e567d2003b4248873226488f75a5c3b1822dd45d880d360f19ac785ace2"
+    "a38cb3590078ab33454ff26c14a9e1a3f3705aff01834533209aada14aa03dc1"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -525,7 +527,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
             constraints["cpk_execution_command_receipts_shape_check"].check_expression,
         )
         self.assertIn(
-            "jsonb_array_length(authority_scopes) <= 37",
+            f"jsonb_array_length(authority_scopes) <= {len(PolicyScope)})",
             constraints[
                 "cpk_execution_command_receipts_authority_scopes_check"
             ].check_expression,

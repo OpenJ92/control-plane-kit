@@ -63,7 +63,7 @@ CREATE TABLE cpk_execution_command_receipts (
     CONSTRAINT cpk_execution_command_receipts_idempotency_key_check CHECK (((char_length(idempotency_key) >= 1) AND (char_length(idempotency_key) <= 200))),
     CONSTRAINT cpk_execution_command_receipts_intent_fingerprint_check CHECK (((intent_fingerprint COLLATE "C") ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_execution_command_receipts_worker_id_check CHECK (((char_length(worker_id) >= 1) AND (char_length(worker_id) <= 512))),
-    CONSTRAINT cpk_execution_command_receipts_authority_scopes_check CHECK (((jsonb_typeof(authority_scopes) = 'array'::text) AND (jsonb_array_length(authority_scopes) >= 1) AND (jsonb_array_length(authority_scopes) <= 37) AND (octet_length((authority_scopes)::text) <= 2048))),
+    CONSTRAINT cpk_execution_command_receipts_authority_scopes_check CHECK (((jsonb_typeof(authority_scopes) = 'array'::text) AND (jsonb_array_length(authority_scopes) >= 1) AND (jsonb_array_length(authority_scopes) <= 38) AND (octet_length((authority_scopes)::text) <= 2048))),
     CONSTRAINT cpk_execution_command_receipts_claim_generation_check CHECK (((claim_generation >= 1) AND (claim_generation <= 9223372036854775807))),
     CONSTRAINT cpk_execution_command_receipts_max_effects_check CHECK (((max_effects COLLATE "C") ~ '^[1-9][0-9]*$'::text)),
     CONSTRAINT cpk_execution_command_receipts_initial_run_check CHECK (((jsonb_typeof(initial_run) = 'object'::text) AND (octet_length((initial_run)::text) <= 16384))),
