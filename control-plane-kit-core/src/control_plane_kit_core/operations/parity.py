@@ -24,6 +24,9 @@ class InvalidAdapterParityContract(ValueError):
     """Raised when adapter parity is incoherent."""
 
 
+HTTP_ONLY_COMMAND_ROUTE_IDS = frozenset(("command.secret-material.provision",))
+
+
 class CommandIdempotencyPolicy(StrEnum):
     """Closed command retry and duplicate-request policy."""
 
@@ -412,6 +415,8 @@ class AdapterCommandParityContract:
         object.__setattr__(self, "commands", ordered)
 
     def _validate_binding(self, binding: AdapterCommandBinding) -> None:
+        if binding.http_route_id in HTTP_ONLY_COMMAND_ROUTE_IDS:
+            raise InvalidAdapterParityContract("confidential HTTP-only command cannot be paired with MCP")
         route = self.http_api.route(binding.http_route_id)
         if route.service_role is not binding.service_role:
             raise InvalidAdapterParityContract(
@@ -786,7 +791,7 @@ def operator_command_parity(
     mcp: McpStreamableHttpContract,
     unit_of_work: UnitOfWorkBoundary,
 ) -> AdapterCommandParityContract:
-    """Bind operator command routes to MCP tools and service policy."""
+    """Bind paired commands; confidential HTTP-only intake is explicitly excluded."""
 
     return AdapterCommandParityContract(
         http_api=http_api,
@@ -817,6 +822,10 @@ def operator_command_parity(
 
 
 _OPERATOR_READ_PROJECTIONS = (
+    (
+        "read.secret-material-provision", "read.secret-material-provision",
+        "get_secret_material_provision", "ProvisionedSecretMaterialReceipt",
+    ),
     (
         "read.delegation-key-generation", "read.delegation-key-generation",
         "get_delegation_key_generation", "GeneratedDelegationKeyReceipt",

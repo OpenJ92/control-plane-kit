@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from control_plane_kit_operations.secret_material_provision_attempts import SecretMaterialProvisionAttempt
+
+
+class ProvisionAttemptStore(Protocol):
+    def get(self, workspace_id: str, request_id: str) -> SecretMaterialProvisionAttempt: ...
+
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference

@@ -53,6 +53,7 @@ class ReadProjectionKind(StrEnum):
     SECRET_REFERENCE_DETAIL = "secret-reference-detail"
     DELEGATION_KEYS = "delegation-keys"
     DELEGATION_KEY_GENERATION = "delegation-key-generation"
+    SECRET_MATERIAL_PROVISION = "secret-material-provision"
     GATEWAY_VERIFIER_CONFIGURATION = "gateway-verifier-configuration"
     WORKLOAD_VERIFIER_CONFIGURATION = "workload-verifier-configuration"
     GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
@@ -76,6 +77,7 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
     REDACTED_DELEGATION_KEY = "redacted-delegation-key"
     AUTHORIZED_GENERATION_RECEIPT = "authorized-generation-receipt"
+    AUTHORIZED_PROVISION_RECEIPT = "authorized-provision-receipt"
     PUBLIC_GATEWAY_VERIFIER_CONFIGURATION = "public-gateway-verifier-configuration"
     PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION = "public-workload-verifier-configuration"
     PUBLIC_RECEIVER_AUTHORING_CONTEXT = "public-receiver-authoring-context"
@@ -301,6 +303,10 @@ class _ProjectionDefinition:
 
 
 _CANONICAL_PROJECTIONS = (
+    _ProjectionDefinition(
+        "read.secret-material-provision", ReadProjectionKind.SECRET_MATERIAL_PROVISION,
+        "ProvisionedSecretMaterialReceipt", ReadProjectionPolicy.AUTHORIZED_PROVISION_RECEIPT,
+    ),
     _ProjectionDefinition(
         "read.delegation-key-generation", ReadProjectionKind.DELEGATION_KEY_GENERATION,
         "GeneratedDelegationKeyReceipt", ReadProjectionPolicy.AUTHORIZED_GENERATION_RECEIPT,

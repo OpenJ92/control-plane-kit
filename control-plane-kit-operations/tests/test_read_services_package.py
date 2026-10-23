@@ -45,6 +45,7 @@ _PUBLIC_OWNERS = {
 }
 
 _INTERNAL_PROTOCOLS = {
+    "ProvisionAttemptStore",
     "GenerationAttemptStore",
     "ActivityHistoryStore",
     "DelegationSigningKeyStore",
@@ -78,6 +79,7 @@ _EXPECTED_FOUNDATION_IMPORTS = {
         "control_plane_kit_operations.read_pages",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.secret_providers",
+        "control_plane_kit_operations.secret_material_provision_attempts",
     },
 }
 

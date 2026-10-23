@@ -317,6 +317,16 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "secret-material.provision",
+                    OperatorCommandKind.PROVISION_SECRET_MATERIAL,
+                    OperatorCommandFamily.SECRET_PROVIDER,
+                    DeploymentProgramStage.EXECUTE,
+                    ControlPlaneServiceRole.EXECUTION,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "secret-provider.register",
                     OperatorCommandKind.REGISTER_SECRET_PROVIDER,
                     OperatorCommandFamily.SECRET_PROVIDER,

@@ -2,6 +2,20 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.secret_material_provision_commands",
+      "destination": "control_plane_kit_operations.secret_material_provision_commands",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/secret_material_provision_commands.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["commands", "authorization", "orchestration"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["ProvisionSecretMaterialCommand", "SecretMaterialProvisionCommandService", "decode_provision_request"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.secret_material_provision_attempts", "control_plane_kit_operations.secret_providers"],
+      "known_package_consumers": ["control_plane_kit_operations.cpk_server"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_secret_material_provision_commands.py"],
+      "motivation": "Bounded confidential HTTP intake with fresh authority, separate ephemeral material and a single custody call between committed durable transitions."
+    },
+    {
       "module": "control_plane_kit_operations.secret_material_provision_attempts",
       "destination": "control_plane_kit_operations.secret_material_provision_attempts",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/secret_material_provision_attempts.py",
