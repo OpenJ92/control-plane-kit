@@ -204,8 +204,8 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
     def _assert_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 78)
-        self.assertEqual(len(set(identities)), 78)
+        self.assertEqual(len(identities), 79)
+        self.assertEqual(len(set(identities)), 79)
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
