@@ -351,7 +351,7 @@ class SecretMaterialProvisionCommandTests(unittest.TestCase):
         request.surface = "http"
         with self.assertRaises(CpkServerApplicationError) as error:
             CpkServerExecutionService(None).handle(request)
-        self.assertEqual(error.exception.status, 503)
+        self.assertEqual(error.exception.status, 501)
         self.assertEqual(self.calls, [])
 
     def test_http_sync_async_conflict_navigation_and_independent_status_authority(self):

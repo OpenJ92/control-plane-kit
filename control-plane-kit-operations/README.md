@@ -382,6 +382,49 @@ From this repository checkout:
 python -m pip install ./control-plane-kit-core ./control-plane-kit-operations
 ```
 
+## Confidential deployment credential intake
+
+`SecretMaterialProvisionCommandService` composes the durable custody owner for
+`cloudflare.api-token` and `oci.pull-credential`. Its typed entrypoint is
+`provision(command, value: SecretValue)`. The command contains only trusted
+context, request identity, provider registration, destination reference and
+intent. Keep the ephemeral value separate; never serialize it with `asdict`.
+Redacted `repr` does not promise zeroization or safe generic serialization.
+
+The HTTP-only `command.secret-material.provision` route is
+`POST /workspaces/{workspace_id}/secret-material/provision`. The exact body keys
+are `request_id`, `provider_registration_id`, `secret_reference`, `intent` and
+`value_base64`. Current provision and provider-register authority is checked
+before decoding. Canonical base64 is limited to 87384 characters; decoded
+material must be nonempty UTF-8 of at most 65536 bytes. The typed entrypoint
+independently applies those material bounds. Exact whitespace and NUL text are
+preserved; acceptance does not establish external credential validity.
+
+The service commits safe intent and its one initial claim before invoking
+`SecretCustodian.store` outside a database transaction. It then commits exact
+custody evidence before atomic new-reference admission. Every duplicate POST
+conflicts, including identical submissions. Provider exceptions or malformed
+receipts leave uncertainty; crashes may leave dispatching. A retained receipt
+survives denied or failed admission. There is no automatic retry, adoption,
+overwrite, revocation or admission-completion command.
+
+`read.secret-material-provision` exposes exact status at
+`GET /workspaces/{workspace_id}/secret-material-provisions/{request_id}` and
+through MCP `get_secret_material_provision`. It independently requires workspace
+visibility and `secret-provider:read`; conflict navigation grants no read access.
+The public receipt contains safe state/correlation/timestamps and retained
+version metadata. An admitted reference appears only after admission succeeds.
+No command, status or history DTO includes raw material or a body-derived hash.
+
+The process adapter must enforce the route-specific 98304-byte HTTP envelope,
+exclude raw input from request representations/logs, reject MCP route-ID
+fallback before constructing a request, and supply an authorizer that consults
+current permission evidence. Operations rejects non-HTTP intake before payload
+access as a second boundary. The server composition and protected stdin example
+are tracked separately in Servers #311; source support here is not live adoption.
+The owning `test_secret_material_provision_commands.py` scenarios demonstrate
+the service sequencing and failure outcomes with controlled custody ports.
+
 ## Validation
 
 Project validation is Docker-first and uses `unittest`:

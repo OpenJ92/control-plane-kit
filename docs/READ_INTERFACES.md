@@ -53,11 +53,20 @@ bounded models for:
 - runtime and ingress authorities;
 - runtime authority deliveries;
 - secret-provider and secret-reference metadata;
+- exact protected-material provision status, including uncertainty or pending admission;
 - gateway probe history and verifier configuration;
 - delegation signing-key metadata.
 
 Read models contain no raw secret values. Authority and secret-provider reads
 expose bounded metadata and references only.
+
+`read.secret-material-provision` is an unpaged exact workspace/request lookup,
+available through HTTP and MCP. It requires workspace visibility and
+`secret-provider:read` independently of the provision command. Its public DTO
+includes only state, safe correlation/timestamps, retained version metadata and,
+after successful admission, the admitted reference. It excludes raw material,
+the original actor/grant and provider credentials. A conflict's status navigation
+does not authorize this read; a custody receipt alone does not imply admission.
 
 ## Public Material Disclosure
 
