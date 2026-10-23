@@ -415,6 +415,8 @@ class AdapterCommandParityContract:
         object.__setattr__(self, "commands", ordered)
 
     def _validate_binding(self, binding: AdapterCommandBinding) -> None:
+        if binding.http_route_id in HTTP_ONLY_COMMAND_ROUTE_IDS:
+            raise InvalidAdapterParityContract("confidential HTTP-only command cannot be paired with MCP")
         route = self.http_api.route(binding.http_route_id)
         if route.service_role is not binding.service_role:
             raise InvalidAdapterParityContract(
