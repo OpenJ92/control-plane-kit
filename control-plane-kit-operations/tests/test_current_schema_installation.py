@@ -13,6 +13,8 @@ import uuid
 
 import psycopg
 
+from control_plane_kit_core.policies import PolicyScope
+
 import control_plane_kit_operations.postgres as postgres
 
 
@@ -69,6 +71,7 @@ _EXPECTED_RELATIONS = (
     "cpk_runtime_authorities",
     "cpk_runtime_authority_deliveries",
     "cpk_saved_preparation_sources",
+    "cpk_secret_material_provision_attempts",
     "cpk_secret_providers",
     "cpk_secret_references",
     "cpk_secret_use_authorizations",
@@ -135,10 +138,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "22ddb392067d3ed8482779893f777cd791bb43f73b70f1ab2e7261a51c29f671"
+    "c8cc42059c06c898275ba19aa2a6bf8df3d0e93474bb23340bab7b49bcfc9141"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "d39e3617288f0d8984a2f4bf9282dcfdd9e1b484a8a0a88453a8ab0e6a291798"
+    "a38cb3590078ab33454ff26c14a9e1a3f3705aff01834533209aada14aa03dc1"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -431,10 +434,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 57)
-        self.assertEqual(len(contract.columns), 735)
-        self.assertEqual(len(contract.constraints), 654)
-        self.assertEqual(len(contract.indexes), 195)
+        self.assertEqual(len(contract.relations), 58)
+        self.assertEqual(len(contract.columns), 746)
+        self.assertEqual(len(contract.constraints), 668)
+        self.assertEqual(len(contract.indexes), 196)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -524,7 +527,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
             constraints["cpk_execution_command_receipts_shape_check"].check_expression,
         )
         self.assertIn(
-            "jsonb_array_length(authority_scopes) <= 37",
+            f"jsonb_array_length(authority_scopes) <= {len(PolicyScope)})",
             constraints[
                 "cpk_execution_command_receipts_authority_scopes_check"
             ].check_expression,
@@ -640,7 +643,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            57,
+            58,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
@@ -671,7 +674,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (57, 735, 654, 195))
+        self.assertEqual(self._catalog_counts(), (58, 746, 668, 196))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -1350,7 +1353,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (57, 735, 654, 195))
+        self.assertEqual(self._catalog_counts(), (58, 746, 668, 196))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

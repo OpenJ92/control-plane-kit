@@ -194,6 +194,23 @@ class SecretProviderStore:
             )
         return provider
 
+    def require_active_registration_for_admission(
+        self, workspace_id: str, registration_id: str,
+    ) -> RegisteredSecretProvider:
+        """Stabilize provider lifecycle while allowing concurrent reference FKs.
+
+        SHARE conflicts with lifecycle updates/deletes but permits FK KEY SHARE.
+        Do not upgrade this row lock while waiting for a reference advisory lock.
+        """
+        row = self._connection.execute(
+            f"{_PROVIDER_SELECT} WHERE workspace_id=%s AND registration_id=%s FOR SHARE",
+            (workspace_id, registration_id),
+        ).fetchone()
+        provider = None if row is None else _row_to_provider(row)
+        if provider is None or provider.status is not RegisteredSecretProviderStatus.ACTIVE:
+            raise SecretProviderNotFound("active registered secret provider was not found")
+        return provider
+
     def get_by_registration(
         self,
         workspace_id: str,
@@ -401,6 +418,20 @@ class SecretReferenceStore:
 
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
+
+    def register_new(self, candidate: RegisteredSecretReference) -> RegisteredSecretReference:
+        """Create-only custody admission; never adopt an existing lifecycle row."""
+        if not isinstance(candidate, RegisteredSecretReference):
+            raise TypeError("reference store requires RegisteredSecretReference")
+        _lock_transaction_key(
+            self._connection,
+            f"secret-reference:{candidate.workspace_id}:{candidate.reference.reference_id}",
+        )
+        # No row lock here: version resolution takes a reference row then provider.
+        # Intake already holds provider; only new destinations may proceed.
+        if self.list_history(candidate.workspace_id, candidate.reference):
+            raise SecretProviderRegistrationConflict("new secret reference already has history")
+        return self.register(candidate)
 
     def register(
         self,

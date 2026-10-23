@@ -291,6 +291,8 @@ def validate_current_rows(connection: _Connection) -> None:
         validate_cleanup_ownership_rows(connection)
         from .delegation_key_generation_attempt_store import validate_current_rows as validate_generation_attempts
         validate_generation_attempts(connection)
+        from .secret_material_provision_attempt_store import validate_current_rows as validate_provision_attempts
+        validate_provision_attempts(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()
