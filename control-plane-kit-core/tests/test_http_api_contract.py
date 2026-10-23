@@ -73,6 +73,7 @@ class HttpApiContractTests(unittest.TestCase):
                     "GET",
                     "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
                 ),
+                ("GET", "/workspaces/{workspace_id}/secret-material-provisions/{request_id}"),
                 ("GET", "/workspaces/{workspace_id}/secret-providers"),
                 (
                     "GET",
@@ -187,6 +188,7 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}",
                 "/workspaces/{workspace_id}/runtime-authority-deliveries",
                 "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
+                "/workspaces/{workspace_id}/secret-material-provisions/{request_id}",
                 "/workspaces/{workspace_id}/secret-providers",
                 "/workspaces/{workspace_id}/secret-providers/{provider_id}",
                 "/workspaces/{workspace_id}/secret-references",

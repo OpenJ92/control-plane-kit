@@ -369,6 +369,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.secret-material-provision",
+                    ReadProjectionKind.SECRET_MATERIAL_PROVISION,
+                    "ProvisionedSecretMaterialReceipt",
+                    ReadProjectionPolicy.AUTHORIZED_PROVISION_RECEIPT,
+                    True,
+                    False,
+                ),
+                (
                     "read.secret-provider-detail",
                     ReadProjectionKind.SECRET_PROVIDER_DETAIL,
                     "SecretProviderDetailReadResponse",

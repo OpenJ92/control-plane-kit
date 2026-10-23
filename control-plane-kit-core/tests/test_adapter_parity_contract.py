@@ -208,6 +208,10 @@ class AdapterParityContractTests(unittest.TestCase):
                     "RuntimeAuthorityDetailReadResponse",
                 ),
                 (
+                    "read.secret-material-provision", "read.secret-material-provision",
+                    "get_secret_material_provision", "ProvisionedSecretMaterialReceipt",
+                ),
+                (
                     "read.secret-provider-detail",
                     "read.secret-provider-detail",
                     "get_secret_provider_detail",

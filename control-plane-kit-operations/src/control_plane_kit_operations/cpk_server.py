@@ -61,6 +61,12 @@ from control_plane_kit_operations.approvals import (
 from control_plane_kit_operations.coordinator import (
     ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator, ReobserveConnectorConnection,
 )
+from control_plane_kit_operations.secret_material_provision_commands import (
+    SecretMaterialProvisionCommandService, ProvisionCommandUnavailable, ProvisionRequestConflict,
+)
+from control_plane_kit_operations.secret_material_provision_attempts import (
+    ProvisionAttemptAuthorizationDenied, ProvisionAttemptConflict, ProvisionAttemptError,
+)
 from control_plane_kit_operations.delegation_key_generation_commands import (
     DelegationKeyGenerationCommandService, GenerateDelegationKeyCommand,
     ReconcileDelegationKeyGenerationCommand, GenerationCommandUnavailable,
@@ -239,6 +245,23 @@ class CpkServerApplicationError(RuntimeError):
         }
 
 
+class CpkServerProvisionConflict(CpkServerApplicationError):
+    """Safe navigation only, never the prior attempt or confidential request."""
+
+    def __init__(self, workspace_id, request_id):
+        super().__init__(409, "provision request already exists")
+        self.workspace_id = workspace_id
+        self.request_id = request_id
+
+    def descriptor(self):
+        result = super().descriptor()
+        result["error"]["status_reference"] = {
+            "route_id": "read.secret-material-provision",
+            "workspace_id": self.workspace_id, "request_id": self.request_id,
+        }
+        return result
+
+
 @dataclass(frozen=True)
 class RouteAuthorizationPolicy:
     """Closed public-route permission and principal-kind requirements."""
@@ -280,6 +303,10 @@ _WORKER_OPERATION = RouteAuthorizationPolicy(
 )
 
 _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
+    "command.secret-material.provision": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_MATERIAL_PROVISION, PolicyScope.SECRET_PROVIDER_REGISTER)),
+    "read.secret-material-provision": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.SECRET_PROVIDER_READ)),
     "command.delegation-key.generate": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.DELEGATION_KEY_GENERATE, PolicyScope.DELEGATION_KEY_REGISTER)),
     "command.delegation-key-generation.reconcile": RouteAuthorizationPolicy(
@@ -551,6 +578,8 @@ class CpkServerReadService:
                 kwargs["saved_preparation_source_store"] = stores.saved_preparation_sources
             if request.route_id == "read.delegation-key-generation":
                 kwargs["generation_attempt_store"] = stores.delegation_key_generation_attempts
+            if request.route_id == "read.secret-material-provision":
+                kwargs["provision_attempt_store"] = stores.secret_material_provision_attempts
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)
@@ -1401,10 +1430,12 @@ class CpkServerExecutionService:
         *,
         lifecycle: RunLifecycleCommandService | None = None,
         delegation_key_generation: DelegationKeyGenerationCommandService | None = None,
+        secret_material_provision: SecretMaterialProvisionCommandService | None = None,
     ) -> None:
         self._service = service
         self._lifecycle = lifecycle
         self._delegation_key_generation = delegation_key_generation
+        self._secret_material_provision = secret_material_provision
 
     async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         if request.route_id not in ("command.deployment.execute", "command.deployment.reobserve-connector"):
@@ -1430,6 +1461,8 @@ class CpkServerExecutionService:
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         if request.route_id in ("command.delegation-key.generate", "command.delegation-key-generation.reconcile"):
             return self._generation_command(request)
+        if request.route_id == "command.secret-material.provision":
+            return self._provision_command(request)
         context = _trusted_context(request)
         if request.route_id == "command.run.start":
             if self._lifecycle is None:
@@ -1463,6 +1496,33 @@ class CpkServerExecutionService:
             )
         )
         return result.descriptor()
+
+    def _provision_command(self, request):
+        # No payload access/copy is permitted before these surface/service checks.
+        if request.surface != "http":
+            raise CpkServerApplicationError(400, "provision requires the confidential HTTP surface")
+        if type(request.path_parameters) is not dict or set(request.path_parameters) != {"workspace_id"}:
+            raise CpkServerApplicationError(400, "provision path is malformed")
+        context = _trusted_context(request, values=request.path_parameters)
+        if self._secret_material_provision is None:
+            raise _service_not_configured(request)
+        navigation = None
+        try:
+            return self._secret_material_provision.provision_encoded(context, request.payload).descriptor()
+        except ProvisionAttemptAuthorizationDenied:
+            failure = (403, "current provision authority is unavailable or denied")
+        except ProvisionRequestConflict as error:
+            navigation = (error.workspace_id, error.request_id)
+            failure = (409, "provision request already exists")
+        except ProvisionAttemptConflict:
+            failure = (409, "provision conflicts with current or recorded truth")
+        except ProvisionCommandUnavailable:
+            failure = (503, "provision outcome could not be durably completed")
+        except ProvisionAttemptError:
+            failure = (400, "provision request is malformed")
+        if navigation is not None:
+            raise CpkServerProvisionConflict(*navigation)
+        raise CpkServerApplicationError(*failure)
 
     def _generation_command(self, request):
         payload = _closed_generation_arguments(request)
@@ -1575,6 +1635,7 @@ def cpk_server_services(
     secret_providers: SecretProviderRegistrationService | None = None,
     delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
     delegation_key_generation: DelegationKeyGenerationCommandService | None = None,
+    secret_material_provision: SecretMaterialProvisionCommandService | None = None,
     desired_topology_drafts: DesiredTopologyDraftCommandService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
@@ -1629,6 +1690,7 @@ def cpk_server_services(
             execution,
             lifecycle=lifecycle,
             delegation_key_generation=delegation_key_generation,
+            secret_material_provision=secret_material_provision,
         ),
         ControlPlaneServiceRole.READS: CpkServerReadService(
             unit_of_work_factory,
@@ -1809,6 +1871,8 @@ def _read_model(
         )
     if route_id == "read.delegation-key-generation":
         return service.delegation_key_generation(_workspace_id(args), _text(args, "request_id"))
+    if route_id == "read.secret-material-provision":
+        return service.secret_material_provision(_workspace_id(args), _text(args, "request_id"))
     if route_id == "read.gateway-verifier-configuration":
         return service.gateway_verifier_configuration(
             _workspace_id(args),
@@ -1866,6 +1930,7 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 _CLOSED_READ_ARGUMENTS = {
     "read.delegation-key-generation": ("request_id", False),
+    "read.secret-material-provision": ("request_id", False),
     "read.receiver-authoring-context": (None, False),
     "read.workload-verifier-configuration": ("purposes", False),
     "read.desired-topology-drafts": (None, True),
@@ -2351,6 +2416,7 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing secret provider",
             "missing secret reference",
             "missing generation request",
+            "missing provision request",
         )
     ):
         return 404

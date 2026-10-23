@@ -154,6 +154,45 @@ class SecretMaterialProvisionCommandTests(unittest.TestCase):
             self.service().provision_encoded(self.context, self.payload())
         self.assertEqual(self.calls, [])
 
+    def test_unavailable_current_authority_has_no_sensitive_exception_chain(self):
+        def unavailable(principal, workspace):
+            raise RuntimeError(VALUE)
+        self.authority_behavior = unavailable
+        with self.assertRaises(ProvisionAttemptAuthorizationDenied) as error:
+            self.service().provision_encoded(self.context, self.payload())
+        self.assertIsNone(error.exception.__context__)
+        self.assertIsNone(error.exception.__cause__)
+        self.assertNotIn(VALUE, str(vars(error.exception)))
+        self.assertEqual(self.calls, [])
+
+    def test_provider_binding_failures_precede_reservation_and_io(self):
+        for command in (replace(self.command(), provider_registration_id="absent"),
+                        replace(self.command(), secret_reference=SecretReference("secret://other/outside"))):
+            with self.assertRaises(ProvisionAttemptConflict):
+                self.service().provision(command, SecretValue(VALUE))
+        self.fixture.fixture.service().revoke_provider(RevokeSecretProviderCommand(
+            workspace_id="workspace-a", provider_id=self.fixture.provider.provider_id,
+            revoked_by="operator-a", revoked_at=NOW, actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)))
+        with self.assertRaises(ProvisionAttemptConflict):
+            self.service().provision(self.command(), SecretValue(VALUE))
+        with self.assertRaises(ProvisionAttemptNotFound):
+            self.read()
+        self.assertEqual(self.calls, [])
+
+    def test_preclaim_current_denial_preserves_intended_without_dispatch(self):
+        def authority(principal, workspace):
+            try:
+                self.read()
+                scopes = ()
+            except ProvisionAttemptNotFound:
+                scopes = SCOPES
+            return replace(principal, workspace_grants=(WorkspaceGrant(workspace, scopes),)).command_context(workspace)
+        self.authority_behavior = authority
+        with self.assertRaises(ProvisionAttemptAuthorizationDenied):
+            self.service().provision(self.command(), SecretValue(VALUE))
+        self.assertEqual(self.read().state, ProvisionAttemptState.INTENDED)
+        self.assertEqual(self.calls, [])
+
     def test_committed_dispatch_exact_material_and_safe_admitted_status(self):
         def custody(grant, value):
             self.assertEqual(value.reveal(), VALUE)
@@ -268,6 +307,32 @@ class SecretMaterialProvisionCommandTests(unittest.TestCase):
         self.assertEqual(result.state, ProvisionAttemptState.RECEIPT_RECORDED)
         self.assertIsNone(result.descriptor()["admission"])
         self.assertEqual(len(self.calls), 1)
+
+    def test_failed_outcome_or_admission_commit_never_claims_persistence_or_retries(self):
+        for index, (failing_state, retained_state) in enumerate((
+            ("receipt-recorded", ProvisionAttemptState.DISPATCHING),
+            ("admitted", ProvisionAttemptState.RECEIPT_RECORDED),
+        )):
+            request_id = f"request-{index}"
+            @contextmanager
+            def failing_commit():
+                with self.unit_of_work() as uow:
+                    yield uow
+                    connection = uow.stores.connection
+                    row = connection.execute("SELECT state FROM cpk_secret_material_provision_attempts "
+                        "WHERE workspace_id='workspace-a' AND request_id=%s", (request_id,)).fetchone()
+                    if row == (failing_state,):
+                        connection.execute("CREATE TEMP TABLE provision_command_guard "
+                            "(value integer UNIQUE DEFERRABLE INITIALLY DEFERRED)")
+                        connection.execute("INSERT INTO provision_command_guard VALUES (1),(1)")
+            with self.assertRaises(self.api.ProvisionCommandUnavailable) as error:
+                self.service(factory=failing_commit).provision(self.command(request_id), SecretValue(VALUE))
+            self.assertIsNone(error.exception.__context__)
+            self.assertIsNone(error.exception.__cause__)
+            self.assertEqual(self.read(request_id=request_id).state, retained_state)
+            with self.assertRaises(ProvisionAttemptConflict):
+                self.service().provision(self.command(request_id), SecretValue(VALUE))
+        self.assertEqual(len(self.calls), 2)
 
     def test_non_http_and_missing_service_refuse_before_payload_access(self):
         class PoisonRequest:

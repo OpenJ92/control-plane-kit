@@ -419,6 +419,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "GeneratedDelegationKeyReceipt",
             ),
             (
+                "read.secret-material-provision",
+                "/workspaces/{workspace_id}/secret-material-provisions/{request_id}",
+                "ProvisionedSecretMaterialReceipt",
+            ),
+            (
                 "read.gateway-verifier-configuration",
                 "/workspaces/{workspace_id}/gateways/{gateway_node_id}/verifier-configuration",
                 "GatewayVerifierConfigurationReadResponse",
@@ -580,6 +585,13 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
                 HttpOperationSafety.COMMAND,
                 "GenerateDelegationKeyRequest", "GeneratedDelegationKeyReceipt",
+            ),
+            (
+                "command.secret-material.provision",
+                "/workspaces/{workspace_id}/secret-material/provision",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ProvisionSecretMaterialRequest", "ProvisionedSecretMaterialReceipt",
             ),
             (
                 "command.delegation-key-generation.reconcile",
@@ -928,7 +940,8 @@ def _command_route(
         service_role=service_role,
         auth_scope=auth_scope,
         safety=safety,
-        request_schema=HttpSchemaRef(request_schema),
+        request_schema=HttpSchemaRef(request_schema, max_bytes=98304
+            if route_id == "command.secret-material.provision" else 65536),
         response_schema=HttpSchemaRef(response_schema),
     )
 
