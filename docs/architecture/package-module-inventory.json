@@ -2,6 +2,34 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.workspace_permissions",
+      "destination": "control_plane_kit_operations.workspace_permissions",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/workspace_permissions.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "commands", "authorization", "orchestration"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy", "GrantWorkspacePermissions", "RevokeWorkspacePermissions", "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult", "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult", "WorkspacePermissionCommandService", "WorkspaceContextResolver", "DurablePrincipalAuthorizer", "WorkspacePermissionError", "WorkspacePermissionDenied", "WorkspacePermissionConflict", "WorkspacePermissionNotFound", "current_workspace_context", "permission_fingerprint", "permission_intent"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_operations._temporal", "control_plane_kit_operations.workflows"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.workspace_permission_store", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.stores"],
+      "optional_external_dependencies": ["rfc8785"],
+      "protecting_tests": ["tests/test_postgres_workspace_permissions.py"],
+      "motivation": "Explicit installation administration, durable exact workspace grants, fresh resolution and original-ceiling narrowing without credential custody."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.workspace_permission_store",
+      "destination": "control_plane_kit_operations.postgres.workspace_permission_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/workspace_permission_store.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["persistence", "validation"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["WorkspacePermissionStore", "validate_workspace_permission_rows"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_operations._temporal", "control_plane_kit_operations.workspace_permissions"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.stores", "control_plane_kit_operations.postgres.schema"],
+      "optional_external_dependencies": ["psycopg"],
+      "protecting_tests": ["tests/test_postgres_workspace_permissions.py", "tests/test_current_schema_installation.py"],
+      "motivation": "Exact policy rows, immutable receipts and caller-owned transaction locks; no provider IO or independent commits."
+    },
+    {
       "module": "control_plane_kit_operations.secret_material_provision_commands",
       "destination": "control_plane_kit_operations.secret_material_provision_commands",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/secret_material_provision_commands.py",

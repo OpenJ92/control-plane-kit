@@ -74,6 +74,7 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretUseAuthorizationStore,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.workspace_permission_store import WorkspacePermissionStore
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,7 @@ class PostgresStoreBundle:
     saved_preparation_sources: PostgresSavedPreparationSourceStore = field(init=False)
     revision_history: PostgresRevisionHistoryStore = field(init=False)
     connection: PostgresConnection
+    workspace_permissions: WorkspacePermissionStore = field(init=False)
     workspaces: PostgresWorkspaceStore = field(init=False)
     graphs: PostgresGraphTopologyStore = field(init=False)
     realized_graphs: PostgresRealizedGraphProjectionStore = field(init=False)
@@ -137,6 +139,7 @@ class PostgresStoreBundle:
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "workspace_permissions", WorkspacePermissionStore(self.connection))
         object.__setattr__(self, "secret_material_provision_attempts", SecretMaterialProvisionAttemptStore(self.connection))
         object.__setattr__(self, "delegation_key_generation_attempts", DelegationKeyGenerationAttemptStore(self.connection))
         object.__setattr__(self, "configuration_preparation", ConfigurationPreparationStore(self.connection))

@@ -6,13 +6,14 @@ import unittest
 from uuid import uuid4
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal, IdentityContractError, PrincipalIdentity, PrincipalKind,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres import PostgresUnitOfWork, SchemaInstallationError, install_schema
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
 
@@ -202,6 +203,86 @@ class PostgresWorkspacePermissionTests(unittest.TestCase):
             service.grant(replace(command, idempotency_key=IdempotencyKey("stale-grant")))
         self.assertEqual(self.resolver().resolve(AuthenticatedPrincipal(self.member), "workspace-a")
                          .granted_scopes, (self.read,))
+
+    def test_admin_creation_records_full_identity_and_truthful_existing_workspace_reuse(self):
+        self.initialize()
+        second = replace(self.admin, issuer="issuer-b")
+        policy = self.public("WorkspaceAdministrationPolicy")(
+            installation_id="installation-a", administrators=(self.admin, second),
+            known_identities=(self.admin, second, self.member),
+        )
+        create = getattr(self.legacy_workspaces, "create_as_administrator", None)
+        self.assertIsNotNone(create, "full-identity administrative workspace creation is unavailable")
+        service = WorkspaceCommandService(self.unit_of_work, clock=self.clock,
+            id_factory=lambda: uuid4().hex, administration_policy=policy)
+        original = service.create_as_administrator(
+            policy.authorize(AuthenticatedPrincipal(self.admin)), workspace_id="workspace-new",
+            name="New", idempotency_key=IdempotencyKey("admin-create"),
+        )
+        reused = service.create_as_administrator(
+            policy.authorize(AuthenticatedPrincipal(second)), workspace_id="workspace-new",
+            name="New", idempotency_key=IdempotencyKey("admin-create"),
+        )
+        self.assertEqual(original.receipt.actor, self.admin)
+        self.assertEqual(reused.receipt.actor, second)
+        self.assertTrue(original.receipt.initialized)
+        self.assertFalse(reused.receipt.initialized)
+        self.assertEqual(original.receipt.observed_current_graph_id, reused.receipt.observed_current_graph_id)
+        replay = service.create_as_administrator(
+            policy.authorize(AuthenticatedPrincipal(self.admin)), workspace_id="workspace-new",
+            name="New", idempotency_key=IdempotencyKey("admin-create"),
+        )
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.receipt, original.receipt)
+        with self.assertRaises(self.public("WorkspacePermissionConflict")):
+            service.create_as_administrator(policy.authorize(AuthenticatedPrincipal(self.admin)),
+                workspace_id="workspace-conflict", name="Conflict",
+                idempotency_key=IdempotencyKey("admin-create"))
+        self.assertIsNone(self.connection.execute(
+            "SELECT workspace_id FROM cpk_workspaces WHERE workspace_id='workspace-conflict'"
+        ).fetchone())
+
+    def test_admin_receipt_failure_rolls_back_workspace_initialization(self):
+        _, context = self.initialize()
+        self.assertIsNotNone(getattr(self.legacy_workspaces, "create_as_administrator", None),
+                             "atomic administrative workspace creation is unavailable")
+        # Real PostgreSQL failure at the receipt write, not a replacement store.
+        self.connection.execute("ALTER TABLE cpk_workspace_administration_receipts "
+                                "ADD CONSTRAINT test_refuse_admin_receipt CHECK (false)")
+        service = WorkspaceCommandService(self.unit_of_work, clock=self.clock,
+            id_factory=lambda: uuid4().hex, administration_policy=self.policy())
+        with self.assertRaises(psycopg.errors.CheckViolation):
+            service.create_as_administrator(context, workspace_id="workspace-rollback",
+                name="Rollback", idempotency_key=IdempotencyKey("admin-rollback"))
+        self.assertIsNone(self.connection.execute(
+            "SELECT workspace_id FROM cpk_workspaces WHERE workspace_id='workspace-rollback'"
+        ).fetchone())
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_workspace_initializations WHERE workspace_id='workspace-rollback'"
+        ).fetchone()[0], 0)
+
+    def test_malformed_installation_receipt_is_rejected_by_replay_and_startup(self):
+        service, context = self.initialize()
+        original = self.connection.execute(
+            "SELECT receipt FROM cpk_workspace_permission_installation WHERE singleton"
+        ).fetchone()[0]
+        for invalid in (
+            dict(original, unexpected="must-not-return"),
+            dict(original, installation_id="different-installation"),
+            dict(original, occurred_at="not-a-time"),
+        ):
+            with self.subTest(invalid=tuple(invalid)):
+                self.connection.execute("UPDATE cpk_workspace_permission_installation SET receipt=%s",
+                                        (Jsonb(invalid),))
+                with self.assertRaises(self.public("WorkspacePermissionError")) as caught:
+                    service.initialize(context, idempotency_key=IdempotencyKey("initialize-installation"))
+                self.assertNotIn("must-not-return", str(caught.exception))
+                with self.assertRaises(SchemaInstallationError):
+                    install_schema(self.connection)
+        self.connection.execute("UPDATE cpk_workspace_permission_installation SET receipt=%s",
+                                (Jsonb(original),))
+        self.assertTrue(service.initialize(context, idempotency_key=IdempotencyKey("initialize-installation"))
+                        .replayed)
 
 
 if __name__ == "__main__":

@@ -75,7 +75,11 @@ _EXPECTED_RELATIONS = (
     "cpk_secret_providers",
     "cpk_secret_references",
     "cpk_secret_use_authorizations",
+    "cpk_workspace_administration_receipts",
     "cpk_workspace_initializations",
+    "cpk_workspace_permission_installation",
+    "cpk_workspace_permission_receipts",
+    "cpk_workspace_permissions",
     "cpk_workspaces",
 )
 
@@ -434,10 +438,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 58)
-        self.assertEqual(len(contract.columns), 746)
-        self.assertEqual(len(contract.constraints), 668)
-        self.assertEqual(len(contract.indexes), 196)
+        self.assertEqual(len(contract.relations), 62)
+        self.assertEqual(len(contract.columns), 773)
+        self.assertEqual(len(contract.constraints), 706)
+        self.assertEqual(len(contract.indexes), 202)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -643,7 +647,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            58,
+            62,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),

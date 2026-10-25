@@ -4,6 +4,16 @@ from __future__ import annotations
 
 from control_plane_kit_core import DeploymentProgramStage
 
+from .workspace_permissions import (
+    WorkspaceAdministrationContext, WorkspaceAdministrationPolicy,
+    GrantWorkspacePermissions, RevokeWorkspacePermissions,
+    WorkspacePermissionRecord, WorkspacePermissionReceipt, WorkspacePermissionResult,
+    WorkspacePermissionInitializationReceipt, WorkspacePermissionInitializationResult,
+    WorkspacePermissionCommandService, WorkspaceContextResolver, DurablePrincipalAuthorizer,
+    WorkspacePermissionError, WorkspacePermissionDenied, WorkspacePermissionConflict,
+    WorkspacePermissionNotFound,
+)
+
 from .approvals import (
     ApprovalAuthorizationDenied,
     ApprovalCommandService,
@@ -673,6 +683,13 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy",
+    "GrantWorkspacePermissions", "RevokeWorkspacePermissions",
+    "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult",
+    "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult",
+    "WorkspacePermissionCommandService", "WorkspaceContextResolver", "DurablePrincipalAuthorizer",
+    "WorkspacePermissionError", "WorkspacePermissionDenied", "WorkspacePermissionConflict",
+    "WorkspacePermissionNotFound",
     "BeginFailedRunCompensation",
     "FailedRunCompensationCommandService",
     "FailedRunCompensationConflict",

@@ -6,6 +6,7 @@ from importlib.resources import files
 from typing import Any, ContextManager, Protocol
 
 from .current_data_validation import CurrentRowDrift, validate_current_rows
+from control_plane_kit_operations.workspace_permissions import WorkspacePermissionError
 from .current_schema_contract import CURRENT_POSTGRES_SCHEMA_CONTRACT
 from .current_schema_verification import (
     current_namespace_adjuncts_are_exact,
@@ -97,7 +98,9 @@ def _current_schema_is_exact(connection: PostgresConnection) -> bool:
         return False
     try:
         validate_current_rows(connection)
-    except CurrentRowDrift:
+        from .workspace_permission_store import validate_workspace_permission_rows
+        validate_workspace_permission_rows(connection)
+    except (CurrentRowDrift, WorkspacePermissionError):
         return False
     return True
 
