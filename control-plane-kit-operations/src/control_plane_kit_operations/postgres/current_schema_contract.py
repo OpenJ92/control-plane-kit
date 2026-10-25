@@ -1852,9 +1852,10 @@ WORKSPACE_PERMISSION_SCHEMA_CONTRACT = CurrentSchemaContract(
 )
 CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
     relations=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.relations + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
-    columns=PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.columns + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.columns,
-    constraints=PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.constraints + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.constraints,
-    indexes=PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes,
+    # Stable relation ordering retains each table's physical column order.
+    columns=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.columns + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.constraints + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
 CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = 'c8cc42059c06c898275ba19aa2a6bf8df3d0e93474bb23340bab7b49bcfc9141'
