@@ -1,6 +1,12 @@
 """Read-only projections over durable operations truth."""
 
 from .errors import ReadModelError
+from .activity_recovery import (
+    ActivityRecoveryQuery,
+    ActivityRecoveryProposal,
+    ActivityRecoveryError,
+    ActivityRecoveryReadService,
+)
 from .receiver_authoring_context import (
     ReceiverAuthoringContext,
     ReceiverAuthoringContextError,
@@ -22,6 +28,10 @@ from .workspace_graph import (
 )
 
 __all__ = [
+    "ActivityRecoveryQuery",
+    "ActivityRecoveryProposal",
+    "ActivityRecoveryError",
+    "ActivityRecoveryReadService",
     "ControlSurfaceReadModel",
     "FocusedDetailReadModel",
     "GraphPointerReadModel",

@@ -17,7 +17,7 @@ from control_plane_kit_core.configuration_instances import (
 from control_plane_kit_core.operations import RecoveryDecisionKind
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityPlan, NodeTarget, PlannedActivity, ReconcileNode, RiskLevel, StartNode,
+    ActivityDependency, ActivityId, ActivityPlan, NodeTarget, PlannedActivity, ReconcileNode, RiskLevel, StartNode,
     RuntimeTarget, StartRuntime,
 )
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
@@ -109,6 +109,11 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
         activities = (self.configuration_activity,) + tuple(
             PlannedActivity(ActivityId(f"history-use-{index:03d}"), operation)
             for index in range(1, getattr(self, "configuration_history_count", 1)))
+        if getattr(self, "configuration_prefix_runtime", False):
+            prefix = PlannedActivity(ActivityId("prefix-runtime"), StartRuntime(RuntimeTarget("docker")))
+            self.configuration_activity = replace(self.configuration_activity,
+                dependencies=(ActivityDependency(prefix.activity_id),))
+            activities = (prefix, self.configuration_activity, *activities[1:])
         product = _configuration_product()
         base = execution_graph("empty-runtime", runtime_id="docker")
         desired = _configuration_graph(product,

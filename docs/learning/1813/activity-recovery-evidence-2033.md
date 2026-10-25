@@ -11,7 +11,7 @@ Base: active PR1829 / roadmap/1813-runtime-control at 879efb9576ac0580a6236d0a73
 - `test_postgres_configuration_preparation.py::test_another_approved_activity_cannot_remint_an_unresolved_slot` and `test_exact_replay_keeps_original_refs_claims_and_attempt_without_ids`: unresolved protective claims remain; read/replay grants no new birth. Classification: isomorphic preservation; new-law read snapshot must perform no reservation/write/ID allocation.
 - Existing read snapshot tests for ReceiverAuthoringContext and configuration cleanup establish a one-use REPEATABLE READ READ ONLY unit of work, rollback/close, bounded owner reads and closed error sanitization. Reuse this shape, not old product fixtures or bespoke SQL dumps.
 
-This is not frozen-package migration; current accepted tests are the governing context. No immutable reference reproduction is required or claimed. Tests have not yet been run for this issue.
+This is not frozen-package migration; current accepted tests are the governing context. No immutable reference reproduction is required or claimed. The validation record below supersedes the original pre-implementation test status.
 
 ## Last working boundary and missing computation
 
@@ -56,3 +56,65 @@ Add the Operations public projection module and Postgres narrow read facade; add
 Write tests against this interface after review. Focused red must fail for the missing capability (using intentional availability assertions before lookup if needed), not broken collection/import/setup. Run only the owning Operations script with focused `-k` filters; exact architecture-testing prerequisite must be clean. Then implement, rerun focused green and required broader gates; no custom host harness.
 
 Security/data/history: bounded authorized read only; no secrets/config bodies/provider messages; no new network exposure; no provider I/O in a database transaction; no writes or cleanup; immutable uncertain history preserved. Remaining uncertainty is explicitly visible and blocks continuation. The full #225 recovery still requires reviewed admission, public integration and a separate live release.
+
+## Implemented boundary and example
+
+The public query, read service and immutable proposal now implement the dry run
+above. The PostgreSQL facade reuses owner validation and the shared cumulative
+read budget within one repeatable-read, read-only transaction. There is no
+schema change. An authorized adapter can compose the service as follows (the
+context and expected fingerprints come from its existing trusted boundaries):
+
+```python
+from control_plane_kit_operations import ActivityRecoveryQuery, ActivityRecoveryReadService
+
+query = ActivityRecoveryQuery(
+    workspace_id, attempt_identity, expected_request_fingerprint, expected_outcome_fingerprint
+)
+proposal = ActivityRecoveryReadService(unit_of_work_factory).read(query, context=context)
+assert proposal.descriptor()["status"] == "blocked"
+```
+
+Each fingerprint identifies that snapshot, including its database observation
+time; it is not a reusable permission or stable identity across later reads.
+Provider evidence belongs to Interpreters #224, admission and a single successor
+to Core #2034, and public composition to Servers #339. Neither a missing current
+container nor an expired claim establishes historical failure or predecessor
+quiescence. Abandonment retains that uncertainty and does not grant cleanup.
+
+The existing linked-run retry path cannot lawfully create a newer run while
+the prior journal is uncertain: `activity_run_retry_interpreter.py` calls
+`require_recovery_eligible_journal` before successor creation, and
+`_execution_lease_recovery_support.py` requires a failed terminal journal without
+in-flight or uncertain forward/compensation steps. The `run-not-current`
+blocker remains defensive. Tests do not manufacture a supposedly supported
+newer-run transition across that invariant.
+
+The reconstruction regression runs a successful runtime prefix and then a
+configuration-bearing uncertain attempt through real PostgreSQL owners. A fresh
+coordinator preserves history, workspace and protective claims and dispatches
+zero effects. This is package regression evidence; the four-resource Hello
+scenario, public recovery and process replacement remain downstream acceptance.
+The stale-query test uses the existing low-level fold owner to record an
+abandonment, verifies that the old query is refused, and preserves original
+outcome evidence and protection. It does not implement public recovery admission.
+
+## Validation record
+
+- Initial focused target-red: seven tests collected, seven intended missing
+  capability assertions, zero errors. Preserved in commit `b7f1317f`.
+- First candidate: twelve of thirteen tests passed; the missing-protection
+  fixture was rejected by PostgreSQL's reciprocal foreign key before inspection.
+  Corrected it to an explicitly deferred, rollback-only corrupt world, preserving
+  the production constraint and the defensive read assertion.
+- Expanded focused review gate: nineteen tests passed through the owning
+  Docker script, including read-service package ownership. No source changes
+  were needed after this gate. The final stale-query regression was added after
+  this result; its validation and the broader package gates are pending.
+
+Command: `CPK_ARCHITECTURE_TESTING_ROOT=/tmp/control-plane-kit-architecture-testing
+./control-plane-kit-operations/test.sh -k ActivityRecovery -k ReadServicesPackage`
+with isolated harness-owned Docker names. The prerequisite is the clean pinned
+architecture-testing checkout `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`.
+No live root process, database, credentials, provider resources or original
+tunnel/DNS/token were changed by this source slice.
