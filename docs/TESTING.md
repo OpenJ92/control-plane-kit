@@ -60,6 +60,25 @@ owns that evidence.
 
 ## Apparatus Stop Rule
 
+### Adjacent Issue Batch Acceptance
+
+Adjacent Core/Operations issues normally share one PR with separate ordered commits.
+Keep each issue's test context, source design, required focused target-red/green
+evidence and independent review. Run local tests throughout implementation at the
+useful scope; broader local checks remain appropriate when warranted. The batching
+constraint concerns slow GitHub CI: consolidate one combined full Operations CI run
+on the completed batch, together with other required affected checks and integration/
+parity/live evidence. Issue or commit boundaries alone do not require full remote
+reruns; failures, material changes after validation or unresolved review concerns
+may justify them. Batching must not delay local feedback.
+
+Mandatory milestone gates still delimit batches. Do not defer a gate past its
+architectural boundary, weaken tests or claim acceptance from focused evidence.
+Record the commits and issue laws covered. Cross-repository packages keep their
+owning gates, and consequential-action authorization remains unchanged.
+
+### Missing Or Failed Apparatus
+
 Before invoking a suite, verify only its documented source/image/checkout
 prerequisites. If the suite is missing, cannot start, lacks a required checkout
 or image, or fails before behavioral collection because of apparatus:

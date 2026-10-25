@@ -114,6 +114,39 @@ boundaries, or independently useful merge order.
 
 ## Assigned Roles And Handoffs
 
+### Adjacent Issue Batching
+
+Jacob's standing preference is to group adjacent Core/Operations issues in one
+feature branch and PR, with separate ordered commits. This is the default and
+does not require a fresh permission request for each batch. Record the included
+issues, dependency order, integration target and acceptance boundary at planning.
+Adjacent work belongs to one coherent dependency sequence in the same repository;
+issue-number proximity alone does not justify combining unrelated work.
+
+Keep each issue's requirements, applicable law cards, source dry run, focused
+target-red/green evidence, independent review and decision log. A dependent issue
+may consume earlier reviewed commits on the same branch without an intermediate
+merge. Review each part before advancing and the combined boundary before acceptance.
+Do not describe focused-tested commits as fully accepted work.
+
+Run local tests throughout implementation at the useful scope, including broader
+local checks when warranted. Consolidate slow full GitHub CI at the completed batch,
+including one combined Operations CI run, plus other required affected checks and
+integration/parity/live evidence at their owning boundaries. Issue or commit
+boundaries alone do not require another full remote CI cycle. Failures, material
+changes after validation or unresolved review concerns may require justified reruns.
+Batching must not delay local feedback, waive required gates or accept failed tests.
+
+Split at a meaningful architecture, release, review or ownership boundary, an
+unresolved decision, or a mandatory milestone gate; explain the split in the issue
+record. Cross-repository work retains its owning PRs and validation. Preserve
+consequential-action authorization and actual supported/deployed states, without
+inventing compatibility with intermediate unshipped batch states. Link every issue
+from the PR and Project; close them only after their criteria and the combined
+reviewed merge pass. Issue decomposition alone does not require separate PRs.
+
+### Role Boundaries
+
 When roles are assigned:
 
 - **North / coordinator** owns issue topology, releases, shared/live/destructive

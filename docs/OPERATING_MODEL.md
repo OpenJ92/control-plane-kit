@@ -75,6 +75,20 @@ roadmap label or create a draft roadmap PR automatically.
 
 ## Proportional Tests And Review
 
+Adjacent Core/Operations issues normally share one feature branch and PR, with
+separate ordered commits. Record batch membership, dependency order, integration
+target and acceptance boundary. Keep each issue's source/test design and independent
+review; dependent work may use preceding reviewed commits before an intermediate
+merge. Split at meaningful architecture, ownership, review or mandatory milestone
+boundaries. Cross-repository work retains separate owning PRs and gates.
+
+Run local tests throughout implementation at the useful scope, including broader
+checks when warranted. Consolidate slow full GitHub Operations CI into one final
+batch run rather than one per issue. Preserve other required package, integration,
+parity and live gates at their owning boundaries. Failures, material changes or
+unresolved findings justify remote reruns. Link every issue and close it only after
+its criteria and the combined acceptance/merge pass; focused evidence is not full acceptance.
+
 Start with existing ownership-local behavioral tests. Add the smallest test
 that would catch the concrete regression or expose the missing public behavior.
 Tests should not duplicate Core/Operations semantics in servers or live
