@@ -629,6 +629,10 @@ from .read_pages import (
     read_cursor_from_mapping,
 )
 from .read_services import (
+    ActivityRecoveryQuery,
+    ActivityRecoveryProposal,
+    ActivityRecoveryError,
+    ActivityRecoveryReadService,
     ReceiverAuthoringContext,
     ReceiverAuthoringContextError,
     ReceiverAuthoringContextQuery,
@@ -1087,6 +1091,10 @@ __all__ = [
     "RuntimeAuthorityAuthorizationDenied",
     "RecordOperationAction",
     "ReadModelError",
+    "ActivityRecoveryQuery",
+    "ActivityRecoveryProposal",
+    "ActivityRecoveryError",
+    "ActivityRecoveryReadService",
     "ReceiverAuthoringContext",
     "ReceiverAuthoringContextError",
     "ReceiverAuthoringContextQuery",

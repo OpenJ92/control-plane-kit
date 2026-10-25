@@ -1150,6 +1150,37 @@
       ]
     },
     {
+      "module": "control_plane_kit_operations.read_services.activity_recovery",
+      "destination": "control_plane_kit_operations.read_services.activity_recovery",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/activity_recovery.py",
+      "owner": "operation", "role": "read-projection",
+      "semantic_roles": ["values", "read-projection"], "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["ActivityRecoveryQuery", "ActivityRecoveryProposal", "ActivityRecoveryError", "ActivityRecoveryReadService"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies", "control_plane_kit_operations.read_services.errors"],
+      "known_package_consumers": ["control_plane_kit_operations.read_services", "control_plane_kit_operations.postgres.activity_recovery_read"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_activity_recovery_read.py", "tests/test_read_services_package.py"],
+      "motivation": "Authorized bounded durable uncertainty inspection with immutable detached results and explicit missing-evidence blockers; supplies no continuation authority or provider capability."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.activity_recovery_read",
+      "destination": "control_plane_kit_operations.postgres.activity_recovery_read",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/activity_recovery_read.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["persistence", "validation", "read-projection"], "movement": "remain",
+      "migration_prerequisites": [], "canonical_public_exports": [],
+      "internal_dependencies": ["control_plane_kit_core.configuration_invocation", "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle", "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations.read_services.activity_recovery", "control_plane_kit_operations.postgres.configuration_evidence",
+        "control_plane_kit_operations.postgres.temporal"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.unit_of_work"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_activity_recovery_read.py"],
+      "motivation": "One read-only snapshot composes existing bounded attempt, intent, outcome, plan, lease and protective-claim owners; no writes or external observations."
+    },
+    {
       "module": "control_plane_kit_operations.read_services.receiver_authoring_context",
       "destination": "control_plane_kit_operations.read_services.receiver_authoring_context",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/receiver_authoring_context.py",

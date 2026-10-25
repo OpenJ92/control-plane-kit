@@ -10,6 +10,7 @@ import control_plane_kit_operations.read_services as read_services
 
 
 _EXPECTED_MODULES = {
+    "activity_recovery",
     "__init__",
     "_redaction",
     "authority_secrets",
@@ -28,6 +29,10 @@ _EXPECTED_MODULES = {
 }
 
 _PUBLIC_OWNERS = {
+    "ActivityRecoveryQuery": "activity_recovery",
+    "ActivityRecoveryProposal": "activity_recovery",
+    "ActivityRecoveryError": "activity_recovery",
+    "ActivityRecoveryReadService": "activity_recovery",
     "ReceiverAuthoringContext": "receiver_authoring_context",
     "ReceiverAuthoringContextError": "receiver_authoring_context",
     "ReceiverAuthoringContextQuery": "receiver_authoring_context",
@@ -142,6 +147,7 @@ class ReadServicesPackageTests(unittest.TestCase):
                     f"control_plane_kit_operations.read_services.{name}"
                 )
                 for name in {
+                    "activity_recovery",
                     "errors",
                     "instance",
                     "models",

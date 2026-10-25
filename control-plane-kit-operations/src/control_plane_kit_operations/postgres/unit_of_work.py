@@ -65,6 +65,13 @@ class PostgresUnitOfWork:
             yield stores.graphs.receiver_authoring_snapshot()
 
     @contextmanager
+    def activity_recovery_snapshot(self):
+        """Retained effect evidence only; no fold, reservation or dispatch."""
+        from .activity_recovery_read import ActivityRecoverySnapshot
+        with self._read_snapshot() as stores:
+            yield ActivityRecoverySnapshot(stores)
+
+    @contextmanager
     def configuration_cleanup_snapshot(self):
         """A fresh read-only snapshot exposing only cleanup inspection."""
         from .configuration_cleanup_store import ConfigurationCleanupSnapshot
