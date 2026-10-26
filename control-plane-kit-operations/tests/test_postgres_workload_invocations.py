@@ -86,6 +86,9 @@ class _ConsumerWorkloadRuntime:
         self.requests = []
         self.committed = []
 
+    def execute(self, request, *, invocations=None):
+        raise AssertionError("prepared workload must use execute_with_authority")
+
     def execute_with_authority(self, request, authority, *, invocations):
         from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
         from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant
