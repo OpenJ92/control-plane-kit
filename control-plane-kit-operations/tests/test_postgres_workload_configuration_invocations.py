@@ -46,9 +46,10 @@ class PostgresWorkloadConfigurationInvocationTests(ConfigurationPreparationFixtu
         self.original = operations.WorkspaceContextResolver(self.unit_of_work,
             installation_id="installation-a").resolve(AuthenticatedPrincipal(self.worker), "workspace-a")
 
-    def snapshot(self):
+    def workload_snapshot(self):
         return self.complete_start_snapshot(), self.connection.execute(
-            "SELECT invocation_id,descriptor FROM cpk_execution_command_invocations ORDER BY invocation_id").fetchall()
+            "SELECT invocation_id,descriptor FROM cpk_execution_command_invocations ORDER BY invocation_id").fetchall(), self.connection.execute(
+            "SELECT run_id,metadata FROM cpk_activity_runs WHERE run_id='run-a'").fetchall()
 
     def test_remote_configuration_marker_and_claims_commit_within_existing_suffix_bound(self):
         bound = self.binding()
@@ -73,7 +74,7 @@ class PostgresWorkloadConfigurationInvocationTests(ConfigurationPreparationFixtu
         from control_plane_kit_operations.postgres.configuration_evidence import _Capacity, _EvidenceRead
         bound = self.binding()
         command = self.configuration_command()
-        before = self.snapshot()
+        before = self.workload_snapshot()
         reached = []
         def capacity_at_marker(read, sql, params, **limits):
             if sql.startswith("INSERT INTO cpk_execution_command_invocations"):
@@ -87,14 +88,14 @@ class PostgresWorkloadConfigurationInvocationTests(ConfigurationPreparationFixtu
                 with self.assertRaises(EffectAttemptStartConflict):
                     self.fresh_start().execute(command, command_context=bound)
         self.assertEqual(reached, [True])
-        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.workload_snapshot(), before)
 
     def test_captured_current_run_growth_refuses_without_unbounded_fallback(self):
         from psycopg.types.json import Jsonb
         from control_plane_kit_operations.postgres.configuration_evidence import _EvidenceRead
         bound = self.binding()
         command = self.configuration_command()
-        before = self.snapshot()
+        before = self.workload_snapshot()
         original_query = _EvidenceRead.query
         changed = []
         def grow_after_capture(read, sql, params, **limits):
@@ -110,4 +111,4 @@ class PostgresWorkloadConfigurationInvocationTests(ConfigurationPreparationFixtu
             with self.assertRaises(EffectAttemptStartConflict):
                 self.fresh_start().execute(command, command_context=bound)
         self.assertEqual(changed, [True])
-        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.workload_snapshot(), before)

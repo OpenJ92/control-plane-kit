@@ -354,7 +354,9 @@ class PreparedRuntimeLifecycleProfileTests(EffectAttemptIntentFixture, unittest.
                 self.assertTrue(runtime_preparation_candidate(intent))
                 self.assertEqual(prepared_runtime_observation_supported(intent), type(operation) is not StopRuntime)
                 self.assertEqual(len(self.profile(intent).required_uses), 3)
-        self.assertFalse(runtime_preparation_candidate(self.intent(process_delivery=False)))
+        workload = self.intent(process_delivery=False)
+        self.assertTrue(runtime_preparation_candidate(workload))
+        self.assertFalse(prepared_runtime_observation_supported(workload))
         self.assertFalse(runtime_preparation_candidate(replace(intent, authority_ref=None)))
 
     def test_cleanup_ignores_historical_workload_pull_and_probe_roles_but_start_recipe_is_preserved(self):

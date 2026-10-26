@@ -122,7 +122,7 @@ class PostgresWorkloadVersionInvocationTests(_WorkloadInvocationFixture, unittes
         import control_plane_kit_operations as operations
         from control_plane_kit_core.identity import AuthenticatedPrincipal
         from control_plane_kit_core.policies import PolicyScope
-        from control_plane_kit_core.secrets import SecretProviderEndpointReference, SecretProviderId, SecretReference
+        from control_plane_kit_core.secrets import SecretProviderEndpointReference, SecretReference
         from control_plane_kit_operations.secret_providers import (
             RegisterSecretProviderCommand, RegisterSecretReferenceCommand,
             SecretProviderKind, SecretProviderRegistrationService,
@@ -136,7 +136,7 @@ class PostgresWorkloadVersionInvocationTests(_WorkloadInvocationFixture, unittes
         selection, = product_material().secret_selections
         registrations = SecretProviderRegistrationService(self.unit_of_work)
         self.provider = registrations.register_provider(RegisterSecretProviderCommand(
-            workspace_id="workspace-a", provider_id=SecretProviderId("workload"),
+            workspace_id="workspace-a", provider_id=selection.reference.provider_id,
             provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS, display_name="Workload fixture",
             endpoint_reference=SecretProviderEndpointReference("workload-provider"),
             credential_reference=SecretReference("secret://bootstrap/workload/token"),
