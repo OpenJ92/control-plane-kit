@@ -96,7 +96,7 @@ class _ControlledReconciliationObserver:
         self.committed.append(retained)
 
 
-class PostgresRuntimeReconciliationInvocationTargets(_PreparedRuntimeCarriageFixture, unittest.TestCase):
+class _PreparedRuntimeReconciliationFixture(_PreparedRuntimeCarriageFixture):
     def unresolved_original(self):
         bound, start, started = self.seed_start()
         service = operations.ExecutionInvocationService(self.ledger, permission_policy=self.policy(), clock=now)
@@ -164,6 +164,8 @@ class PostgresRuntimeReconciliationInvocationTargets(_PreparedRuntimeCarriageFix
     def observation_row(self, service, observer):
         return service.inspect_reconciliation_observation(observer.invocations)
 
+
+class PostgresRuntimeReconciliationInvocationTargets(_PreparedRuntimeReconciliationFixture, unittest.TestCase):
     def test_new_command_carries_fresh_port_and_session_without_new_original_attempt(self):
         original, _, started, original_marker, service = self.unresolved_original()
         observer = _ControlledReconciliationObserver(self)

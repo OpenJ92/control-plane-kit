@@ -145,6 +145,7 @@ from control_plane_kit_operations.execution_invocations import (
 )
 from control_plane_kit_operations.prepared_runtime_invocations import (
     runtime_preparation_candidate, prepared_runtime_invocation_profile,
+    prepared_runtime_observation_supported,
 )
 from control_plane_kit_operations.health_signing_authority import (
     HealthSigningAuthorityPair, HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
@@ -1875,6 +1876,10 @@ class ExecutionCoordinator:
                         raise ExecutionInvocationPlanned(marker.invocation_id)
                     if marker.disposition is ExecutionInvocationDisposition.DENIED:
                         raise ExecutionInvocationDenied(marker.invocation_id)
+                    if (attempt.state.status is EffectAttemptStatus.STARTED
+                            and not prepared_runtime_observation_supported(intent)):
+                        return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
+                            attempted, planned.activity_id.value)
                     if (type(self._reconciliation_service) is not EffectAttemptReconciliationService
                             or not self._reconciliation_service._prepared_invocation_ready(
                                 self._permission_policy, self._invocation_service)):

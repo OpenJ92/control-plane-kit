@@ -33,6 +33,7 @@ from control_plane_kit_operations.managed_effect_plan import require_managed_eff
 from control_plane_kit_operations.managed_runtime_assignments import ManagedRuntimeSelection
 from control_plane_kit_operations.prepared_runtime_invocations import (
     prepared_runtime_invocation_profile, prepared_runtime_reconciliation_target_fingerprint,
+    prepared_runtime_observation_supported,
 )
 from control_plane_kit_operations.effect_attempt_reconciliation import (
     ReconcileEffectAttempt, _valid_reconcile_command, _require_current_claim, _require_historical_lineage,
@@ -555,6 +556,7 @@ class ExecutionInvocationService:
         profile = prepared_runtime_invocation_profile(intent_record.intent,
             original_event_id=marker.original_event_id, runtime_authority=runtime)
         _require(profile.target_fingerprint == marker.target_fingerprint)
+        _require(prepared_runtime_observation_supported(intent_record.intent))
         target = prepared_runtime_reconciliation_target_fingerprint(
             original_invocation_id=marker.invocation_id, original_target_fingerprint=marker.target_fingerprint,
             original_request_fingerprint=marker.request_fingerprint, runtime_registration_id=marker.runtime_registration_id)

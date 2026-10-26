@@ -26,7 +26,7 @@ from tests.postgres_effect_attempt_reconciliation_fixture import UnitOfWorkLedge
 
 
 class _PreparedRuntimeInvocationFixture(CurrentEffectPermissionFixture):
-    def reset_start_truth(self, *, compensation=False, plan=None, desired=None, base=None):
+    def reset_start_truth(self, *, compensation=False, plan=None, desired=None, base=None, product_document=None):
         self.assertFalse(compensation)
         self.reference = RuntimeAuthorityReference("prepared-runtime")
         if plan is None:
@@ -40,7 +40,8 @@ class _PreparedRuntimeInvocationFixture(CurrentEffectPermissionFixture):
         engine.connection = self.connection
         engine.tracker = UnitOfWorkLedger(self.unit_of_work)
         engine.reset_execution_request(plan=plan,
-            base_graph=DeploymentGraph("current") if base is None else base, desired_graph=desired)
+            base_graph=DeploymentGraph("current") if base is None else base, desired_graph=desired,
+            product_document=product_document)
         with self.unit_of_work() as uow:
             self.runtime = uow.stores.runtime_authorities.register(
                 workspace_id="workspace-a", authority_ref=self.reference, runtime_kind=RuntimeKind.DOCKER,
