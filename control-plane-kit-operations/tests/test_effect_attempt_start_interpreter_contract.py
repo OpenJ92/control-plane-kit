@@ -204,6 +204,7 @@ EXACT_START_DEPENDENCIES = {
 }
 
 EXACT_INTERPRETER_DEPENDENCIES = {
+    "control_plane_kit_operations.effect_permissions",
     "control_plane_kit_operations._configuration_preparation",
     "control_plane_kit_core.runtime_effects",
     "control_plane_kit_core.operations",
@@ -261,11 +262,11 @@ class EffectAttemptStartInterpreterContractTests(
         signature = inspect.signature(EffectAttemptStartService)
         self.assertEqual(
             tuple(signature.parameters),
-            ("unit_of_work_factory", "id_factory", "health_receiver_decoders"),
+            ("unit_of_work_factory", "id_factory", "health_receiver_decoders", "permission_policy"),
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptStartService.execute).parameters),
-            ("self", "command"),
+            ("self", "command", "command_context"),
         )
 
     def test_scope_rejection_is_categorical_and_precedes_unit_of_work(self) -> None:
