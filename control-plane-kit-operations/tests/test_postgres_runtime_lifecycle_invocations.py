@@ -6,6 +6,9 @@ import unittest
 from control_plane_kit_core.planning import (
     ActivityId, ActivityPlan, PlannedActivity, ReconcileRuntime, RuntimeTarget,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.topology import DeploymentGraph, RuntimeRecord
+from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.effect_attempt_start import NewlyStarted
 from control_plane_kit_operations.execution_invocations import ExecutionInvocationKind
 from tests.test_postgres_prepared_runtime_invocations import _PreparedRuntimeInvocationFixture
@@ -15,7 +18,9 @@ class PostgresRuntimeLifecycleInvocationTargets(_PreparedRuntimeInvocationFixtur
     def reset_start_truth(self, *, compensation=False, plan=None, desired=None):
         plan = ActivityPlan((PlannedActivity(ActivityId("reconcile-runtime"),
             ReconcileRuntime(RuntimeTarget("runtime-a"))),))
-        super().reset_start_truth(compensation=compensation, plan=plan, desired=desired)
+        base = DeploymentGraph("current", runtimes={"runtime-a": RuntimeRecord(
+            "runtime-a", RuntimeKind.DOCKER, authority_ref=RuntimeAuthorityReference("prepared-runtime"))})
+        super().reset_start_truth(compensation=compensation, plan=plan, desired=desired, base=base)
 
     def test_remote_reconcile_start_retains_its_atomic_prepared_marker(self):
         bound = self.binding(generation=self.runtime_fence.generation)
