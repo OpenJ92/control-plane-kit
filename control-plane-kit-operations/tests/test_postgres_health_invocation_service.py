@@ -15,12 +15,18 @@ from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.records import ExecutionCommandResultRecord, CoordinatorStatus
 from control_plane_kit_operations.secret_providers import SecretProviderRegistrationService, RevokeSecretProviderCommand
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.planning import ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth
 from tests.health_signing_authority_fixture import timestamp
 from tests.test_postgres_health_effect_start_rollback import _CommitThenRaiseConnection
 from tests.test_postgres_managed_effect_permissions import _ManagedPermissionStartFixture
 
 
-class PostgresHealthInvocationServiceTests(_ManagedPermissionStartFixture, unittest.TestCase):
+class _HealthInvocationServiceFixture(_ManagedPermissionStartFixture):
+    health_stage = ManagementBootstrapStage.GATEWAY_LOCAL_READY
+
+    def health_context(self, **options):
+        return super().health_context(**({"stage": self.health_stage} | options))
+
     def setUp(self):
         super().setUp()
         self.health_command = self.start_health_command(context=self.original)
@@ -91,7 +97,10 @@ class PostgresHealthInvocationServiceTests(_ManagedPermissionStartFixture, unitt
         self.calls.append("endpoint-observation")
         invocations.record_outcome(permit, "returned")
 
+class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unittest.TestCase):
     def test_real_bound_endpoint_admission_commits_before_call_and_retains_classification(self):
+        self.assertIs(type(self.health_command.start.intent.operation), ObserveManagementBootstrap)
+        self.assertIs(self.health_command.start.intent.operation.stage, ManagementBootstrapStage.GATEWAY_LOCAL_READY)
         invocations = self.bound_invocations()
         with self.observed_time(timestamp(self.started.preparation.transit_grant.not_before)):
             self.endpoint_call(invocations)
@@ -361,3 +370,47 @@ class PostgresHealthInvocationServiceTests(_ManagedPermissionStartFixture, unitt
             self.assertEqual(endpoint.decision.denial_code, "required-scope-denied")
             self.assertEqual(uow.stores.execution.command_invocation(
                 self.marker.command, self.marker.invocation_id), self.marker)
+
+
+class _NonlocalHealthInvocationCases:
+    def test_endpoint_is_inapplicable_but_selected_secret_and_final_paths_remain_valid(self):
+        operation = self.health_command.start.intent.operation
+        if self.health_stage is None:
+            self.assertIs(type(operation), ObserveNodeHealth)
+        else:
+            self.assertIs(type(operation), ObserveManagementBootstrap)
+            self.assertIs(operation.stage, self.health_stage)
+        invocations = self.bound_invocations()
+        with self.assertRaises(ExecutionInvocationConflict):
+            invocations.admit("endpoint-observation")
+        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+        self.assertEqual(self.retained(Kind.SIGNED_HEALTH_TRANSPORT), self.marker)
+        self.assertEqual(self.active_invocation_uows, 0)
+        with self.admission_time():
+            for authorization in (self.started.preparation.transit_authorization_id,
+                    self.started.preparation.workload_authorization_id):
+                permit = invocations.admit("secret-resolution", authorization_id=authorization)
+                self.assertIs(self.retained(Kind.SECRET_RESOLUTION, authorization).outcome, Outcome.PENDING)
+                self.assertEqual(self.active_invocation_uows, 0)
+                invocations.record_outcome(permit, "returned")
+            permit = invocations.admit("signed-health-transport")
+            self.assertIs(self.retained(Kind.SIGNED_HEALTH_TRANSPORT).outcome, Outcome.PENDING)
+            self.assertEqual(self.active_invocation_uows, 0)
+            invocations.record_outcome(permit, "returned")
+        self.assertIs(self.retained(Kind.SIGNED_HEALTH_TRANSPORT).outcome, Outcome.RETURNED)
+        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+
+
+class PostgresPublicHealthInvocationEligibilityTests(
+        _NonlocalHealthInvocationCases, _HealthInvocationServiceFixture, unittest.TestCase):
+    health_stage = None
+
+
+class PostgresAuthenticatedHealthInvocationEligibilityTests(
+        _NonlocalHealthInvocationCases, _HealthInvocationServiceFixture, unittest.TestCase):
+    health_stage = ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH
+
+
+class PostgresIngressHealthInvocationEligibilityTests(
+        _NonlocalHealthInvocationCases, _HealthInvocationServiceFixture, unittest.TestCase):
+    health_stage = ManagementBootstrapStage.GATEWAY_INGRESS_READY

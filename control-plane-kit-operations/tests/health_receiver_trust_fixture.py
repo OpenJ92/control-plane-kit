@@ -182,6 +182,7 @@ def _bootstrap_context(test, *, stage, side, changes, slot_changes, shared, rece
     """
     test.assertIs(side, PlanGraphSide.DESIRED_GRAPH)
     test.assertIn(stage, (
+        ManagementBootstrapStage.GATEWAY_LOCAL_READY,
         ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
         ManagementBootstrapStage.GATEWAY_INGRESS_READY,
     ))

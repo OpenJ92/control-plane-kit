@@ -7,6 +7,7 @@ from typing import Protocol
 import rfc8785
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.planning import ManagementBootstrapStage, ObserveManagementBootstrap
 from control_plane_kit_operations.effect_attempt_start import NewlyStarted
 from control_plane_kit_operations.effect_permissions import (
     CurrentWorkspaceEffectPolicy, EffectCommandContext, _require_execution_binding,
@@ -160,6 +161,10 @@ class ExecutionInvocationService:
             _require(type(kind) is str)
             kind = Kind(kind)
             _require(kind in _KINDS)
+            if kind is Kind.ENDPOINT_OBSERVATION:
+                operation = bound.start.start.intent.operation
+                _require(type(operation) is ObserveManagementBootstrap
+                    and operation.stage is ManagementBootstrapStage.GATEWAY_LOCAL_READY)
             with self._unit_of_work_factory() as uow:
                 stores = uow.stores
                 reference = bound.context.receipt

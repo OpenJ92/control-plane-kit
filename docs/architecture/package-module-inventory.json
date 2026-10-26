@@ -20,6 +20,7 @@
       ],
       "internal_dependencies": [
         "control_plane_kit_core.policies",
+        "control_plane_kit_core.planning",
         "control_plane_kit_operations.effect_attempt_start",
         "control_plane_kit_operations.effect_permissions",
         "control_plane_kit_operations.execution_invocations",
