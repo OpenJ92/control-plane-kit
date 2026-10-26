@@ -265,6 +265,62 @@ class WorkspacePermissionInitializationResult:
         return dict(receipt=self.receipt.descriptor(), replayed=self.replayed)
 
 
+@dataclass(frozen=True)
+class WorkspaceAdministrationReceipt:
+    """Historical command attribution, distinct from current workspace truth."""
+
+    installation_id: str
+    actor: PrincipalIdentity
+    workspace_id: str
+    idempotency_key: str
+    initialized: bool
+    observed_current_graph_id: str
+    occurred_at: str
+
+    def __post_init__(self):
+        _text(self.installation_id)
+        _identity(self.actor)
+        _text(self.workspace_id)
+        _text(self.idempotency_key, 200)
+        _text(self.observed_current_graph_id)
+        if type(self.initialized) is not bool:
+            raise WorkspacePermissionError("workspace administration receipt is malformed")
+        validate_canonical_utc_timestamp(self.occurred_at)
+
+    def descriptor(self):
+        return dict(installation_id=self.installation_id, actor=self.actor.descriptor(),
+                    workspace_id=self.workspace_id, idempotency_key=self.idempotency_key,
+                    initialized=self.initialized, observed_current_graph_id=self.observed_current_graph_id,
+                    occurred_at=self.occurred_at)
+
+    @classmethod
+    def from_descriptor(cls, payload):
+        try:
+            if (type(payload) is not dict or set(payload) != {
+                    "installation_id", "actor", "workspace_id", "idempotency_key", "initialized",
+                    "observed_current_graph_id", "occurred_at"}
+                    or type(payload["actor"]) is not dict
+                    or set(payload["actor"]) != {"issuer", "subject_id", "kind"}
+                    or len(rfc8785.dumps(payload)) > 16384):
+                raise ValueError
+            actor = payload["actor"]
+            return cls(payload["installation_id"],
+                PrincipalIdentity(actor["issuer"], actor["subject_id"], PrincipalKind(actor["kind"])),
+                payload["workspace_id"], payload["idempotency_key"], payload["initialized"],
+                payload["observed_current_graph_id"], payload["occurred_at"])
+        except (ValueError, TypeError, KeyError):
+            raise WorkspacePermissionError("persisted administration receipt is malformed") from None
+
+
+@dataclass(frozen=True)
+class WorkspaceAdministrationResult:
+    receipt: WorkspaceAdministrationReceipt
+    replayed: bool = False
+
+    def descriptor(self):
+        return dict(receipt=self.receipt.descriptor(), replayed=self.replayed)
+
+
 def permission_intent(command: GrantWorkspacePermissions, operation: str) -> dict:
     return dict(installation_id=command.context.installation_id, workspace_id=command.workspace_id,
                 actor=command.context.identity.descriptor(), target=command.target.descriptor(),

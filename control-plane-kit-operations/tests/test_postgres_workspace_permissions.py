@@ -16,9 +16,10 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, SchemaInstallationError, install_schema
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+from tests.lifecycle_lock_fixture import LifecycleLockFixture
 
 
-class PostgresWorkspacePermissionTests(unittest.TestCase):
+class PostgresWorkspacePermissionTests(LifecycleLockFixture, unittest.TestCase):
     def setUp(self):
         self.database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not self.database_url:
@@ -283,6 +284,105 @@ class PostgresWorkspacePermissionTests(unittest.TestCase):
                                 (Jsonb(original),))
         self.assertTrue(service.initialize(context, idempotency_key=IdempotencyKey("initialize-installation"))
                         .replayed)
+
+    def test_concurrent_admin_key_conflict_cannot_leave_a_second_workspace(self):
+        _, context = self.initialize()
+
+        def create(factory, workspace):
+            service = WorkspaceCommandService(factory, clock=self.clock,
+                id_factory=lambda: uuid4().hex, administration_policy=self.policy())
+            return service.create_as_administrator(context, workspace_id=workspace,
+                name=workspace, idempotency_key=IdempotencyKey("concurrent-admin-key"))
+
+        first, second = self.opposing_commands(
+            lambda factory: create(factory, "workspace-leader"),
+            lambda factory: create(factory, "workspace-follower"),
+            lambda query, parameters: "pg_advisory_xact_lock" in query and parameters
+                and str(parameters[0]).startswith("workspace-administration:"),
+        )
+        self.assertTrue(first.result().receipt.initialized)
+        with self.assertRaises(self.public("WorkspacePermissionConflict")):
+            second.result()
+        self.assertEqual(self.connection.execute(
+            "SELECT workspace_id FROM cpk_workspaces WHERE workspace_id IN (%s,%s) ORDER BY workspace_id",
+            ("workspace-leader", "workspace-follower"),
+        ).fetchall(), [("workspace-leader",)])
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_workspace_administration_receipts WHERE idempotency_key=%s",
+            ("concurrent-admin-key",),
+        ).fetchone()[0], 1)
+
+    def test_accepted_noop_deltas_advance_revision_without_changing_scopes(self):
+        service, context = self.initialize()
+        self.grant(service, context)
+        _, repeated = self.grant(service, context, key="same-scope-new-command", revision=1)
+        self.assertEqual((repeated.receipt.prior_revision, repeated.receipt.revision), (1, 2))
+        unchanged = service.revoke(self.public("RevokeWorkspacePermissions")(
+            context=context, workspace_id="workspace-a", target=self.member, scopes=(self.request,),
+            expected_revision=2, idempotency_key=IdempotencyKey("remove-absent-scope"),
+        ))
+        self.assertEqual(unchanged.receipt.revision, 3)
+        self.assertEqual(unchanged.receipt.resulting_scopes, (self.read,))
+        self.assertEqual(self.resolver().resolve(AuthenticatedPrincipal(self.member), "workspace-a")
+                         .granted_scopes, (self.read,))
+
+    def test_receipt_failure_rolls_back_initial_permission_row(self):
+        service, context = self.initialize()
+        self.connection.execute("ALTER TABLE cpk_workspace_permission_receipts "
+                                "ADD CONSTRAINT test_refuse_permission_receipt CHECK (false)")
+        with self.assertRaises(psycopg.errors.CheckViolation):
+            self.grant(service, context)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_workspace_permissions")
+                         .fetchone()[0], 0)
+        with self.assertRaises(IdentityContractError):
+            self.resolver().resolve(AuthenticatedPrincipal(self.member), "workspace-a")
+
+    def test_concurrent_expected_revision_has_one_winner(self):
+        service, context = self.initialize()
+        self.grant(service, context)
+
+        def change(factory, key):
+            return self.grant(self.service(unit_of_work=factory), context, key=key,
+                              scopes=(self.request,), revision=1)[1]
+
+        first, second = self.opposing_commands(
+            lambda factory: change(factory, "leader-revision"),
+            lambda factory: change(factory, "follower-revision"),
+            lambda query, parameters: "FROM cpk_workspace_permissions" in query
+                and query.endswith("FOR UPDATE"),
+        )
+        self.assertEqual(first.result().receipt.revision, 2)
+        with self.assertRaises(self.public("WorkspacePermissionConflict")):
+            second.result()
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_workspace_permission_receipts")
+                         .fetchone()[0], 2)
+
+    def test_admin_reads_are_bounded_scoped_and_keep_history_distinct_from_current_policy(self):
+        service, context = self.initialize()
+        self.grant(service, context)
+        service.revoke(self.public("RevokeWorkspacePermissions")(
+            context=context, workspace_id="workspace-a", target=self.member, scopes=(self.read,),
+            expected_revision=1, idempotency_key=IdempotencyKey("revoke-for-history"),
+        ))
+        reads = self.public("WorkspacePermissionReadService")(
+            self.unit_of_work, administration_policy=self.policy(known=(self.admin,)),
+        )
+        current = reads.inspect(context, workspace_id="workspace-a", target=self.member)
+        self.assertEqual((current.scopes, current.revision), ((), 2))
+        first = reads.history(context, workspace_id="workspace-a", target=self.member, limit=1)
+        self.assertEqual(tuple(item.operation for item in first.items), ("grant",))
+        self.assertIsNotNone(first.next_cursor)
+        second = reads.history(context, workspace_id="workspace-a", target=self.member,
+                               limit=1, cursor=first.next_cursor)
+        self.assertEqual(tuple(item.operation for item in second.items), ("revoke",))
+        self.assertIsNone(second.next_cursor)
+        with self.assertRaises(self.public("WorkspacePermissionError")):
+            reads.history(context, workspace_id="workspace-b", target=self.member,
+                          limit=1, cursor=first.next_cursor)
+        with self.assertRaises(self.public("WorkspacePermissionError")):
+            reads.list(context, workspace_id="workspace-a", limit=101)
+        page = reads.list(context, workspace_id="workspace-a", limit=1)
+        self.assertEqual(page.items, (current,))
 
 
 if __name__ == "__main__":

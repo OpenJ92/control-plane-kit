@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from hashlib import sha256
+import json
 from typing import Any, Callable, Mapping
 
 import rfc8785
@@ -11,6 +12,10 @@ import rfc8785
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
 from control_plane_kit_operations.workflows import IdempotencyKey
+from control_plane_kit_operations.workspace_permissions import (
+    WorkspaceAdministrationPolicy, WorkspaceAdministrationReceipt, WorkspaceAdministrationResult,
+    WorkspacePermissionDenied, WorkspacePermissionError, _key, _text,
+)
 
 
 class WorkspaceCommandError(RuntimeError):
@@ -129,10 +134,51 @@ class WorkspaceCommandService:
         *,
         clock: Callable[[], str],
         id_factory: Callable[[], str],
+        administration_policy: WorkspaceAdministrationPolicy | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
         self._id_factory = id_factory
+        self._administration_policy = administration_policy
+
+    def create_as_administrator(self, context, *, workspace_id, name, idempotency_key, metadata=None):
+        """Reuse initialization and retain full actor attribution in its transaction."""
+        if self._administration_policy is None:
+            raise WorkspacePermissionDenied("workspace administration is not configured")
+        self._administration_policy.require(context)
+        _text(workspace_id)
+        _text(name)
+        _key(idempotency_key)
+        metadata = {} if metadata is None else metadata
+        try:
+            intent = dict(installation_id=context.installation_id, actor=context.identity.descriptor(),
+                          workspace_id=workspace_id, name=name, idempotency_key=idempotency_key.value,
+                          metadata=dict(metadata))
+            encoded = rfc8785.dumps(intent)
+            if len(encoded) > 16384:
+                raise ValueError
+            fingerprint = sha256(encoded).hexdigest()
+            # Bind the actual initializer inputs to the fingerprinted snapshot,
+            # even if the caller retains a mutable metadata mapping.
+            intent = json.loads(encoded)
+        except (TypeError, ValueError, OverflowError):
+            raise WorkspacePermissionError("administrative workspace command is malformed") from None
+        command = CreateWorkspace(workspace_id, name, context.identity.subject_id, idempotency_key, intent["metadata"])
+        with self._unit_of_work_factory() as unit_of_work:
+            store = unit_of_work.stores.workspace_permissions
+            prior = store.lock_administration_command(context, idempotency_key, fingerprint)
+            if prior is not None:
+                unit_of_work.commit()
+                return WorkspaceAdministrationResult(prior, replayed=True)
+            with unit_of_work.stores.workspaces._initialization_evidence(workspace_id):
+                result = self._create(command, unit_of_work)
+                receipt = WorkspaceAdministrationReceipt(context.installation_id, context.identity,
+                    workspace_id, idempotency_key.value, not result.replayed,
+                    result.current_graph.graph_id, self._clock())
+                store.save_administration_receipt(receipt, fingerprint)
+                # _create requested the one deferred commit. Any later receipt
+                # failure still leaves this context by exception and rolls it back.
+                return WorkspaceAdministrationResult(receipt)
 
     def create(self, command: CreateWorkspace) -> CreateWorkspaceResult:
         if not isinstance(command, CreateWorkspace):

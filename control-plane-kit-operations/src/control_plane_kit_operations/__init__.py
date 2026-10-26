@@ -6,6 +6,7 @@ from control_plane_kit_core import DeploymentProgramStage
 
 from .workspace_permissions import (
     WorkspaceAdministrationContext, WorkspaceAdministrationPolicy,
+    WorkspaceAdministrationReceipt, WorkspaceAdministrationResult,
     GrantWorkspacePermissions, RevokeWorkspacePermissions,
     WorkspacePermissionRecord, WorkspacePermissionReceipt, WorkspacePermissionResult,
     WorkspacePermissionInitializationReceipt, WorkspacePermissionInitializationResult,
@@ -684,6 +685,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy",
+    "WorkspaceAdministrationReceipt", "WorkspaceAdministrationResult",
     "GrantWorkspacePermissions", "RevokeWorkspacePermissions",
     "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult",
     "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult",

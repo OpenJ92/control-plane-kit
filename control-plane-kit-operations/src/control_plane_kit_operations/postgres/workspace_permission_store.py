@@ -11,6 +11,7 @@ from control_plane_kit_operations.workspace_permissions import (
     WorkspacePermissionConflict, WorkspacePermissionError, WorkspacePermissionNotFound,
     WorkspacePermissionReceipt, WorkspacePermissionRecord, WorkspacePermissionResult,
     WorkspacePermissionInitializationReceipt, WorkspacePermissionInitializationResult,
+    WorkspaceAdministrationReceipt,
     permission_fingerprint, permission_intent, _identity, _text,
 )
 
@@ -177,6 +178,40 @@ class WorkspacePermissionStore:
         )
         return WorkspacePermissionResult(receipt)
 
+    def lock_administration_command(self, context, idempotency_key, fingerprint):
+        self.require_installation(context.installation_id)
+        identity = context.identity
+        key = permission_fingerprint(dict(installation_id=context.installation_id,
+            actor=identity.descriptor(), idempotency_key=idempotency_key.value))
+        # The command key precedes lifecycle locks, including when two requests
+        # reuse one key for different workspace IDs and no receipt yet exists.
+        self.connection.execute("SELECT pg_advisory_xact_lock(hashtextextended("
+            "current_database() || chr(31) || current_schema() || chr(31) || %s, 0))",
+            ("workspace-administration:" + key,))
+        row = self.connection.execute(
+            "SELECT intent_fingerprint, receipt, workspace_id FROM cpk_workspace_administration_receipts "
+            "WHERE installation_id=%s AND issuer=%s AND subject_id=%s AND kind=%s AND idempotency_key=%s",
+            (context.installation_id, identity.issuer, identity.subject_id, identity.kind.value, idempotency_key.value),
+        ).fetchone()
+        if row is None:
+            return None
+        if row[0] != fingerprint:
+            raise WorkspacePermissionConflict("administrative command key has different intent")
+        receipt = WorkspaceAdministrationReceipt.from_descriptor(row[1])
+        if (receipt.installation_id != context.installation_id or receipt.actor != identity
+                or receipt.idempotency_key != idempotency_key.value or receipt.workspace_id != row[2]):
+            raise WorkspacePermissionError("administrative receipt identity disagrees")
+        return receipt
+
+    def save_administration_receipt(self, receipt, fingerprint):
+        self.connection.execute(
+            "INSERT INTO cpk_workspace_administration_receipts "
+            "(installation_id,issuer,subject_id,kind,idempotency_key,workspace_id,intent_fingerprint,receipt) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (receipt.installation_id, receipt.actor.issuer, receipt.actor.subject_id, receipt.actor.kind.value,
+             receipt.idempotency_key, receipt.workspace_id, fingerprint, Jsonb(receipt.descriptor())),
+        )
+
 
 def validate_workspace_permission_rows(connection):
     """Check bounded stored values and the current row's original latest receipt."""
@@ -211,6 +246,14 @@ def validate_workspace_permission_rows(connection):
                 idempotency_key=receipt.idempotency_key)
             if row[7] != permission_fingerprint(intent):
                 raise WorkspacePermissionError("permission receipt intent disagrees")
+    keys = ("installation_id", "issuer", "subject_id", "kind", "idempotency_key")
+    for rows in _batches(connection, "cpk_workspace_administration_receipts",
+                        ",".join(keys) + ",workspace_id,receipt", keys):
+        for row in rows:
+            receipt = WorkspaceAdministrationReceipt.from_descriptor(row[6])
+            if tuple(row[:6]) != (receipt.installation_id, receipt.actor.issuer, receipt.actor.subject_id,
+                                 receipt.actor.kind.value, receipt.idempotency_key, receipt.workspace_id):
+                raise WorkspacePermissionError("administration receipt identity disagrees")
 
 
 def _batches(connection, table, columns, keys):
