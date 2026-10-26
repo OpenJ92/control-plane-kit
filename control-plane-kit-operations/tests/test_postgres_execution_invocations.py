@@ -260,6 +260,8 @@ class PostgresExecutionInvocationHealthJoinTests(_ManagedPermissionStartFixture,
         install_schema(self.connection)
 
     def test_swapped_health_reference_purpose_and_unrelated_operation_are_not_the_selected_use(self):
+        with self.unit_of_work() as uow:
+            original_markers = uow.stores.execution.command_invocations(self.bound.receipt).items
         transit, workload = self.uses
         record = self.record(transit)
         with self.assertRaises(ExecutionInvocationConflict):
@@ -279,14 +281,20 @@ class PostgresExecutionInvocationHealthJoinTests(_ManagedPermissionStartFixture,
         with self.assertRaises(ExecutionInvocationConflict):
             self.insert(replace(self.record(unrelated), attempt=None,
                 original_event_id=None, request_fingerprint=None))
-        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_execution_command_invocations WHERE kind='secret-resolution'").fetchone()[0], 0)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.command_invocations(self.bound.receipt).items, original_markers)
 
     def test_missing_health_preparation_is_not_a_generic_effect_id_fallback(self):
         record = self.record(self.uses[0])
         self.insert(record)
+        before = self.connection.execute(
+            "SELECT invocation_id, descriptor FROM cpk_execution_command_invocations ORDER BY invocation_id").fetchall()
         self.connection.execute("DELETE FROM cpk_health_effect_preparations WHERE run_id=%s AND activity_id=%s AND attempt=%s",
             (record.command.run_id, record.activity_id, record.attempt))
         with self.assertRaises(ExecutionInvocationConflict):
             with self.unit_of_work() as uow:
                 uow.stores.execution.command_invocation(record.command, record.invocation_id)
-        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 1)
+        self.assertEqual(self.connection.execute(
+            "SELECT invocation_id, descriptor FROM cpk_execution_command_invocations ORDER BY invocation_id").fetchall(), before)

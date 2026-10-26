@@ -222,6 +222,8 @@ class PostgresNativeManagementPermissionTests(_ManagedPermissionStartFixture, un
     def test_native_start_requires_current_management_selection(self):
         self.assert_missing_target_denied()
         self.assertIsInstance(self.admit(), NewlyStarted)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.command_invocations(self.bound.receipt).items, ())
 
     def test_native_alternate_authority_pair_must_match_pinned_graph(self):
         self.assert_alternate_authority_denied()

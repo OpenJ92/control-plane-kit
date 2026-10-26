@@ -59,6 +59,10 @@ from control_plane_kit_operations.effect_permissions import (
     CurrentWorkspaceEffectPolicy, EffectCommandContext, EffectPermissionDenied,
     _require_execution_binding,
 )
+from control_plane_kit_operations.execution_invocations import (
+    ExecutionInvocationKind, ExecutionInvocationRecord,
+    signed_health_invocation_target_fingerprint,
+)
 from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
 )
@@ -386,8 +390,23 @@ class EffectAttemptStartService:
                 if configuration_preparation is None:
                     raise
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
+            final_invocation = None
             if health_write is not None:
                 result = retain_health_start(unit_of_work, health_write, result)
+                if self._permission_policy is not None:
+                    # The existing prefix already verified the exact command.
+                    # This records required final dispatch, never a call permit;
+                    # do not acquire a reverse command/receipt lock here.
+                    final_invocation = ExecutionInvocationRecord(
+                        command_context.receipt, request.identity.workspace_id,
+                        expected_attempt.state.identity.activity_id,
+                        ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT,
+                        signed_health_invocation_target_fingerprint(result.preparation),
+                        event.occurred_at, attempt=expected_attempt.state.identity.attempt,
+                        original_event_id=event.event_id,
+                        request_fingerprint=expected_attempt.state.request_fingerprint)
+                    if stores.execution.add_command_invocation(final_invocation) != final_invocation:
+                        raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             try:
                 prefix.require(unit_of_work, request, run.run_id, latest_required=True)
                 _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
@@ -396,6 +415,9 @@ class EffectAttemptStartService:
                         or stores.effect_attempt_intents.get(intent_record.identity) != intent_record
                         or stores.effect_attempts.get(expected_attempt.state.identity) != expected_attempt):
                     raise ValueError("persisted start changed")
+                if (final_invocation is not None and stores.execution.command_invocation(
+                        final_invocation.command, final_invocation.invocation_id) != final_invocation):
+                    raise ValueError("persisted final invocation changed")
                 if configuration_preparation is not None:
                     if cleanup_store is not None:
                         cleanup_store._verify_start(configuration_preparation)

@@ -285,6 +285,24 @@ def secret_invocation_target_fingerprint(authorization):
         request_fingerprint=authorization.request_fingerprint if consumer else None))).hexdigest()
 
 
+def signed_health_invocation_target_fingerprint(preparation):
+    """Reconstruct the exact prepared target without current authority or material."""
+    from control_plane_kit_operations.health_effect_preparations import (
+        HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord,
+    )
+    _require(type(preparation) in (HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord))
+    preparation.__post_init__()
+    return hashlib.sha256(rfc8785.dumps(dict(
+        domain="cpk.signed-health-final-target.v1", kind="signed-health-transport",
+        request_fingerprint=preparation.request_fingerprint,
+        health_request_digest=preparation.request_digest.value,
+        transit_key_registration_id=preparation.transit_key_registration_id,
+        workload_key_registration_id=preparation.workload_key_registration_id,
+        transit_authorization_id=preparation.transit_authorization_id,
+        workload_authorization_id=preparation.workload_authorization_id,
+    ))).hexdigest()
+
+
 @dataclass(frozen=True)
 class ExecutionInvocationCursor:
     command: ExecutionCommandReference
