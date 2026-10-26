@@ -38,7 +38,8 @@
         "rfc8785"
       ],
       "protecting_tests": [
-        "tests/test_postgres_health_invocation_service.py"
+        "tests/test_postgres_health_invocation_service.py",
+        "tests/test_postgres_local_health_invocation.py"
       ],
       "motivation": "Fresh semantic invocation admission and original result classification under the existing command owner; no provider calls or parallel execution loop."
     },

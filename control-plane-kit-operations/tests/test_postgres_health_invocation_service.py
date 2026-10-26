@@ -22,7 +22,7 @@ from tests.test_postgres_managed_effect_permissions import _ManagedPermissionSta
 
 
 class _HealthInvocationServiceFixture(_ManagedPermissionStartFixture):
-    health_stage = ManagementBootstrapStage.GATEWAY_LOCAL_READY
+    health_stage = None
 
     def health_context(self, **options):
         return super().health_context(**({"stage": self.health_stage} | options))
@@ -80,13 +80,13 @@ class _HealthInvocationServiceFixture(_ManagedPermissionStartFixture):
         return service.revoke(operations.RevokeWorkspacePermissions(self.admin_context,
             "workspace-a", self.worker, (self.operate,), 1, IdempotencyKey("revoke-workspace")))
 
-    def endpoint_call(self, invocations):
-        permit = invocations.admit("endpoint-observation")
+    def secret_call(self, invocations):
+        permit = invocations.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
         # A separate connection must see admission before the controlled call;
         # outcome recording cannot be the first durable write.
         with self.unit_of_work() as uow:
             rows = uow.stores.execution.command_invocations(self.bound.receipt).items
-            admitted, = (row for row in rows if row.kind is Kind.ENDPOINT_OBSERVATION)
+            admitted, = (row for row in rows if row.kind is Kind.SECRET_RESOLUTION and row.authorization_id == self.started.preparation.transit_authorization_id)
             self.assertEqual(admitted.command, self.bound.receipt)
             self.assertIs(admitted.disposition, Disposition.ADMITTED)
             self.assertIs(admitted.outcome, Outcome.PENDING)
@@ -94,26 +94,25 @@ class _HealthInvocationServiceFixture(_ManagedPermissionStartFixture):
             self.assertEqual(admitted.decision.assignment_id, self.selected.assignment_id)
             self.assertEqual(admitted.decision.assignment_revision, self.selected.revision)
         self.assertEqual(self.active_invocation_uows, 0, "capability called inside an admission transaction")
-        self.calls.append("endpoint-observation")
+        self.calls.append("secret-resolution")
         invocations.record_outcome(permit, "returned")
 
 class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unittest.TestCase):
-    def test_real_bound_endpoint_admission_commits_before_call_and_retains_classification(self):
-        self.assertIs(type(self.health_command.start.intent.operation), ObserveManagementBootstrap)
-        self.assertIs(self.health_command.start.intent.operation.stage, ManagementBootstrapStage.GATEWAY_LOCAL_READY)
+    def test_real_bound_secret_admission_commits_before_call_and_retains_classification(self):
+        self.assertIs(type(self.health_command.start.intent.operation), ObserveNodeHealth)
         invocations = self.bound_invocations()
         with self.observed_time(timestamp(self.started.preparation.transit_grant.not_before)):
-            self.endpoint_call(invocations)
-        self.assertEqual(self.calls, ["endpoint-observation"])
+            self.secret_call(invocations)
+        self.assertEqual(self.calls, ["secret-resolution"])
         self.assertEqual(self.active_invocation_uows, 0)
         with self.unit_of_work() as uow:
             rows = uow.stores.execution.command_invocations(self.bound.receipt).items
-            endpoint, = (row for row in rows if row.kind is Kind.ENDPOINT_OBSERVATION)
-            self.assertIs(endpoint.disposition, Disposition.ADMITTED)
-            self.assertIs(endpoint.outcome, Outcome.RETURNED)
-            self.assertEqual(endpoint.decision.permission_revision, 1)
-            self.assertEqual(endpoint.decision.assignment_id, self.selected.assignment_id)
-            self.assertEqual(endpoint.decision.assignment_revision, self.selected.revision)
+            secret, = (row for row in rows if row.kind is Kind.SECRET_RESOLUTION and row.authorization_id == self.started.preparation.transit_authorization_id)
+            self.assertIs(secret.disposition, Disposition.ADMITTED)
+            self.assertIs(secret.outcome, Outcome.RETURNED)
+            self.assertEqual(secret.decision.permission_revision, 1)
+            self.assertEqual(secret.decision.assignment_id, self.selected.assignment_id)
+            self.assertEqual(secret.decision.assignment_revision, self.selected.revision)
             self.assertEqual(uow.stores.execution.command_invocation(
                 self.marker.command, self.marker.invocation_id), self.marker)
             self.assertEqual(uow.stores.effect_attempts.get(self.started.start.attempt.state.identity),
@@ -122,8 +121,7 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
     def test_each_selected_preparation_and_final_call_has_its_own_admission(self):
         invocations = self.bound_invocations()
         preparation = self.started.preparation
-        slots = ((Kind.ENDPOINT_OBSERVATION, None),
-            (Kind.SECRET_RESOLUTION, preparation.transit_authorization_id),
+        slots = ((Kind.SECRET_RESOLUTION, preparation.transit_authorization_id),
             (Kind.SECRET_RESOLUTION, preparation.workload_authorization_id),
             (Kind.SIGNED_HEALTH_TRANSPORT, None))
         with self.admission_time():
@@ -145,15 +143,15 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
     def test_returned_preparation_does_not_authorize_next_secret_or_final_after_revoke(self):
         invocations = self.bound_invocations()
         with self.admission_time():
-            self.endpoint_call(invocations)
+            self.secret_call(invocations)
             self.revoke_workspace()
-            for kind, authorization in ((Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id),
+            for kind, authorization in ((Kind.SECRET_RESOLUTION, self.started.preparation.workload_authorization_id),
                     (Kind.SIGNED_HEALTH_TRANSPORT, None)):
                 with self.assertRaises(ExecutionInvocationDenied):
                     invocations.admit(kind.value, authorization_id=authorization)
                 self.assertIs(self.retained(kind, authorization).disposition, Disposition.DENIED)
-        self.assertEqual(self.calls, ["endpoint-observation"])
-        self.assertIs(self.retained(Kind.ENDPOINT_OBSERVATION).outcome, Outcome.RETURNED)
+        self.assertEqual(self.calls, ["secret-resolution"])
+        self.assertIs(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id).outcome, Outcome.RETURNED)
         denied = self.retained(Kind.SIGNED_HEALTH_TRANSPORT)
         self.permission_service.grant(operations.GrantWorkspacePermissions(self.admin_context,
             "workspace-a", self.worker, (self.operate,), 2, IdempotencyKey("restore-workspace")))
@@ -168,8 +166,8 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
             "workspace-a", self.runtime_id, self.runtime.authority_ref, self.runtime.registration_id,
             "installer-local-docker", 2, IdempotencyKey("restore-management")))
         with self.admission_time(), self.assertRaises(ExecutionInvocationDenied):
-            self.endpoint_call(invocations)
-        denied = self.retained(Kind.ENDPOINT_OBSERVATION)
+            self.secret_call(invocations)
+        denied = self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id)
         self.assertEqual(denied.decision.denial_code, "management-assignment-denied")
         self.assertIsNone(denied.decision.assignment_id)
         self.assertEqual(self.calls, [])
@@ -186,15 +184,15 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
             return PostgresUnitOfWork(connect)
         invocations = self.bound_invocations(factory=factory)
         with self.admission_time(), self.assertRaises(ExecutionInvocationConflict):
-            self.endpoint_call(invocations)
+            self.secret_call(invocations)
         self.assertEqual(self.calls, [])
         self.assertEqual([value.commits for value in connections], [1])
-        admitted = self.retained(Kind.ENDPOINT_OBSERVATION)
+        admitted = self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id)
         self.assertIs(admitted.disposition, Disposition.ADMITTED)
         self.assertIs(admitted.outcome, Outcome.PENDING)
         with self.assertRaises(ExecutionInvocationExisting):
-            self.bound_invocations().admit("endpoint-observation")
-        self.assertEqual(self.retained(Kind.ENDPOINT_OBSERVATION), admitted)
+            self.bound_invocations().admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
+        self.assertEqual(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id), admitted)
 
     def test_outcome_survives_revoke_and_completed_parent_and_replays_without_clock(self):
         reads = []
@@ -204,7 +202,7 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
             return timestamp(self.started.preparation.transit_grant.not_before)
         invocations = self.bound_invocations(clock=clock)
         with self.admission_time():
-            permit = invocations.admit("endpoint-observation")
+            permit = invocations.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
         self.revoke_workspace()
         with self.unit_of_work() as uow:
             reference = self.bound.receipt
@@ -216,10 +214,10 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
                 result=ExecutionCommandResultRecord(run, CoordinatorStatus.UNCERTAIN, 1, self.marker.activity_id))
             uow.commit()
         invocations.record_outcome(permit, "returned")
-        retained = self.retained(Kind.ENDPOINT_OBSERVATION)
+        retained = self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id)
         invocations.record_outcome(permit, "returned")
         self.assertEqual(reads, [True])
-        self.assertEqual(self.retained(Kind.ENDPOINT_OBSERVATION), retained)
+        self.assertEqual(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id), retained)
         with self.assertRaises(ExecutionInvocationConflict):
             invocations.record_outcome(permit, "failed")
 
@@ -229,13 +227,13 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
             return PostgresUnitOfWork(lambda: _CommitThenRaiseConnection(
                 self.connect(), RuntimeError("denial-ack-lost")))
         with self.admission_time(), self.assertRaises(ExecutionInvocationConflict):
-            self.endpoint_call(self.bound_invocations(factory=factory))
+            self.secret_call(self.bound_invocations(factory=factory))
         self.assertEqual(self.calls, [])
-        denied = self.retained(Kind.ENDPOINT_OBSERVATION)
+        denied = self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id)
         self.assertIs(denied.disposition, Disposition.DENIED)
         with self.assertRaises(ExecutionInvocationDenied):
-            self.bound_invocations().admit("endpoint-observation")
-        self.assertEqual(self.retained(Kind.ENDPOINT_OBSERVATION), denied)
+            self.bound_invocations().admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
+        self.assertEqual(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id), denied)
 
     def test_commit_request_rollback_leaves_only_original_marker_and_no_permit(self):
         commits = []
@@ -247,45 +245,45 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
             uow.commit = refuse
             return uow
         with self.admission_time(), self.assertRaises(ExecutionInvocationConflict):
-            self.endpoint_call(self.bound_invocations(factory=factory))
+            self.secret_call(self.bound_invocations(factory=factory))
         self.assertEqual(commits, [True])
         self.assertEqual(self.calls, [])
-        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+        self.assertIsNone(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id))
         self.assertEqual(self.retained(Kind.SIGNED_HEALTH_TRANSPORT), self.marker)
 
     def test_workspace_denial_does_not_bypass_expired_lease_guard(self):
         self.revoke_workspace()
         with self.observed_time("2100-01-01T00:00:00Z"), self.assertRaises(ExecutionInvocationConflict):
-            self.endpoint_call(self.bound_invocations())
+            self.secret_call(self.bound_invocations())
         self.assertEqual(self.calls, [])
-        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+        self.assertIsNone(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id))
 
     def test_wrong_bound_permit_and_backward_clock_preserve_pending_without_redispatch(self):
         invocations = self.bound_invocations(clock=lambda: "2000-01-01T00:00:00Z")
         with self.admission_time():
-            permit = invocations.admit("endpoint-observation")
+            permit = invocations.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
         with self.assertRaises(ExecutionInvocationConflict):
             self.bound_invocations().record_outcome(permit, "returned")
         with self.assertRaises(ExecutionInvocationConflict):
             invocations.record_outcome(permit, "returned")
-        self.assertIs(self.retained(Kind.ENDPOINT_OBSERVATION).outcome, Outcome.PENDING)
+        self.assertIs(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id).outcome, Outcome.PENDING)
         with self.assertRaises(ExecutionInvocationExisting):
-            invocations.admit("endpoint-observation")
+            invocations.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
 
     def test_missing_or_incongruent_profile_is_not_repaired_or_admitted(self):
         invocations = self.bound_invocations()
         self.connection.execute("DELETE FROM cpk_execution_command_invocations WHERE invocation_id=%s",
             (self.marker.invocation_id,))
         with self.assertRaises(ExecutionInvocationConflict):
-            invocations.admit("endpoint-observation")
-        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+            invocations.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
+        self.assertIsNone(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id))
         wrong = replace(self.marker, target_fingerprint="f" * 64)
         with self.unit_of_work() as uow:
             uow.stores.execution.add_command_invocation(wrong)
             uow.commit()
         with self.assertRaises(ExecutionInvocationConflict):
-            invocations.admit("endpoint-observation")
-        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+            invocations.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
+        self.assertIsNone(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id))
         self.assertEqual(self.retained(Kind.SIGNED_HEALTH_TRANSPORT), wrong)
 
     def test_other_secret_slot_and_changed_original_identity_cannot_borrow_binding(self):
@@ -298,8 +296,8 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
         invocations = self.bound_invocations(context=changed_binding,
             start=replace(self.health_command, context=changed))
         with self.admission_time(), self.assertRaises(ExecutionInvocationConflict):
-            invocations.admit("endpoint-observation")
-        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+            invocations.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
+        self.assertIsNone(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id))
 
     def test_provider_unavailability_is_not_fabricated_as_workspace_denial(self):
         invocations = self.bound_invocations()
@@ -307,9 +305,9 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
             "workspace-a", self.provider.provider_id, "operator-a", self.marker.created_at,
             (PolicyScope.SECRET_PROVIDER_REVOKE,)))
         with self.admission_time(), self.assertRaises(ExecutionInvocationConflict):
-            self.endpoint_call(invocations)
+            self.secret_call(invocations)
         self.assertEqual(self.calls, [])
-        self.assertIsNone(self.retained(Kind.ENDPOINT_OBSERVATION))
+        self.assertIsNone(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id))
         self.assertEqual(self.retained(Kind.SIGNED_HEALTH_TRANSPORT), self.marker)
 
     @staticmethod
@@ -321,23 +319,23 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
         lock = self.authority_lock if management else self.permission_lock
         def admit(factory):
             bound = self.bound_invocations(factory=factory)
-            return bound, bound.admit("endpoint-observation")
+            return bound, bound.admit("secret-resolution", authorization_id=self.started.preparation.transit_authorization_id)
         with self.admission_time():
             if admission_first:
                 first, second = self.opposing_commands(admit, revoke, lock)
                 invocations, permit = first.result()
                 second.result()
-                self.assertIs(self.retained(Kind.ENDPOINT_OBSERVATION).outcome, Outcome.PENDING)
-                self.calls.append("endpoint-observation")
+                self.assertIs(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id).outcome, Outcome.PENDING)
+                self.calls.append("secret-resolution")
                 invocations.record_outcome(permit, "returned")
-                self.assertIs(self.retained(Kind.ENDPOINT_OBSERVATION).outcome, Outcome.RETURNED)
+                self.assertIs(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id).outcome, Outcome.RETURNED)
             else:
                 first, second = self.opposing_commands(revoke, admit, lock)
                 first.result()
                 with self.assertRaises(ExecutionInvocationDenied):
                     second.result()
-                self.assertIs(self.retained(Kind.ENDPOINT_OBSERVATION).disposition, Disposition.DENIED)
-        self.assertEqual(self.calls, ["endpoint-observation"] if admission_first else [])
+                self.assertIs(self.retained(Kind.SECRET_RESOLUTION, self.started.preparation.transit_authorization_id).disposition, Disposition.DENIED)
+        self.assertEqual(self.calls, ["secret-resolution"] if admission_first else [])
 
     def test_workspace_revoke_orders_before_admission(self):
         self.race_revoke(management=False, admission_first=False)
@@ -351,23 +349,23 @@ class PostgresHealthInvocationServiceTests(_HealthInvocationServiceFixture, unit
     def test_management_admission_orders_before_revoke_and_retains_result(self):
         self.race_revoke(management=True, admission_first=True)
 
-    def test_workspace_revoke_before_endpoint_admission_retains_denial_with_zero_calls(self):
+    def test_workspace_revoke_before_secret_admission_retains_denial_with_zero_calls(self):
         invocations = self.bound_invocations()
         self.permission_service.revoke(operations.RevokeWorkspacePermissions(self.admin_context,
-            "workspace-a", self.worker, (self.operate,), 1, IdempotencyKey("revoke-before-endpoint")))
+            "workspace-a", self.worker, (self.operate,), 1, IdempotencyKey("revoke-before-secret")))
         with self.observed_time(timestamp(self.started.preparation.transit_grant.not_before)):
             with self.assertRaises(ExecutionInvocationDenied):
-                self.endpoint_call(invocations)
+                self.secret_call(invocations)
         self.assertEqual(self.calls, [])
         self.assertEqual(self.active_invocation_uows, 0)
         with self.unit_of_work() as uow:
             rows = uow.stores.execution.command_invocations(self.bound.receipt).items
-            endpoint, = (row for row in rows if row.kind is Kind.ENDPOINT_OBSERVATION)
-            self.assertIs(endpoint.disposition, Disposition.DENIED)
-            self.assertIsNone(endpoint.outcome)
-            self.assertEqual(endpoint.decision.permission_revision, 2)
-            self.assertIsNone(endpoint.decision.assignment_id)
-            self.assertEqual(endpoint.decision.denial_code, "required-scope-denied")
+            secret, = (row for row in rows if row.kind is Kind.SECRET_RESOLUTION and row.authorization_id == self.started.preparation.transit_authorization_id)
+            self.assertIs(secret.disposition, Disposition.DENIED)
+            self.assertIsNone(secret.outcome)
+            self.assertEqual(secret.decision.permission_revision, 2)
+            self.assertIsNone(secret.decision.assignment_id)
+            self.assertEqual(secret.decision.denial_code, "required-scope-denied")
             self.assertEqual(uow.stores.execution.command_invocation(
                 self.marker.command, self.marker.invocation_id), self.marker)
 
