@@ -10,9 +10,9 @@
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": ["control_plane_kit_core.approval_subjects", "control_plane_kit_core.planning", "control_plane_kit_core.policies", "control_plane_kit_core.topology", "control_plane_kit_operations.plan_derivation", "control_plane_kit_operations.records", "control_plane_kit_operations.runtime_management_admission", "control_plane_kit_operations.runtime_management_targets"],
-      "known_package_consumers": ["control_plane_kit_operations.effect_attempt_start_interpreter", "control_plane_kit_operations.effect_attempt_fold_interpreter"],
+      "known_package_consumers": ["control_plane_kit_operations.effect_attempt_start_interpreter", "control_plane_kit_operations.effect_attempt_fold_interpreter", "control_plane_kit_operations.coordinator"],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_postgres_managed_effect_permissions.py", "tests/test_postgres_native_connection_fold.py"],
+      "protecting_tests": ["tests/test_postgres_managed_effect_permissions.py", "tests/test_postgres_native_connection_fold.py", "tests/test_postgres_coordinator_permissions.py"],
       "motivation": "Reuse accepted management plan, graph pin, approval and runtime binding checks without new admission or current membership in historical completion."
     },
     {
@@ -24,9 +24,9 @@
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["CurrentEffectDecision", "CurrentWorkspaceEffectPolicy", "EffectCommandContext", "EffectPermissionDenied", "ExecutionCommandReference"],
       "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_operations.managed_runtime_assignments", "control_plane_kit_operations.records", "control_plane_kit_operations.runtime_authorities", "control_plane_kit_operations.workspace_permissions"],
-      "known_package_consumers": ["control_plane_kit_operations.effect_attempt_start_interpreter", "control_plane_kit_operations.delegation_key_generation_commands", "control_plane_kit_operations.delegation_key_generation_attempts", "control_plane_kit_operations.secret_material_provision_commands", "control_plane_kit_operations.secret_material_provision_attempts"],
+      "known_package_consumers": ["control_plane_kit_operations.effect_attempt_start_interpreter", "control_plane_kit_operations.delegation_key_generation_commands", "control_plane_kit_operations.delegation_key_generation_attempts", "control_plane_kit_operations.secret_material_provision_commands", "control_plane_kit_operations.secret_material_provision_attempts", "control_plane_kit_operations.coordinator"],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_postgres_current_effect_permissions.py", "tests/test_postgres_standalone_effect_permissions.py"],
+      "protecting_tests": ["tests/test_postgres_current_effect_permissions.py", "tests/test_postgres_standalone_effect_permissions.py", "tests/test_postgres_coordinator_permissions.py"],
       "motivation": "Current permission inside the owning admission transaction, with full original context and exact immutable execution-receipt binding."
     },
     {
@@ -10928,7 +10928,9 @@
         "control_plane_kit_operations.secret_providers",
         "control_plane_kit_operations.workflows",
         "control_plane_kit_operations.runtime_adapter_registration",
-        "control_plane_kit_core.secret_installation"
+        "control_plane_kit_core.secret_installation",
+        "control_plane_kit_operations.effect_permissions",
+        "control_plane_kit_operations.managed_effect_plan"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
@@ -10953,7 +10955,8 @@
         "tests/test_managed_reobservation_admission.py",
         "tests/test_native_connector_installation_dispatch.py",
         "tests/test_secret_installation_admission.py",
-        "tests/test_postgres_secret_installation_admission.py"
+        "tests/test_postgres_secret_installation_admission.py",
+        "tests/test_postgres_coordinator_permissions.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [

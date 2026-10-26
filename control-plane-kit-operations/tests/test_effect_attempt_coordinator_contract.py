@@ -124,6 +124,8 @@ COORDINATOR_EXPORTS = {
     "RuntimeInterpreterDispatcher",
 }
 COORDINATOR_DEPENDENCIES = {
+    "control_plane_kit_operations.effect_permissions",
+    "control_plane_kit_operations.managed_effect_plan",
     "control_plane_kit_operations._configuration_preparation",
     "control_plane_kit_operations.connector_installation",
     "control_plane_kit_operations.plan_derivation",
@@ -204,6 +206,12 @@ def _exact_imports(*rows: tuple[str, str | None, str | None]):
 
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
+    ("control_plane_kit_operations.effect_permissions", "CurrentWorkspaceEffectPolicy", None),
+    ("control_plane_kit_operations.effect_permissions", "EffectCommandContext", None),
+    ("control_plane_kit_operations.effect_permissions", "EffectPermissionDenied", None),
+    ("control_plane_kit_operations.effect_permissions", "ExecutionCommandReference", None),
+    ("control_plane_kit_operations.effect_permissions", "_require_execution_binding", None),
+    ("control_plane_kit_operations.managed_effect_plan", "require_managed_effect_plan", None),
     # #2009 consumes the existing closed proof and Core relation under the
     # original command ledger. These are exact additional import occurrences.
     ("control_plane_kit_core.topology.validation", "validate_graph", None),
@@ -524,6 +532,25 @@ def _exact_calls(*rows: tuple[str | None, int]):
 
 
 EXACT_COORDINATOR_CALLS = _exact_calls(
+    # #2039 carries original command authority into existing admission owners.
+    ("type", 3),
+    ("ExecutionCoordinatorDenied", 2),
+    ("ExecutionCoordinatorConflict", 1),
+    ("self._admit_command", 1),
+    ("control_plane_kit_operations.effect_permissions.EffectCommandContext", 1),
+    ("control_plane_kit_operations.effect_permissions.ExecutionCommandReference", 1),
+    ("control_plane_kit_operations.effect_permissions.EffectPermissionDenied", 1),
+    ("control_plane_kit_operations.effect_permissions._require_execution_binding", 1),
+    ("control_plane_kit_operations.managed_effect_plan.require_managed_effect_plan", 1),
+    ("_execution_command_fingerprint", 1),
+    ("ExecutionCoordinatorResult", 4),
+    ("dict", 2),
+    ("self._current_management_selection", 1),
+    ("self._selected_managed_runtime", 1),
+    ("self._unit_of_work_factory", 1),
+    ("uow.stores.managed_runtime_assignments.select", 1),
+    ("dataclasses.replace", 1),
+    ("self._permission_policy.evaluate_in_unit_of_work", 1),
     # #2009: strict witness validation and existing Core observation resolution.
     ("dataclasses.field", 1),
     ("type", 2),
@@ -1106,6 +1133,7 @@ class EffectAttemptCoordinatorContractTests(
                 "id_factory",
                 "managed_health",
                 "health_signing_authority",
+                "permission_policy",
             ),
         )
         for name in (
@@ -1118,6 +1146,7 @@ class EffectAttemptCoordinatorContractTests(
             "id_factory",
             "managed_health",
             "health_signing_authority",
+            "permission_policy",
         ):
             self.assertIs(
                 signature.parameters[name].kind,
@@ -1125,7 +1154,7 @@ class EffectAttemptCoordinatorContractTests(
             )
         self.assertNotIn("provider", signature.parameters)
         self.assertNotIn("observer", signature.parameters)
-        for name in ("managed_health", "health_signing_authority"):
+        for name in ("managed_health", "health_signing_authority", "permission_policy"):
             self.assertIsNone(signature.parameters[name].default)
         start = RecordingStartService(self.newly_started())
         fold = RecordingFoldService(self.exact_fold_result())
@@ -2137,6 +2166,7 @@ class EffectAttemptCoordinatorContractTests(
                 "tests/test_postgres_effect_attempt_coordinator_concurrency.py",
                 "tests/test_postgres_effect_attempt_coordinator_crash_rollback.py",
                 "tests/test_postgres_effect_attempt_coordinator_first_replay.py",
+                "tests/test_postgres_coordinator_permissions.py",
                 "tests/test_managed_application_chain.py",
                 "tests/test_managed_health_boundaries.py",
                 "tests/test_managed_reobservation_admission.py",

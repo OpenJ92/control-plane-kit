@@ -8,7 +8,8 @@ from uuid import uuid4
 
 import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
-from control_plane_kit_core.planning import ManagementBootstrapStage
+from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+from control_plane_kit_core.planning import AllocatePublicIngress, ManagementBootstrapStage
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
     ExecuteManagedActivityRun, ExecutionCoordinator, ExecutionCoordinatorDenied,
@@ -136,6 +137,13 @@ class PostgresCoordinatorPermissionTests(
         result = asyncio.run(owner.execute_managed(command))
         self.assertEqual(result.effects_attempted, 1)
         self.assertEqual(len(adapter.runtime_calls), 1)
+        self.assertEqual(result.status.value, "completed")
+        self.assertEqual(result.run.status.value, "succeeded")
+        with self.unit_of_work() as uow:
+            attempt = uow.stores.effect_attempts.get(self.start_command().transition.identity)
+            self.assertEqual(attempt.state.status.value, "succeeded")
+            retained = uow.stores.effect_outcomes.get(attempt.state.identity, attempt.latest_transition_event.event_id)
+            self.assertEqual(retained.outcome.result, RuntimeEffectResult.succeeded(attempt.original_start_event.event_id))
         replay = asyncio.run(owner.execute_managed(command))
         self.assertEqual(replay, result)
         self.assertEqual(len(adapter.runtime_calls), 1)
@@ -143,6 +151,8 @@ class PostgresCoordinatorPermissionTests(
 
 class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission, ReceiverHealthExecutionFixture):
     def health_start_command(self):
+        if type(self.health_activity.operation) is AllocatePublicIngress:
+            return None  # Legacy admission owns a journal event, not an attempt command.
         if self.health_activity.operation.stage is not ManagementBootstrapStage.CONNECTOR_CONNECTED:
             return super().health_start_command()
         from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptTransition, EffectAttemptTransitionKind, RunId
@@ -155,32 +165,75 @@ class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission
         return StartEffectAttempt(self.request_id, EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
             identity, runtime_effect_intent_fingerprint(intent)), intent, command.authority, command.fence)
 
-    async def prepared(self, *, native=True):
+    async def prepared(self, *, native=True, legacy=False):
         stage = (ManagementBootstrapStage.CONNECTOR_CONNECTED if native
             else ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
-        await self.prepare_health(stage=stage)
+        if legacy:
+            await self.prepare_and_start()
+            self.health_activity, = (value for value in self.plan.activities
+                if type(value.operation) is AllocatePublicIngress)
+            self.prepare_health_journal()
+        else:
+            await self.prepare_health(stage=stage)
+        # Counterpart of the fixture's recorded predecessor journal premise.
+        # This is a controlled port value, not a provider deployment claim.
+        self.runtime.containers["connector"] = "a" * 64
         self.configure_permissions(self.worker.identity, installation="coordinator-permission")
         self.require_interface()
         context, execution = self.execution_context()
+        if legacy:
+            execution = replace(execution, authority=replace(execution.authority, scopes=self.original.granted_scopes))
         with self.unit_of_work() as uow:
             runtime = uow.stores.runtime_authorities.get_active_for_update(
                 "workspace-a", self.graph.runtimes["docker"].authority_ref)
         self.assignments = operations.ManagedRuntimeAssignmentCommandService(self.unit_of_work,
             administration_policy=self.admin_policy, capability_policy=self.capabilities,
             clock=now, id_factory=lambda: uuid4().hex)
-        self.assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
-            "workspace-a", "docker", runtime.authority_ref, runtime.registration_id,
-            "local-docker", 0, IdempotencyKey("management")))
+        if not legacy:
+            self.assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
+                "workspace-a", "docker", runtime.authority_ref, runtime.registration_id,
+                "local-docker", 0, IdempotencyKey("management")))
         fold = EffectAttemptFoldService(self.unit_of_work, id_factory=self.ids["effect-fold"])
+        from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
+        from control_plane_kit_operations.ingress_authorities import IngressAuthorityProviderKind
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.secret_providers import SecretUseAuthorizationService
+        adapter = ActivityExecutionDispatcher(runtime=self.runtime,
+            ingress=IngressRealizationAdapter(self.unit_of_work,
+                {IngressAuthorityProviderKind.CLOUDFLARE: self.ingress}, now,
+                SecretUseAuthorizationService(self.unit_of_work)))
         owner = ExecutionCoordinator(self.unit_of_work,
             lifecycle=RunLifecycleCommandService(self.unit_of_work, clock=now, id_factory=self.ids["lifecycle"]),
-            adapter=self.runtime, start_service=EffectAttemptStartService(self.unit_of_work,
+            adapter=adapter, start_service=EffectAttemptStartService(self.unit_of_work,
                 id_factory=self.ids["effect-start"], health_receiver_decoders=self.registry,
                 permission_policy=self.policy), fold_service=fold,
             reconciliation_service=EffectAttemptReconciliationService(self.unit_of_work, ForbiddenRecovery(), fold),
             clock=now, id_factory=self.ids["execution"], managed_health=self.health,
             health_signing_authority=self.reload_service(), permission_policy=self.policy)
         return owner, ExecuteManagedActivityRun(execution, self.original), runtime
+
+    async def test_legacy_initial_denial_has_no_start_event_or_ingress_call(self):
+        owner, command, _ = await self.prepared(legacy=True)
+        self.revoke_operate()
+        before = self.history()
+        result = await owner.execute_managed(command)
+        self.assert_denial(result, command.execution, self.health_activity.activity_id.value)
+        self.assertEqual(self.history(), before)
+        self.assertEqual(self.ingress.create_allocation_names, [])
+
+    async def test_legacy_admitted_result_survives_current_revocation(self):
+        owner, command, _ = await self.prepared(legacy=True)
+        self.ingress.on_create = self.revoke_operate
+        result = await owner.execute_managed(command)
+        self.assertEqual(result.status.value, "progressed")
+        self.assertEqual(result.effects_attempted, 1)
+        self.assertEqual(len(self.ingress.create_allocation_names), 1)
+        self.assertEqual(self.ingress.create_active_counts, [0])
+        events = [event for event in self.history() if event.activity_id == self.health_activity.activity_id.value]
+        self.assertEqual([event.kind for event in events], [ActivityEventKind.STEP_STARTED, ActivityEventKind.STEP_SUCCEEDED])
+        self.assertEqual(len(self.rows("cpk_cloudflare_ingress_resources")), 1)
+        self.assertEqual(await owner.execute_managed(command), result)
+        self.assertEqual(len(self.ingress.create_allocation_names), 1)
 
     async def test_native_start_carries_current_selection_without_signing_scopes(self):
         owner, command, _ = await self.prepared()

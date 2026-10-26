@@ -101,6 +101,11 @@ class EffectAttemptStartService:
             raise HealthReceiverTrustError("health receiver trust is unavailable")
         self._health_receiver_decoders = replace(health_receiver_decoders)
 
+    @property
+    def permission_policy(self) -> CurrentWorkspaceEffectPolicy | None:
+        """Expose immutable policy configuration for explicit composition checks."""
+        return self._permission_policy
+
     def execute(
         self,
         command: StartEffectAttempt,

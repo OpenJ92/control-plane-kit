@@ -127,6 +127,7 @@ class CoordinatorStatus(StrEnum):
     UNCERTAIN = "uncertain"
     UNSUPPORTED = "unsupported"
     BLOCKED = "blocked"
+    AUTHORIZATION_DENIED = "authorization-denied"
 
 
 class ExecutionCommandReceiptStatus(StrEnum):
