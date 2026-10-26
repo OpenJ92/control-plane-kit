@@ -249,5 +249,62 @@ class PostgresManagedRuntimeAssignmentTests(LifecycleLockFixture, unittest.TestC
         self.assertIsNone(self.select())
 
 
+    def test_administrative_pages_are_bounded_scoped_and_distinguish_current_from_history(self):
+        service = self.service()
+        for runtime in ("docker-a", "docker-b", "docker-c"):
+            service.grant(self.grant(runtime=runtime, key="grant-" + runtime))
+        reads = self.reads()
+        first = reads.list(self.context, workspace_id="workspace-a", limit=1)
+        second = reads.list(self.context, workspace_id="workspace-a", limit=1, cursor=first.next_cursor)
+        third = reads.list(self.context, workspace_id="workspace-a", limit=1, cursor=second.next_cursor)
+        self.assertEqual(tuple(len(page.items) for page in (first, second, third)), (1, 1, 1))
+        self.assertEqual(tuple(page.items[0].runtime_id for page in (first, second, third)),
+                         ("docker-a", "docker-b", "docker-c"))
+        self.assertIsNone(third.next_cursor)
+        error = self.public("ManagedRuntimeAssignmentError")
+        with self.assertRaises(error):
+            reads.list(self.context, workspace_id="workspace-b", cursor=first.next_cursor)
+        with self.assertRaises(error):
+            reads.list(self.context, workspace_id="workspace-a", limit=True)
+        ordinary = operations.WorkspaceAdministrationContext(self.member, "installation-a")
+        with self.assertRaises(operations.WorkspacePermissionDenied):
+            reads.list(ordinary, workspace_id="workspace-a")
+        service.grant(self.grant())
+        service.revoke(self.revoke())
+        history = reads.history(self.context, workspace_id="workspace-a", runtime_id="docker",
+                                authority_ref=self.reference, limit=1)
+        self.assertEqual(len(history.items), 1)
+        self.assertEqual(history.items[0].resulting_assignment.status, "active")
+        following = reads.history(self.context, workspace_id="workspace-a", runtime_id="docker",
+                                  authority_ref=self.reference, limit=1, cursor=history.next_cursor)
+        self.assertEqual(len(following.items), 1)
+        self.assertEqual((following.items[0].resulting_assignment.status,
+                          following.items[0].resulting_assignment.revision), ("revoked", 2))
+        self.assertIsNone(following.next_cursor)
+        self.assertEqual(self.inspect().status, "revoked")
+        with self.assertRaises(error):
+            reads.history(self.context, workspace_id="workspace-a", runtime_id="docker-a",
+                          authority_ref=self.reference, cursor=history.next_cursor)
+        with self.assertRaises(operations.WorkspacePermissionDenied):
+            reads.history(ordinary, workspace_id="workspace-a", runtime_id="docker", authority_ref=self.reference)
+        with self.assertRaises(operations.WorkspacePermissionDenied):
+            reads.inspect(ordinary, workspace_id="workspace-a", runtime_id="docker", authority_ref=self.reference)
+
+    def test_guarded_selection_reads_current_revision_in_callers_existing_transaction(self):
+        service = self.service()
+        service.grant(self.grant())
+        earlier = self.select()
+        service.revoke(self.revoke())
+        service.grant(self.grant(revision=2, key="explicit-regrant"))
+        fresh = self.select()
+        self.assertEqual((earlier.revision, fresh.revision), (1, 3))
+        with self.unit_of_work() as uow:
+            store = uow.stores.managed_runtime_assignments
+            inputs = dict(workspace_id="workspace-a", runtime_id="docker",
+                          authority=self.authorities["workspace-a"], capability_policy=self.capability_policy())
+            self.assertIsNone(store.select(**inputs, expected=earlier))
+            self.assertEqual(store.select(**inputs, expected=fresh), fresh)
+
+
 if __name__ == "__main__":
     unittest.main()
