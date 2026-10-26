@@ -656,6 +656,38 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
 
 class CurrentSchemaInstallationTests(unittest.TestCase):
+    def test_workspace_permission_catalog_matches_declared_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract, current_schema_verification, schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        extension = current_schema_contract.WORKSPACE_PERMISSION_SCHEMA_CONTRACT
+        names = [relation.name for relation in extension.relations]
+        self.connection.execute(schema._CURRENT_SCHEMA_SQL)
+        query, separator, _ = current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
+            "\nSELECT\n  COALESCE(")
+        self.assertTrue(separator, "semantic verifier query boundary changed")
+        bounds = (len(contract.relations) + 1, len(contract.columns) + 1,
+                  len(contract.constraints) + 1, len(contract.indexes) + 1)
+        for collection in ("relations", "columns", "constraints", "indexes"):
+            expected = [json.loads(json.dumps(dataclasses.asdict(item)))
+                        for item in getattr(extension, collection)]
+            rows = self.connection.execute(
+                query + "\nSELECT value FROM semantic_" + collection
+                + " WHERE relname = ANY(%s) LIMIT %s",
+                bounds + (names, len(expected) + 1),
+            ).fetchall()
+            def identity(value):
+                return (value.get("relation", ""), value["name"])
+            observed = {identity(row[0]): row[0] for row in rows}
+            wanted = {identity(value): value for value in expected}
+            self.assertEqual(set(observed), set(wanted), collection)
+            self.assertEqual(len(rows), len(expected), collection)
+            for key, value in wanted.items():
+                for field in value:
+                    with self.subTest(collection=collection, identity=key, field=field):
+                        self.assertEqual(observed[key][field], value[field])
+        self.assertTrue(current_schema_verification.current_schema_contract_is_exact(self.connection))
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -678,7 +710,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (58, 746, 668, 196))
+        self.assertEqual(self._catalog_counts(), (62, 773, 706, 202))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
