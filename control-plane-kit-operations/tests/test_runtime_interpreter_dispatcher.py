@@ -1223,6 +1223,7 @@ def graph_with_node(
     *,
     authority_ref: RuntimeAuthorityReference | None = None,
     registered_product: RegisteredProduct | None = None,
+    secret_selections=(),
 ) -> DeploymentGraph:
     product = registered_product or _registered_product()
     reference = ProductReference.from_document(product.descriptor_document)
@@ -1241,6 +1242,7 @@ def graph_with_node(
                     "product_descriptor_digest": reference.descriptor_sha256.value,
                 },
                 secret_deliveries=product.descriptor_document.product.runtime_contract.secret_deliveries,
+                secret_selections=secret_selections,
             )
         },
         runtimes={

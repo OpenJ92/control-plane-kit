@@ -81,9 +81,9 @@ class _RuntimeLifecycleFixture(_PreparedRuntimeReconciliationFixture):
             product = RegisteredProduct.from_document(workspace_id="workspace-a",
                 descriptor_document=document, source=product.source,
                 imported_by="operator-a", imported_at=self.clock())
-            base = graph_with_node(RuntimeKind.DOCKER, authority_ref=reference, registered_product=product)
+            base = graph_with_node(RuntimeKind.DOCKER, authority_ref=reference,
+                registered_product=product, secret_selections=material.secret_selections)
             base = replace(base, nodes={"api": replace(base.nodes["api"],
-                secret_selections=material.secret_selections,
                 sockets=material.product.runtime_contract.sockets,
                 block_spec=replace(base.nodes["api"].block_spec,
                     verification=material.product.runtime_contract.verification))})
