@@ -150,6 +150,16 @@ class PostgresCoordinatorPermissionTests(
 
 
 class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission, ReceiverHealthExecutionFixture):
+    def integral_observations(self):
+        # The actual async coordinator waits for grants; preserve real DB time
+        # so a newly sampled native result is not in a rounded clock's future.
+        pass
+
+    def prepare_health_journal(self):
+        # Advance only preceding ready activities in the existing journal
+        # premise; the selected target itself must remain unstarted.
+        super().prepare_health_journal(first_ready=True)
+
     def health_start_command(self):
         if type(self.health_activity.operation) is AllocatePublicIngress:
             return None  # Legacy admission owns a journal event, not an attempt command.
@@ -243,6 +253,7 @@ class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission
         result = await owner.execute_managed(replace(command, context=original))
         self.assertEqual(result.effects_attempted, 1)
         self.assertEqual(len(self.health.native_reads), 1)
+        self.assertEqual(self.health.native_reads[0].activity_id, self.health_activity.activity_id)
         self.assertEqual(self.health.signed_reads, [])
         self.assertEqual(self.tracker.active, 0)
 
@@ -261,6 +272,7 @@ class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission
         result = await owner.execute_managed(command)
         self.assertEqual(result.effects_attempted, 1)
         self.assertEqual(len(self.health.signed_reads), 1)
+        self.assertEqual(self.health.signed_reads[0][0].activity_id, self.health_activity.activity_id)
         self.assertEqual(self.tracker.active, 0)
 
     async def test_native_completion_then_revoked_next_step_retains_actual_count(self):
@@ -297,3 +309,4 @@ class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission
         self.assert_denial(result, command.execution, self.health_activity.activity_id.value)
         self.assertEqual(self.health.signed_reads, [])
         self.assertEqual(self.history(), before)
+        self.assertEqual(self.health.native_reads, [])

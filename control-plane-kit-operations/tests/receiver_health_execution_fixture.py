@@ -293,7 +293,7 @@ class ReceiverHealthExecutionFixture(ManagedApplicationFixture):
         timer.start()
         self.addCleanup(timer.stop)
 
-    def prepare_health_journal(self):
+    def prepare_health_journal(self, *, first_ready=False):
         with self.unit_of_work() as uow:
             record = uow.stores.activity_history.get_plan(self.plan_id)
             self.selected_context = (record.desired_graph_id, record.desired_realized_projection_id)
@@ -309,7 +309,8 @@ class ReceiverHealthExecutionFixture(ManagedApplicationFixture):
             for _ in range(len(self.plan.activities) + 1):
                 journal = project_activity_journal(self.plan, activity_journal_events(events))
                 ready = derive_schedule(self.plan, journal.state).ready
-                if any(item.activity_id == self.health_activity.activity_id for item in ready):
+                selected = ready[:1] if first_ready else ready
+                if any(item.activity_id == self.health_activity.activity_id for item in selected):
                     break
                 self.assertTrue(ready)
                 for kind in (ActivityEventKind.STEP_STARTED, ActivityEventKind.STEP_SUCCEEDED):
