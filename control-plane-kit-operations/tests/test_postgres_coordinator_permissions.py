@@ -13,6 +13,7 @@ from control_plane_kit_core.planning import AllocatePublicIngress, ManagementBoo
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
     ExecuteManagedActivityRun, ExecutionCoordinator, ExecutionCoordinatorDenied,
+    ReobserveConnectorConnection,
 )
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
@@ -149,7 +150,7 @@ class PostgresCoordinatorPermissionTests(
         self.assertEqual(len(adapter.runtime_calls), 1)
 
 
-class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission, ReceiverHealthExecutionFixture):
+class _CoordinatorManagementPermissionFixture(_CurrentCoordinatorPermission, ReceiverHealthExecutionFixture):
     def integral_observations(self):
         # The actual async coordinator waits for grants; preserve real DB time
         # so a newly sampled native result is not in a rounded clock's future.
@@ -222,6 +223,8 @@ class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission
             health_signing_authority=self.reload_service(), permission_policy=self.policy)
         return owner, ExecuteManagedActivityRun(execution, self.original), runtime
 
+
+class PostgresCoordinatorManagementPermissionTests(_CoordinatorManagementPermissionFixture):
     async def test_legacy_initial_denial_has_no_start_event_or_ingress_call(self):
         owner, command, _ = await self.prepared(legacy=True)
         self.revoke_operate()
@@ -267,6 +270,7 @@ class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission
         self.assertEqual(self.history(), before)
         self.assertEqual(self.health.native_reads, [])
 
+
     async def test_signed_start_carries_original_context_and_selection(self):
         owner, command, _ = await self.prepared(native=False)
         result = await owner.execute_managed(command)
@@ -310,3 +314,71 @@ class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission
         self.assertEqual(self.health.signed_reads, [])
         self.assertEqual(self.history(), before)
         self.assertEqual(self.health.native_reads, [])
+
+
+class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissionFixture):
+    async def waiting(self):
+        owner, command, runtime = await self.prepared()
+        result = await owner.execute_managed(command)
+        self.assertEqual(result.effects_attempted, 1)
+        self.assertEqual(len(self.health.native_reads), 1)
+        prior = self.native_attempt(1)
+        self.assertEqual(prior[0].state.status.value, "not_ready")
+        reobserve = ReobserveConnectorConnection(replace(command.execution,
+            idempotency_key=IdempotencyKey("native-reobserve-permission")), command.context,
+            prior[0].state.identity)
+        return owner, reobserve, runtime, prior
+
+    def assert_no_successor(self, command, before, prior):
+        self.assertEqual(self.history(), before)
+        self.assertEqual(self.native_attempt(1), prior)
+        self.assertEqual(len(self.health.native_reads), 1)
+        successor = replace(command.predecessor, attempt=2)
+        with self.unit_of_work() as uow:
+            with self.assertRaises(KeyError):
+                uow.stores.effect_attempts.get(successor)
+            with self.assertRaises(KeyError):
+                uow.stores.effect_attempt_intents.get(successor)
+        receipt = self.receipt(command.execution)
+        self.assertEqual(receipt.managed_intent.predecessor, command.predecessor)
+        self.assertEqual(receipt.managed_intent.successor, successor)
+
+    async def test_current_permission_denial_preserves_predecessor_and_replays_after_regrant(self):
+        owner, command, _, prior = await self.waiting()
+        before = self.history()
+        self.revoke_operate()
+        denied = await owner.reobserve(command)
+        self.assert_denial(denied, command.execution, command.predecessor.activity_id)
+        self.assert_no_successor(command, before, prior)
+        self.permissions.grant(operations.GrantWorkspacePermissions(self.admin_context,
+            "workspace-a", self.member, (PolicyScope.EXECUTION_OPERATE,), 2, IdempotencyKey("restore")))
+        self.assertEqual(await owner.reobserve(command), denied)
+        self.assert_no_successor(command, before, prior)
+
+    async def test_current_assignment_denial_preserves_predecessor_and_replays_after_regrant(self):
+        owner, command, runtime, prior = await self.waiting()
+        before = self.history()
+        self.assignments.revoke(operations.RevokeManagedRuntimeAccess(self.admin_context,
+            "workspace-a", "docker", runtime.authority_ref, 1, IdempotencyKey("revoke-management")))
+        denied = await owner.reobserve(command)
+        self.assert_denial(denied, command.execution, command.predecessor.activity_id)
+        self.assert_no_successor(command, before, prior)
+        self.assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
+            "workspace-a", "docker", runtime.authority_ref, runtime.registration_id,
+            "local-docker", 2, IdempotencyKey("restore-management")))
+        self.assertEqual(await owner.reobserve(command), denied)
+        self.assert_no_successor(command, before, prior)
+
+    async def test_current_native_successor_uses_the_existing_admission_and_replays_without_io(self):
+        owner, command, _, prior = await self.waiting()
+        result = await owner.reobserve(command)
+        self.assertEqual(result.effects_attempted, 1)
+        self.assertEqual(len(self.health.native_reads), 2)
+        successor, retained = self.native_attempt(2)
+        self.assertEqual(successor.state.status.value, "not_ready")
+        self.assertEqual(retained.attempt, successor)
+        self.assertEqual(self.native_attempt(1), prior)
+        before = self.history()
+        self.assertEqual(await owner.reobserve(command), result)
+        self.assertEqual(self.history(), before)
+        self.assertEqual(len(self.health.native_reads), 2)
