@@ -11,6 +11,7 @@ from control_plane_kit_operations.workspace_permissions import (
     WorkspacePermissionConflict, WorkspacePermissionError, WorkspacePermissionNotFound,
     WorkspacePermissionReceipt, WorkspacePermissionRecord, WorkspacePermissionResult,
     WorkspacePermissionInitializationReceipt, WorkspacePermissionInitializationResult,
+    WorkspacePermissionUpgradeReceipt,
     WorkspaceAdministrationReceipt,
     permission_fingerprint, permission_intent, _identity, _text,
 )
@@ -79,7 +80,8 @@ class WorkspacePermissionStore:
                                 "current_database() || chr(31) || current_schema(), 0))")
         existing = self.installation_receipt()
         if existing is not None:
-            if (existing.installation_id != candidate.installation_id or existing.actor != candidate.actor
+            if (type(existing) is not WorkspacePermissionInitializationReceipt
+                    or existing.installation_id != candidate.installation_id or existing.actor != candidate.actor
                     or existing.idempotency_key != candidate.idempotency_key):
                 raise WorkspacePermissionConflict("installation binding already exists")
             return WorkspacePermissionInitializationResult(existing, replayed=True)
@@ -95,7 +97,11 @@ class WorkspacePermissionStore:
         ).fetchone()
         if row is None:
             return None
-        receipt = WorkspacePermissionInitializationReceipt.from_descriptor(row[1])
+        payload = row[1]
+        decoder = (WorkspacePermissionUpgradeReceipt if type(payload) is dict
+                   and payload.get("kind") == "retained-workspace-policy-upgrade"
+                   else WorkspacePermissionInitializationReceipt)
+        receipt = decoder.from_descriptor(payload)
         if receipt.installation_id != row[0]:
             raise WorkspacePermissionError("installation receipt identity disagrees")
         return receipt

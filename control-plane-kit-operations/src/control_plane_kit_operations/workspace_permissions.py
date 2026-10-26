@@ -257,6 +257,58 @@ class WorkspacePermissionInitializationReceipt:
 
 
 @dataclass(frozen=True)
+class WorkspacePermissionUpgradeReceipt:
+    """Original retained transition correlation; seed details live in grant receipts."""
+
+    installation_id: str
+    actor: PrincipalIdentity
+    idempotency_key: str
+    occurred_at: str
+    source_contract_sha256: str
+    target_contract_sha256: str
+    seed_fingerprint: str
+    seed_count: int
+    plan_fingerprint: str
+
+    def __post_init__(self):
+        WorkspacePermissionInitializationReceipt(self.installation_id, self.actor,
+                                                self.idempotency_key, self.occurred_at)
+        for value in (self.source_contract_sha256, self.target_contract_sha256,
+                      self.seed_fingerprint, self.plan_fingerprint):
+            if type(value) is not str or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+                raise WorkspacePermissionError("upgrade fingerprint is malformed")
+        if type(self.seed_count) is not int or not 0 <= self.seed_count <= 1024:
+            raise WorkspacePermissionError("upgrade seed count is malformed")
+
+    def descriptor(self):
+        return dict(kind="retained-workspace-policy-upgrade", installation_id=self.installation_id,
+            actor=self.actor.descriptor(), idempotency_key=self.idempotency_key,
+            occurred_at=self.occurred_at, source_contract_sha256=self.source_contract_sha256,
+            target_contract_sha256=self.target_contract_sha256, seed_fingerprint=self.seed_fingerprint,
+            seed_count=self.seed_count, plan_fingerprint=self.plan_fingerprint)
+
+    @classmethod
+    def from_descriptor(cls, payload):
+        try:
+            if (type(payload) is not dict or set(payload) != {
+                    "kind", "installation_id", "actor", "idempotency_key", "occurred_at",
+                    "source_contract_sha256", "target_contract_sha256", "seed_fingerprint",
+                    "seed_count", "plan_fingerprint"}
+                    or payload["kind"] != "retained-workspace-policy-upgrade"
+                    or type(payload["actor"]) is not dict
+                    or set(payload["actor"]) != {"issuer", "subject_id", "kind"}
+                    or len(rfc8785.dumps(payload)) > 32768):
+                raise ValueError
+            values = dict(payload)
+            values.pop("kind")
+            actor = values["actor"]
+            values["actor"] = PrincipalIdentity(actor["issuer"], actor["subject_id"], PrincipalKind(actor["kind"]))
+            return cls(**values)
+        except (ValueError, TypeError, KeyError):
+            raise WorkspacePermissionError("persisted upgrade receipt is malformed") from None
+
+
+@dataclass(frozen=True)
 class WorkspacePermissionInitializationResult:
     receipt: WorkspacePermissionInitializationReceipt
     replayed: bool = False
@@ -388,6 +440,14 @@ class WorkspacePermissionReadService:
     def __init__(self, unit_of_work_factory, *, administration_policy: WorkspaceAdministrationPolicy):
         self._factory = unit_of_work_factory
         self._policy = administration_policy
+
+    def installation(self, context):
+        self._policy.require(context)
+        with self._factory() as uow:
+            receipt = uow.stores.workspace_permissions.installation_receipt()
+            if receipt is None or receipt.installation_id != context.installation_id:
+                raise WorkspacePermissionNotFound("workspace policy installation is unavailable")
+            return receipt
 
     def inspect(self, context, *, workspace_id, target):
         self._policy.require(context)

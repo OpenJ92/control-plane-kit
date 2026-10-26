@@ -106,6 +106,15 @@ class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.Tes
         context = operations.WorkspaceContextResolver(self.unit_of_work, installation_id="installation-a").resolve(
             AuthenticatedPrincipal(self.member), "workspace-a")
         self.assertEqual(context.granted_scopes, (PolicyScope.INSTANCE_WORKSPACE_READ,))
+        reads = operations.WorkspacePermissionReadService(self.unit_of_work, administration_policy=self.policy)
+        self.assertEqual(reads.installation(self.context), result.receipt)
+        ordinary = operations.WorkspaceAdministrationContext(self.member, "installation-a")
+        with self.assertRaises(operations.WorkspacePermissionDenied):
+            reads.installation(ordinary)
+        commands = operations.WorkspacePermissionCommandService(self.unit_of_work,
+            administration_policy=self.policy, clock=self.clock, id_factory=lambda: uuid4().hex)
+        with self.assertRaises(operations.WorkspacePermissionConflict):
+            commands.initialize(self.context, idempotency_key=plan.idempotency_key)
 
     def test_exact_seed_replay_after_revoke_and_identity_removal_does_not_restore_grants(self):
         plan = self.plan()
@@ -203,6 +212,22 @@ class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.Tes
         self.assertEqual(self.connection.execute("SELECT graph_descriptor FROM cpk_graph_versions WHERE graph_id='graph-a'")
                          .fetchone()[0], {})
 
+    def test_repeatable_snapshot_refusal_preserves_the_callers_outer_transaction(self):
+        plan = self.plan()
+        self.connection.autocommit = False
+        try:
+            self.connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            self.connection.execute("SET LOCAL application_name = 'upgrade-caller-snapshot'")
+            with self.assertRaises(self.public("WorkspacePermissionUpgradeError")):
+                self.upgrade(plan)
+            self.assertEqual(self.connection.execute("SHOW transaction_isolation").fetchone()[0], "repeatable read")
+            self.assertEqual(self.connection.execute("SHOW application_name").fetchone()[0], "upgrade-caller-snapshot")
+            self.assert_no_policy_tables()
+            validate_current_rows(self.connection)
+            self.connection.rollback()
+        finally:
+            self.connection.autocommit = True
+
     def test_lost_commit_acknowledgement_is_uncertain_and_inspected_without_redispatch(self):
         plan = self.plan()
         original = self.connection
@@ -235,6 +260,38 @@ class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.Tes
             self.assertEqual(result.status, "unknown")
         result = inspect(self.connection, plan, administration_policy=self.policy)
         self.assertEqual(result.status, "supported-prior")
+        self.assert_no_policy_tables()
+
+    def test_upgrade_receipt_extras_or_wrong_binding_are_not_accepted(self):
+        plan = self.plan()
+        self.upgrade(plan)
+        with self.connection.transaction():
+            self.connection.execute("UPDATE cpk_workspace_permission_installation "
+                                    "SET receipt=receipt || '{\"extra\":true}'::jsonb")
+        with self.assertRaises(postgres.SchemaInstallationError):
+            postgres.install_schema(self.connection)
+        inspection = self.public("inspect_workspace_permission_upgrade")(
+            self.connection, plan, administration_policy=self.policy)
+        self.assertEqual(inspection.status, "unknown")
+        self.connection.execute("UPDATE cpk_workspace_permission_installation "
+            "SET receipt=(receipt - 'extra') || '{\"installation_id\":\"foreign\"}'::jsonb")
+        reads = operations.WorkspacePermissionReadService(self.unit_of_work, administration_policy=self.policy)
+        with self.assertRaises(operations.WorkspacePermissionError):
+            reads.installation(self.context)
+
+    def test_new_seeds_require_current_admin_and_known_target_without_mutation(self):
+        plan = self.plan()
+        before = self.old_rows()
+        removed_target = operations.WorkspaceAdministrationPolicy("installation-a", (self.admin,), (self.admin,))
+        with self.assertRaises(self.public("WorkspacePermissionUpgradeError")):
+            self.upgrade(plan, policy=removed_target)
+        removed_admin = operations.WorkspaceAdministrationPolicy("installation-a", (self.member,), (self.member,))
+        with self.assertRaises(operations.WorkspacePermissionDenied):
+            self.upgrade(plan, policy=removed_admin)
+        with self.assertRaises(operations.WorkspacePermissionDenied):
+            self.public("inspect_workspace_permission_upgrade")(
+                self.connection, plan, administration_policy=removed_admin)
+        self.assertEqual(self.old_rows(), before)
         self.assert_no_policy_tables()
 
 

@@ -2,13 +2,27 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.postgres.workspace_permission_upgrade",
+      "destination": "control_plane_kit_operations.postgres.workspace_permission_upgrade",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/workspace_permission_upgrade.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "persistence", "validation", "authorization"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["WorkspacePermissionUpgradePlan", "WorkspacePermissionUpgradeResult", "WorkspacePermissionUpgradeInspection", "WorkspacePermissionUpgradeError", "WorkspacePermissionUpgradeUncertain", "upgrade_workspace_permissions", "inspect_workspace_permission_upgrade"],
+      "internal_dependencies": ["control_plane_kit_operations.workflows", "control_plane_kit_operations.workspace_permissions", "control_plane_kit_operations.postgres.current_data_validation", "control_plane_kit_operations.postgres.current_schema_contract", "control_plane_kit_operations.postgres.current_schema_verification", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.workspace_permission_store"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres"],
+      "optional_external_dependencies": ["psycopg"],
+      "protecting_tests": ["tests/test_postgres_workspace_permission_upgrade.py"],
+      "motivation": "Explicit exact-prior additive policy adoption with preserved old history, original receipt replay, caller transaction authority and bounded inspection after uncertainty."
+    },
+    {
       "module": "control_plane_kit_operations.workspace_permissions",
       "destination": "control_plane_kit_operations.workspace_permissions",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/workspace_permissions.py",
       "owner": "operation", "role": "durable-control-plane-operation",
       "semantic_roles": ["values", "commands", "authorization", "orchestration"],
       "movement": "remain", "migration_prerequisites": [],
-      "canonical_public_exports": ["WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy", "WorkspaceAdministrationReceipt", "WorkspaceAdministrationResult", "GrantWorkspacePermissions", "RevokeWorkspacePermissions", "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult", "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult", "WorkspacePermissionCommandService", "WorkspaceContextResolver", "DurablePrincipalAuthorizer", "WorkspacePermissionReadService", "WorkspacePermissionPage", "WorkspacePermissionListCursor", "WorkspacePermissionHistoryCursor", "WorkspacePermissionError", "WorkspacePermissionDenied", "WorkspacePermissionConflict", "WorkspacePermissionNotFound", "current_workspace_context", "permission_fingerprint", "permission_intent"],
+      "canonical_public_exports": ["WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy", "WorkspaceAdministrationReceipt", "WorkspaceAdministrationResult", "GrantWorkspacePermissions", "RevokeWorkspacePermissions", "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult", "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult", "WorkspacePermissionUpgradeReceipt", "WorkspacePermissionCommandService", "WorkspaceContextResolver", "DurablePrincipalAuthorizer", "WorkspacePermissionReadService", "WorkspacePermissionPage", "WorkspacePermissionListCursor", "WorkspacePermissionHistoryCursor", "WorkspacePermissionError", "WorkspacePermissionDenied", "WorkspacePermissionConflict", "WorkspacePermissionNotFound", "current_workspace_context", "permission_fingerprint", "permission_intent"],
       "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_operations._temporal", "control_plane_kit_operations.workflows"],
       "known_package_consumers": ["control_plane_kit_operations.postgres.workspace_permission_store", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.stores"],
       "optional_external_dependencies": ["rfc8785"],
