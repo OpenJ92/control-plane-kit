@@ -73,7 +73,7 @@ class PostgresCoordinatorPermissionTests(
     def setUp(self):
         super().setUp()
         self.configure_permissions(PrincipalIdentity("coordinator-test", "worker-a", PrincipalKind.WORKER),
-            installation="coordinator-ordinary")
+            installation="coordinator-permission")
 
     def composition(self, *, start_policy=True):
         self.require_interface()
@@ -142,11 +142,24 @@ class PostgresCoordinatorPermissionTests(
 
 
 class PostgresCoordinatorManagementPermissionTests(_CurrentCoordinatorPermission, ReceiverHealthExecutionFixture):
+    def health_start_command(self):
+        if self.health_activity.operation.stage is not ManagementBootstrapStage.CONNECTOR_CONNECTED:
+            return super().health_start_command()
+        from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptTransition, EffectAttemptTransitionKind, RunId
+        from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+        from control_plane_kit_operations.effect_attempt_start import StartEffectAttempt
+        from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_context
+        context, command = self.execution_context()
+        intent = _runtime_effect_intent_for_context(context, self.health_activity)
+        identity = EffectAttemptIdentity(RunId(self.run_id), self.health_activity.activity_id.value, 1)
+        return StartEffectAttempt(self.request_id, EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
+            identity, runtime_effect_intent_fingerprint(intent)), intent, command.authority, command.fence)
+
     async def prepared(self, *, native=True):
         stage = (ManagementBootstrapStage.CONNECTOR_CONNECTED if native
             else ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
         await self.prepare_health(stage=stage)
-        self.configure_permissions(self.worker.identity, installation="coordinator-management")
+        self.configure_permissions(self.worker.identity, installation="coordinator-permission")
         self.require_interface()
         context, execution = self.execution_context()
         with self.unit_of_work() as uow:
