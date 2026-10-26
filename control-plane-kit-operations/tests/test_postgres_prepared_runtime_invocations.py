@@ -469,7 +469,7 @@ class PostgresPreparedRuntimeAdmissionTests(_PreparedRuntimeInvocationFixture, u
 
     def test_revoke_wins_the_real_final_admission_lock(self):
         first, second = self.opposing_commands(lambda factory: self.revoke(factory),
-            self.admit_final_with_factory, self.permission_lock)
+            self.admit_final_with_factory, self.permission_lock, connection_query=self.permission_lock)
         self.assertEqual(first.result().receipt.revision, 3)
         with self.assertRaises(operations.ExecutionInvocationDenied):
             second.result()
@@ -478,7 +478,7 @@ class PostgresPreparedRuntimeAdmissionTests(_PreparedRuntimeInvocationFixture, u
 
     def test_final_admission_wins_revoke_and_retains_the_original_result(self):
         first, second = self.opposing_commands(self.admit_final_with_factory,
-            lambda factory: self.revoke(factory), self.permission_lock)
+            lambda factory: self.revoke(factory), self.permission_lock, connection_query=self.permission_lock)
         self.assertEqual(first.result().outcome.value, "returned")
         self.assertEqual(second.result().receipt.revision, 3)
         self.assertEqual(len(self.calls), 1)
