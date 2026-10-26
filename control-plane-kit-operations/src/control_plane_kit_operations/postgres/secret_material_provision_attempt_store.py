@@ -50,6 +50,9 @@ class SecretMaterialProvisionAttemptStore:
     def get(self, workspace_id, request_id):
         return self._get(workspace_id, request_id)
 
+    def get_for_update(self, workspace_id, request_id):
+        return self._get(workspace_id, request_id, lock=True)
+
     def _get(self, workspace_id, request_id, *, lock=False):
         _identifier(workspace_id)
         _identifier(request_id)

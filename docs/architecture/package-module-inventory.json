@@ -24,9 +24,9 @@
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["CurrentEffectDecision", "CurrentWorkspaceEffectPolicy", "EffectCommandContext", "EffectPermissionDenied", "ExecutionCommandReference"],
       "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_operations.managed_runtime_assignments", "control_plane_kit_operations.records", "control_plane_kit_operations.runtime_authorities", "control_plane_kit_operations.workspace_permissions"],
-      "known_package_consumers": ["control_plane_kit_operations.effect_attempt_start_interpreter"],
+      "known_package_consumers": ["control_plane_kit_operations.effect_attempt_start_interpreter", "control_plane_kit_operations.delegation_key_generation_commands", "control_plane_kit_operations.delegation_key_generation_attempts", "control_plane_kit_operations.secret_material_provision_commands", "control_plane_kit_operations.secret_material_provision_attempts"],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_postgres_current_effect_permissions.py"],
+      "protecting_tests": ["tests/test_postgres_current_effect_permissions.py", "tests/test_postgres_standalone_effect_permissions.py"],
       "motivation": "Current permission inside the owning admission transaction, with full original context and exact immutable execution-receipt binding."
     },
     {
@@ -107,10 +107,10 @@
       "semantic_roles": ["commands", "authorization", "orchestration"],
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["ProvisionSecretMaterialCommand", "SecretMaterialProvisionCommandService", "decode_provision_request"],
-      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.secret_material_provision_attempts", "control_plane_kit_operations.secret_providers"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.effect_permissions", "control_plane_kit_operations.secret_material_provision_attempts", "control_plane_kit_operations.secret_providers"],
       "known_package_consumers": ["control_plane_kit_operations.cpk_server"],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_secret_material_provision_commands.py"],
+      "protecting_tests": ["tests/test_secret_material_provision_commands.py", "tests/test_postgres_standalone_effect_permissions.py"],
       "motivation": "Bounded confidential HTTP intake with fresh authority, separate ephemeral material and a single custody call between committed durable transitions."
     },
     {
@@ -121,10 +121,10 @@
       "semantic_roles": ["values", "validation", "admission"],
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["ProvisionAttemptIntent", "SecretMaterialProvisionAttempt", "ProvisionAttemptClaim", "ProvisionAttemptAdmissionService", "ProvisionedSecretMaterialReceipt"],
-      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.secret_providers"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.effect_permissions", "control_plane_kit_operations.secret_providers"],
       "known_package_consumers": ["control_plane_kit_operations.postgres.secret_material_provision_attempt_store"],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_secret_material_provision_attempts.py"],
+      "protecting_tests": ["tests/test_secret_material_provision_attempts.py", "tests/test_postgres_standalone_effect_permissions.py"],
       "motivation": "Safe original-operator custody intent and receipt with atomic create-only admission and no provider IO or raw material."
     },
     {
@@ -149,10 +149,10 @@
       "semantic_roles": ["values", "authorization", "effects"],
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["GenerateDelegationKeyCommand", "ReconcileDelegationKeyGenerationCommand", "DelegationKeyGenerationCommandService"],
-      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.delegation_key_generation", "control_plane_kit_operations.delegation_key_generation_attempts", "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.secret_providers"],
+      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.delegation_key_generation", "control_plane_kit_operations.delegation_key_generation_attempts", "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.effect_permissions", "control_plane_kit_operations.secret_providers"],
       "known_package_consumers": ["control_plane_kit_operations.cpk_server"],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_delegation_key_generation_commands.py"],
+      "protecting_tests": ["tests/test_delegation_key_generation_commands.py", "tests/test_postgres_standalone_effect_permissions.py"],
       "motivation": "Explicit generation and reconciliation through existing durable owners with current authority, bounded evidence, and no transaction across provider IO."
     },
     {
@@ -163,10 +163,10 @@
       "semantic_roles": ["values", "validation", "admission"],
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["GenerationAttemptIntent", "DelegationKeyGenerationAttempt", "GenerationAttemptClaim", "GenerationAttemptAdmissionService"],
-      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.delegation_key_generation"],
+      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.identity", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations._temporal", "control_plane_kit_operations.delegation_key_generation", "control_plane_kit_operations.effect_permissions"],
       "known_package_consumers": ["control_plane_kit_operations.postgres.delegation_key_generation_attempt_store"],
       "optional_external_dependencies": [],
-      "protecting_tests": ["tests/test_delegation_key_generation_attempts.py"],
+      "protecting_tests": ["tests/test_delegation_key_generation_attempts.py", "tests/test_postgres_standalone_effect_permissions.py"],
       "motivation": "Typed generation intent and receipt with full original actor identity; atomic admission without provider execution."
     },
     {

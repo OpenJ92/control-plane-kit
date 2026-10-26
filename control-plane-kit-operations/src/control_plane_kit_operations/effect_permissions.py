@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import re
 
-from control_plane_kit_core.identity import IdentityContractError, TrustedCommandContext
+from control_plane_kit_core.identity import IdentityContractError, PrincipalKind, TrustedCommandContext
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.managed_runtime_assignments import (
     ManagedRuntimeCapabilityPolicy, ManagedRuntimeSelection,
@@ -113,6 +113,19 @@ def _original_intent(original):
         invalid = True
     if invalid:
         raise EffectPermissionDenied("original effect permission context is invalid")
+
+
+def _standalone_context_matches(original, actor, workspace_id, *, actor_scopes=()):
+    """Bind a real invocation to a closed retained intent, not historical scopes."""
+    try:
+        _original_intent(original)
+    except (EffectPermissionDenied, AttributeError):
+        return False
+    return (original.principal.identity == actor
+        and original.principal.identity.kind is PrincipalKind.OPERATOR
+        and original.workspace_id == workspace_id
+        and type(actor_scopes) is tuple
+        and all(type(scope) is PolicyScope and scope in original.granted_scopes for scope in actor_scopes))
 
 
 def _require_execution_binding(stores, context, request, run, authority, fence):
