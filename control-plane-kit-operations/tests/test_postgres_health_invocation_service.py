@@ -12,7 +12,7 @@ from control_plane_kit_operations.execution_invocations import (
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.workflows import IdempotencyKey
-from control_plane_kit_operations.records import ExecutionCommandResultRecord, CoordinatorStatus
+from control_plane_kit_operations.records import ExecutionCommandResultRecord, ExecutionCommandReceiptStatus, CoordinatorStatus
 from control_plane_kit_operations.secret_providers import SecretProviderRegistrationService, RevokeSecretProviderCommand
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.planning import ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth
@@ -453,6 +453,24 @@ class PostgresHealthInvocationInspectionTests(_HealthInvocationServiceFixture, u
         inspect = self.require_inspection(service)
         self.revoke_workspace()
         self.revoke()
+        with self.unit_of_work() as uow:
+            reference = self.bound.receipt
+            uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+            run = uow.stores.execution.get_run(reference.run_id)
+            result = ExecutionCommandResultRecord(run, CoordinatorStatus.UNCERTAIN, 1, self.marker.activity_id)
+            completed = uow.stores.execution.complete_command_receipt(reference.run_id, reference.idempotency_key,
+                intent_fingerprint=reference.intent_fingerprint,
+                completed_at=timestamp(self.started.preparation.transit_grant.not_before),
+                result=result)
+            self.assertIsNotNone(completed)
+            self.assertIs(completed.status, ExecutionCommandReceiptStatus.COMPLETED)
+            uow.commit()
+        with self.unit_of_work() as uow:
+            retained_parent = uow.stores.execution.command_receipt_for_idempotency(
+                reference.run_id, reference.idempotency_key)
+        self.assertEqual(retained_parent, completed)
+        self.assertIs(retained_parent.status, ExecutionCommandReceiptStatus.COMPLETED)
+        self.assertEqual(retained_parent.result, result)
         with self.forbid_fresh_health():
             self.assertEqual(inspect(bound), admitted)
             self.assertEqual(self.active_invocation_uows, 0)
@@ -463,3 +481,47 @@ class PostgresHealthInvocationInspectionTests(_HealthInvocationServiceFixture, u
         self.assertEqual(classified, self.retained(Kind.SIGNED_HEALTH_TRANSPORT))
         self.assertEqual(self.calls, ["signed-health-transport"])
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempt_outcomes").fetchone()[0], 0)
+
+    def test_inspection_refuses_a_different_owner_or_unbound_value(self):
+        service, bound = self.inspection_binding()
+        other, other_bound = self.inspection_binding()
+        inspect = self.require_inspection(service)
+        for value in (None, object(), other_bound):
+            with self.subTest(bound_type=type(value).__name__), self.assertRaises(ExecutionInvocationConflict):
+                inspect(value)
+        with self.assertRaises(ExecutionInvocationConflict):
+            other.inspect_health_dispatch(bound)
+        self.assertEqual(inspect(bound), self.marker)
+        self.assertEqual(self.calls, [])
+
+    def test_missing_or_incongruent_final_marker_is_not_repaired_by_inspection(self):
+        service, bound = self.inspection_binding()
+        inspect = self.require_inspection(service)
+        self.connection.execute("DELETE FROM cpk_execution_command_invocations WHERE invocation_id=%s",
+            (self.marker.invocation_id,))
+        with self.assertRaises(ExecutionInvocationConflict):
+            inspect(bound)
+        self.assertIsNone(self.retained(Kind.SIGNED_HEALTH_TRANSPORT))
+        wrong = replace(self.marker, target_fingerprint="f" * 64)
+        with self.unit_of_work() as uow:
+            uow.stores.execution.add_command_invocation(wrong)
+            uow.commit()
+        with self.assertRaises(ExecutionInvocationConflict):
+            inspect(bound)
+        self.assertEqual(self.retained(Kind.SIGNED_HEALTH_TRANSPORT), wrong)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.effect_attempts.get(self.started.start.attempt.state.identity),
+                self.started.start.attempt)
+
+    def test_inspection_retains_denied_final_without_new_authority_or_permit(self):
+        service, bound = self.inspection_binding()
+        self.revoke_workspace()
+        with self.admission_time(), self.assertRaises(ExecutionInvocationDenied):
+            bound.admit("signed-health-transport")
+        denied = self.retained(Kind.SIGNED_HEALTH_TRANSPORT)
+        self.assertIs(denied.disposition, Disposition.DENIED)
+        self.assertIsNone(denied.outcome)
+        with self.forbid_fresh_health():
+            self.assertEqual(service.inspect_health_dispatch(bound), denied)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.active_invocation_uows, 0)

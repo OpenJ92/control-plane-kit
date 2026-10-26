@@ -84,6 +84,10 @@ class ExecutionInvocationService:
         self._health = HealthSigningAuthorityReloadService(unit_of_work_factory,
             health_receiver_decoders=health_receiver_decoders)
 
+    @property
+    def permission_policy(self) -> CurrentWorkspaceEffectPolicy:
+        return self._permission_policy
+
     def bind_health(self, *, command_context, start, started, managed_target):
         failed = False
         try:
@@ -110,6 +114,23 @@ class ExecutionInvocationService:
         if failed:
             raise ExecutionInvocationConflict()
         return _BoundHealthInvocations(self, command_context, start, started, managed_target)
+
+    def inspect_health_dispatch(self, bound: BoundExecutionInvocations) -> ExecutionInvocationRecord:
+        """Read original final state; neither a permit nor a retained result."""
+        control, marker = None, None
+        try:
+            _require(type(bound) is _BoundHealthInvocations and bound.service is self)
+            with self._unit_of_work_factory() as uow:
+                reference = bound.context.receipt
+                uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, _, _ = self._history(uow.stores, bound, Kind.SIGNED_HEALTH_TRANSPORT, None)
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        return marker
 
     def _binding(self, stores, bound, *, fresh):
         start = bound.start.start
