@@ -36,6 +36,7 @@ from control_plane_kit_operations.effect_run_prefix import (
     EffectRunPrefixConflict, PreparedEffectRunPrefix, _lock_effect_run_prefix,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.effect_permissions import ExecutionCommandReference
 from control_plane_kit_operations.health_effect_attempt_start import _valid_context
 from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders, HealthReceiverTrustError
 from control_plane_kit_operations.health_effect_preparations import (
@@ -47,7 +48,7 @@ from control_plane_kit_operations.node_control_signing_authority import _LockedS
 from control_plane_kit_operations.records import (
     ActivityPlanRecord, ActivityPlanStatus, ActivityRunRecord, ApprovalDecisionKind,
     ApprovalDecisionRecord, ApprovalRequestRecord, ClaimIdentity, ExecutionRequestRecord,
-    GraphVersionRecord, RealizedGraphProjectionRecord,
+    GraphVersionRecord, RealizedGraphProjectionRecord, ExecutionCommandReceiptRecord,
 )
 from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation, project_management_health_target
 from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleStorageError, _validate_receiver_execution
@@ -269,6 +270,7 @@ class _PreparedHealthPrefix:
     session: object
     workspace: object
     _owner: object = field(compare=False)
+    command_receipt: ExecutionCommandReceiptRecord | None = None
 
     def require(self, unit_of_work, request_id, identity):
         stores = unit_of_work.stores
@@ -285,6 +287,9 @@ class _PreparedHealthPrefix:
             request = stores.execution.get_request_for_update(request_id)
             _require(request == self.runs.request)
             self.runs.require(unit_of_work, request, identity.run_id.value, latest_required=True)
+            if self.command_receipt is not None:
+                _require(stores.execution.command_receipt_for_idempotency(
+                    self.command_receipt.run_id, self.command_receipt.idempotency_key) == self.command_receipt)
             _require(stores.effect_attempts.get_for_update(identity) == self.attempt)
             _require(stores.activity_history.get_session_for_update(request.identity.session_id) == self.session)
             _require(stores.workspaces.get_for_update(workspace_id) == self.workspace)
@@ -296,7 +301,7 @@ class _PreparedHealthPrefix:
         return request
 
 
-def _lock_health_prefix(unit_of_work, locator, identity):
+def _lock_health_prefix(unit_of_work, locator, identity, *, command_reference=None):
     """Lifecycle -> request -> ordered runs -> attempt -> session -> workspace."""
     stores = unit_of_work.stores
     lifecycle = stores.graphs.lock_receiver_lifecycle(locator.identity.workspace_id)
@@ -305,6 +310,15 @@ def _lock_health_prefix(unit_of_work, locator, identity):
     failed = False
     try:
         runs = _lock_effect_run_prefix(unit_of_work, request, identity.run_id.value, latest_required=True)
+        receipt = None
+        if command_reference is not None:
+            _require(type(command_reference) is ExecutionCommandReference)
+            command_reference.__post_init__()
+            _require(command_reference.run_id == identity.run_id.value)
+            receipt = _record(stores.execution.command_receipt_for_idempotency(
+                command_reference.run_id, command_reference.idempotency_key, for_update=True),
+                ExecutionCommandReceiptRecord)
+            _require(receipt.intent_fingerprint == command_reference.intent_fingerprint)
         attempt = _record(stores.effect_attempts.get_for_update(identity), EffectAttemptRecord)
         session = stores.activity_history.get_session_for_update(request.identity.session_id)
         workspace = stores.workspaces.get_for_update(request.identity.workspace_id)
@@ -313,7 +327,23 @@ def _lock_health_prefix(unit_of_work, locator, identity):
         failed = True
     if failed:
         raise HealthSigningAuthorityUnavailable(_UNAVAILABLE)
-    return _PreparedHealthPrefix(runs, lifecycle, attempt, session, workspace, unit_of_work)
+    return _PreparedHealthPrefix(runs, lifecycle, attempt, session, workspace, unit_of_work, receipt)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _PreparedHealthSigning:
+    """Exact original health truth held by one transaction, never a permit."""
+    command: ReloadHealthSigningAuthority
+    prefix: _PreparedHealthPrefix
+    evidence: EffectAttemptIntentRecord
+    preparation: ReceiverHealthEffectPreparationRecord
+    plan: ActivityPlanRecord
+    selected: object
+    target: object
+    declaration: object
+    gateway: object
+    graphs: tuple
+    _owner: object
 
 
 class HealthSigningAuthorityReloadService:
@@ -341,6 +371,11 @@ class HealthSigningAuthorityReloadService:
 
     def in_unit_of_work(self, unit_of_work, command: ReloadHealthSigningAuthority, *, run_prefix=None):
         """Return authority and its DB observation under the caller's transaction."""
+        prepared = self._prepare_in_unit_of_work(unit_of_work, command, run_prefix=run_prefix)
+        return self._reload_prepared_in_unit_of_work(unit_of_work, prepared)
+
+    def _prepare_in_unit_of_work(self, unit_of_work, command, *, run_prefix):
+        """Reuse original prefix/plan guards before a caller's current policy."""
         if not _valid_command(command):
             raise HealthSigningAuthorityError(_INVALID)
         _require(all(scope in command.context.granted_scopes for scope in _SCOPES)
@@ -384,6 +419,22 @@ class HealthSigningAuthorityReloadService:
                 == (preparation.base_realized_projection_id, preparation.desired_realized_projection_id))
         _approval(stores, request, plan)
         selected, target, runtime, declaration, gateway, graphs = _target(stores, plan, intent, preparation)
+        return _PreparedHealthSigning(command, run_prefix, evidence, preparation, plan,
+            selected, target, declaration, gateway, graphs, unit_of_work)
+
+    def _reload_prepared_in_unit_of_work(self, unit_of_work, prepared):
+        """Current key/provider/interval suffix; caller owns policy and commit."""
+        _require(type(prepared) is _PreparedHealthSigning and prepared._owner is unit_of_work)
+        command, prefix = prepared.command, prepared.prefix
+        stores = unit_of_work.stores
+        request = prefix.require(unit_of_work, command.request_id, command.identity)
+        attempt = prefix.attempt
+        preparation, plan = prepared.preparation, prepared.plan
+        _require(stores.effect_attempt_intents.get(command.identity) == prepared.evidence
+            and stores.health_effect_preparations.get(command.identity) == preparation
+            and stores.activity_history.get_plan_for_share(request.identity.plan_id) == plan)
+        selected, target, declaration, gateway, graphs = (
+            prepared.selected, prepared.target, prepared.declaration, prepared.gateway, prepared.graphs)
         keys = []
         for name, purpose, _ in _FAMILIES:
             key = stores.delegation_signing_keys.require_unambiguous_active(preparation.workspace_id, purpose)

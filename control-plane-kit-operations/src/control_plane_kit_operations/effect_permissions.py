@@ -128,9 +128,9 @@ def _standalone_context_matches(original, actor, workspace_id, *, actor_scopes=(
         and all(type(scope) is PolicyScope and scope in original.granted_scopes for scope in actor_scopes))
 
 
-def _require_execution_binding(stores, context, request, run, authority, fence):
+def _require_execution_binding(stores, context, request, run, authority, fence, *, require_incomplete=True):
     """Read immutable parent provenance without reversing the command lock order."""
-    if type(context) is not EffectCommandContext:
+    if type(context) is not EffectCommandContext or type(require_incomplete) is not bool:
         raise EffectPermissionDenied("execution permission binding is unavailable")
     context.__post_init__()
     reference = context.receipt
@@ -139,7 +139,7 @@ def _require_execution_binding(stores, context, request, run, authority, fence):
     receipt = stores.execution.command_receipt_for_idempotency(reference.run_id, reference.idempotency_key)
     if (type(receipt) is not ExecutionCommandReceiptRecord
             or receipt.intent_fingerprint != reference.intent_fingerprint
-            or receipt.status is not ExecutionCommandReceiptStatus.INCOMPLETE
+            or (require_incomplete and receipt.status is not ExecutionCommandReceiptStatus.INCOMPLETE)
             or receipt.managed_intent != _original_intent(context.original)
             or receipt.initial_run.admission.request_id != request.identity.request_id
             or receipt.initial_run.plan_id != run.plan_id

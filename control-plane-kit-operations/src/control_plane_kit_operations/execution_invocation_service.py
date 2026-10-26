@@ -1,0 +1,259 @@
+"""Command-owned semantic admission; capability IO belongs to the caller."""
+
+from dataclasses import dataclass, field
+import hashlib
+from typing import Protocol
+
+import rfc8785
+
+from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.effect_attempt_start import NewlyStarted
+from control_plane_kit_operations.effect_permissions import (
+    CurrentWorkspaceEffectPolicy, EffectCommandContext, _require_execution_binding,
+)
+from control_plane_kit_operations.execution_invocations import (
+    ExecutionInvocationControlError, ExecutionInvocationConflict, ExecutionInvocationDenied,
+    ExecutionInvocationExisting, ExecutionInvocationRecord, ExecutionInvocationDecision,
+    ExecutionInvocationKind as Kind, ExecutionInvocationDisposition as Disposition,
+    ExecutionInvocationOutcome as Outcome, secret_invocation_target_fingerprint,
+    signed_health_invocation_target_fingerprint,
+)
+from control_plane_kit_operations.health_effect_attempt_start import (
+    StartHealthEffectAttempt, HealthEffectAttemptStartResult, _valid_health_command,
+)
+from control_plane_kit_operations.health_effect_preparations import ReceiverHealthEffectPreparationRecord
+from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders
+from control_plane_kit_operations.health_signing_authority import (
+    HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
+    _lock_health_prefix, _observed_epoch,
+)
+from control_plane_kit_operations.managed_effect_plan import require_managed_effect_plan
+from control_plane_kit_operations.managed_runtime_assignments import ManagedRuntimeSelection
+
+
+_KINDS = (Kind.ENDPOINT_OBSERVATION, Kind.SECRET_RESOLUTION, Kind.SIGNED_HEALTH_TRANSPORT)
+_SCOPES = (PolicyScope.EXECUTION_OPERATE, PolicyScope.NODE_CONTROL_READ,
+    PolicyScope.NODE_CONTROL_EXECUTE, PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
+
+
+class BoundExecutionInvocations(Protocol):
+    control_error: type[Exception]
+
+    def admit(self, kind: str, *, authorization_id: str | None = None) -> object: ...
+    def record_outcome(self, permit: object, outcome: str) -> None: ...
+
+
+def _require(condition):
+    if not condition:
+        raise ExecutionInvocationConflict()
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _Permit:
+    owner: object
+    record: ExecutionInvocationRecord
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _BoundHealthInvocations:
+    service: object
+    context: EffectCommandContext
+    start: StartHealthEffectAttempt
+    started: HealthEffectAttemptStartResult
+    selection: ManagedRuntimeSelection
+    owner: object = field(default_factory=object)
+    control_error = ExecutionInvocationControlError
+
+    def admit(self, kind, *, authorization_id=None):
+        return self.service._admit(self, kind, authorization_id)
+
+    def record_outcome(self, permit, outcome):
+        self.service._record_outcome(self, permit, outcome)
+
+
+class ExecutionInvocationService:
+    def __init__(self, unit_of_work_factory, *, permission_policy, clock,
+            health_receiver_decoders=HealthReceiverDecoders(())):
+        _require(callable(unit_of_work_factory) and callable(clock)
+            and type(permission_policy) is CurrentWorkspaceEffectPolicy
+            and type(health_receiver_decoders) is HealthReceiverDecoders)
+        permission_policy.__post_init__()
+        self._unit_of_work_factory = unit_of_work_factory
+        self._permission_policy, self._clock = permission_policy, clock
+        self._health = HealthSigningAuthorityReloadService(unit_of_work_factory,
+            health_receiver_decoders=health_receiver_decoders)
+
+    def bind_health(self, *, command_context, start, started, managed_target):
+        failed = False
+        try:
+            _require(type(command_context) is EffectCommandContext and _valid_health_command(start)
+                and type(started) is HealthEffectAttemptStartResult and type(started.start) is NewlyStarted
+                and type(started.preparation) is ReceiverHealthEffectPreparationRecord
+                and type(managed_target) is ManagedRuntimeSelection)
+            command_context.__post_init__()
+            started.__post_init__()
+            managed_target.__post_init__()
+            attempt = started.start.attempt
+            _require(command_context.original == start.context
+                and command_context.receipt.run_id == start.start.transition.identity.run_id.value
+                and attempt.state.identity == start.start.transition.identity
+                and attempt.state.request_fingerprint == start.start.transition.request_fingerprint
+                and attempt.state.fence.worker_id == start.start.fence.worker_id
+                and attempt.state.fence.generation == start.start.fence.generation
+                and managed_target.installation_id == self._permission_policy.installation_id
+                and managed_target.workspace_id == start.context.workspace_id
+                and managed_target.runtime_id == start.start.intent.operation.target.runtime_id
+                and managed_target.authority_ref == start.start.intent.authority_ref)
+        except Exception:
+            failed = True
+        if failed:
+            raise ExecutionInvocationConflict()
+        return _BoundHealthInvocations(self, command_context, start, started, managed_target)
+
+    def _binding(self, stores, bound, *, fresh):
+        start = bound.start.start
+        request = stores.execution.get_request(start.request_id)
+        run = stores.execution.get_run(bound.context.receipt.run_id)
+        return _require_execution_binding(stores, bound.context, request, run,
+            start.authority, start.fence, require_incomplete=fresh)
+
+    def _history(self, stores, bound, kind, authorization_id):
+        """Only immutable owner reads here; command advisory is already held."""
+        self._binding(stores, bound, fresh=False)
+        attempt = bound.started.start.attempt
+        identity = attempt.state.identity
+        evidence = stores.effect_attempt_intents.get(identity)
+        preparation = stores.health_effect_preparations.get(identity)
+        _require(evidence.intent == bound.start.start.intent
+            and evidence.original_start_event == attempt.original_start_event
+            and preparation == bound.started.preparation)
+        marker = stores.execution.command_invocation_for_slot(bound.context.receipt,
+            activity_id=identity.activity_id, kind=Kind.SIGNED_HEALTH_TRANSPORT)
+        expected = ExecutionInvocationRecord(bound.context.receipt, preparation.workspace_id,
+            identity.activity_id, Kind.SIGNED_HEALTH_TRANSPORT,
+            signed_health_invocation_target_fingerprint(preparation), attempt.original_start_event.occurred_at,
+            attempt=identity.attempt, original_event_id=preparation.original_event_id,
+            request_fingerprint=preparation.request_fingerprint)
+        _require(marker is not None and marker.invocation_id == expected.invocation_id
+            and marker.created_at == expected.created_at)
+        if kind is Kind.SECRET_RESOLUTION:
+            _require(authorization_id in (preparation.transit_authorization_id, preparation.workload_authorization_id))
+            authorization = stores.secret_use_authorizations.get(preparation.workspace_id, authorization_id)
+            target = secret_invocation_target_fingerprint(authorization)
+        else:
+            _require(authorization_id is None)
+            target = (expected.target_fingerprint if kind is Kind.SIGNED_HEALTH_TRANSPORT else
+                hashlib.sha256(rfc8785.dumps(dict(domain="cpk.health-endpoint-target.v1",
+                    final_target_fingerprint=expected.target_fingerprint))).hexdigest())
+        current = (marker if kind is Kind.SIGNED_HEALTH_TRANSPORT else
+            stores.execution.command_invocation_for_slot(bound.context.receipt,
+                activity_id=identity.activity_id, kind=kind, authorization_id=authorization_id))
+        if current is not None:
+            _require(current.target_fingerprint == target and current.attempt == identity.attempt
+                and current.original_event_id == preparation.original_event_id
+                and current.request_fingerprint == preparation.request_fingerprint)
+        return marker, current, target
+
+    def _admit(self, bound, kind, authorization_id):
+        control, admitted = None, None
+        try:
+            _require(type(kind) is str)
+            kind = Kind(kind)
+            _require(kind in _KINDS)
+            with self._unit_of_work_factory() as uow:
+                stores = uow.stores
+                reference = bound.context.receipt
+                stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, current, target = self._history(stores, bound, kind, authorization_id)
+                if current is not None and current.disposition is not Disposition.PLANNED:
+                    control = (ExecutionInvocationDenied(current.invocation_id)
+                        if current.disposition is Disposition.DENIED else ExecutionInvocationExisting(current.invocation_id))
+                elif marker.disposition is not Disposition.PLANNED:
+                    control = (ExecutionInvocationDenied(marker.invocation_id)
+                        if marker.disposition is Disposition.DENIED else ExecutionInvocationExisting(marker.invocation_id))
+                else:
+                    start = bound.start.start
+                    command = ReloadHealthSigningAuthority(start.request_id, bound.started.preparation.identity,
+                        bound.context.original, start.authority, start.fence)
+                    locator = stores.execution.get_request(command.request_id)
+                    prefix = _lock_health_prefix(uow, locator, command.identity, command_reference=reference)
+                    original = self._binding(stores, bound, fresh=True)
+                    prepared = self._health._prepare_in_unit_of_work(uow, command, run_prefix=prefix)
+                    _require(prefix.attempt == bound.started.start.attempt
+                        and prepared.preparation == bound.started.preparation
+                        and prepared.evidence.intent == start.intent)
+                    pinned = require_managed_effect_plan(stores, prepared.evidence.intent, prefix.runs.request)
+                    _require(bound.selection.authority_ref == pinned.authority_ref
+                        and bound.selection.runtime_id == start.intent.operation.target.runtime_id)
+                    decision = self._permission_policy.evaluate_in_unit_of_work(uow, original,
+                        required_scopes=_SCOPES, managed_target=bound.selection)
+                    if decision.allowed:
+                        _, observation = self._health._reload_prepared_in_unit_of_work(uow, prepared)
+                    else:
+                        observation = stores.execution.observe_request_lease_for_update(command.request_id)
+                        _observed_epoch(observation, prefix.runs.request)
+                    selected = decision.managed_selection
+                    evidence = ExecutionInvocationDecision(decision.permission_revision,
+                        None if selected is None else selected.assignment_id,
+                        None if selected is None else selected.revision, decision.denial_code)
+                    if kind is Kind.SIGNED_HEALTH_TRANSPORT:
+                        record = marker.decided(evidence, observation.observed_at)
+                        _require(stores.execution.replace_command_invocation(marker, record))
+                    else:
+                        record = ExecutionInvocationRecord(reference, marker.workspace_id, marker.activity_id,
+                            kind, target, observation.observed_at, attempt=marker.attempt,
+                            original_event_id=marker.original_event_id, request_fingerprint=marker.request_fingerprint,
+                            authorization_id=authorization_id,
+                            disposition=Disposition.ADMITTED if decision.allowed else Disposition.DENIED,
+                            decision_at=observation.observed_at, decision=evidence,
+                            outcome=Outcome.PENDING if decision.allowed else None)
+                        _require(stores.execution.add_command_invocation(record) == record)
+                    uow.commit()
+                    if decision.allowed:
+                        admitted = record
+                    else:
+                        control = ExecutionInvocationDenied(record.invocation_id)
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            # No capability has been called, and no failed/ambiguous commit
+            # may return a permit. Do not relabel owner/storage failure as A/B denial.
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        _require(admitted is not None)
+        return _Permit(bound.owner, admitted)
+
+    def _record_outcome(self, bound, permit, outcome):
+        control = None
+        try:
+            _require(type(permit) is _Permit and permit.owner is bound.owner
+                and type(outcome) is str)
+            outcome = Outcome(outcome)
+            _require(outcome is not Outcome.PENDING)
+            reference = bound.context.receipt
+            _require(permit.record.command == reference)
+            with self._unit_of_work_factory() as uow:
+                stores = uow.stores
+                stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                stores.execution.command_receipt_for_idempotency(reference.run_id,
+                    reference.idempotency_key, for_update=True)
+                self._binding(stores, bound, fresh=False)
+                current = stores.execution.command_invocation(reference, permit.record.invocation_id, for_update=True)
+                _require(current is not None)
+                if current.outcome is Outcome.PENDING:
+                    _require(current == permit.record)
+                    completed = current.completed(outcome, self._clock())
+                    _require(stores.execution.replace_command_invocation(current, completed))
+                else:
+                    _require(current == permit.record.completed(outcome, current.completed_at))
+                uow.commit()
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+
+
+__all__ = ["ExecutionInvocationService", "BoundExecutionInvocations"]

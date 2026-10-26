@@ -14,6 +14,7 @@ from .execution_invocations import (
     ExecutionInvocationDenied, ExecutionInvocationExisting, ExecutionInvocationPlanned,
     ExecutionInvocationConflict, ExecutionInvocationCursor, ExecutionInvocationPage,
 )
+from .execution_invocation_service import ExecutionInvocationService, BoundExecutionInvocations
 
 from .managed_runtime_assignments import (
     ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
@@ -706,6 +707,7 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ExecutionInvocationService", "BoundExecutionInvocations",
     "ExecutionInvocationRecord", "ExecutionInvocationKind", "ExecutionInvocationDisposition",
     "ExecutionInvocationOutcome", "ExecutionInvocationDecision", "ExecutionInvocationControlError",
     "ExecutionInvocationDenied", "ExecutionInvocationExisting", "ExecutionInvocationPlanned",

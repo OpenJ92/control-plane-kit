@@ -318,6 +318,38 @@ class PostgresExecutionStore:
         _require_invocation_owners(self, record)
         return record
 
+    def command_invocation_for_slot(self, command: ExecutionCommandReference, *,
+            activity_id, kind, authorization_id=None):
+        """Non-locking exact unique-slot lookup; no new admission or repair."""
+        import re
+        _invocation_reference(command)
+        if (type(activity_id) is not str
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", activity_id) is None
+                or type(kind) is not ExecutionInvocationKind):
+            raise ExecutionInvocationConflict()
+        if kind is ExecutionInvocationKind.SECRET_RESOLUTION:
+            if (type(authorization_id) is not str
+                    or re.fullmatch(r"suse_[0-9a-f]{64}", authorization_id) is None):
+                raise ExecutionInvocationConflict()
+            slot = authorization_id
+        else:
+            if authorization_id is not None:
+                raise ExecutionInvocationConflict()
+            slot = "singleton"
+        parent = self.command_receipt_for_idempotency(command.run_id, command.idempotency_key)
+        if parent is None or parent.intent_fingerprint != command.intent_fingerprint:
+            raise ExecutionInvocationConflict()
+        row = self._connection.execute(_INVOCATION_SELECT
+            + " WHERE run_id=%s AND command_key=%s AND activity_id=%s AND kind=%s AND slot_key=%s",
+            (command.run_id, command.idempotency_key, activity_id, kind.value, slot)).fetchone()
+        if row is None:
+            return None
+        record = _invocation_row(row)
+        if record.command != command:
+            raise ExecutionInvocationConflict(record.invocation_id)
+        _require_invocation_owners(self, record)
+        return record
+
     def replace_command_invocation(self, expected: ExecutionInvocationRecord,
             replacement: ExecutionInvocationRecord) -> bool:
         """CAS one planned decision or pending classification; never a permit."""
