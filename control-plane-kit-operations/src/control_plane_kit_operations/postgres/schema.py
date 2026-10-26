@@ -102,6 +102,8 @@ def _current_schema_is_exact(connection: PostgresConnection) -> bool:
         validate_workspace_permission_rows(connection)
         from .managed_runtime_assignment_store import validate_managed_runtime_assignment_rows
         validate_managed_runtime_assignment_rows(connection)
+        from .execution import validate_execution_invocation_rows
+        validate_execution_invocation_rows(connection)
     except (CurrentRowDrift, WorkspacePermissionError):
         return False
     return True

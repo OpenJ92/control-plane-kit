@@ -17,6 +17,12 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.effect_permissions import ExecutionCommandReference
+from control_plane_kit_operations.execution_invocations import (
+    ExecutionInvocationRecord, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
+    ExecutionInvocationConflict, ExecutionInvocationKind, secret_invocation_target_fingerprint,
+    ExecutionInvocationCursor, ExecutionInvocationPage,
+)
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_cursor_timestamp,
@@ -281,6 +287,104 @@ class PostgresExecutionStore:
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"execution-admission:{workspace_id}:{idempotency_key}",),
         )
+
+    def add_command_invocation(self, record: ExecutionInvocationRecord) -> ExecutionInvocationRecord:
+        """Retain an owner-decided row; caller owns locks, decision and commit."""
+        from psycopg import IntegrityError
+        _invocation_record(record)
+        _require_invocation_owners(self, record, fresh=True)
+        try:
+            self._connection.execute("INSERT INTO cpk_execution_command_invocations ("
+                + ", ".join(_INVOCATION_COLUMNS) + ") VALUES ("
+                + ", ".join("%s" for _ in _INVOCATION_COLUMNS) + ")", _invocation_values(record))
+        except IntegrityError:
+            raise ExecutionInvocationConflict(record.invocation_id) from None
+        return record
+
+    def command_invocation(self, command: ExecutionCommandReference, invocation_id: str, *, for_update=False):
+        _invocation_reference(command)
+        _invocation_id(invocation_id)
+        if type(for_update) is not bool:
+            raise ExecutionInvocationConflict()
+        row = self._connection.execute(_INVOCATION_SELECT
+            + " WHERE run_id=%s AND command_key=%s AND invocation_id=%s"
+            + (" FOR UPDATE" if for_update else ""),
+            (command.run_id, command.idempotency_key, invocation_id)).fetchone()
+        if row is None:
+            return None
+        record = _invocation_row(row)
+        if record.command != command:
+            raise ExecutionInvocationConflict(invocation_id)
+        _require_invocation_owners(self, record)
+        return record
+
+    def replace_command_invocation(self, expected: ExecutionInvocationRecord,
+            replacement: ExecutionInvocationRecord) -> bool:
+        """CAS one planned decision or pending classification; never a permit."""
+        _invocation_record(expected)
+        _invocation_record(replacement)
+        try:
+            if expected.disposition is ExecutionInvocationDisposition.PLANNED:
+                valid = expected.decided(replacement.decision, replacement.decision_at)
+            elif expected.outcome is ExecutionInvocationOutcome.PENDING:
+                valid = expected.completed(replacement.outcome, replacement.completed_at,
+                    code=replacement.completion_code)
+            else:
+                valid = None
+        except (OperationsRecordError, ValueError, TypeError):
+            valid = None
+        if valid != replacement:
+            raise ExecutionInvocationConflict(expected.invocation_id)
+        current = self.command_invocation(expected.command, expected.invocation_id, for_update=True)
+        if current == replacement:
+            return False
+        if current != expected:
+            raise ExecutionInvocationConflict(expected.invocation_id)
+        _require_invocation_owners(self, replacement,
+            fresh=expected.disposition is ExecutionInvocationDisposition.PLANNED)
+        from psycopg.types.json import Jsonb
+        row = self._connection.execute("UPDATE cpk_execution_command_invocations SET "
+            "disposition=%s, decision_at=%s, outcome=%s, completed_at=%s, descriptor=%s "
+            "WHERE invocation_id=%s AND descriptor=%s RETURNING invocation_id",
+            (replacement.disposition.value, _encode_optional_timestamp(replacement.decision_at),
+                None if replacement.outcome is None else replacement.outcome.value,
+                _encode_optional_timestamp(replacement.completed_at), Jsonb(replacement.descriptor()),
+                expected.invocation_id, Jsonb(expected.descriptor()))).fetchone()
+        if row is not None:
+            if row != (replacement.invocation_id,):
+                raise ExecutionInvocationConflict(expected.invocation_id)
+            return True
+        if self.command_invocation(expected.command, expected.invocation_id) != replacement:
+            raise ExecutionInvocationConflict(expected.invocation_id)
+        return False
+
+    def command_invocations(self, command: ExecutionCommandReference, *, limit=100, cursor=None):
+        _invocation_reference(command)
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ExecutionInvocationConflict()
+        if cursor is not None:
+            if type(cursor) is not ExecutionInvocationCursor or cursor.command != command:
+                raise ExecutionInvocationConflict()
+            cursor.__post_init__()
+        parent = self.command_receipt_for_idempotency(command.run_id, command.idempotency_key)
+        if parent is None or parent.intent_fingerprint != command.intent_fingerprint or parent.managed_intent is None:
+            raise ExecutionInvocationConflict()
+        parameters = (command.run_id, command.idempotency_key)
+        condition = " WHERE run_id=%s AND command_key=%s"
+        if cursor is not None:
+            condition += ' AND invocation_id COLLATE "C">%s'
+            parameters += (cursor.after_invocation_id,)
+        rows = self._connection.execute(_INVOCATION_SELECT + condition
+            + ' ORDER BY invocation_id COLLATE "C" LIMIT %s', parameters + (limit + 1,)).fetchall()
+        records = tuple(_invocation_row(row) for row in rows)
+        for record in records:
+            if record.command != command:
+                raise ExecutionInvocationConflict(record.invocation_id)
+            _require_invocation_owners(self, record)
+        items = records[:limit]
+        next_cursor = (ExecutionInvocationCursor(command, items[-1].invocation_id)
+            if len(records) > limit else None)
+        return ExecutionInvocationPage(command, items, next_cursor)
 
     def lock_command_idempotency(
         self,
@@ -1509,3 +1613,135 @@ def _require_page_run_id(value: object) -> None:
     else:
         return
     raise ReadPageError("run page identity is malformed")
+
+
+_INVOCATION_COLUMNS = ("invocation_id", "version", "run_id", "command_key", "parent_fingerprint",
+    "workspace_id", "activity_id", "kind", "slot_key", "target_fingerprint", "attempt",
+    "original_event_id", "request_fingerprint", "authorization_id", "disposition", "decision_at",
+    "outcome", "completed_at", "descriptor")
+_INVOCATION_SELECT = "SELECT " + ", ".join(
+    name if name in ("version", "attempt", "decision_at", "completed_at") else
+    "CASE WHEN octet_length(descriptor::text)<=8192 THEN descriptor ELSE NULL END" if name == "descriptor" else
+    f"CASE WHEN octet_length({name})<=2048 THEN {name} ELSE NULL END" for name in _INVOCATION_COLUMNS
+) + " FROM cpk_execution_command_invocations"
+
+
+def _invocation_reference(command):
+    if type(command) is not ExecutionCommandReference:
+        raise ExecutionInvocationConflict()
+    try:
+        command.__post_init__()
+    except ValueError:
+        raise ExecutionInvocationConflict() from None
+
+
+def _invocation_id(value):
+    import re
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise ExecutionInvocationConflict()
+
+
+def _invocation_record(record):
+    if type(record) is not ExecutionInvocationRecord:
+        raise ExecutionInvocationConflict()
+    try:
+        record.__post_init__()
+    except (OperationsRecordError, ValueError, TypeError):
+        raise ExecutionInvocationConflict() from None
+
+
+def _invocation_values(record):
+    from psycopg.types.json import Jsonb
+    return (record.invocation_id, record.version, record.command.run_id, record.command.idempotency_key,
+        record.command.intent_fingerprint, record.workspace_id, record.activity_id, record.kind.value,
+        record.slot_key, record.target_fingerprint, record.attempt, record.original_event_id,
+        record.request_fingerprint, record.authorization_id, record.disposition.value,
+        _encode_optional_timestamp(record.decision_at), None if record.outcome is None else record.outcome.value,
+        _encode_optional_timestamp(record.completed_at), Jsonb(record.descriptor()))
+
+
+def _invocation_row(row):
+    try:
+        if type(row) is not tuple or len(row) != len(_INVOCATION_COLUMNS):
+            raise OperationsRecordError("invocation row is malformed")
+        record = ExecutionInvocationRecord.from_descriptor(row[-1])
+        if row[:-1] != _invocation_values(record)[:-1]:
+            raise OperationsRecordError("invocation row is incongruent")
+        return record
+    except (OperationsRecordError, ValueError, TypeError):
+        raise ExecutionInvocationConflict() from None
+
+
+def _require_invocation_owners(store, record, *, fresh=False):
+    """Check immutable joins; semantic permission remains with the admitting owner."""
+    from control_plane_kit_core.operations import EffectAttemptIdentity
+    from control_plane_kit_core.planning import ActivityId
+    from .activity_history import PostgresActivityHistoryStore
+    from .effect_attempt_intent_store import EffectAttemptIntentStore
+    from .effect_attempt_store import EffectAttemptStore
+    from .secret_provider_store import SecretUseAuthorizationStore
+    try:
+        parent = store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+        if (parent is None or parent.intent_fingerprint != record.command.intent_fingerprint
+                or parent.managed_intent is None or parent.managed_intent.workspace_id != record.workspace_id
+                or (fresh and parent.status is not ExecutionCommandReceiptStatus.INCOMPLETE)):
+            raise ExecutionInvocationConflict(record.invocation_id)
+        run = store.get_run(record.command.run_id)
+        request = store.get_request(run.admission.request_id)
+        if (request.identity.workspace_id != record.workspace_id
+                or parent.initial_run.admission.request_id != request.identity.request_id
+                or parent.initial_run.plan_id != run.plan_id):
+            raise ExecutionInvocationConflict(record.invocation_id)
+        plan = PostgresActivityHistoryStore(store._connection).get_plan(run.plan_id)
+        plan.plan.activity(ActivityId(record.activity_id))
+        if record.attempt is not None:
+            identity = EffectAttemptIdentity(RunId(record.command.run_id), record.activity_id, record.attempt)
+            intent = EffectAttemptIntentStore(store._connection).get(identity)
+            attempt = EffectAttemptStore(store._connection).get(identity)
+            if (intent.original_start_event != attempt.original_start_event
+                    or intent.request_fingerprint != record.request_fingerprint
+                    or attempt.original_start_event.event_id != record.original_event_id
+                    or intent.intent.source.workspace_id != record.workspace_id
+                    or intent.intent.source.plan_id != run.plan_id):
+                raise ExecutionInvocationConflict(record.invocation_id)
+        if record.kind is ExecutionInvocationKind.SECRET_RESOLUTION:
+            authorized = SecretUseAuthorizationStore(store._connection).get(record.workspace_id, record.authorization_id)
+            linked = record.original_event_id is not None and authorized.effect_id == record.original_event_id
+            if not linked and authorized.effect_id is None and record.attempt is not None:
+                # Signed health uses its existing operation identity, not the
+                # generic runtime effect_id slot. Reuse its retained join.
+                from control_plane_kit_operations.health_effect_preparations import health_effect_attempt_wire_id
+                from .health_effect_preparation_store import HealthEffectPreparationStore
+                preparation = HealthEffectPreparationStore(store._connection).get(identity)
+                linked = (authorized.operation_id == health_effect_attempt_wire_id(identity)
+                    and authorized.authorization_id in (preparation.transit_authorization_id,
+                        preparation.workload_authorization_id)
+                    and preparation.original_event_id == record.original_event_id
+                    and preparation.request_fingerprint == record.request_fingerprint)
+            if (authorized.run_id != record.command.run_id or authorized.activity_id != record.activity_id
+                    or not linked or authorized.session_id != request.identity.session_id
+                    or authorized.actor_subject != parent.managed_intent.actor.subject_id
+                    or secret_invocation_target_fingerprint(authorized) != record.target_fingerprint):
+                raise ExecutionInvocationConflict(record.invocation_id)
+    except (KeyError, OperationsRecordError, ValueError, TypeError, AttributeError):
+        raise ExecutionInvocationConflict(record.invocation_id) from None
+
+
+def validate_execution_invocation_rows(connection):
+    """Bounded exact-data verification for the final schema, never repair."""
+    from .current_data_validation import CurrentRowDrift
+    store, after = PostgresExecutionStore(connection), None
+    try:
+        while True:
+            rows = connection.execute(_INVOCATION_SELECT
+                + ("" if after is None else " WHERE invocation_id>%s")
+                + ' ORDER BY invocation_id COLLATE "C" NULLS FIRST LIMIT 100',
+                () if after is None else (after,)).fetchall()
+            for row in rows:
+                record = _invocation_row(row)
+                _require_invocation_owners(store, record)
+                after = record.invocation_id
+            if len(rows) < 100:
+                return
+    except (ExecutionInvocationConflict, OperationsRecordError, ValueError, TypeError):
+        raise CurrentRowDrift from None

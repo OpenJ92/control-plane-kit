@@ -44,6 +44,7 @@ _EXPECTED_RELATIONS = (
     "cpk_effect_attempt_outcomes",
     "cpk_effect_attempts",
     "cpk_effect_configuration_refs",
+    "cpk_execution_command_invocations",
     "cpk_execution_command_receipts",
     "cpk_execution_receiver_scopes",
     "cpk_execution_requests",
@@ -144,10 +145,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "ddb39e1dd75b92111ebf7bf62437530b75037d96088332a1c61e0ec90b7b274b"
+    "60c6f071fe72b2ef83e3471baea453dcc5660ccef5401e266ac6ab75618397e5"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "62251f1aee7505a6fdde61eadbe67cb81e1bd5f07e865f8a5590f085c19715e1"
+    "0b383e64fab978bf03fafe7ffe74b3bae304b7771c4b88337c920597d4d7b34d"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -440,10 +441,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 64)
-        self.assertEqual(len(contract.columns), 788)
-        self.assertEqual(len(contract.constraints), 728)
-        self.assertEqual(len(contract.indexes), 206)
+        self.assertEqual(len(contract.relations), 65)
+        self.assertEqual(len(contract.columns), 807)
+        self.assertEqual(len(contract.constraints), 743)
+        self.assertEqual(len(contract.indexes), 209)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -649,7 +650,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            64,
+            65,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
@@ -658,6 +659,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
 
 class CurrentSchemaInstallationTests(unittest.TestCase):
+    def test_execution_invocation_catalog_matches_declared_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        self._assert_extension_catalog(current_schema_contract.EXECUTION_INVOCATION_SCHEMA_CONTRACT)
+
     def test_workspace_permission_catalog_matches_declared_contract(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract
         self._assert_extension_catalog(current_schema_contract.WORKSPACE_PERMISSION_SCHEMA_CONTRACT)

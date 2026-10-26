@@ -27,9 +27,7 @@ from tests.lifecycle_lock_fixture import LifecycleLockFixture
 from tests.postgres_effect_attempt_start_fixture import PostgresEffectAttemptStartFixture
 
 
-class PostgresCurrentEffectPermissionTests(
-    PostgresEffectAttemptStartFixture, LifecycleLockFixture, unittest.TestCase,
-):
+class CurrentEffectPermissionFixture(PostgresEffectAttemptStartFixture, LifecycleLockFixture):
     def setUp(self):
         self.database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not self.database_url:
@@ -114,6 +112,7 @@ class PostgresCurrentEffectPermissionTests(
     def permission_lock(query, parameters):
         return "FROM cpk_workspace_permissions" in query and "FOR UPDATE" in query
 
+class PostgresCurrentEffectPermissionTests(CurrentEffectPermissionFixture, unittest.TestCase):
     def test_shared_decision_uses_original_context_without_execution_receipt(self):
         with self.unit_of_work() as uow:
             decision = self.policy().evaluate_in_unit_of_work(

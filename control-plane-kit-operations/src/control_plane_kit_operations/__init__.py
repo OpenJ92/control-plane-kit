@@ -8,6 +8,12 @@ from .effect_permissions import (
     CurrentEffectDecision, CurrentWorkspaceEffectPolicy, EffectCommandContext,
     EffectPermissionDenied, ExecutionCommandReference,
 )
+from .execution_invocations import (
+    ExecutionInvocationRecord, ExecutionInvocationKind, ExecutionInvocationDisposition,
+    ExecutionInvocationOutcome, ExecutionInvocationDecision, ExecutionInvocationControlError,
+    ExecutionInvocationDenied, ExecutionInvocationExisting, ExecutionInvocationPlanned,
+    ExecutionInvocationConflict, ExecutionInvocationCursor, ExecutionInvocationPage,
+)
 
 from .managed_runtime_assignments import (
     ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
@@ -700,6 +706,10 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ExecutionInvocationRecord", "ExecutionInvocationKind", "ExecutionInvocationDisposition",
+    "ExecutionInvocationOutcome", "ExecutionInvocationDecision", "ExecutionInvocationControlError",
+    "ExecutionInvocationDenied", "ExecutionInvocationExisting", "ExecutionInvocationPlanned",
+    "ExecutionInvocationConflict", "ExecutionInvocationCursor", "ExecutionInvocationPage",
     "CurrentEffectDecision", "CurrentWorkspaceEffectPolicy", "EffectCommandContext",
     "EffectPermissionDenied", "ExecutionCommandReference",
     "ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess",
