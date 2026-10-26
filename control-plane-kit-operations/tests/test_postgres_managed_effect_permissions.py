@@ -10,16 +10,20 @@ import psycopg
 
 import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
-from control_plane_kit_core.planning import ManagementBootstrapStage, ObserveManagementBootstrap
+from control_plane_kit_core.planning import (
+    ManagementBootstrapStage, ObserveManagementBootstrap, compile_graph_activity_plan,
+)
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+from control_plane_kit_core.topology import validate_graph
 from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartDenied, ExistingAttempt, NewlyStarted
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority, RegisterRuntimeAuthorityCommand, RuntimeAuthorityRegistrationService,
 )
+from control_plane_kit_operations.runtime_management_targets import project_management_health_target
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.health_effect_start_fixture import HEALTH_SCOPES, HealthEffectStartValues
 from tests.lifecycle_lock_fixture import LifecycleLockFixture
@@ -31,6 +35,25 @@ class _ManagedPermissionStartFixture(PostgresHealthEffectStartFixture, Lifecycle
     native = False
     binding = permission_fixtures.PostgresCurrentEffectPermissionTests.binding
     public = permission_fixtures.PostgresCurrentEffectPermissionTests.public
+
+    def health_context(self, **options):
+        _, original, current, desired, _ = super().health_context(**options)
+        runtime_id = original.operation.target.runtime_id
+        graph = desired.graph
+        desired = validate_graph(replace(graph, runtimes={**graph.runtimes,
+            runtime_id: replace(graph.runtimes[runtime_id],
+                authority_ref=RuntimeAuthorityReference("managed-docker"))}))
+        desired.require_valid()
+        plan = compile_graph_activity_plan(current, desired)
+        selected, = (item for item in plan.activities
+            if type(item.operation) is type(original.operation)
+            and item.operation.target.runtime_id == runtime_id
+            and (item.operation.stage is original.operation.stage
+                if type(original.operation) is ObserveManagementBootstrap
+                else item.operation.node_id == original.operation.node_id))
+        target = project_management_health_target(plan, selected.activity_id,
+            selected.operation, current, desired)
+        return plan, selected, current, desired, target
 
     def setUp(self):
         self.database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
@@ -183,7 +206,6 @@ class PostgresNativeManagementPermissionTests(_ManagedPermissionStartFixture, un
     def health_context(self, **options):
         _, _, current, desired, _ = super().health_context(
             stage=ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
-        from control_plane_kit_core.planning import compile_graph_activity_plan
         plan = compile_graph_activity_plan(current, desired)
         selected, = (item for item in plan.activities if type(item.operation) is ObserveManagementBootstrap
             and item.operation.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED)
