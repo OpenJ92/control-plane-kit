@@ -10,11 +10,23 @@ class RuntimeAdapterRegistration:
     exact_version_execute: bool = False
     exact_version_execute_with_authority: bool = False
     exact_version_observe: bool = False
+    invocation_profile: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self):
         if self.adapter is None or any(type(value) is not bool for value in (
                 self.exact_version_execute, self.exact_version_execute_with_authority, self.exact_version_observe)):
             raise ValueError("runtime adapter registration is malformed")
+        if self.invocation_profile is not None and (type(self.invocation_profile) is not str
+                or self.invocation_profile != "cpk.semantic-invocations.v1"):
+            raise ValueError("runtime adapter invocation profile is malformed")
+
+
+def adapter_accepts_invocations(registration, arm):
+    if type(registration) is not RuntimeAdapterRegistration:
+        return False
+    registration.__post_init__()
+    return (registration.invocation_profile == "cpk.semantic-invocations.v1"
+        and callable(getattr(registration.adapter, arm, None)))
 
 
 def versioned_consumer_required(request):

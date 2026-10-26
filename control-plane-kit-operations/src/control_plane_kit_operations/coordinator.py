@@ -141,6 +141,10 @@ from control_plane_kit_operations.execution_invocation_service import BoundExecu
 from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationControlError, ExecutionInvocationDenied, ExecutionInvocationPlanned,
     ExecutionInvocationConflict, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
+    ExecutionInvocationExisting, ExecutionInvocationKind,
+)
+from control_plane_kit_operations.prepared_runtime_invocations import (
+    runtime_preparation_candidate, prepared_runtime_invocation_profile,
 )
 from control_plane_kit_operations.health_signing_authority import (
     HealthSigningAuthorityPair, HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
@@ -166,6 +170,7 @@ from control_plane_kit_operations.products import (
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority,
     RegisteredRuntimeAuthorityDelivery,
+    RemoteDockerTlsAuthority,
 )
 from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_execution_is_unsupported,
@@ -176,7 +181,7 @@ from control_plane_kit_operations.secret_providers import (
     authorize_runtime_secret_command,
 )
 from control_plane_kit_operations.runtime_adapter_registration import (
-    RuntimeAdapterRegistration, adapter_is_qualified, registered_adapter,
+    RuntimeAdapterRegistration, adapter_is_qualified, registered_adapter, adapter_accepts_invocations,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -605,6 +610,7 @@ class ActivityExecutionAdapter(Protocol):
         self,
         context: ActivityRealizationContext,
         request: RuntimeEffectRequest,
+        *, invocations: BoundExecutionInvocations | None = None,
     ) -> RuntimeEffectResult: ...
 
 
@@ -664,7 +670,10 @@ class ActivityExecutionDispatcher:
         self,
         context: ActivityRealizationContext,
         request: RuntimeEffectRequest,
+        *, invocations: BoundExecutionInvocations | None = None,
     ) -> RuntimeEffectResult:
+        if invocations is not None:
+            return self.runtime.execute_runtime(context, request, invocations=invocations)
         return self.runtime.execute_runtime(context, request)
 
 
@@ -674,6 +683,7 @@ class RuntimeEffectInterpreter(Protocol):
     def execute(
         self,
         request: RuntimeEffectRequest,
+        *, invocations: BoundExecutionInvocations | None = None,
     ) -> RuntimeEffectResult: ...
 
 
@@ -684,6 +694,7 @@ class RuntimeAuthorityAwareInterpreter(Protocol):
         self,
         request: RuntimeEffectRequest,
         authority: RegisteredRuntimeAuthority,
+        *, invocations: BoundExecutionInvocations | None = None,
     ) -> RuntimeEffectResult: ...
 
 
@@ -730,6 +741,7 @@ class RuntimeInterpreterDispatcher:
         self,
         context: ActivityRealizationContext,
         request: RuntimeEffectRequest,
+        *, invocations: BoundExecutionInvocations | None = None,
     ) -> RuntimeEffectResult:
         invalid_message = None
         if (
@@ -774,6 +786,8 @@ class RuntimeInterpreterDispatcher:
                 runtime_kind=runtime_kind,
             )
         arm = "execute" if authority is None else "execute_with_authority"
+        if invocations is not None and not adapter_accepts_invocations(interpreter, arm):
+            raise ExecutionInvocationConflict()
         if not adapter_is_qualified(interpreter, request, arm):
             return _unsupported_runtime_result(request, "runtime.secret-version-unsupported",
                 "runtime adapter is not qualified for exact consumer versions", runtime_kind=runtime_kind)
@@ -786,7 +800,10 @@ class RuntimeInterpreterDispatcher:
                 context,
                 request,
                 authority=authority,
+                session_id=context.request.identity.session_id if invocations is not None else None,
             )
+        except ExecutionInvocationControlError:
+            raise
         except SecretProviderRegistrationError:
             return _unsupported_runtime_result(
                 request,
@@ -805,7 +822,8 @@ class RuntimeInterpreterDispatcher:
         uncertainty_reason = None
         try:
             if authority is None:
-                result = interpreter.execute(request)
+                result = (interpreter.execute(request) if invocations is None else
+                    interpreter.execute(request, invocations=invocations))
             else:
                 execute_with_authority = getattr(
                     interpreter,
@@ -819,7 +837,10 @@ class RuntimeInterpreterDispatcher:
                         "runtime interpreter cannot consume registered runtime authority",
                         runtime_kind=runtime_kind,
                     )
-                result = execute_with_authority(request, authority)
+                result = (execute_with_authority(request, authority) if invocations is None else
+                    execute_with_authority(request, authority, invocations=invocations))
+        except ExecutionInvocationControlError:
+            raise
         except Exception:  # noqa: BLE001 - provider faults become direct uncertainty.
             uncertainty_reason = "exception"
         else:
@@ -842,6 +863,7 @@ class RuntimeInterpreterDispatcher:
         request: RuntimeEffectRequest,
         *,
         authority: RegisteredRuntimeAuthority | None,
+        session_id=None,
     ) -> RuntimeEffectRequest:
         required_uses = required_secret_uses_for_runtime_effect(request, authority)
         if not required_uses:
@@ -852,9 +874,10 @@ class RuntimeInterpreterDispatcher:
             )
         grants = []
         for use in required_uses:
+            options = {} if session_id is None else dict(session_id=session_id)
             command = secret_authorization_command(request, use,
                 actor_subject=context.authority.worker_id, requested_at=context.intent_event.occurred_at,
-                actor_scopes=context.authority.scopes)
+                actor_scopes=context.authority.scopes, **options)
             grants.append(authorize_runtime_secret_command(self.secret_use_authorizer, command))
         return replace(
             request,
@@ -1655,6 +1678,33 @@ class ExecutionCoordinator:
             steps.close()
         raise ExecutionCoordinatorConflict("synchronous execution reached an awaited health effect")
 
+    def _runtime_profile_ready(self, intent):
+        dispatcher = self._adapter
+        if type(dispatcher) is ActivityExecutionDispatcher:
+            dispatcher = dispatcher.runtime
+        return (self._invocation_service is not None and type(dispatcher) is RuntimeInterpreterDispatcher
+            and adapter_accepts_invocations(dispatcher.interpreters.get(intent.runtime_kind), "execute_with_authority"))
+
+    def _original_runtime_marker(self, command_context, start, attempt):
+        """Current command lock, original immutable history; never observation authority."""
+        try:
+            if type(command_context) is not EffectCommandContext:
+                raise ExecutionInvocationConflict()
+            with self._unit_of_work_factory() as uow:
+                stores, reference = uow.stores, command_context.receipt
+                stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                request = stores.execution.get_request(start.request_id)
+                run = stores.execution.get_run(reference.run_id)
+                _require_execution_binding(stores, command_context, request, run, start.authority, start.fence)
+                return stores.execution.original_final_invocation(attempt.state.identity,
+                    original_event_id=attempt.original_start_event.event_id,
+                    request_fingerprint=attempt.state.request_fingerprint,
+                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+        except ExecutionInvocationControlError:
+            raise
+        except Exception:
+            raise ExecutionInvocationConflict() from None
+
     def _execution_steps(self, command: ExecuteActivityRun, *, managed: bool = False, command_context=None):
         attempted = 0
         current: ExecutionCoordinatorResult | None = None
@@ -1724,6 +1774,7 @@ class ExecutionCoordinator:
             started: EffectAttemptStartResult | None = None
             intent = None
             transition = None
+            runtime_candidate, prepared_runtime, invocations = False, None, None
             if not legacy:
                 identity = EffectAttemptIdentity(RunId(context.run.run_id), planned.activity_id.value, 1)
                 if type(context) is _ConfigurationReplayContext:
@@ -1733,6 +1784,16 @@ class ExecutionCoordinator:
                 else:
                     from control_plane_kit_operations._configuration_preparation import _propose_configuration
                     intent = _propose_configuration(identity, _runtime_effect_intent_for_context(context, planned))
+                runtime_candidate = self._permission_policy is not None and runtime_preparation_candidate(intent)
+                if runtime_candidate:
+                    selected = tuple(value for value in context.runtime_authorities
+                        if value.workspace_id == intent.source.workspace_id
+                            and value.authority_ref == intent.authority_ref and value.runtime_kind is intent.runtime_kind)
+                    if len(selected) == 1 and type(selected[0].authority) is RemoteDockerTlsAuthority:
+                        prepared_runtime = selected[0]
+                        if current.status is not CoordinatorStatus.IN_FLIGHT and not self._runtime_profile_ready(intent):
+                            return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
+                                attempted, planned.activity_id.value)
                 transition = EffectAttemptTransition(
                     EffectAttemptTransitionKind.STARTED,
                     EffectAttemptIdentity(
@@ -1801,6 +1862,34 @@ class ExecutionCoordinator:
                         selected_conflict = "effect attempt start result is invalid"
                     else:
                         existing = started.__class__ is ExistingAttempt
+
+            if runtime_candidate and service_failure is None and selected_conflict is None:
+                marker = self._original_runtime_marker(command_context, start_command, attempt)
+                if existing:
+                    # Until fresh reconciliation has its own admission, current
+                    # local selection cannot exempt ambiguous original history.
+                    if marker is None:
+                        raise ExecutionInvocationConflict()
+                    if marker.disposition is ExecutionInvocationDisposition.PLANNED:
+                        raise ExecutionInvocationPlanned(marker.invocation_id)
+                    if marker.disposition is ExecutionInvocationDisposition.DENIED:
+                        raise ExecutionInvocationDenied(marker.invocation_id)
+                    raise ExecutionInvocationExisting(marker.invocation_id)
+                if prepared_runtime is not None:
+                    if marker is None or not self._runtime_profile_ready(intent):
+                        raise ExecutionInvocationConflict()
+                    try:
+                        profile = prepared_runtime_invocation_profile(intent,
+                            original_event_id=attempt.original_start_event.event_id, runtime_authority=prepared_runtime)
+                    except (ValueError, TypeError, AttributeError):
+                        raise ExecutionInvocationConflict() from None
+                    if (marker.runtime_registration_id != prepared_runtime.registration_id
+                            or marker.target_fingerprint != profile.target_fingerprint):
+                        raise ExecutionInvocationConflict(marker.invocation_id)
+                    invocations = self._invocation_service.bind_runtime(command_context=command_context,
+                        start=start_command, started=started)
+                elif marker is not None:
+                    raise ExecutionInvocationConflict(marker.invocation_id)
 
             realization = None
             if legacy or (
@@ -1922,6 +2011,7 @@ class ExecutionCoordinator:
                 )
                 runtime_result = None
                 uncertainty_reason = None
+                cancelled = None
                 if (type(request.operation) is CleanupConfigurationInstances
                         and not self._cleanup_dispatch_matches(attempt, realization, request)):
                     runtime_result = _unsupported_runtime_result(request,
@@ -1930,10 +2020,22 @@ class ExecutionCoordinator:
                         runtime_kind=request.runtime_kind)
                 else:
                     try:
-                        runtime_result = self._adapter.execute_runtime(
-                            realization,
-                            request,
-                        )
+                        if invocations is None:
+                            runtime_result = self._adapter.execute_runtime(realization, request)
+                        else:
+                            runtime_result = self._adapter.execute_runtime(realization, request, invocations=invocations)
+                    except ExecutionInvocationDenied:
+                        if invocations is None:
+                            raise
+                        return ExecutionCoordinatorResult(context.run, CoordinatorStatus.AUTHORIZATION_DENIED,
+                            attempted, planned.activity_id.value)
+                    except ExecutionInvocationControlError:
+                        raise
+                    except asyncio.CancelledError as error:
+                        if invocations is None:
+                            raise
+                        cancelled = error
+                        uncertainty_reason = "cancelled"
                     except Exception:  # noqa: BLE001 - provider faults become uncertainty.
                         uncertainty_reason = "exception"
                     else:
@@ -1945,6 +2047,24 @@ class ExecutionCoordinator:
                     runtime_result = _uncertain_runtime_result(
                         request, boundary="adapter", reason=uncertainty_reason,
                     )
+                if invocations is not None:
+                    try:
+                        final = self._invocation_service.inspect_runtime_dispatch(invocations)
+                        if final.disposition is ExecutionInvocationDisposition.PLANNED:
+                            raise ExecutionInvocationPlanned(final.invocation_id)
+                        if final.disposition is ExecutionInvocationDisposition.DENIED:
+                            raise ExecutionInvocationDenied(final.invocation_id)
+                        if cancelled is None and final.outcome is ExecutionInvocationOutcome.PENDING:
+                            raise ExecutionInvocationConflict(final.invocation_id)
+                    except ExecutionInvocationDenied:
+                        if cancelled is not None:
+                            raise cancelled from None
+                        return ExecutionCoordinatorResult(context.run, CoordinatorStatus.AUTHORIZATION_DENIED,
+                            attempted, planned.activity_id.value)
+                    except Exception:
+                        if cancelled is not None:
+                            raise cancelled from None
+                        raise
                 runtime_result = _admit_runtime_result(
                     request,
                     _admit_managed_installation_result(
@@ -1976,6 +2096,12 @@ class ExecutionCoordinator:
                 except EffectAttemptFoldDenied:
                     service_failure = "denied"
                     service_message = "effect attempt fold authority is invalid"
+                except Exception:
+                    if cancelled is not None:
+                        raise cancelled from None
+                    raise
+                if cancelled is not None:
+                    raise cancelled
                 if service_failure is None:
                     invalid_result = False
                     result_type = type(folded)

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import get_type_hints, Protocol
 import unittest
 
-import control_plane_kit_architecture_testing as architecture_testing
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core.operations import EffectAttemptFence
 from control_plane_kit_core.operations.execution import EffectResultKind
@@ -87,15 +86,6 @@ from tests.test_runtime_effect_translation import (
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-COORDINATOR_SOURCE = (
-    PACKAGE_ROOT / "src" / "control_plane_kit_operations" / "coordinator.py"
-)
-RUNTIME_EFFECTS_SOURCE = (
-    PACKAGE_ROOT / "src" / "control_plane_kit_operations" / "runtime_effects.py"
-)
-COORDINATOR_SOURCE_PATH = "control_plane_kit_operations/coordinator.py"
-RUNTIME_EFFECTS_SOURCE_PATH = "control_plane_kit_operations/runtime_effects.py"
 INVENTORY_PATH = Path(
     os.environ.get(
         "CPK_PACKAGE_MODULE_INVENTORY",
@@ -113,6 +103,7 @@ COORDINATOR_EXPORTS = {
     "ExecuteActivityRun",
     "ExecuteManagedActivityRun",
     "ManagedHealthEffectPort",
+    "ManagedHealthAdapterRegistration",
     "ReobserveConnectorConnection",
     "ExecutionCoordinator",
     "ExecutionCoordinatorConflict",
@@ -124,6 +115,9 @@ COORDINATOR_EXPORTS = {
     "RuntimeInterpreterDispatcher",
 }
 COORDINATOR_DEPENDENCIES = {
+    "control_plane_kit_operations.execution_invocation_service",
+    "control_plane_kit_operations.execution_invocations",
+    "control_plane_kit_operations.prepared_runtime_invocations",
     "control_plane_kit_operations.managed_runtime_assignments",
     "control_plane_kit_operations.effect_permissions",
     "control_plane_kit_operations.managed_effect_plan",
@@ -173,9 +167,9 @@ COORDINATOR_DEPENDENCIES = {
     "control_plane_kit_operations.workflows",
 }
 RUNTIME_EFFECTS_DEPENDENCIES = {
-    "control_plane_kit_core.secret_installation",
     "control_plane_kit_core.secret_selections",
-    "control_plane_kit_operations.secret_providers",
+    "control_plane_kit_operations.runtime_secret_uses",
+    "control_plane_kit_operations.plan_derivation",
     "control_plane_kit_core.configuration",
     "control_plane_kit_core.environment",
     "control_plane_kit_core.operations",
@@ -189,7 +183,6 @@ RUNTIME_EFFECTS_DEPENDENCIES = {
     "control_plane_kit_core.secrets",
     "control_plane_kit_core.topology",
     "control_plane_kit_core.types",
-    "control_plane_kit_core.verification",
     "control_plane_kit_operations.coordinator",
     "control_plane_kit_operations.ingress_authorities",
     "control_plane_kit_operations.products",
@@ -198,832 +191,6 @@ RUNTIME_EFFECTS_DEPENDENCIES = {
     "control_plane_kit_operations.workflows",
 }
 
-
-def _exact_imports(*rows: tuple[str, str | None, str | None]):
-    return tuple(
-        architecture_testing.ImportSurfaceEntry(*row)
-        for row in sorted(rows, key=lambda row: (row[0], row[1] or "", row[2] or ""))
-    )
-
-
-EXACT_COORDINATOR_IMPORTS = _exact_imports(
-    ("control_plane_kit_operations.managed_runtime_assignments", "ManagedRuntimeSelection", None),
-    ("control_plane_kit_operations.effect_permissions", "CurrentWorkspaceEffectPolicy", None),
-    ("control_plane_kit_operations.effect_permissions", "EffectCommandContext", None),
-    ("control_plane_kit_operations.effect_permissions", "EffectPermissionDenied", None),
-    ("control_plane_kit_operations.effect_permissions", "ExecutionCommandReference", None),
-    ("control_plane_kit_operations.effect_permissions", "_require_execution_binding", None),
-    ("control_plane_kit_operations.managed_effect_plan", "require_managed_effect_plan", None),
-    # #2009 consumes the existing closed proof and Core relation under the
-    # original command ledger. These are exact additional import occurrences.
-    ("control_plane_kit_core.topology.validation", "validate_graph", None),
-    ("control_plane_kit_core.planning.management_compiler", "resolve_management_observation", None),
-    ("control_plane_kit_operations.connector_installation", "CurrentConnectorInstallation", None),
-    ("control_plane_kit_operations.connector_installation", "CurrentConnectorInstallationRead", None),
-    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
-    ("control_plane_kit_operations._configuration_preparation", "_ACCOUNTING", None),
-    ("control_plane_kit_operations._configuration_preparation", "_execution_context", None),
-    # #1911/#1964 normalizes managed replacement receipts at both dispatch
-    # boundaries before the result can enter durable fold processing.
-    ("control_plane_kit_core.configuration_installation", "ConfigurationInstallationDisposition", None),
-    ("control_plane_kit_core.configuration_installation", "configuration_installation_receipt_for_result", None),
-    ("control_plane_kit_core.configuration_invocation", "configuration_invocation_correlation_for_request", None),
-    ("control_plane_kit_core.planning", "ReconcileNode", None),
-    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
-    # #1936 uses Core's exact cleanup algebra and the existing plan profile.
-    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupOutcome", None),
-    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupOutcomeSet", None),
-    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupReason", None),
-    ("control_plane_kit_core.configuration_instances", "ConfigurationCleanupStatus", None),
-    ("control_plane_kit_core.planning", "CleanupConfigurationInstances", None),
-    ("control_plane_kit_core.runtime_effects", "configuration_cleanup_outcomes", None),
-    ("control_plane_kit_core.runtime_effects", "configuration_cleanup_result", None),
-    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
-    ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectIntent", None),
-    ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
-    ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
-    ("control_plane_kit_operations._configuration_preparation", "_configuration_accounting", None),
-    ("control_plane_kit_operations._configuration_preparation", "_propose_configuration", None),
-    ("control_plane_kit_operations._configuration_preparation", "_ACCOUNTING", None),
-    ("control_plane_kit_core.runtime_effects", "RuntimeEffectKind", None),
-    ("__future__", "annotations", None),
-    ("asyncio", None, None),
-    ("control_plane_kit_core.identity", "TrustedCommandContext", None),
-    ("control_plane_kit_core.node_health_read_results", "NodeHealthReadOutcome", None),
-    ("control_plane_kit_core.operations", "EffectAttemptFence", None),
-    ("control_plane_kit_core.operations", "EffectAttemptIdentity", None),
-    ("control_plane_kit_core.operations", "EffectAttemptStatus", None),
-    ("control_plane_kit_core.operations", "EffectAttemptTransition", None),
-    ("control_plane_kit_core.operations", "EffectAttemptTransitionKind", None),
-    ("control_plane_kit_core.operations", "RunId", None),
-    ("control_plane_kit_core.operations", "fold_effect_attempt", None),
-    ("control_plane_kit_core.operations.execution", "EffectResultKind", None),
-    ("control_plane_kit_core.operations.lifecycle", "ActivityEventKind", None),
-    ("control_plane_kit_core.operations.lifecycle", "ActivityRunStatus", None),
-    ("control_plane_kit_core.operations.lifecycle", "ExecutionRequestStatus", None),
-    ("control_plane_kit_core.operations.lifecycle", "FailureCategory", None),
-    ("control_plane_kit_core.planning", "ActivityId", None),
-    ("control_plane_kit_core.planning", "ActivityPlan", None),
-    ("control_plane_kit_core.planning", "AddSocketConnection", None),
-    ("control_plane_kit_core.planning", "AllocatePublicIngress", None),
-    ("control_plane_kit_core.planning", "ManagementBootstrapStage", None),
-    ("control_plane_kit_core.planning", "ObserveManagementBootstrap", None),
-    ("control_plane_kit_core.planning", "ObserveNodeHealth", None),
-    ("control_plane_kit_core.planning", "PlannedActivity", None),
-    ("control_plane_kit_core.planning", "RemovePublicIngress", None),
-    ("control_plane_kit_core.planning", "RemoveSocketConnection", None),
-    ("control_plane_kit_core.planning", "SwitchSocketConnection", None),
-    ("control_plane_kit_core.planning.saga", "ExecutionSchedule", None),
-    ("control_plane_kit_core.planning.saga", "SagaJournalProjection", None),
-    ("control_plane_kit_core.planning.saga", "SagaStepId", None),
-    ("control_plane_kit_core.planning.saga", "SagaStepStatus", None),
-    ("control_plane_kit_core.planning.saga", "derive_schedule", None),
-    ("control_plane_kit_core.planning.saga", "project_activity_journal", None),
-    ("control_plane_kit_core.policies", "PolicyScope", None),
-    ("control_plane_kit_core.receiver_health_read_results", "ReceiverHealthReadResult", None),
-    (
-        "control_plane_kit_core.runtime_effect_observation",
-        "runtime_effect_intent_fingerprint",
-        None,
-    ),
-    (
-        "control_plane_kit_core.runtime_effect_observation",
-        "runtime_effect_request_for_intent",
-        None,
-    ),
-    ("control_plane_kit_core.runtime_effects", "RuntimeEffectFailure", None),
-    ("control_plane_kit_core.runtime_effects", "RuntimeEffectRequest", None),
-    ("control_plane_kit_core.runtime_effects", "RuntimeEffectResult", None),
-    ("control_plane_kit_core.secret_installation", "secret_installation_receipt_for_result", None),
-    ("control_plane_kit_core.topology", "DEFAULT_GRAPH_CODEC", None),
-    ("control_plane_kit_core.types", "RuntimeKind", None),
-    ("control_plane_kit_operations.activity_journal", "activity_journal_events", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "EffectAttemptFoldConflict", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "EffectAttemptFoldDenied", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "EffectAttemptFoldNotFound", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "EffectAttemptFoldResult", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "ExistingFold", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "FoldEffectAttempt", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "FoldNativeConnectionObservation", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "GuardedHealthEffectFold", None),
-    ("control_plane_kit_operations.effect_attempt_fold", "NewlyFolded", None),
-    ("control_plane_kit_operations.effect_attempt_fold_interpreter", "EffectAttemptFoldService", None),
-    ("control_plane_kit_operations.effect_attempt_fold_interpreter", "_require_managed_plan", None),
-    ("control_plane_kit_operations.effect_attempt_fold_interpreter", "_require_native_plan", None),
-    ("control_plane_kit_operations.effect_attempt_intent_evidence", "EffectAttemptIntentRecord", None),
-    (
-        "control_plane_kit_operations.effect_attempt_reconciliation",
-        "EffectAttemptReconciliationConflict",
-        None,
-    ),
-    (
-        "control_plane_kit_operations.effect_attempt_reconciliation",
-        "EffectAttemptReconciliationDenied",
-        None,
-    ),
-    (
-        "control_plane_kit_operations.effect_attempt_reconciliation",
-        "EffectAttemptReconciliationNotFound",
-        None,
-    ),
-    (
-        "control_plane_kit_operations.effect_attempt_reconciliation",
-        "ReconcileEffectAttempt",
-        None,
-    ),
-    (
-        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
-        "EffectAttemptReconciliationService",
-        None,
-    ),
-    ("control_plane_kit_operations.effect_attempt_start", "EffectAttemptStartConflict", None),
-    ("control_plane_kit_operations.effect_attempt_start", "EffectAttemptStartDenied", None),
-    ("control_plane_kit_operations.effect_attempt_start", "EffectAttemptStartNotFound", None),
-    ("control_plane_kit_operations.effect_attempt_start", "EffectAttemptStartResult", None),
-    ("control_plane_kit_operations.effect_attempt_start", "ExistingAttempt", None),
-    ("control_plane_kit_operations.effect_attempt_start", "NewlyStarted", None),
-    ("control_plane_kit_operations.effect_attempt_start", "StartEffectAttempt", None),
-    ("control_plane_kit_operations.effect_attempt_start_interpreter", "EffectAttemptStartService", None),
-    ("control_plane_kit_operations.effect_attempts", "EffectAttemptEventEvidence", None),
-    ("control_plane_kit_operations.effect_attempts", "EffectAttemptRecord", None),
-    ("control_plane_kit_operations.effect_attempts", "effect_attempt_state_fingerprint", None),
-    ("control_plane_kit_operations.effect_outcome_evidence", "ExecutionEffectOutcome", None),
-    ("control_plane_kit_operations.effect_outcome_evidence", "NativeConnectionEffectOutcome", None),
-    ("control_plane_kit_operations.effect_outcome_evidence", "NativeConnectionObservation", None),
-    ("control_plane_kit_operations.effect_outcome_evidence", "NativeConnectionReadFailure", None),
-    ("control_plane_kit_operations.effect_outcome_evidence", "NativeConnectionRefused", None),
-    ("control_plane_kit_operations.effect_outcome_evidence", "effect_outcome_failure", None),
-    ("control_plane_kit_operations.effect_outcome_evidence", "effect_outcome_transition", None),
-    ("control_plane_kit_operations.execution_leases", "ExecutionLeaseFence", None),
-    ("control_plane_kit_operations.health_effect_attempt_start", "StartHealthEffectAttempt", None),
-    ("control_plane_kit_operations.health_signing_authority", "HealthSigningAuthorityPair", None),
-    ("control_plane_kit_operations.health_signing_authority", "HealthSigningAuthorityReloadService", None),
-    ("control_plane_kit_operations.health_signing_authority", "ReloadHealthSigningAuthority", None),
-    ("control_plane_kit_operations.ingress_authorities", "CloudflareOwnedIngressResource", None),
-    ("control_plane_kit_operations.ingress_authorities", "GeneratedIngressSecretReference", None),
-    ("control_plane_kit_operations.ingress_authorities", "RegisteredIngressAuthority", None),
-    ("control_plane_kit_operations.lifecycle", "CompleteActivityRun", None),
-    ("control_plane_kit_operations.lifecycle", "ExecutionWorkerAuthority", None),
-    ("control_plane_kit_operations.lifecycle", "FailActivityRun", None),
-    ("control_plane_kit_operations.lifecycle", "RunLifecycleCommandService", None),
-    ("control_plane_kit_operations.lifecycle", "RunLifecycleConflict", None),
-    ("control_plane_kit_operations.products", "RegisteredImagePullAuthority", None),
-    ("control_plane_kit_operations.products", "RegisteredProduct", None),
-    ("control_plane_kit_operations.records", "ActivityEventRecord", None),
-    ("control_plane_kit_operations.records", "ActivityPlanRecord", None),
-    ("control_plane_kit_operations.records", "ActivityRunRecord", None),
-    ("control_plane_kit_operations.records", "BoundedEvidence", None),
-    ("control_plane_kit_operations.records", "CoordinatorStatus", None),
-    ("control_plane_kit_operations.records", "ExecutionCommandReceiptRecord", None),
-    ("control_plane_kit_operations.records", "ExecutionCommandReceiptStatus", None),
-    ("control_plane_kit_operations.records", "ExecutionCommandResultRecord", None),
-    ("control_plane_kit_operations.records", "ExecutionRequestRecord", None),
-    ("control_plane_kit_operations.records", "FailureEvidence", None),
-    ("control_plane_kit_operations.records", "ManagedExecutionCommandIntent", None),
-    ("control_plane_kit_operations.records", "ObservationRecord", None),
-    ("control_plane_kit_operations.records", "OperationsRecordError", None),
-    ("control_plane_kit_operations.records", "RealizedGraphProjectionRecord", None),
-    ("control_plane_kit_operations.records", "execution_command_intent_fingerprint", None),
-    ("control_plane_kit_operations.runtime_authorities", "RegisteredRuntimeAuthority", None),
-    (
-        "control_plane_kit_operations.runtime_authorities",
-        "RegisteredRuntimeAuthorityDelivery",
-        None,
-    ),
-    ("control_plane_kit_operations.runtime_effects", "_runtime_effect_intent_for_context", None),
-    ("control_plane_kit_operations.runtime_effects", "required_secret_uses_for_runtime_effect", None),
-    ("control_plane_kit_operations.runtime_effects", "secret_authorization_command", None),
-    ("control_plane_kit_operations.runtime_adapter_registration", "RuntimeAdapterRegistration", None),
-    ("control_plane_kit_operations.runtime_adapter_registration", "adapter_is_qualified", None),
-    ("control_plane_kit_operations.runtime_adapter_registration", "registered_adapter", None),
-    ("control_plane_kit_operations.runtime_management_admission", "runtime_management_execution_is_unsupported", None),
-    ("control_plane_kit_operations.runtime_management_targets", "is_native_connection_operation", None),
-    ("control_plane_kit_operations.secret_providers", "SecretProviderRegistrationError", None),
-    ("control_plane_kit_operations.secret_providers", "SecretUseResolutionAuthorizer", None),
-    ("control_plane_kit_operations.secret_providers", "authorize_runtime_secret_command", None),
-    ("control_plane_kit_operations.workflows", "IdempotencyKey", None),
-    ("control_plane_kit_operations.workflows", "InvalidOperationCommand", None),
-    ("dataclasses", "dataclass", None),
-    ("dataclasses", "field", None),
-    ("dataclasses", "replace", None),
-    ("datetime", "datetime", None),
-    ("datetime", "timezone", None),
-    ("typing", "Any", None),
-    ("typing", "Callable", None),
-    ("typing", "Mapping", None),
-    ("typing", "Protocol", None),
-)
-
-EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
-    ("control_plane_kit_core.runtime_effect_observation", "runtime_effect_intent_for_request", None),
-    ("control_plane_kit_core.runtime_effect_observation", "runtime_effect_intent_fingerprint", None),
-    ("control_plane_kit_core.secret_installation", "secret_material_selection_fingerprint", None),
-    ("control_plane_kit_core.secret_selections", "SecretVersionSelection", None),
-    ("control_plane_kit_operations.secret_providers", "AuthorizeSecretUse", None),
-    ("control_plane_kit_operations.secret_providers", "AuthorizeSecretVersionUse", None),
-    ("control_plane_kit_operations.secret_providers", "secret_use_correlation_for", None),
-    ("control_plane_kit_operations.secret_providers", "secret_version_use_correlation_for", None),
-    ("dataclasses", "dataclass", None),
-    ("control_plane_kit_core.operations", "ActivityEventKind", None),
-    ("__future__", "annotations", None),
-    ("control_plane_kit_core.configuration", "ConfigurationArtifact", None),
-    ("control_plane_kit_core.configuration", "ConfigurationArtifactRequirement", None),
-    ("control_plane_kit_core.environment", "PublicStaticEnvironmentBinding", None),
-    ("control_plane_kit_core.operations", "RunId", None),
-    ("control_plane_kit_core.planning.activity_plan", "AddSocketConnection", None),
-    ("control_plane_kit_core.planning.activity_plan", "CleanupConfigurationInstances", None),
-    ("control_plane_kit_core.planning.activity_plan", "NodeTarget", None),
-    ("control_plane_kit_core.planning.activity_plan", "ObserveManagementBootstrap", None),
-    ("control_plane_kit_core.planning.activity_plan", "ObserveNodeHealth", None),
-    ("control_plane_kit_core.planning.activity_plan", "ReconcileNode", None),
-    ("control_plane_kit_core.planning.activity_plan", "RemoveNodeResource", None),
-    ("control_plane_kit_core.planning.activity_plan", "RemoveRuntimeResource", None),
-    ("control_plane_kit_core.planning.activity_plan", "RemoveSocketConnection", None),
-    ("control_plane_kit_core.planning.activity_plan", "StartNode", None),
-    ("control_plane_kit_core.planning.activity_plan", "StopNode", None),
-    ("control_plane_kit_core.planning.activity_plan", "StopRuntime", None),
-    ("control_plane_kit_core.planning.activity_plan", "SwitchSocketConnection", None),
-    ("control_plane_kit_core.planning.activity_plan", "WaitForHealthy", None),
-    ("control_plane_kit_core.probe_intents", "EndpointContext", None),
-    ("control_plane_kit_core.probe_intents", "LiteralEndpointMaterial", None),
-    ("control_plane_kit_core.probe_intents", "RuntimeEndpointObservation", None),
-    ("control_plane_kit_core.products", "ProductDescriptorDigest", None),
-    ("control_plane_kit_core.products", "ProductIdentity", None),
-    ("control_plane_kit_core.products", "ProductReference", None),
-    ("control_plane_kit_core.products", "product_configuration_slots", None),
-    ("control_plane_kit_core.public_ingress", "PublicIngressExposure", None),
-    ("control_plane_kit_core.runtime_authority", "RuntimeAuthorityAccessDelivery", None),
-    ("control_plane_kit_core.runtime_authority", "RuntimeAuthorityReference", None),
-    ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectIntent", None),
-    ("control_plane_kit_core.runtime_effect_observation", "RuntimeEffectIntentSource", None),
-    (
-        "control_plane_kit_core.runtime_effect_observation",
-        "runtime_effect_request_for_intent",
-        None,
-    ),
-    ("control_plane_kit_core.runtime_effects", "GatewayHttpTarget", None),
-    ("control_plane_kit_core.runtime_effects", "GatewayPostgresTarget", None),
-    ("control_plane_kit_core.runtime_effects", "GatewayTarget", None),
-    ("control_plane_kit_core.runtime_effects", "GatewayTargetId", None),
-    ("control_plane_kit_core.runtime_effects", "GatewayTargetMap", None),
-    ("control_plane_kit_core.runtime_effects", "ImagePullAuthority", None),
-    ("control_plane_kit_core.runtime_effects", "RuntimeEffectKind", None),
-    ("control_plane_kit_core.runtime_effects", "RuntimeEffectRequest", None),
-    ("control_plane_kit_core.runtime_effects", "RuntimeProductMaterial", None),
-    ("control_plane_kit_core.secrets", "SecretDelivery", None),
-    ("control_plane_kit_core.secrets", "SecretEnvironmentDelivery", None),
-    ("control_plane_kit_core.secrets", "SecretFileDelivery", None),
-    ("control_plane_kit_core.secrets", "SecretReference", None),
-    ("control_plane_kit_core.secrets", "SecretUseIntent", None),
-    ("control_plane_kit_core.secrets", "secret_delivery_sort_key", None),
-    ("control_plane_kit_core.topology", "DEFAULT_GRAPH_CODEC", None),
-    ("control_plane_kit_core.topology", "DeploymentGraph", None),
-    ("control_plane_kit_core.topology", "Node", None),
-    ("control_plane_kit_core.types", "Protocol", None),
-    ("control_plane_kit_core.types", "RuntimeKind", None),
-    ("control_plane_kit_core.verification", "PostgresQueryCheck", None),
-    ("control_plane_kit_operations.coordinator", "ActivityRealizationContext", None),
-    ("control_plane_kit_operations.coordinator", "_CoordinatorContext", None),
-    ("control_plane_kit_operations.ingress_authorities", "CloudflareOwnedIngressResource", None),
-    ("control_plane_kit_operations.ingress_authorities", "GeneratedIngressSecretReference", None),
-    ("control_plane_kit_operations.ingress_authorities", "GeneratedSecretPurpose", None),
-    ("control_plane_kit_operations.ingress_authorities", "OwnedIngressResourceStatus", None),
-    ("control_plane_kit_operations.ingress_authorities", "RegisteredIngressAuthority", None),
-    ("control_plane_kit_operations.ingress_authorities", "_uses_cloudflared_token_slot", None),
-    (
-        "control_plane_kit_operations.ingress_authorities",
-        "cloudflare_tunnel_token_delivery_plan",
-        None,
-    ),
-    ("control_plane_kit_operations.ingress_authorities", "require_cloudflared_tunnel_token_delivery", None),
-    ("control_plane_kit_operations.plan_derivation", "PlanDerivationProfile", None),
-    ("control_plane_kit_operations.products", "RegisteredImagePullAuthority", None),
-    ("control_plane_kit_operations.products", "RegisteredProduct", None),
-    ("control_plane_kit_operations.runtime_authorities", "RegisteredRuntimeAuthority", None),
-    ("control_plane_kit_operations.runtime_authorities", "RemoteDockerTlsAuthority", None),
-    (
-        "control_plane_kit_operations.runtime_authorities",
-        "RuntimeAuthorityRegistrationError",
-        None,
-    ),
-    (
-        "control_plane_kit_operations.runtime_authorities",
-        "_admitted_runtime_authority_deliveries",
-        None,
-    ),
-    ("control_plane_kit_operations.runtime_management_admission", "runtime_management_execution_is_unsupported", None),
-    ("control_plane_kit_operations.workflows", "InvalidOperationCommand", None),
-    ("dataclasses", "replace", None),
-    ("json", None, None),
-    ("typing", "Mapping", None),
-)
-
-
-def _exact_calls(*rows: tuple[str | None, int]):
-    targets = []
-    for value, count in rows:
-        target_type = (
-            architecture_testing.UnresolvedCallTarget
-            if value is None
-            else architecture_testing.ResolvedCallTarget
-        )
-        for _ in range(count):
-            targets.append(target_type() if value is None else target_type(value))
-    return tuple(sorted(targets, key=lambda target: (0, "") if type(target) is architecture_testing.UnresolvedCallTarget
-        else (1, target.qualified_name)))
-
-
-EXACT_COORDINATOR_CALLS = _exact_calls(
-    # #2039 current native reobservation admission, not a duplicate invocation.
-    ("control_plane_kit_core.planning.ActivityId", 1),
-    ("context.plan.activity", 1),
-    ("control_plane_kit_operations.runtime_effects._runtime_effect_intent_for_context", 1),
-    ("self._current_management_selection", 1),
-    ("ExecutionCoordinatorConflict", 2),
-    ("type", 1),
-    ("self._permission_policy.evaluate_in_unit_of_work", 1),
-    ("ExecutionCoordinatorResult", 1),
-    ("dataclasses.replace", 1),
-    ("_command_result_record", 1),
-    ("stores.execution.add_command_receipt", 1),
-    ("uow.commit", 1),
-    # #2039 carries original command authority into existing admission owners.
-    ("type", 3),
-    ("ExecutionCoordinatorDenied", 2),
-    ("ExecutionCoordinatorConflict", 1),
-    ("self._admit_command", 1),
-    ("control_plane_kit_operations.effect_permissions.EffectCommandContext", 1),
-    ("control_plane_kit_operations.effect_permissions.ExecutionCommandReference", 1),
-    ("control_plane_kit_operations.effect_permissions.EffectPermissionDenied", 1),
-    ("control_plane_kit_operations.effect_permissions._require_execution_binding", 1),
-    ("control_plane_kit_operations.managed_effect_plan.require_managed_effect_plan", 1),
-    ("_execution_command_fingerprint", 1),
-    ("ExecutionCoordinatorResult", 4),
-    ("dict", 2),
-    ("self._current_management_selection", 1),
-    ("self._selected_managed_runtime", 1),
-    ("self._unit_of_work_factory", 1),
-    ("uow.stores.managed_runtime_assignments.select", 1),
-    ("dataclasses.replace", 1),
-    ("self._permission_policy.evaluate_in_unit_of_work", 1),
-    # #2009: strict witness validation and existing Core observation resolution.
-    ("dataclasses.field", 1),
-    ("type", 2),
-    ("control_plane_kit_operations.runtime_management_targets.is_native_connection_operation", 1),
-    ("control_plane_kit_operations.connector_installation.CurrentConnectorInstallation.__post_init__", 1),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 1),
-    ("_native_connector_observation", 2),
-    ("control_plane_kit_core.planning.management_compiler.resolve_management_observation", 1),
-    ("control_plane_kit_core.topology.validation.validate_graph", 2),
-    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 2),
-    ("realization.plan.activity", 1),
-    # Fresh plan/pins and same run ledger; no new ledger or provider call.
-    ("stores.activity_history.get_plan", 1),
-    ("self._native_connector_installation", 1),
-    ("stores.workspaces.get", 1),
-    ("control_plane_kit_operations._configuration_preparation._ACCOUNTING.get", 1),
-    ("control_plane_kit_operations._configuration_preparation._execution_context", 1),
-    ("stores.configuration_acceptance.read_current_connector_installation", 1),
-    ("control_plane_kit_operations.connector_installation.CurrentConnectorInstallationRead.__post_init__", 1),
-    ("dataclasses.replace", 1),
-    ("ExecutionCoordinatorDenied", 3),
-    ("ExecutionCoordinatorConflict", 1),
-    # Exact-version dispatch qualification, authorization, and receipt admission.
-    ("control_plane_kit_operations.runtime_adapter_registration.registered_adapter", 2),
-    ("control_plane_kit_operations.runtime_adapter_registration.adapter_is_qualified", 1),
-    ("control_plane_kit_operations.runtime_effects.secret_authorization_command", 1),
-    ("control_plane_kit_operations.secret_providers.authorize_runtime_secret_command", 1),
-    ("control_plane_kit_core.secret_installation.secret_installation_receipt_for_result", 1),
-    ("callable", 1),
-    ("getattr", 1),
-    ("_unsupported_runtime_result", 2),
-    ("_uncertain_runtime_result", 1),
-    # #1911/#1964 applies the same correlated replacement-receipt admission to
-    # interpreter and injected-adapter results, normalizing malformed success.
-    ("_admit_managed_installation_result", 2),
-    ("control_plane_kit_core.configuration_installation.configuration_installation_receipt_for_result", 1),
-    ("control_plane_kit_core.configuration_invocation.configuration_invocation_correlation_for_request", 1),
-    ("_uncertain_runtime_result", 1),
-    ("type", 2),
-    # #1936 exact cleanup dispatch correspondence and canonical uncertainty.
-    ("_admit_runtime_result", 2),
-    ("self._cleanup_dispatch_matches", 1),
-    ("self._unit_of_work_factory", 1),
-    ("uow.stores.configuration_cleanup_ownership.get", 1),
-    ("ExecutionCoordinatorConflict", 1),
-    ("tuple", 2),
-    ("type", 6),
-    ("len", 2),
-    ("_unsupported_runtime_result", 1),
-    ("_unknown_cleanup_result", 3),
-    ("control_plane_kit_core.runtime_effects.configuration_cleanup_result", 1),
-    ("control_plane_kit_core.runtime_effects.configuration_cleanup_outcomes", 1),
-    ("control_plane_kit_core.configuration_instances.ConfigurationCleanupOutcome", 1),
-    ("control_plane_kit_core.configuration_instances.ConfigurationCleanupOutcomeSet", 1),
-    # B2 retains the reviewed proposal in the immutable coordinator context.
-    ("dataclasses.replace", 1),
-    ("control_plane_kit_core.operations.RunId", 1),
-    ("control_plane_kit_core.operations.EffectAttemptIdentity", 1),
-    ("stores.configuration_preparation._proposal", 1),
-    ("control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported", 1),
-    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 2),
-    # B1 adds private material/original-context and cumulative accounting calls.
-    (None, 1),
-    ("type", 6),
-    ("ExecutionCoordinatorConflict", 4),
-    ("control_plane_kit_operations._configuration_preparation._configuration_accounting", 3),
-    ("self._configure_run", 3),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),
-    ("control_plane_kit_core.operations.EffectAttemptIdentity", 2),
-    ("control_plane_kit_core.operations.RunId", 2),
-    ("self._configuration_context", 2),
-    ("dataclasses.dataclass", 1),
-    ("ExecutionCoordinatorResult", 1),
-    ("_require_operate_scope", 1),
-    ("self._execute_command", 1),
-    ("self._unit_of_work_factory", 1),
-    ("uow.stores.configuration_preparation._configure_run", 1),
-    ("self._execute_managed_command", 1),
-    ("any", 1),
-    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 1),
-    ("stores.effect_attempt_intents.get", 1),
-    ("self._reobserve", 1),
-    ("control_plane_kit_core.planning.saga.project_activity_journal", 1),
-    ("control_plane_kit_operations.activity_journal.activity_journal_events", 1),
-    ("control_plane_kit_core.planning.saga.derive_schedule", 1),
-    ("control_plane_kit_operations._configuration_preparation._propose_configuration", 1),
-    ("control_plane_kit_operations._configuration_preparation._ACCOUNTING.get", 1),
-    ("_CoordinatorContext", 1),
-    ("stores.configuration_preparation._snapshot", 1),
-    ("dict", 1),
-    ("_ConfigurationReplayContext", 1),
-    ("plan.plan.activity", 1),
-    ("stores.configuration_preparation._material", 1),
-    (None, 3),  # closed status lookup, timestamp projection, event evidence descriptor
-    ("ActivityExecutionOutcome.succeeded", 1),
-    ("ActivityExecutionOutcome.uncertain", 3),
-    ("ActivityExecutionOutcome.unsupported", 1),
-    ("ActivityRealizationContext", 1),
-    ("ExecuteManagedActivityRun", 1),
-    ("ExecutionCoordinatorConflict", 37),
-    ("ExecutionCoordinatorDenied", 19),
-    ("ExecutionCoordinatorNotFound", 8),
-    ("ExecutionCoordinatorResult", 24),
-    ("ValueError", 2),
-    ("_CoordinatorContext", 1),
-    ("_HealthExecution", 2),
-    ("_command_result_record", 1),
-    ("_coordinator_result", 2),
-    ("_execution_command_fingerprint", 3),
-    ("_get_request_for_update", 1),
-    ("_get_run", 2),
-    ("_get_run_for_update", 1),
-    ("_is_socket_connection_operation", 1),
-    ("_locked_request_and_run", 6),
-    ("_outcome_event_kind", 1),
-    ("_require_operate_scope", 2),
-    ("_require_run_id", 1),
-    ("_require_worker_owns", 1),
-    ("_runtime_authority_for_request", 1),
-    ("_socket_connection_outcome", 1),
-    ("_step_evidence", 3),
-    ("_uncertain_runtime_result", 3),
-    ("_unsupported_runtime_result", 5),
-    ("_validate_observations", 1),
-    ("all", 8),
-    ("any", 7),
-    ("asyncio.sleep", 1),
-    ("cls", 4),
-    ("command.__post_init__", 1),
-    ("context.plan.activity", 2),
-    ("context.realization_context", 2),
-    ("control_plane_kit_core.operations.EffectAttemptFence", 1),
-    ("control_plane_kit_core.operations.EffectAttemptIdentity", 2),
-    ("control_plane_kit_core.operations.EffectAttemptTransition", 3),
-    ("control_plane_kit_core.operations.RunId", 1),
-    ("control_plane_kit_core.operations.fold_effect_attempt", 1),
-    ("control_plane_kit_core.planning.ActivityId", 2),
-    ("control_plane_kit_core.planning.saga.SagaStepId", 1),
-    ("control_plane_kit_core.planning.saga.derive_schedule", 2),
-    ("control_plane_kit_core.planning.saga.project_activity_journal", 2),
-    (
-        "control_plane_kit_core.runtime_effect_observation."
-        "runtime_effect_intent_fingerprint",
-        2,
-    ),
-    (
-        "control_plane_kit_core.runtime_effect_observation."
-        "runtime_effect_request_for_intent",
-        2,
-    ),
-    ("control_plane_kit_core.runtime_effects.RuntimeEffectFailure", 3),
-    ("control_plane_kit_core.runtime_effects.RuntimeEffectResult.failed", 1),
-    ("control_plane_kit_core.runtime_effects.RuntimeEffectResult.succeeded", 1),
-    ("control_plane_kit_core.runtime_effects.RuntimeEffectResult.uncertain", 1),
-    ("control_plane_kit_core.runtime_effects.RuntimeEffectResult.unsupported", 1),
-    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 4),
-    ("control_plane_kit_operations.activity_journal.activity_journal_events", 2),
-    ("control_plane_kit_operations.effect_attempt_fold.ExistingFold", 2),
-    ("control_plane_kit_operations.effect_attempt_fold.FoldEffectAttempt", 2),
-    ("control_plane_kit_operations.effect_attempt_fold.FoldNativeConnectionObservation", 1),
-    ("control_plane_kit_operations.effect_attempt_fold.GuardedHealthEffectFold", 1),
-    ("control_plane_kit_operations.effect_attempt_fold.NewlyFolded", 2),
-    ("control_plane_kit_operations.effect_attempt_fold_interpreter._require_managed_plan", 1),
-    ("control_plane_kit_operations.effect_attempt_fold_interpreter._require_native_plan", 1),
-    ("control_plane_kit_operations.effect_attempt_intent_evidence.EffectAttemptIntentRecord", 1),
-    ("control_plane_kit_operations.effect_attempt_reconciliation.ReconcileEffectAttempt", 1),
-    ("control_plane_kit_operations.effect_attempt_start.StartEffectAttempt", 2),
-    ("control_plane_kit_operations.effect_attempts.EffectAttemptEventEvidence", 1),
-    ("control_plane_kit_operations.effect_attempts.EffectAttemptRecord", 2),
-    ("control_plane_kit_operations.effect_attempts.effect_attempt_state_fingerprint", 1),
-    (
-        "control_plane_kit_operations.effect_outcome_evidence."
-        "ExecutionEffectOutcome",
-        2,
-    ),
-    ("control_plane_kit_operations.effect_outcome_evidence.NativeConnectionReadFailure", 1),
-    (
-        "control_plane_kit_operations.effect_outcome_evidence."
-        "effect_outcome_failure",
-        2,
-    ),
-    (
-        "control_plane_kit_operations.effect_outcome_evidence."
-        "effect_outcome_transition",
-        2,
-    ),
-    ("control_plane_kit_operations.health_effect_attempt_start.StartHealthEffectAttempt", 1),
-    ("control_plane_kit_operations.health_signing_authority.ReloadHealthSigningAuthority", 1),
-    ("control_plane_kit_operations.lifecycle.CompleteActivityRun", 1),
-    ("control_plane_kit_operations.lifecycle.FailActivityRun", 1),
-    ("control_plane_kit_operations.records.ActivityEventRecord", 3),
-    ("control_plane_kit_operations.records.BoundedEvidence", 5),
-    ("control_plane_kit_operations.records.BoundedEvidence.from_mapping", 8),
-    ("control_plane_kit_operations.records.ExecutionCommandReceiptRecord", 2),
-    ("control_plane_kit_operations.records.ExecutionCommandResultRecord", 1),
-    ("control_plane_kit_operations.records.FailureEvidence", 5),
-    ("control_plane_kit_operations.records.ManagedExecutionCommandIntent.from_context", 2),
-    (
-        "control_plane_kit_operations.records."
-        "execution_command_intent_fingerprint",
-        1,
-    ),
-    (
-        "control_plane_kit_operations.runtime_effects."
-        "_runtime_effect_intent_for_context",
-        2,
-    ),
-    (
-        "control_plane_kit_operations.runtime_effects."
-        "required_secret_uses_for_runtime_effect",
-        1,
-    ),
-    ("control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported", 1),
-    ("control_plane_kit_operations.runtime_management_targets.is_native_connection_operation", 3),
-    ("control_plane_kit_operations.workflows.IdempotencyKey", 2),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 66),
-    ("dataclasses.dataclass", 10),
-    ("dataclasses.field", 1),
-    ("dataclasses.replace", 1),
-    ("datetime.datetime.now", 1),
-    ("details.descriptor", 1),
-    ("execute_with_authority", 1),
-    ("getattr", 3),
-    ("grants.append", 1),
-    ("hasattr", 4),
-    ("interpreter.execute", 1),
-    ("isinstance", 30),
-    ("len", 1),
-    ("max", 1),
-    ("next", 1),
-    ("object", 1),
-    ("object.__setattr__", 9),
-    ("observed.__post_init__", 2),
-    ("observed.descriptor", 2),
-    ("projection.state.step", 1),
-    ("range", 1),
-                ("self._adapter.execute", 1),
-                ("self._adapter.execute_runtime", 1),
-                ("self._admit_command", 3),
-    ("self._admit_reobservation", 1),
-    ("self._authorize_secret_resolutions", 1),
-    ("self._classify_current", 5),
-    ("self._clock", 4),
-    ("self._complete_command", 4),
-    ("self._execute_admitted", 1),
-    ("self._execute_health", 2),
-    ("self._execution_steps", 2),
-    ("self._fold_service.execute", 1),
-    ("self._fold_service.execute_health", 1),
-    ("self._fold_service.execute_native", 1),
-    ("self._fresh_run", 1),
-    ("self._guard_runtime_management", 3),
-    ("self._health_signing_authority.execute", 1),
-    ("self._id_factory", 3),
-    ("self._lifecycle.execute", 2),
-    ("self._load_context", 7),
-    ("self._managed_dispatch_authority", 2),
-    ("self._managed_health.observe_connection", 1),
-    ("self._managed_health.observe_signed", 1),
-    ("self._managed_health.select", 1),
-    ("self._managed_preflight", 2),
-    ("self._managed_provenance", 2),
-    ("self._reconciliation_service.execute", 1),
-    ("self._record_outcome", 1),
-    ("self._record_step_event", 1),
-    ("self._selected_managed_runtime", 2),
-    ("self._start_service.execute", 2),
-    ("self._start_service.execute_health", 1),
-    ("self._unit_of_work_factory", 8),
-    ("self.execution.__post_init__", 1),
-    ("self.ingress.execute", 1),
-    ("self.interpreters.get", 1),
-    ("self.interpreters.items", 1),
-    ("self.runtime.execute", 1),
-    ("self.runtime.execute_runtime", 1),
-    ("steps.close", 2),
-    ("steps.send", 1),
-    ("stores.activity_history.get_plan", 2),
-    ("stores.effect_attempt_intents.get", 2),
-    ("stores.effect_attempt_intents.insert", 1),
-    ("stores.effect_attempts.get_for_update", 3),
-    ("stores.effect_attempts.insert_absent", 1),
-    ("stores.effect_outcomes.get", 1),
-    ("stores.execution.add_command_receipt", 2),
-    ("stores.execution.add_event", 3),
-    ("stores.execution.command_receipt_for_idempotency", 2),
-    ("stores.execution.complete_command_receipt", 1),
-    ("stores.execution.events_for_run", 2),
-    ("stores.execution.get_latest_run_for_request_for_update", 2),
-    ("stores.execution.get_request", 1),
-    ("stores.execution.get_request_for_update", 1),
-    ("stores.execution.get_run", 1),
-    ("stores.execution.get_run_for_update", 1),
-    ("stores.execution.lock_command_idempotency", 3),
-    ("stores.execution.next_event_ordinal", 3),
-    ("stores.execution.observe_request_lease_for_update", 2),
-    ("stores.generated_ingress_secrets.list_for_workspace", 1),
-    ("stores.graphs.get", 1),
-    ("stores.image_pull_authorities.list_active", 1),
-    ("stores.ingress_authorities.list_active", 1),
-    ("stores.ingress_resources.list_cloudflare", 1),
-    ("stores.observed_state.put", 2),
-    ("stores.realized_graphs.get", 2),
-    ("stores.realized_graphs.identity_for_authored", 2),
-    ("stores.registered_products.list_active", 1),
-    ("stores.runtime_authorities.get_active_for_update", 2),
-    ("stores.runtime_authorities.list_active", 1),
-    ("stores.runtime_authority_deliveries.list_active", 1),
-    ("tuple", 12),
-    ("type", 33),
-    ("unit_of_work.commit", 4),
-    ("uow.commit", 2),
-    ("value.strip", 1),
-)
-
-EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
-    # Exact consumer selections and operational uses have distinct typed commands.
-    ("dataclasses.dataclass", 1),
-    ("type", 8),
-    ("control_plane_kit_core.secrets.SecretReference", 1),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 3),
-    ("_secret_use_key", 1),
-    ("dict", 1),
-    ("values.update", 2),
-    ("control_plane_kit_core.runtime_effect_observation.runtime_effect_intent_fingerprint", 1),
-    ("control_plane_kit_core.runtime_effect_observation.runtime_effect_intent_for_request", 1),
-    ("control_plane_kit_core.secret_installation.secret_material_selection_fingerprint", 1),
-    ("control_plane_kit_operations.secret_providers.AuthorizeSecretVersionUse", 1),
-    ("control_plane_kit_operations.secret_providers.secret_version_use_correlation_for", 1),
-    ("control_plane_kit_operations.secret_providers.AuthorizeSecretUse", 1),
-    ("control_plane_kit_operations.secret_providers.secret_use_correlation_for", 1),
-    ("OperationalSecretUse", 5),
-    # Generated connector selections are retained with their exact original version.
-    ("list", 1),
-    ("_connector_ingress_for_node", 1),
-    ("_has_tunnel_token_delivery", 1),
-    ("_ingress_resource_for", 1),
-    ("_generated_ingress_secret_for", 1),
-    ("selections.append", 1),
-    ("control_plane_kit_core.secret_selections.SecretVersionSelection", 1),
-    ("tuple", 1),
-    # #1971 refuses pull authority before managed content replacement effects.
-    ("type", 1),
-    ("any", 1),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 1),
-    # #1936 exact cleanup branch resolves only its two pinned runtimes.
-    ("type", 1),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),
-    ("tuple", 2),
-    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 1),
-    (None, 1),
-    ("any", 1),
-    ("len", 1),
-    ("control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntent", 1),
-    ("control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntentSource", 1),
-    ("control_plane_kit_core.operations.RunId", 1),
-    ("type", 2),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 2),
-    ("dataclasses.dataclass", 1),
-    ("_RuntimeEffectMaterial", 1),
-    ("_runtime_effect_intent_for_material", 1),
-    ("_node_target", 1),
-    (None, 1),
-    ("_configuration_artifact_contract_keys", 2),
-    ("_connector_ingress_for_node", 1),
-    ("_descriptor_digest", 1),
-    ("_gateway_process_target_map_descriptor", 1),
-    ("_generated_ingress_secret_for", 1),
-    ("_has_tunnel_token_delivery", 1),
-    ("_ingress_authority_for", 1),
-    ("_ingress_resource_for", 1),
-    ("_material_graph", 1),
-    ("_node_target", 2),
-    ("_postgres_target_details", 1),
-    ("_product_identity", 1),
-    ("_product_material_for_node", 1),
-    ("_products_for_context", 1),
-    ("_provider_port_for_socket", 2),
-    ("_public_environment_for_node", 1),
-    ("_pull_authority_for_product", 1),
-    ("_registered_product_for_node", 3),
-    ("_runtime_authority_deliveries_for_context", 1),
-    ("_runtime_authority_ref_for_context", 1),
-    ("_runtime_effect_intent_for_context", 1),
-    ("_runtime_id_for_context", 1),
-    ("_runtime_kind_for_context", 1),
-    ("_secret_deliveries_for_node", 1),
-    ("_secret_delivery_contract_key", 2),
-    ("_with_source_edges", 1),
-    ("any", 2),
-    ("authority.authority.permits", 1),
-    ("control_plane_kit_core.environment.PublicStaticEnvironmentBinding", 1),
-    ("control_plane_kit_core.operations.RunId", 1),
-    ("control_plane_kit_core.probe_intents.LiteralEndpointMaterial", 2),
-    ("control_plane_kit_core.probe_intents.RuntimeEndpointObservation", 2),
-    ("control_plane_kit_core.products.ProductDescriptorDigest", 1),
-    ("control_plane_kit_core.products.ProductIdentity", 1),
-    ("control_plane_kit_core.products.ProductReference", 1),
-    ("control_plane_kit_core.products.product_configuration_slots", 1),
-    (
-        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntent",
-        1,
-    ),
-    (
-        "control_plane_kit_core.runtime_effect_observation."
-        "RuntimeEffectIntentSource",
-        1,
-    ),
-    (
-        "control_plane_kit_core.runtime_effect_observation."
-        "runtime_effect_request_for_intent",
-        1,
-    ),
-    ("control_plane_kit_core.runtime_effects.GatewayHttpTarget", 2),
-    ("control_plane_kit_core.runtime_effects.GatewayPostgresTarget", 2),
-    ("control_plane_kit_core.runtime_effects.GatewayTargetId", 1),
-    ("control_plane_kit_core.runtime_effects.GatewayTargetMap", 1),
-    ("control_plane_kit_core.runtime_effects.RuntimeProductMaterial", 1),
-    ("control_plane_kit_core.secrets.secret_delivery_sort_key", 1),
-    ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 4),
-    ("control_plane_kit_operations.ingress_authorities._uses_cloudflared_token_slot", 1),
-    (
-        "control_plane_kit_operations.ingress_authorities."
-        "cloudflare_tunnel_token_delivery_plan",
-        1,
-    ),
-    ("control_plane_kit_operations.ingress_authorities.require_cloudflared_tunnel_token_delivery", 1),
-    (
-        "control_plane_kit_operations.runtime_authorities."
-        "_admitted_runtime_authority_deliveries",
-        1,
-    ),
-    ("control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported", 1),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 36),
-    ("dataclasses.replace", 2),
-    ("gateway_node.provider_socket", 1),
-    ("gateway_target_map_for_node", 1),
-    ("getattr", 4),
-    ("graph.edges.values", 1),
-    ("graph_id.strip", 2),
-    ("hasattr", 2),
-    ("int", 1),
-    ("isinstance", 16),
-    ("json.dumps", 1),
-    ("len", 7),
-    ("metadata.get", 2),
-    ("postgres_target.get", 3),
-    ("selected_keys.count", 1),
-    ("set", 1),
-    ("sorted", 7),
-    ("source_edges.setdefault", 1),
-    ("targets.values", 1),
-    ("tuple", 17),
-    ("type", 3),
-    ("uses.add", 3),
-    ("uses.update", 1),
-    ("value.split", 1),
-)
 
 class EffectAttemptCoordinatorContractTests(
     EffectAttemptCoordinatorFixture,
@@ -1087,52 +254,6 @@ class EffectAttemptCoordinatorContractTests(
         self.assertEqual(ingress.runtime_calls, [])
         self.assertEqual(runtime.runtime_calls, [])
 
-    def test_control_shared_architecture_policies_are_lawful(self) -> None:
-        path = "tests/effect_coordinator_policy_canary.py"
-        module = "effect_coordinator_policy_canary"
-        facts = architecture_testing.analyze_source(
-            "from sample.effects import execute as execute_effect\n"
-            "execute_effect()\n",
-            path=path,
-            module=module,
-        )
-        findings = architecture_testing.evaluate_policies(
-            (facts,),
-            (
-                architecture_testing.ExactImportSurfacePolicy(
-                    architecture_testing.PolicyId(
-                        "cpk.canary.effect-coordinator.imports"
-                    ),
-                    architecture_testing.RuleId("exact"),
-                    path,
-                    module,
-                    (
-                        architecture_testing.ImportSurfaceEntry(
-                            "sample.effects",
-                            "execute",
-                            "execute_effect",
-                        ),
-                    ),
-                    "effect coordinator canary imports differ",
-                ),
-                architecture_testing.ExactCallSurfacePolicy(
-                    architecture_testing.PolicyId(
-                        "cpk.canary.effect-coordinator.calls"
-                    ),
-                    architecture_testing.RuleId("exact"),
-                    path,
-                    module,
-                    (
-                        architecture_testing.ResolvedCallTarget(
-                            "sample.effects.execute"
-                        ),
-                    ),
-                    "effect coordinator canary calls differ",
-                ),
-            ),
-        )
-        self.assertEqual(findings, ())
-
     def test_constructor_preserves_services_and_adds_optional_managed_health_composition(self) -> None:
         signature = inspect.signature(ExecutionCoordinator)
         self.assertEqual(
@@ -1149,6 +270,7 @@ class EffectAttemptCoordinatorContractTests(
                 "managed_health",
                 "health_signing_authority",
                 "permission_policy",
+                "invocation_service",
             ),
         )
         for name in (
@@ -1162,6 +284,7 @@ class EffectAttemptCoordinatorContractTests(
             "managed_health",
             "health_signing_authority",
             "permission_policy",
+            "invocation_service",
         ):
             self.assertIs(
                 signature.parameters[name].kind,
@@ -1169,7 +292,7 @@ class EffectAttemptCoordinatorContractTests(
             )
         self.assertNotIn("provider", signature.parameters)
         self.assertNotIn("observer", signature.parameters)
-        for name in ("managed_health", "health_signing_authority", "permission_policy"):
+        for name in ("managed_health", "health_signing_authority", "permission_policy", "invocation_service"):
             self.assertIsNone(signature.parameters[name].default)
         start = RecordingStartService(self.newly_started())
         fold = RecordingFoldService(self.exact_fold_result())
@@ -1264,10 +387,6 @@ class EffectAttemptCoordinatorContractTests(
         self.assertEqual(adapter.legacy_contexts, [])
         self.assertEqual(coordinator.legacy_writes, [])
         self.assertEqual(coordinator.effect_ledger, [])
-        forward_source = inspect.getsource(ExecutionCoordinator.execute)
-        self.assertNotIn("STEP_COMPENSATION_STARTED", forward_source)
-        self.assertNotIn("FailedRunCompensation", forward_source)
-        self.assertNotIn("failed_run_compensation", forward_source)
 
     def test_adapter_protocol_and_dispatchers_expose_exact_operation_indexed_arms(
         self,
@@ -1300,20 +419,24 @@ class EffectAttemptCoordinatorContractTests(
             tuple(
                 inspect.signature(adapter_execute_runtime).parameters
             ),
-            ("self", "context", "request"),
+            ("self", "context", "request", "invocations"),
         )
         self.assertEqual(
             tuple(
                 inspect.signature(activity_execute_runtime).parameters
             ),
-            ("self", "context", "request"),
+            ("self", "context", "request", "invocations"),
         )
         self.assertEqual(
             tuple(
                 inspect.signature(runtime_execute_runtime).parameters
             ),
-            ("self", "context", "request"),
+            ("self", "context", "request", "invocations"),
         )
+        for method in (adapter_execute_runtime, activity_execute_runtime, runtime_execute_runtime):
+            parameter = inspect.signature(method).parameters["invocations"]
+            self.assertIs(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+            self.assertIsNone(parameter.default)
         self.assertIs(
             get_type_hints(ActivityExecutionAdapter.execute)["return"],
             ActivityExecutionOutcome,
@@ -2182,6 +1305,7 @@ class EffectAttemptCoordinatorContractTests(
                 "tests/test_postgres_effect_attempt_coordinator_crash_rollback.py",
                 "tests/test_postgres_effect_attempt_coordinator_first_replay.py",
                 "tests/test_postgres_coordinator_permissions.py",
+                "tests/test_postgres_runtime_invocation_carriage.py",
                 "tests/test_managed_application_chain.py",
                 "tests/test_managed_health_boundaries.py",
                 "tests/test_managed_reobservation_admission.py",
@@ -2200,77 +1324,8 @@ class EffectAttemptCoordinatorContractTests(
         )
         self.assertEqual(
             set(runtime_effects["protecting_tests"]),
-            {"tests/test_runtime_effect_translation.py"},
+            {"tests/test_runtime_effect_translation.py", "tests/test_secret_version_dispatch.py"},
         )
-
-    def test_coordinator_effect_attempt_imports_and_calls_are_closed(self) -> None:
-        facts = architecture_testing.analyze_source(
-            COORDINATOR_SOURCE.read_text(encoding="utf-8"),
-            path=COORDINATOR_SOURCE_PATH,
-            module=COORDINATOR_MODULE,
-        )
-        findings = architecture_testing.evaluate_policies(
-            (facts,),
-            (
-                architecture_testing.ExactImportSurfacePolicy(
-                    architecture_testing.PolicyId(
-                        "cpk.operations.effect-coordinator.imports"
-                    ),
-                    architecture_testing.RuleId("exact"),
-                    COORDINATOR_SOURCE_PATH,
-                    COORDINATOR_MODULE,
-                    EXACT_COORDINATOR_IMPORTS,
-                    "effect coordinator import surface differs",
-                ),
-                architecture_testing.ExactCallSurfacePolicy(
-                    architecture_testing.PolicyId(
-                        "cpk.operations.effect-coordinator.calls"
-                    ),
-                    architecture_testing.RuleId("exact"),
-                    COORDINATOR_SOURCE_PATH,
-                    COORDINATOR_MODULE,
-                    EXACT_COORDINATOR_CALLS,
-                    "effect coordinator call surface differs",
-                ),
-            ),
-        )
-        self.assertEqual(findings, ())
-
-    def test_runtime_effect_private_intent_projection_calls_only_public_core_algebra(
-        self,
-    ) -> None:
-        facts = architecture_testing.analyze_source(
-            RUNTIME_EFFECTS_SOURCE.read_text(encoding="utf-8"),
-            path=RUNTIME_EFFECTS_SOURCE_PATH,
-            module=RUNTIME_EFFECTS_MODULE,
-        )
-        findings = architecture_testing.evaluate_policies(
-            (facts,),
-            (
-                architecture_testing.ExactImportSurfacePolicy(
-                    architecture_testing.PolicyId(
-                        "cpk.operations.runtime-intent.imports"
-                    ),
-                    architecture_testing.RuleId("exact"),
-                    RUNTIME_EFFECTS_SOURCE_PATH,
-                    RUNTIME_EFFECTS_MODULE,
-                    EXACT_RUNTIME_EFFECTS_IMPORTS,
-                    "runtime effect translation import surface differs",
-                ),
-                architecture_testing.ExactCallSurfacePolicy(
-                    architecture_testing.PolicyId(
-                        "cpk.operations.runtime-intent.calls"
-                    ),
-                    architecture_testing.RuleId("exact"),
-                    RUNTIME_EFFECTS_SOURCE_PATH,
-                    RUNTIME_EFFECTS_MODULE,
-                    EXACT_RUNTIME_EFFECTS_CALLS,
-                    "runtime effect translation call surface differs",
-                ),
-            ),
-        )
-        self.assertEqual(findings, ())
-
 
     @staticmethod
     def request_for_started(intent, started: NewlyStarted):

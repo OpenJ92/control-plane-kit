@@ -26,12 +26,14 @@ from tests.postgres_effect_attempt_reconciliation_fixture import UnitOfWorkLedge
 
 
 class _PreparedRuntimeInvocationFixture(CurrentEffectPermissionFixture):
-    def reset_start_truth(self, *, compensation=False):
+    def reset_start_truth(self, *, compensation=False, plan=None, desired=None):
         self.assertFalse(compensation)
         self.reference = RuntimeAuthorityReference("prepared-runtime")
-        plan = ActivityPlan((PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("runtime-a"))),))
-        desired = DeploymentGraph("desired", runtimes={"runtime-a": RuntimeRecord(
-            "runtime-a", RuntimeKind.DOCKER, authority_ref=self.reference)})
+        if plan is None:
+            plan = ActivityPlan((PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("runtime-a"))),))
+        if desired is None:
+            desired = DeploymentGraph("desired", runtimes={"runtime-a": RuntimeRecord(
+                "runtime-a", RuntimeKind.DOCKER, authority_ref=self.reference)})
         # Reuse the actual graph, approval, request and lifecycle fixture owners.
         # The ledger retains this fixture's isolated owning-suite schema.
         engine = coordinator_fixture.ExecutionCoordinatorTests()
