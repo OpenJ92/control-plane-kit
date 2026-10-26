@@ -321,6 +321,121 @@ class WorkspaceAdministrationResult:
         return dict(receipt=self.receipt.descriptor(), replayed=self.replayed)
 
 
+@dataclass(frozen=True)
+class WorkspacePermissionListCursor:
+    installation_id: str
+    workspace_id: str
+    after: PrincipalIdentity
+
+    def __post_init__(self):
+        _text(self.installation_id)
+        _text(self.workspace_id)
+        _identity(self.after)
+
+    def descriptor(self):
+        return dict(kind="workspace-permissions", installation_id=self.installation_id,
+                    workspace_id=self.workspace_id, after=self.after.descriptor())
+
+
+@dataclass(frozen=True)
+class WorkspacePermissionHistoryCursor:
+    installation_id: str
+    workspace_id: str
+    target: PrincipalIdentity
+    after_revision: int
+
+    def __post_init__(self):
+        _text(self.installation_id)
+        _text(self.workspace_id)
+        _identity(self.target)
+        if _revision(self.after_revision) == 0:
+            raise WorkspacePermissionError("permission history cursor is malformed")
+
+    def descriptor(self):
+        return dict(kind="workspace-permission-history", installation_id=self.installation_id,
+                    workspace_id=self.workspace_id, target=self.target.descriptor(),
+                    after_revision=self.after_revision)
+
+
+@dataclass(frozen=True)
+class WorkspacePermissionPage:
+    """One bounded independent read, not a snapshot across page requests."""
+
+    items: tuple[WorkspacePermissionRecord | WorkspacePermissionReceipt, ...]
+    next_cursor: WorkspacePermissionListCursor | WorkspacePermissionHistoryCursor | None
+
+    def __post_init__(self):
+        if (type(self.items) is not tuple or len(self.items) > 100
+                or any(type(item) not in (WorkspacePermissionRecord, WorkspacePermissionReceipt)
+                       for item in self.items)
+                or (self.next_cursor is not None and type(self.next_cursor) not in (
+                    WorkspacePermissionListCursor, WorkspacePermissionHistoryCursor))):
+            raise WorkspacePermissionError("permission read page is malformed")
+
+    def descriptor(self):
+        return dict(items=[item.descriptor() for item in self.items],
+                    next_cursor=None if self.next_cursor is None else self.next_cursor.descriptor())
+
+
+def _page_limit(limit):
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise WorkspacePermissionError("permission page limit is malformed")
+
+
+class WorkspacePermissionReadService:
+    """Administrative reads never mint a command context or replay a grant."""
+
+    def __init__(self, unit_of_work_factory, *, administration_policy: WorkspaceAdministrationPolicy):
+        self._factory = unit_of_work_factory
+        self._policy = administration_policy
+
+    def inspect(self, context, *, workspace_id, target):
+        self._policy.require(context)
+        with self._factory() as uow:
+            store = uow.stores.workspace_permissions
+            store.require_installation(context.installation_id)
+            record = store.get(context.installation_id, workspace_id, target)
+            if record is None:
+                raise WorkspacePermissionNotFound("workspace permission is unavailable")
+            return record
+
+    def list(self, context, *, workspace_id, limit=50, cursor=None):
+        self._policy.require(context)
+        _text(workspace_id)
+        _page_limit(limit)
+        if cursor is not None and (type(cursor) is not WorkspacePermissionListCursor
+                or cursor.installation_id != context.installation_id or cursor.workspace_id != workspace_id):
+            raise WorkspacePermissionError("permission list cursor is incongruent")
+        with self._factory() as uow:
+            store = uow.stores.workspace_permissions
+            store.require_installation(context.installation_id)
+            candidates = store.list(context.installation_id, workspace_id, limit=limit + 1,
+                                    after=None if cursor is None else cursor.after)
+            items = candidates[:limit]
+            next_cursor = (WorkspacePermissionListCursor(context.installation_id, workspace_id, items[-1].target)
+                           if len(candidates) > limit else None)
+            return WorkspacePermissionPage(items, next_cursor)
+
+    def history(self, context, *, workspace_id, target, limit=50, cursor=None):
+        self._policy.require(context)
+        _text(workspace_id)
+        _identity(target)
+        _page_limit(limit)
+        if cursor is not None and (type(cursor) is not WorkspacePermissionHistoryCursor
+                or cursor.installation_id != context.installation_id or cursor.workspace_id != workspace_id
+                or cursor.target != target):
+            raise WorkspacePermissionError("permission history cursor is incongruent")
+        with self._factory() as uow:
+            store = uow.stores.workspace_permissions
+            store.require_installation(context.installation_id)
+            candidates = store.history(context.installation_id, workspace_id, target, limit=limit + 1,
+                                       after=0 if cursor is None else cursor.after_revision)
+            items = candidates[:limit]
+            next_cursor = (WorkspacePermissionHistoryCursor(context.installation_id, workspace_id,
+                           target, items[-1].revision) if len(candidates) > limit else None)
+            return WorkspacePermissionPage(items, next_cursor)
+
+
 def permission_intent(command: GrantWorkspacePermissions, operation: str) -> dict:
     return dict(installation_id=command.context.installation_id, workspace_id=command.workspace_id,
                 actor=command.context.identity.descriptor(), target=command.target.descriptor(),

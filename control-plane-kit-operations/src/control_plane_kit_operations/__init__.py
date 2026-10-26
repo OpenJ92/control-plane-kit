@@ -11,6 +11,8 @@ from .workspace_permissions import (
     WorkspacePermissionRecord, WorkspacePermissionReceipt, WorkspacePermissionResult,
     WorkspacePermissionInitializationReceipt, WorkspacePermissionInitializationResult,
     WorkspacePermissionCommandService, WorkspaceContextResolver, DurablePrincipalAuthorizer,
+    WorkspacePermissionReadService, WorkspacePermissionPage,
+    WorkspacePermissionListCursor, WorkspacePermissionHistoryCursor,
     WorkspacePermissionError, WorkspacePermissionDenied, WorkspacePermissionConflict,
     WorkspacePermissionNotFound,
 )
@@ -690,6 +692,8 @@ __all__ = [
     "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult",
     "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult",
     "WorkspacePermissionCommandService", "WorkspaceContextResolver", "DurablePrincipalAuthorizer",
+    "WorkspacePermissionReadService", "WorkspacePermissionPage",
+    "WorkspacePermissionListCursor", "WorkspacePermissionHistoryCursor",
     "WorkspacePermissionError", "WorkspacePermissionDenied", "WorkspacePermissionConflict",
     "WorkspacePermissionNotFound",
     "BeginFailedRunCompensation",

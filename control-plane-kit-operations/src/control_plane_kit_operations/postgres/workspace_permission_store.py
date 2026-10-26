@@ -212,6 +212,39 @@ class WorkspacePermissionStore:
              receipt.idempotency_key, receipt.workspace_id, fingerprint, Jsonb(receipt.descriptor())),
         )
 
+    def list(self, installation_id, workspace_id, *, limit, after=None):
+        _text(installation_id)
+        _text(workspace_id)
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise WorkspacePermissionError("permission page bound is malformed")
+        parameters = (installation_id, workspace_id)
+        suffix = ""
+        if after is not None:
+            _identity(after)
+            suffix = " AND (issuer,subject_id,kind) > (%s,%s,%s)"
+            parameters += (after.issuer, after.subject_id, after.kind.value)
+        rows = self.connection.execute("SELECT " + _COLUMNS + " FROM cpk_workspace_permissions "
+            "WHERE installation_id=%s AND workspace_id=%s" + suffix
+            + " ORDER BY issuer,subject_id,kind LIMIT %s", parameters + (limit,)).fetchall()
+        return tuple(_decode(row) for row in rows)
+
+    def history(self, installation_id, workspace_id, target, *, limit, after=0):
+        parameters = _parameters(installation_id, workspace_id, target)
+        if (type(limit) is not int or not 1 <= limit <= 101
+                or type(after) is not int or not 0 <= after < 9_223_372_036_854_775_807):
+            raise WorkspacePermissionError("permission history bound is malformed")
+        rows = self.connection.execute("SELECT revision,idempotency_key,receipt "
+            "FROM cpk_workspace_permission_receipts WHERE " + _KEY
+            + " AND revision>%s ORDER BY revision LIMIT %s", parameters + (after, limit)).fetchall()
+        results = []
+        for row in rows:
+            receipt = _receipt(row[2])
+            if (receipt.installation_id != installation_id or receipt.workspace_id != workspace_id
+                    or receipt.target != target or receipt.revision != row[0] or receipt.idempotency_key != row[1]):
+                raise WorkspacePermissionError("permission history identity disagrees")
+            results.append(receipt)
+        return tuple(results)
+
 
 def validate_workspace_permission_rows(connection):
     """Check bounded stored values and the current row's original latest receipt."""

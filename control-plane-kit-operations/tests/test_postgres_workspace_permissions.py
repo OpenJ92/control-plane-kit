@@ -13,6 +13,8 @@ from control_plane_kit_core.identity import (
     AuthenticatedPrincipal, IdentityContractError, PrincipalIdentity, PrincipalKind,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_operations.records import GraphVersionRecord
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, SchemaInstallationError, install_schema
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
@@ -229,12 +231,22 @@ class PostgresWorkspacePermissionTests(LifecycleLockFixture, unittest.TestCase):
         self.assertTrue(original.receipt.initialized)
         self.assertFalse(reused.receipt.initialized)
         self.assertEqual(original.receipt.observed_current_graph_id, reused.receipt.observed_current_graph_id)
+        later_graph = GraphVersionRecord.from_graph(graph_id="later-graph", workspace_id="workspace-new",
+            version=2, graph=DeploymentGraph("later-empty"), created_by=self.admin.subject_id,
+            created_at=self.clock())
+        with self.unit_of_work() as uow:
+            uow.stores.graphs.save(later_graph)
+            uow.stores.workspaces.set_current_graph("workspace-new", later_graph.graph_id)
+            uow.commit()
         replay = service.create_as_administrator(
             policy.authorize(AuthenticatedPrincipal(self.admin)), workspace_id="workspace-new",
             name="New", idempotency_key=IdempotencyKey("admin-create"),
         )
         self.assertTrue(replay.replayed)
         self.assertEqual(replay.receipt, original.receipt)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.workspaces.get("workspace-new").current_graph_id, later_graph.graph_id)
+        self.assertNotEqual(replay.receipt.observed_current_graph_id, later_graph.graph_id)
         with self.assertRaises(self.public("WorkspacePermissionConflict")):
             service.create_as_administrator(policy.authorize(AuthenticatedPrincipal(self.admin)),
                 workspace_id="workspace-conflict", name="Conflict",
@@ -383,6 +395,45 @@ class PostgresWorkspacePermissionTests(LifecycleLockFixture, unittest.TestCase):
             reads.list(context, workspace_id="workspace-a", limit=101)
         page = reads.list(context, workspace_id="workspace-a", limit=1)
         self.assertEqual(page.items, (current,))
+
+    def test_read_authority_and_full_identity_cursor_boundaries(self):
+        service, context = self.initialize()
+        self.grant(service, context)
+        other_issuer = replace(self.member, issuer="issuer-b")
+        other_kind = replace(self.member, kind=PrincipalKind.WORKER)
+        policy = self.policy(known=(self.admin, self.member, other_issuer, other_kind))
+        service = self.service(policy)
+        for target in (other_issuer, other_kind):
+            service.grant(self.public("GrantWorkspacePermissions")(
+                context=context, workspace_id="workspace-a", target=target, scopes=(self.read,),
+                expected_revision=0, idempotency_key=IdempotencyKey("grant-other"),
+            ))
+        reads = self.public("WorkspacePermissionReadService")(self.unit_of_work, administration_policy=policy)
+        first = reads.list(context, workspace_id="workspace-a", limit=1)
+        second = reads.list(context, workspace_id="workspace-a", limit=1, cursor=first.next_cursor)
+        third = reads.list(context, workspace_id="workspace-a", limit=1, cursor=second.next_cursor)
+        self.assertEqual(tuple(page.items[0].target for page in (first, second, third)),
+                         (self.member, other_kind, other_issuer))
+        self.assertIsNone(third.next_cursor)
+        for cursor in (first.next_cursor.descriptor(),
+                       replace(first.next_cursor, installation_id="installation-b")):
+            with self.assertRaises(self.public("WorkspacePermissionError")):
+                reads.list(context, workspace_id="workspace-a", limit=1, cursor=cursor)
+        with self.assertRaises(self.public("WorkspacePermissionError")):
+            reads.list(context, workspace_id="workspace-a", limit=True)
+        self.grant(service, context, key="second-history-entry", revision=1)
+        history = reads.history(context, workspace_id="workspace-a", target=self.member, limit=1)
+        with self.assertRaises(self.public("WorkspacePermissionError")):
+            reads.history(context, workspace_id="workspace-a", target=other_kind,
+                          limit=1, cursor=history.next_cursor)
+        ordinary = self.public("WorkspaceAdministrationContext")(self.member, "installation-a")
+        for read in (
+            lambda: reads.inspect(ordinary, workspace_id="workspace-a", target=self.member),
+            lambda: reads.list(ordinary, workspace_id="workspace-a"),
+            lambda: reads.history(ordinary, workspace_id="workspace-a", target=self.member),
+        ):
+            with self.assertRaises(self.public("WorkspacePermissionDenied")):
+                read()
 
 
 if __name__ == "__main__":
