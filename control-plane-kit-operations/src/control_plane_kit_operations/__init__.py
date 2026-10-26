@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from control_plane_kit_core import DeploymentProgramStage
 
+from .managed_runtime_assignments import (
+    ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
+    RevokeManagedRuntimeAccess, ManagedRuntimeAssignment, ManagedRuntimeAssignmentStatus,
+    ManagedRuntimeAssignmentReceipt, ManagedRuntimeAssignmentResult, ManagedRuntimeAssignmentError,
+    ManagedRuntimeAssignmentCommandService, ManagedRuntimeAssignmentReadService,
+    ManagedRuntimeAssignmentPage, ManagedRuntimeAssignmentListCursor, ManagedRuntimeAssignmentHistoryCursor,
+    ManagedRuntimeSelection, ManagedRuntimeSelectionService, select_managed_runtime_assignment,
+)
 from .workspace_permissions import (
     WorkspaceAdministrationContext, WorkspaceAdministrationPolicy,
     WorkspaceAdministrationReceipt, WorkspaceAdministrationResult,
@@ -687,6 +695,12 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess",
+    "RevokeManagedRuntimeAccess", "ManagedRuntimeAssignment", "ManagedRuntimeAssignmentStatus",
+    "ManagedRuntimeAssignmentReceipt", "ManagedRuntimeAssignmentResult", "ManagedRuntimeAssignmentError",
+    "ManagedRuntimeAssignmentCommandService", "ManagedRuntimeAssignmentReadService",
+    "ManagedRuntimeAssignmentPage", "ManagedRuntimeAssignmentListCursor", "ManagedRuntimeAssignmentHistoryCursor",
+    "ManagedRuntimeSelection", "ManagedRuntimeSelectionService", "select_managed_runtime_assignment",
     "WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy",
     "WorkspaceAdministrationReceipt", "WorkspaceAdministrationResult",
     "GrantWorkspacePermissions", "RevokeWorkspacePermissions",

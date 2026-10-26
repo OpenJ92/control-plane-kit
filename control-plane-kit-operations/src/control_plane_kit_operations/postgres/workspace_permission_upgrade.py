@@ -27,6 +27,7 @@ from .workspace_permission_store import WorkspacePermissionStore, validate_works
 
 _SOURCE_SHA256 = "c8cc42059c06c898275ba19aa2a6bf8df3d0e93474bb23340bab7b49bcfc9141"
 _ADDITIVE_SQL = files(__package__).joinpath("workspace_permission_schema.sql").read_text(encoding="utf-8")
+_ADDITIVE_SQL += "\n" + files(__package__).joinpath("managed_runtime_assignment_schema.sql").read_text(encoding="utf-8")
 _TRY_LOCK_SQL = _ADVISORY_LOCK_SQL.replace("pg_advisory_xact_lock", "pg_try_advisory_xact_lock")
 
 
@@ -137,6 +138,8 @@ def _lock_and_validate(connection, contract):
     validate_current_rows(connection)
     if contract is CURRENT_POSTGRES_SCHEMA_CONTRACT:
         validate_workspace_permission_rows(connection)
+        from .managed_runtime_assignment_store import validate_managed_runtime_assignment_rows
+        validate_managed_runtime_assignment_rows(connection)
 
 
 def _matches(receipt, plan):

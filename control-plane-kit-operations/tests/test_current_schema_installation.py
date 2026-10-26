@@ -62,6 +62,8 @@ _EXPECTED_RELATIONS = (
     "cpk_health_effect_preparations",
     "cpk_image_pull_authorities",
     "cpk_ingress_authorities",
+    "cpk_managed_runtime_assignment_receipts",
+    "cpk_managed_runtime_assignments",
     "cpk_node_control_attempts",
     "cpk_observations",
     "cpk_operation_actions",
@@ -145,7 +147,7 @@ _CURRENT_CONTRACT_SHA256 = (
     "8aff96c0d0746848d2bd3295fad95cc32b52b808ab59ee77e332364c0cf267cb"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "11a6aa75cda76cab795ddf9a13549047252172e3e96f1fa767e9581cb08acc1c"
+    "62251f1aee7505a6fdde61eadbe67cb81e1bd5f07e865f8a5590f085c19715e1"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -438,10 +440,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 62)
-        self.assertEqual(len(contract.columns), 773)
-        self.assertEqual(len(contract.constraints), 706)
-        self.assertEqual(len(contract.indexes), 202)
+        self.assertEqual(len(contract.relations), 64)
+        self.assertEqual(len(contract.columns), 788)
+        self.assertEqual(len(contract.constraints), 728)
+        self.assertEqual(len(contract.indexes), 206)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -647,7 +649,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            62,
+            64,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
@@ -657,10 +659,17 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
 class CurrentSchemaInstallationTests(unittest.TestCase):
     def test_workspace_permission_catalog_matches_declared_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        self._assert_extension_catalog(current_schema_contract.WORKSPACE_PERMISSION_SCHEMA_CONTRACT)
+
+    def test_managed_runtime_assignment_catalog_matches_declared_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        self._assert_extension_catalog(current_schema_contract.MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT)
+
+    def _assert_extension_catalog(self, extension) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract, current_schema_verification, schema
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        extension = current_schema_contract.WORKSPACE_PERMISSION_SCHEMA_CONTRACT
         names = [relation.name for relation in extension.relations]
         self.connection.execute(schema._CURRENT_SCHEMA_SQL)
         query, separator, _ = current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
@@ -710,7 +719,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (62, 773, 706, 202))
+        self.assertEqual(self._catalog_counts(), (64, 788, 728, 206))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"

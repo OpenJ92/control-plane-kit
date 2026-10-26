@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -294,25 +295,46 @@ class RuntimeAuthorityStore:
             ),
         )
 
+    def get_registration_for_update(self, workspace_id, authority_ref, registration_id):
+        """Lock one retained identity, including revoked rows used by exact replay."""
+        from control_plane_kit_operations.workspace_permissions import _text
+        _text(workspace_id)
+        _text(registration_id)
+        if type(authority_ref) is not RuntimeAuthorityReference:
+            raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR)
+        row = self._connection.execute(
+            "SELECT registration_id,workspace_id,authority_ref,runtime_kind,authority,admitted_by,"
+            "admitted_at,status,metadata FROM cpk_runtime_authorities "
+            "WHERE registration_id=%s AND workspace_id=%s AND authority_ref=%s FOR UPDATE",
+            (registration_id, workspace_id, authority_ref.reference_id),
+        ).fetchone()
+        if row is None:
+            raise RuntimeAuthorityNotFound("registered runtime authority was not found")
+        return _row_to_authority(row)
+
     def revoke(
         self,
         workspace_id: str,
         authority_ref: RuntimeAuthorityReference,
     ) -> RegisteredRuntimeAuthority:
-        current = self.get(workspace_id, authority_ref)
+        observed = self.get(workspace_id, authority_ref)
+        current = self.get_registration_for_update(workspace_id, authority_ref, observed.registration_id)
         if current.status is RegisteredRuntimeAuthorityStatus.REVOKED:
             return current
         self._connection.execute(
             """
             UPDATE cpk_runtime_authorities
             SET status = 'revoked'
-            WHERE workspace_id = %s
-              AND authority_ref = %s
+            WHERE registration_id = %s
               AND status = 'active'
             """,
-            (workspace_id, authority_ref.reference_id),
+            (current.registration_id,),
         )
-        return self.get(workspace_id, authority_ref)
+        # Same owner transaction and authority-before-assignment lock order.
+        # Preserve the original registration lifecycle and separate delivery owner.
+        from .managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
+        ManagedRuntimeAssignmentStore(self._connection).invalidate_authority(current)
+        return replace(current, status=RegisteredRuntimeAuthorityStatus.REVOKED)
 
     def _get_active_by_ref(
         self,

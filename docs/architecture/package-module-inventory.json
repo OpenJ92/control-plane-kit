@@ -2,6 +2,34 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.managed_runtime_assignments",
+      "destination": "control_plane_kit_operations.managed_runtime_assignments",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/managed_runtime_assignments.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "commands", "authorization", "orchestration"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess", "RevokeManagedRuntimeAccess", "ManagedRuntimeAssignment", "ManagedRuntimeAssignmentStatus", "ManagedRuntimeAssignmentReceipt", "ManagedRuntimeAssignmentResult", "ManagedRuntimeAssignmentError", "ManagedRuntimeAssignmentCommandService", "ManagedRuntimeAssignmentReadService", "ManagedRuntimeAssignmentPage", "ManagedRuntimeAssignmentListCursor", "ManagedRuntimeAssignmentHistoryCursor", "ManagedRuntimeSelection", "ManagedRuntimeSelectionService", "select_managed_runtime_assignment", "managed_runtime_assignment_id", "managed_runtime_assignment_intent"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.runtime_authority", "control_plane_kit_core.types", "control_plane_kit_operations._temporal", "control_plane_kit_operations.runtime_authorities", "control_plane_kit_operations.workflows", "control_plane_kit_operations.workspace_permissions"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.managed_runtime_assignment_store"],
+      "optional_external_dependencies": ["rfc8785"],
+      "protecting_tests": ["tests/test_postgres_managed_runtime_assignments.py"],
+      "motivation": "Separate exact management permission and immutable installer capability IDs, with bounded administrative commands and transport-free selection."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.managed_runtime_assignment_store",
+      "destination": "control_plane_kit_operations.postgres.managed_runtime_assignment_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/managed_runtime_assignment_store.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["persistence", "validation", "authorization"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["ManagedRuntimeAssignmentStore", "validate_managed_runtime_assignment_rows"],
+      "internal_dependencies": ["control_plane_kit_core.runtime_authority", "control_plane_kit_operations.managed_runtime_assignments", "control_plane_kit_operations.runtime_authorities", "control_plane_kit_operations.workspace_permissions", "control_plane_kit_operations.workflows", "control_plane_kit_operations.postgres.runtime_authority_store", "control_plane_kit_operations.postgres.temporal", "control_plane_kit_operations.postgres.workspace_permission_store"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.runtime_authority_store", "control_plane_kit_operations.postgres.stores", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.workspace_permission_upgrade"],
+      "optional_external_dependencies": ["psycopg"],
+      "protecting_tests": ["tests/test_postgres_managed_runtime_assignments.py", "tests/test_runtime_authorities.py", "tests/test_current_schema_installation.py"],
+      "motivation": "Caller-transaction assignment/receipt owner with exact authority-before-assignment locks and atomic invalidation on authority revocation."
+    },
+    {
       "module": "control_plane_kit_operations.postgres.workspace_permission_upgrade",
       "destination": "control_plane_kit_operations.postgres.workspace_permission_upgrade",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/workspace_permission_upgrade.py",

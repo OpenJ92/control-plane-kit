@@ -75,6 +75,7 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.workspace_permission_store import WorkspacePermissionStore
+from control_plane_kit_operations.postgres.managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,7 @@ class PostgresStoreBundle:
     revision_history: PostgresRevisionHistoryStore = field(init=False)
     connection: PostgresConnection
     workspace_permissions: WorkspacePermissionStore = field(init=False)
+    managed_runtime_assignments: ManagedRuntimeAssignmentStore = field(init=False)
     workspaces: PostgresWorkspaceStore = field(init=False)
     graphs: PostgresGraphTopologyStore = field(init=False)
     realized_graphs: PostgresRealizedGraphProjectionStore = field(init=False)
@@ -140,6 +142,7 @@ class PostgresStoreBundle:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "workspace_permissions", WorkspacePermissionStore(self.connection))
+        object.__setattr__(self, "managed_runtime_assignments", ManagedRuntimeAssignmentStore(self.connection))
         object.__setattr__(self, "secret_material_provision_attempts", SecretMaterialProvisionAttemptStore(self.connection))
         object.__setattr__(self, "delegation_key_generation_attempts", DelegationKeyGenerationAttemptStore(self.connection))
         object.__setattr__(self, "configuration_preparation", ConfigurationPreparationStore(self.connection))
