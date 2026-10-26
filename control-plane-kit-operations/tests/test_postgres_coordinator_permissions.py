@@ -578,3 +578,99 @@ class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissio
         self.assertEqual(replay.status.value, "uncertain")
         self.assertEqual(self.history(), before)
         self.assertEqual(len(self.health.native_reads), 1)
+
+
+class _ControlledInvocationHealth:
+    """Fixed controlled capabilities using the real Operations admission port."""
+    def __init__(self, test, delegate, *, refuse_preparation=False):
+        self.test, self.delegate = test, delegate
+        self.refuse_preparation = refuse_preparation
+        self.invocations = None
+        self.preparation_calls = []
+
+    def __getattr__(self, name):
+        return getattr(self.delegate, name)
+
+    async def observe_signed(self, realization, request, authority, *, invocations=None):
+        self.invocations = invocations
+        if invocations is None:
+            return None  # Target observes the missing carriage after actual start.
+        preparation = authority.preparation
+        for authorization in (preparation.transit_authorization_id, preparation.workload_authorization_id):
+            permit = invocations.admit("secret-resolution", authorization_id=authorization)
+            self.test.assertEqual(self.test.tracker.active, 0)
+            self.preparation_calls.append(authorization)
+            invocations.record_outcome(permit, "returned")
+            if self.refuse_preparation:
+                return None
+        permit = invocations.admit("signed-health-transport")
+        self.test.assertEqual(self.test.tracker.active, 0)
+        observed = await self.delegate.observe_signed(realization, request, authority)
+        invocations.record_outcome(permit, "returned")
+        return observed
+
+
+class PostgresCoordinatorHealthInvocationTests(_CoordinatorManagementPermissionFixture):
+    async def invocation_case(self, *, refuse_preparation=False):
+        _, command, _ = await self.prepared(native=False)
+        self.health = _ControlledInvocationHealth(self, self.health,
+            refuse_preparation=refuse_preparation)
+        return self.permission_coordinator(), command
+
+    def actual_final(self, command):
+        from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationKind
+        receipt = self.receipt(command.execution)
+        reference = operations.ExecutionCommandReference(command.execution.run_id,
+            command.execution.idempotency_key.value, receipt.intent_fingerprint)
+        with self.unit_of_work() as uow:
+            marker = uow.stores.execution.command_invocation_for_slot(reference,
+                activity_id=self.health_activity.activity_id.value,
+                kind=ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT)
+            attempt = uow.stores.effect_attempts.get(EffectAttemptIdentity(
+                RunId(command.execution.run_id), self.health_activity.activity_id.value, 1))
+        self.assertIsNotNone(marker)
+        self.assertEqual(marker.original_event_id, attempt.original_start_event.event_id)
+        self.assertEqual(marker.request_fingerprint, attempt.state.request_fingerprint)
+        return marker, attempt, receipt
+
+    async def test_original_bound_invocations_reach_signed_adapter_after_actual_start(self):
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationOutcome
+        owner, command = await self.invocation_case()
+        result = await owner.execute_managed(command)
+        final, attempt, _ = self.actual_final(command)
+        self.assertIsNotNone(self.health.invocations,
+            "coordinator did not pass original bound signed-health invocations")
+        self.assertEqual(len(self.health.preparation_calls), 2)
+        self.assertNotEqual(*self.health.preparation_calls)
+        self.assertEqual(len(self.health.signed_reads), 1)
+        self.assertEqual(result.effects_attempted, 1)
+        self.assertEqual(attempt.state.status.value, "succeeded")
+        self.assertIs(final.outcome, ExecutionInvocationOutcome.RETURNED)
+        self.assertEqual(self.tracker.active, 0)
+
+    async def test_preparation_refusal_with_planned_final_is_inspection_only(self):
+        from control_plane_kit_operations.execution_invocations import (
+            ExecutionInvocationControlError, ExecutionInvocationPlanned, ExecutionInvocationDisposition,
+        )
+        owner, command = await self.invocation_case(refuse_preparation=True)
+        control = None
+        try:
+            await owner.execute_managed(command)
+        except ExecutionInvocationControlError as error:
+            control = error
+        final, attempt, receipt = self.actual_final(command)
+        self.assertIsNotNone(self.health.invocations,
+            "coordinator did not pass original bound signed-health invocations")
+        self.assertIs(type(control), ExecutionInvocationPlanned)
+        self.assertIs(final.disposition, ExecutionInvocationDisposition.PLANNED)
+        self.assertEqual(attempt.state.status.value, "started")
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.INCOMPLETE)
+        self.assertEqual(len(self.health.preparation_calls), 1)
+        self.assertEqual(self.health.signed_reads, [])
+        with self.unit_of_work() as uow, self.assertRaises(KeyError):
+            uow.stores.effect_outcomes.get(attempt.state.identity, attempt.latest_transition_event.event_id)
+        replay = await owner.execute_managed(command)
+        self.assertEqual(replay.status.value, "uncertain")
+        self.assertEqual(len(self.health.preparation_calls), 1)
+        self.assertEqual(self.health.signed_reads, [])
