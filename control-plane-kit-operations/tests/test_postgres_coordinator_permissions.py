@@ -82,14 +82,15 @@ class PostgresCoordinatorPermissionTests(
         self.configure_permissions(PrincipalIdentity("coordinator-test", "worker-a", PrincipalKind.WORKER),
             installation="coordinator-permission")
 
-    def composition(self, *, start_policy=True):
+    def composition(self, *, start_policy=True, invocation_service=None, managed_health=None):
         self.require_interface()
         harness = self.coordinator_harness()
         owner = ExecutionCoordinator(self.unit_of_work, lifecycle=harness.lifecycle,
             adapter=harness.adapter, start_service=EffectAttemptStartService(self.unit_of_work,
                 id_factory=harness.start_ids, permission_policy=self.policy if start_policy is True else start_policy),
             fold_service=harness.fold, reconciliation_service=harness.reconciliation,
-            clock=now, id_factory=harness.coordinator_ids, permission_policy=self.policy)
+            clock=now, id_factory=harness.coordinator_ids, permission_policy=self.policy,
+            invocation_service=invocation_service, managed_health=managed_health)
         command = ExecuteManagedActivityRun(self.coordinator_command(), self.original)
         return owner, harness.adapter, command
 
@@ -108,6 +109,20 @@ class PostgresCoordinatorPermissionTests(
         self.assertEqual(adapter.runtime_calls, [])
         self.assertEqual(self.attempt_snapshot(), before)
         self.assertIsNone(self.receipt(command.execution))
+
+    def test_invocation_composition_requires_matching_policy_and_exact_registration(self):
+        other = operations.CurrentWorkspaceEffectPolicy("other",
+            operations.ManagedRuntimeCapabilityPolicy("other", ()))
+        service = operations.ExecutionInvocationService(self.unit_of_work,
+            permission_policy=other, clock=now)
+        before = self.attempt_snapshot()
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            self.composition(invocation_service=service)
+        class RegistrationSubclass(operations.ManagedHealthAdapterRegistration):
+            pass
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            self.composition(managed_health=RegistrationSubclass(object(), "cpk.semantic-invocations.v1"))
+        self.assertEqual(self.attempt_snapshot(), before)
 
     def test_real_caller_and_receipt_reach_the_current_start_owner(self):
         owner, adapter, command = self.composition()
@@ -181,8 +196,8 @@ class _CoordinatorManagementPermissionFixture(_CurrentCoordinatorPermission, Rec
         return StartEffectAttempt(self.request_id, EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
             identity, runtime_effect_intent_fingerprint(intent)), intent, command.authority, command.fence)
 
-    async def prepared(self, *, native=True, legacy=False):
-        stage = (ManagementBootstrapStage.CONNECTOR_CONNECTED if native
+    async def prepared(self, *, native=True, legacy=False, stage=None):
+        stage = stage or (ManagementBootstrapStage.CONNECTOR_CONNECTED if native
             else ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
         if legacy:
             await self.prepare_and_start()
@@ -211,7 +226,8 @@ class _CoordinatorManagementPermissionFixture(_CurrentCoordinatorPermission, Rec
                 "local-docker", 0, IdempotencyKey("management")))
         return self.permission_coordinator(), ExecuteManagedActivityRun(execution, self.original), runtime
 
-    def permission_coordinator(self, factory=None):
+    def permission_coordinator(self, factory=None, *, invocation_service=True,
+            invocation_profile="cpk.semantic-invocations.v1"):
         factory = factory or self.unit_of_work
         fold = EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
         from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
@@ -222,14 +238,21 @@ class _CoordinatorManagementPermissionFixture(_CurrentCoordinatorPermission, Rec
             ingress=IngressRealizationAdapter(factory,
                 {IngressAuthorityProviderKind.CLOUDFLARE: self.ingress}, now,
                 SecretUseAuthorizationService(factory)))
+        health = (self.health if type(self.health) is _ControlledInvocationHealth
+            else _ControlledInvocationHealth(self, self.health))
+        if invocation_service is True:
+            invocation_service = operations.ExecutionInvocationService(factory,
+                permission_policy=self.policy, clock=now, health_receiver_decoders=self.registry)
         return ExecutionCoordinator(factory,
             lifecycle=RunLifecycleCommandService(factory, clock=now, id_factory=self.ids["lifecycle"]),
             adapter=adapter, start_service=EffectAttemptStartService(factory,
                 id_factory=self.ids["effect-start"], health_receiver_decoders=self.registry,
                 permission_policy=self.policy), fold_service=fold,
             reconciliation_service=EffectAttemptReconciliationService(factory, ForbiddenRecovery(), fold),
-            clock=now, id_factory=self.ids["execution"], managed_health=self.health,
-            health_signing_authority=self.reload_service(factory), permission_policy=self.policy)
+            clock=now, id_factory=self.ids["execution"],
+            managed_health=operations.ManagedHealthAdapterRegistration(health, invocation_profile),
+            health_signing_authority=self.reload_service(factory), permission_policy=self.policy,
+            invocation_service=invocation_service)
 
 
 class PostgresCoordinatorManagementPermissionTests(_CoordinatorManagementPermissionFixture):
@@ -587,6 +610,15 @@ class _ControlledInvocationHealth:
         self.refuse_preparation = refuse_preparation
         self.invocations = None
         self.preparation_calls = []
+        self.final_calls = []
+        self.control = None
+        self.after_preparation = None
+        self.before_final = None
+        self.after_final_admission = None
+        self.preparation_error = None
+        self.final_error = None
+        self.classify_final = True
+        self.transform_result = None
 
     def __getattr__(self, name):
         return getattr(self.delegate, name)
@@ -595,24 +627,52 @@ class _ControlledInvocationHealth:
         self.invocations = invocations
         if invocations is None:
             return None  # Target observes the missing carriage after actual start.
+        try:
+            return await self._observe(realization, request, authority, invocations)
+        except invocations.control_error as error:
+            self.control = error
+            raise
+
+    async def _observe(self, realization, request, authority, invocations):
         preparation = authority.preparation
         for authorization in (preparation.transit_authorization_id, preparation.workload_authorization_id):
             permit = invocations.admit("secret-resolution", authorization_id=authorization)
             self.test.assertEqual(self.test.tracker.active, 0)
             self.preparation_calls.append(authorization)
             invocations.record_outcome(permit, "returned")
+            if len(self.preparation_calls) == 1 and self.after_preparation is not None:
+                self.after_preparation(invocations, authorization)
+            if self.preparation_error is not None:
+                raise self.preparation_error
             if self.refuse_preparation:
                 return None
+        if self.before_final is not None:
+            self.before_final()
         permit = invocations.admit("signed-health-transport")
         self.test.assertEqual(self.test.tracker.active, 0)
-        observed = await self.delegate.observe_signed(realization, request, authority)
-        invocations.record_outcome(permit, "returned")
+        if self.after_final_admission is not None:
+            self.after_final_admission()
+        self.final_calls.append(request.effect_id)
+        try:
+            if self.final_error is not None:
+                raise self.final_error
+            observed = await self.delegate.observe_signed(realization, request, authority)
+            if self.transform_result is not None:
+                observed = self.transform_result(observed)
+        except invocations.control_error:
+            raise
+        except Exception:
+            if self.classify_final:
+                invocations.record_outcome(permit, "unknown")
+            raise
+        if self.classify_final:
+            invocations.record_outcome(permit, "returned")
         return observed
 
 
 class PostgresCoordinatorHealthInvocationTests(_CoordinatorManagementPermissionFixture):
-    async def invocation_case(self, *, refuse_preparation=False):
-        _, command, _ = await self.prepared(native=False)
+    async def invocation_case(self, *, refuse_preparation=False, native=False, stage=None):
+        _, command, _ = await self.prepared(native=native, stage=stage)
         self.health = _ControlledInvocationHealth(self, self.health,
             refuse_preparation=refuse_preparation)
         return self.permission_coordinator(), command
@@ -674,3 +734,273 @@ class PostgresCoordinatorHealthInvocationTests(_CoordinatorManagementPermissionF
         self.assertEqual(replay.status.value, "uncertain")
         self.assertEqual(len(self.health.preparation_calls), 1)
         self.assertEqual(self.health.signed_reads, [])
+
+    def assert_unfolded(self, command, *, disposition="planned"):
+        final, attempt, receipt = self.actual_final(command)
+        self.assertEqual(final.disposition.value, disposition)
+        self.assertEqual(attempt.state.status.value, "started")
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.INCOMPLETE)
+        with self.unit_of_work() as uow, self.assertRaises(KeyError):
+            uow.stores.effect_outcomes.get(attempt.state.identity, attempt.latest_transition_event.event_id)
+        return final, attempt, receipt
+
+    async def test_preparation_exception_preserves_planned_state_without_fold(self):
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationPlanned
+        owner, command = await self.invocation_case()
+        self.health.preparation_error = RuntimeError("controlled preparation unavailable")
+        with self.assertRaises(ExecutionInvocationPlanned):
+            await owner.execute_managed(command)
+        self.assert_unfolded(command)
+        self.assertEqual(len(self.health.preparation_calls), 1)
+        self.assertEqual(self.health.final_calls, [])
+
+    async def pending_return(self, *, error=False):
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationConflict
+        owner, command = await self.invocation_case()
+        self.health.classify_final = False
+        if error:
+            self.health.final_error = RuntimeError("controlled final failure")
+        with self.assertRaises(ExecutionInvocationConflict):
+            await owner.execute_managed(command)
+        final, _, _ = self.assert_unfolded(command, disposition="admitted")
+        self.assertEqual(final.outcome.value, "pending")
+        self.assertEqual(len(self.health.final_calls), 1)
+        replay = await owner.execute_managed(command)
+        self.assertEqual(replay.status.value, "uncertain")
+        self.assertEqual(len(self.health.final_calls), 1)
+
+    async def test_ordinary_return_with_pending_final_is_conflict_not_a_fold(self):
+        await self.pending_return()
+
+    async def test_ordinary_exception_with_pending_final_is_conflict_not_a_fold(self):
+        await self.pending_return(error=True)
+
+    async def test_classified_final_exception_uses_existing_uncertain_fold(self):
+        owner, command = await self.invocation_case()
+        self.health.final_error = RuntimeError("controlled final failure")
+        result = await owner.execute_managed(command)
+        final, attempt, receipt = self.actual_final(command)
+        self.assertEqual((result.status.value, result.effects_attempted), ("uncertain", 1))
+        self.assertEqual(attempt.state.status.value, "uncertain")
+        self.assertEqual(final.outcome.value, "unknown")
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.COMPLETED)
+        self.assertEqual(len(self.health.final_calls), 1)
+
+    async def test_admitted_final_result_folds_after_current_revocation(self):
+        owner, command = await self.invocation_case()
+        self.health.after_final_admission = self.revoke_operate
+        result = await owner.execute_managed(command)
+        final, attempt, receipt = self.actual_final(command)
+        self.assertEqual(result.effects_attempted, 1)
+        self.assertEqual(attempt.state.status.value, "succeeded")
+        self.assertEqual(final.outcome.value, "returned")
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.COMPLETED)
+
+    async def test_revocation_between_uses_denies_without_final_and_replays_exactly(self):
+        owner, command = await self.invocation_case()
+        self.health.after_preparation = lambda *_: self.revoke_operate()
+        result = await owner.execute_managed(command)
+        final, attempt, receipt = self.actual_final(command)
+        self.assertEqual((result.status.value, result.effects_attempted), ("authorization-denied", 1))
+        self.assertEqual(attempt.state.status.value, "started")
+        self.assertEqual(final.disposition.value, "planned")
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.COMPLETED)
+        self.assertEqual(len(self.health.preparation_calls), 1)
+        self.assertEqual(self.health.final_calls, [])
+        self.assertEqual(await owner.execute_managed(command), result)
+        self.assertEqual(len(self.health.preparation_calls), 1)
+
+    async def test_prior_native_and_denied_started_signed_attempt_are_both_counted(self):
+        owner, command = await self.invocation_case(native=True)
+        self.health.after_preparation = lambda *_: self.revoke_operate()
+        command = replace(command, execution=replace(command.execution, max_effects=2))
+        result = await owner.execute_managed(command)
+        self.assertEqual((result.status.value, result.effects_attempted), ("authorization-denied", 2))
+        self.assertEqual(len(self.health.native_reads), 1)
+        self.assertEqual(len(self.health.preparation_calls), 1)
+        self.assertEqual(self.health.final_calls, [])
+        receipt = self.receipt(command.execution)
+        self.assertEqual(receipt.result.effects_attempted, 2)
+        self.assertEqual(await owner.execute_managed(command), result)
+        self.assertEqual(len(self.health.native_reads), 1)
+
+    async def test_existing_control_survives_without_inspection_rescue_or_fold(self):
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationExisting
+        owner, command = await self.invocation_case()
+        self.health.after_preparation = lambda port, authorization: port.admit(
+            "secret-resolution", authorization_id=authorization)
+        with self.assertRaises(ExecutionInvocationExisting) as caught:
+            await owner.execute_managed(command)
+        self.assertIs(caught.exception, self.health.control)
+        self.assert_unfolded(command)
+        self.assertEqual(self.health.final_calls, [])
+
+    async def cancellation(self, *, after_final):
+        owner, command = await self.invocation_case()
+        cancellation = asyncio.CancelledError("controlled cancellation")
+        if after_final:
+            self.health.final_error = cancellation
+        else:
+            self.health.preparation_error = cancellation
+        with self.assertRaises(asyncio.CancelledError) as caught:
+            await owner.execute_managed(command)
+        self.assertIs(caught.exception, cancellation)
+        final, attempt, receipt = self.actual_final(command)
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.INCOMPLETE)
+        if after_final:
+            self.assertEqual((final.disposition.value, final.outcome.value), ("admitted", "pending"))
+            self.assertEqual(attempt.state.status.value, "uncertain")
+            self.assertEqual(len(self.health.final_calls), 1)
+        else:
+            self.assert_unfolded(command)
+            self.assertEqual(self.health.final_calls, [])
+
+    async def test_cancellation_before_final_preserves_planned_and_propagates(self):
+        await self.cancellation(after_final=False)
+
+    async def test_cancellation_after_final_preserves_existing_uncertainty_and_propagates(self):
+        await self.cancellation(after_final=True)
+
+    async def test_final_denial_preserves_attempt_and_actual_preparation_history(self):
+        owner, command = await self.invocation_case()
+        self.health.before_final = self.revoke_operate
+        result = await owner.execute_managed(command)
+        final, attempt, receipt = self.actual_final(command)
+        self.assertEqual((result.status.value, result.effects_attempted), ("authorization-denied", 1))
+        self.assertEqual(final.disposition.value, "denied")
+        self.assertEqual(attempt.state.status.value, "started")
+        self.assertEqual(len(self.health.preparation_calls), 2)
+        self.assertEqual(self.health.final_calls, [])
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.COMPLETED)
+
+    async def test_regranted_assignment_does_not_replace_the_original_bound_selection(self):
+        owner, command = await self.invocation_case()
+        with self.unit_of_work() as uow:
+            runtime = uow.stores.runtime_authorities.get_active_for_update(
+                "workspace-a", self.graph.runtimes["docker"].authority_ref)
+        def replace_assignment(*_):
+            self.assignments.revoke(operations.RevokeManagedRuntimeAccess(self.admin_context,
+                "workspace-a", "docker", runtime.authority_ref, 1, IdempotencyKey("revoke-management")))
+            self.assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
+                "workspace-a", "docker", runtime.authority_ref, runtime.registration_id,
+                "local-docker", 2, IdempotencyKey("restore-management")))
+        self.health.after_preparation = replace_assignment
+        result = await owner.execute_managed(command)
+        final, attempt, _ = self.actual_final(command)
+        self.assertEqual((result.status.value, result.effects_attempted), ("authorization-denied", 1))
+        self.assertEqual(final.disposition.value, "planned")
+        self.assertEqual(attempt.state.status.value, "started")
+        self.assertEqual(len(self.health.preparation_calls), 1)
+        self.assertEqual(self.health.final_calls, [])
+
+    async def test_lost_final_commit_ack_control_cannot_be_rescued_by_admitted_row(self):
+        import psycopg
+        from control_plane_kit_operations.postgres import PostgresUnitOfWork
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationConflict
+        from tests.test_postgres_health_effect_start_rollback import _CommitThenRaiseConnection
+        _, command = await self.invocation_case()
+        armed, connections = [], []
+        def connect():
+            connection = psycopg.connect(self.database_url)
+            if armed:
+                connection = _CommitThenRaiseConnection(connection, RuntimeError("final admission ack lost"))
+                connections.append(connection)
+            return connection
+        service = operations.ExecutionInvocationService(lambda: PostgresUnitOfWork(connect),
+            permission_policy=self.policy, clock=now, health_receiver_decoders=self.registry)
+        owner = self.permission_coordinator(invocation_service=service)
+        self.health.before_final = lambda: armed.append(True)
+        with self.assertRaises(ExecutionInvocationConflict) as caught:
+            await owner.execute_managed(command)
+        self.assertIs(caught.exception, self.health.control)
+        final, _, _ = self.assert_unfolded(command, disposition="admitted")
+        self.assertEqual(final.outcome.value, "pending")
+        self.assertEqual([connection.commits for connection in connections], [1])
+        self.assertEqual(len(self.health.preparation_calls), 2)
+        self.assertEqual(self.health.final_calls, [])
+        self.assertEqual((await owner.execute_managed(command)).status.value, "uncertain")
+        self.assertEqual(self.health.final_calls, [])
+
+    async def test_missing_signed_profile_or_service_refuses_before_start(self):
+        _, command = await self.invocation_case()
+        before = self.history()
+        for index, options in enumerate((dict(invocation_profile=None), dict(invocation_service=None))):
+            with self.subTest(options=tuple(options)):
+                selected = replace(command, execution=replace(command.execution,
+                    idempotency_key=IdempotencyKey("unsupported-profile-" + str(index))))
+                result = await self.permission_coordinator(**options).execute_managed(selected)
+                self.assertEqual((result.status.value, result.effects_attempted), ("unsupported", 0))
+                self.assertEqual(self.receipt(selected.execution).result.effects_attempted, 0)
+        self.assertEqual(self.history(), before)
+        self.assertEqual(self.health.preparation_calls, [])
+        self.assertEqual(self.health.final_calls, [])
+        self.assertEqual(self.rows("cpk_execution_command_invocations"), ())
+
+    async def test_native_observation_does_not_require_signed_invocation_profile(self):
+        _, command, _ = await self.prepared()
+        result = await self.permission_coordinator(invocation_profile=None,
+            invocation_service=None).execute_managed(command)
+        self.assertEqual(result.effects_attempted, 1)
+        self.assertEqual(len(self.health.native_reads), 1)
+        self.assertEqual(self.rows("cpk_execution_command_invocations"), ())
+
+    async def classified_response(self, response):
+        from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
+        owner, command = await self.invocation_case(stage=ManagementBootstrapStage.GATEWAY_INGRESS_READY)
+        if response == "unhealthy":
+            self.health.transform_result = lambda value: replace(value, outcome=NodeHealthReadOutcome.UNHEALTHY)
+        elif response == "invalid":
+            self.health.transform_result = lambda _: None
+        result = await owner.execute_managed(command)
+        final, attempt, _ = self.actual_final(command)
+        self.assertEqual(attempt.state.status.value,
+            {"healthy": "succeeded", "unhealthy": "failed", "invalid": "uncertain"}[response])
+        self.assertEqual(final.outcome.value, "returned")
+        self.assertEqual(result.effects_attempted, 1)
+        self.assertEqual(len(self.health.final_calls), 1)
+
+    async def test_classified_actual_healthy_result_uses_existing_fold(self):
+        await self.classified_response("healthy")
+
+    async def test_classified_actual_unhealthy_result_is_not_promoted_to_success(self):
+        await self.classified_response("unhealthy")
+
+    async def test_classified_invalid_adapter_result_preserves_uncertainty(self):
+        await self.classified_response("invalid")
+
+    async def test_missing_final_marker_after_preparation_refuses_without_repair_or_fold(self):
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationConflict
+        owner, command = await self.invocation_case(refuse_preparation=True)
+        original_attempts = []
+        def remove_marker(*_):
+            final, attempt, _ = self.actual_final(command)
+            original_attempts.append(attempt)
+            self.connection.execute("DELETE FROM cpk_execution_command_invocations WHERE invocation_id=%s",
+                (final.invocation_id,))
+        self.health.after_preparation = remove_marker
+        with self.assertRaises(ExecutionInvocationConflict):
+            await owner.execute_managed(command)
+        receipt = self.receipt(command.execution)
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.INCOMPLETE)
+        self.assertEqual(self.health.final_calls, [])
+        self.assertEqual(len(self.health.preparation_calls), 1)
+        self.assertEqual(len(self.rows("cpk_execution_command_invocations")), 1)
+        with self.unit_of_work() as uow:
+            attempt = uow.stores.effect_attempts.get(original_attempts[0].state.identity)
+            self.assertEqual(attempt, original_attempts[0])
+            self.assertEqual(attempt.state.status.value, "started")
+            with self.assertRaises(KeyError):
+                uow.stores.effect_outcomes.get(attempt.state.identity, attempt.latest_transition_event.event_id)
+
+
+class ManagedHealthAdapterRegistrationTests(unittest.TestCase):
+    def test_unknown_profile_is_not_advertised_support(self):
+        for profile in ("unknown", True, 1):
+            with self.subTest(profile=profile), self.assertRaises(ValueError):
+                operations.ManagedHealthAdapterRegistration(object(), profile)
+
+    def test_registration_hides_the_adapter_and_validates_the_closed_profile(self):
+        adapter = object()
+        registration = operations.ManagedHealthAdapterRegistration(adapter, "cpk.semantic-invocations.v1")
+        self.assertIs(registration.adapter, adapter)
+        self.assertNotIn(repr(adapter), repr(registration))

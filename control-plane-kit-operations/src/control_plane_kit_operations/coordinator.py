@@ -137,6 +137,11 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
 from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
 from control_plane_kit_operations.health_effect_attempt_start import StartHealthEffectAttempt
+from control_plane_kit_operations.execution_invocation_service import BoundExecutionInvocations, ExecutionInvocationService
+from control_plane_kit_operations.execution_invocations import (
+    ExecutionInvocationControlError, ExecutionInvocationDenied, ExecutionInvocationPlanned,
+    ExecutionInvocationConflict, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
+)
 from control_plane_kit_operations.health_signing_authority import (
     HealthSigningAuthorityPair, HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
 )
@@ -262,12 +267,29 @@ class ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
 
 
+_SIGNED_INVOCATION_PROFILE = "cpk.semantic-invocations.v1"
+
+
+@dataclass(frozen=True, slots=True)
+class ManagedHealthAdapterRegistration:
+    """Trusted composition declaration; concrete conformance has its own gate."""
+    adapter: object = field(repr=False)
+    invocation_profile: str | None = None
+
+    def __post_init__(self):
+        if self.adapter is None or (self.invocation_profile is not None and (
+                type(self.invocation_profile) is not str
+                or self.invocation_profile != _SIGNED_INVOCATION_PROFILE)):
+            raise ValueError("managed health adapter registration is malformed")
+
+
 class ManagedHealthEffectPort(Protocol):
     """Pure complete selection followed by one awaited, authority-bound read."""
 
     def select(self, *, plan, current, desired, registered_products, runtime_authorities): ...
 
-    async def observe_signed(self, realization, request, authority: HealthSigningAuthorityPair) -> ReceiverHealthReadResult: ...
+    async def observe_signed(self, realization, request, authority: HealthSigningAuthorityPair,
+            *, invocations: BoundExecutionInvocations | None = None) -> ReceiverHealthReadResult: ...
 
     async def observe_connection(self, realization, request, authority: RegisteredRuntimeAuthority) -> NativeConnectionObservation | NativeConnectionRefused: ...
 
@@ -949,16 +971,31 @@ class ExecutionCoordinator:
         reconciliation_service: EffectAttemptReconciliationService,
         clock: Callable[[], str],
         id_factory: Callable[[], str],
-        managed_health: ManagedHealthEffectPort | None = None,
+        managed_health: ManagedHealthEffectPort | ManagedHealthAdapterRegistration | None = None,
         health_signing_authority: HealthSigningAuthorityReloadService | None = None,
         permission_policy: CurrentWorkspaceEffectPolicy | None = None,
+        invocation_service: ExecutionInvocationService | None = None,
     ) -> None:
         if permission_policy is not None and (
                 type(permission_policy) is not CurrentWorkspaceEffectPolicy
                 or type(start_service) is not EffectAttemptStartService
                 or start_service.permission_policy != permission_policy):
             raise ExecutionCoordinatorDenied("coordinator permission composition is invalid")
+        if invocation_service is not None and (
+                type(invocation_service) is not ExecutionInvocationService
+                or permission_policy is None
+                or invocation_service.permission_policy != permission_policy):
+            raise ExecutionCoordinatorDenied("coordinator invocation composition is invalid")
+        registration = None
+        if isinstance(managed_health, ManagedHealthAdapterRegistration):
+            if type(managed_health) is not ManagedHealthAdapterRegistration:
+                raise ExecutionCoordinatorDenied("managed health registration must be exact")
+            managed_health.__post_init__()
+            registration = managed_health
+            managed_health = registration.adapter
         self._permission_policy = permission_policy
+        self._invocation_service = invocation_service
+        self._managed_health_registration = registration
         self._unit_of_work_factory = unit_of_work_factory
         self._lifecycle = lifecycle
         self._adapter = adapter
@@ -1110,7 +1147,13 @@ class ExecutionCoordinator:
             raise ExecutionCoordinatorDenied("managed health scope is missing")
         intent = _runtime_effect_intent_for_context(context, activity)
         preparation = None
+        invocations = None
         if admitted_attempt is None:
+            if not native and self._permission_policy is not None and (
+                    self._invocation_service is None or self._managed_health_registration is None
+                    or self._managed_health_registration.invocation_profile != _SIGNED_INVOCATION_PROFILE):
+                return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
+                    0, activity.activity_id.value)
             start = StartEffectAttempt(context.request.identity.request_id,
                 EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
                     EffectAttemptIdentity(intent.source.run_id, activity.activity_id.value, 1),
@@ -1124,7 +1167,8 @@ class ExecutionCoordinator:
                 if native:
                     started = self._start_service.execute(start, **options)
                 else:
-                    health = self._start_service.execute_health(StartHealthEffectAttempt(start, command.context), **options)
+                    health_start = StartHealthEffectAttempt(start, command.context)
+                    health = self._start_service.execute_health(health_start, **options)
                     started, preparation = health.start, health.preparation
             except EffectAttemptStartDenied:
                 if self._permission_policy is None:
@@ -1135,6 +1179,9 @@ class ExecutionCoordinator:
                 return None
             if type(started) is not NewlyStarted:
                 raise ExecutionCoordinatorConflict("managed health start result is invalid")
+            if not native and self._permission_policy is not None:
+                invocations = self._invocation_service.bind_health(command_context=command_context,
+                    start=health_start, started=health, managed_target=options["managed_target"])
             attempt = started.attempt
         else:
             attempt = admitted_attempt
@@ -1188,7 +1235,11 @@ class ExecutionCoordinator:
         result = _uncertain_runtime_result(request, boundary="managed-health", reason="read-failed")
         cancelled = None
         try:
-            observed = await self._managed_health.observe_signed(realization, request, authority)
+            if invocations is None:
+                observed = await self._managed_health.observe_signed(realization, request, authority)
+            else:
+                observed = await self._managed_health.observe_signed(realization, request, authority,
+                    invocations=invocations)
             if type(observed) is ReceiverHealthReadResult:
                 observed.__post_init__()
                 if observed.request != authority.preparation.request:
@@ -1202,10 +1253,35 @@ class ExecutionCoordinator:
                     result = RuntimeEffectResult.failed(request.effect_id, RuntimeEffectFailure(
                         "node-health-not-healthy", "authenticated node health is not healthy",
                         {"health": observed.descriptor()}))
+        except ExecutionInvocationDenied:
+            if invocations is None:
+                raise
+            return ExecutionCoordinatorResult(context.run, CoordinatorStatus.AUTHORIZATION_DENIED,
+                1, activity.activity_id.value)
+        except ExecutionInvocationControlError:
+            raise
         except asyncio.CancelledError as error:
             cancelled = error
         except Exception:
             pass
+        if invocations is not None:
+            try:
+                final = self._invocation_service.inspect_health_dispatch(invocations)
+                if final.disposition is ExecutionInvocationDisposition.PLANNED:
+                    raise ExecutionInvocationPlanned(final.invocation_id)
+                if final.disposition is ExecutionInvocationDisposition.DENIED:
+                    raise ExecutionInvocationDenied(final.invocation_id)
+                if cancelled is None and final.outcome is ExecutionInvocationOutcome.PENDING:
+                    raise ExecutionInvocationConflict(final.invocation_id)
+            except ExecutionInvocationDenied:
+                if cancelled is not None:
+                    raise cancelled from None
+                return ExecutionCoordinatorResult(context.run, CoordinatorStatus.AUTHORIZATION_DENIED,
+                    1, activity.activity_id.value)
+            except Exception:
+                if cancelled is not None:
+                    raise cancelled from None
+                raise
         outcome = ExecutionEffectOutcome(attempt.state.identity, attempt.state.request_fingerprint, result)
         try:
             folded = self._fold_service.execute_health(GuardedHealthEffectFold(
@@ -1602,8 +1678,8 @@ class ExecutionCoordinator:
                     return current
                 folded = yield _HealthExecution(context, planned)
                 if (type(folded) is ExecutionCoordinatorResult
-                        and folded.status is CoordinatorStatus.AUTHORIZATION_DENIED):
-                    return replace(folded, effects_attempted=attempted)
+                        and folded.status in (CoordinatorStatus.AUTHORIZATION_DENIED, CoordinatorStatus.UNSUPPORTED)):
+                    return replace(folded, effects_attempted=attempted + folded.effects_attempted)
                 if folded is None:
                     return ExecutionCoordinatorResult(context.run, CoordinatorStatus.IN_FLIGHT,
                         attempted, planned.activity_id.value)
