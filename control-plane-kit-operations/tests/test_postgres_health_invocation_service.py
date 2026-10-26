@@ -412,3 +412,54 @@ class PostgresAuthenticatedHealthInvocationEligibilityTests(
 class PostgresIngressHealthInvocationEligibilityTests(
         _NonlocalHealthInvocationCases, _HealthInvocationServiceFixture, unittest.TestCase):
     health_stage = ManagementBootstrapStage.GATEWAY_INGRESS_READY
+
+
+class PostgresHealthInvocationInspectionTests(_HealthInvocationServiceFixture, unittest.TestCase):
+    def inspection_binding(self):
+        service = operations.ExecutionInvocationService(self.invocation_factory,
+            permission_policy=self.policy,
+            clock=lambda: timestamp(self.started.preparation.transit_grant.not_before),
+            health_receiver_decoders=self.health_receiver_decoders())
+        bound = service.bind_health(command_context=self.bound, start=self.health_command,
+            started=self.started, managed_target=self.selected)
+        return service, bound
+
+    def require_inspection(self, service):
+        inspect = getattr(service, "inspect_health_dispatch", None)
+        self.assertTrue(callable(inspect), "original signed-health final inspection is unavailable")
+        return inspect
+
+    def test_original_planned_inspection_retains_truth_without_admission_or_repair(self):
+        service, bound = self.inspection_binding()
+        self.assertIs(self.retained(Kind.SIGNED_HEALTH_TRANSPORT).disposition, Disposition.PLANNED)
+        inspect = self.require_inspection(service)
+        with self.forbid_fresh_health():
+            self.assertEqual(inspect(bound), self.marker)
+            self.assertEqual(inspect(bound), self.marker)
+        self.assertEqual(self.active_invocation_uows, 0)
+        self.assertEqual(self.calls, [])
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.command_invocations(self.bound.receipt).items, (self.marker,))
+            self.assertEqual(uow.stores.effect_attempts.get(self.started.start.attempt.state.identity),
+                self.started.start.attempt)
+
+    def test_pending_and_classified_final_inspection_survive_current_revocation(self):
+        service, bound = self.inspection_binding()
+        with self.admission_time():
+            permit = bound.admit("signed-health-transport")
+        admitted = self.retained(Kind.SIGNED_HEALTH_TRANSPORT)
+        self.assertIs(admitted.disposition, Disposition.ADMITTED)
+        self.assertIs(admitted.outcome, Outcome.PENDING)
+        inspect = self.require_inspection(service)
+        self.revoke_workspace()
+        self.revoke()
+        with self.forbid_fresh_health():
+            self.assertEqual(inspect(bound), admitted)
+            self.assertEqual(self.active_invocation_uows, 0)
+            self.calls.append("signed-health-transport")
+            bound.record_outcome(permit, "returned")
+            classified = inspect(bound)
+        self.assertIs(classified.outcome, Outcome.RETURNED)
+        self.assertEqual(classified, self.retained(Kind.SIGNED_HEALTH_TRANSPORT))
+        self.assertEqual(self.calls, ["signed-health-transport"])
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempt_outcomes").fetchone()[0], 0)
