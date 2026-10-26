@@ -167,7 +167,7 @@ def _require_unreserved(read, ref):
 
 class _OrdinaryStartReadBoundsOwner:
     """One caller transaction's ordinary suffix; never a cleanup issuer."""
-    def __init__(self, unit_of_work, guard, prefix):
+    def __init__(self, unit_of_work, guard, prefix, *, prepared_runtime=False):
         from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
         self._uow = unit_of_work
         self._stores = unit_of_work.stores
@@ -178,6 +178,7 @@ class _OrdinaryStartReadBoundsOwner:
         self._issued = None
         self._active = self._spent = False
         self._transferred_roots = frozenset()
+        self._prepared_runtime = prepared_runtime
 
     def _context_is_current(self):
         from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
@@ -258,6 +259,8 @@ class _OrdinaryStartReadBoundsOwner:
         approval = stores.activity_history.get_approval_request(request.approval_request_id)
         sessions = {request.identity.session_id, approval.session_id}
         selectors = {("plan", (request.identity.plan_id,)), ("request", (request.identity.request_id,))}
+        if self._prepared_runtime:
+            selectors.add(("run", (self._identity.run_id.value,)))
         selectors.update(("session", (session,)) for session in sessions)
         for graph, projection in pairs:
             selectors.update((("graph", (graph,)), ("projection", (projection,)),
@@ -557,13 +560,26 @@ def _ordinary_tail_budget(owner, intent, births):
             result = result.then(point(role))
         return result.then(native(12, 24576))
 
-    result = sequence(_OrdinarySuffixBudget(raw, raw), query(1, 1, 1), point("request"),
+    # The prepared branch keeps the caller's actual placement: runtime lock,
+    # original writes, marker insertion, original revalidation, marker recheck.
+    authority = native(9, 4 * 2048 + 3 * 64 + 65536 + 16384)
+    marker_owners = (sequence(native(13, 13 * 65536), point("run"), point("request"),
+        point("plan"), original_intent(), native(21, 21 * 2048), event, event, authority)
+        if owner._prepared_runtime else _OrdinarySuffixBudget(zero, zero))
+    runtime_read = (sequence(query(1, 1, 1), authority) if owner._prepared_runtime
+        else _OrdinarySuffixBudget(zero, zero))
+    result = sequence(_OrdinarySuffixBudget(raw, raw), runtime_read, query(1, 1, 1), point("request"),
         query(1, 65, 2), query(1, 1, 1), query(1, 20, 1), query(1, 1, 1),
         issued_check(), original_intent(), issued_check(), query(1, 200, 1), issued_check())
+    if owner._prepared_runtime:
+        result = result.then(sequence(marker_owners, query(1, 1, 1)))
     for _ in owner._prefix.held_run_ids:
         result = result.then(sequence(query(1, 1, 1), native(10, 65536 + 9 * 2048)))
-    result = result.then(sequence(permission(), event, original_intent(), native(21, 21 * 2048), event, event,
-        query(33, 33 * 32768, 19, 2, settled=F(2 * c, c * 32768, 19 * c, 1)), source()))
+    result = result.then(sequence(permission(), event, original_intent(), native(21, 21 * 2048), event, event))
+    if owner._prepared_runtime:
+        result = result.then(sequence(native(19, 18 * 2048 + 8192), marker_owners))
+    result = result.then(sequence(query(33, 33 * 32768, 19, 2,
+        settled=F(2 * c, c * 32768, 19 * c, 1)), source()))
     seen = {(intent.source.run_id.value, intent.activity_id.value, owner._identity.attempt)}
     for birth, _ in births:
         result = result.then(sequence(pair, possible_closure, query(1, 32768, 19, 2)))
@@ -599,10 +615,11 @@ class ConfigurationPreparationStore:
         self._ordinary_owner._require(self._ordinary_owner._issued, self._connection)
 
     @contextmanager
-    def _start_scope(self, unit_of_work, command, request, run, plan, guard, event_kind, prefix):
+    def _start_scope(self, unit_of_work, command, request, run, plan, guard, event_kind, prefix,
+            *, prepared_runtime=False):
         if self._ordinary_owner is not None or unit_of_work.stores.configuration_preparation is not self:
             raise _Unavailable
-        owner = _OrdinaryStartReadBoundsOwner(unit_of_work, guard, prefix)
+        owner = _OrdinaryStartReadBoundsOwner(unit_of_work, guard, prefix, prepared_runtime=prepared_runtime)
         owner._identity = command.transition.identity
         self._ordinary_owner = owner
         try:

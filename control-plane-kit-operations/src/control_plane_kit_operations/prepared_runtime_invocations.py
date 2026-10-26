@@ -7,7 +7,7 @@ import rfc8785
 
 from control_plane_kit_core.planning import (
     NodeTarget, ReconcileRuntime, RemoveNodeResource, RemoveRuntimeResource,
-    RuntimeTarget, StartRuntime, StopNode, StopRuntime,
+    RuntimeTarget, StartRuntime, StopNode, StopRuntime, StartNode, ReconcileNode,
 )
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeProductMaterial
 from control_plane_kit_core.runtime_effect_observation import (
@@ -15,9 +15,9 @@ from control_plane_kit_core.runtime_effect_observation import (
 )
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.runtime_authorities import (
-    RegisteredRuntimeAuthority, RemoteDockerTlsAuthority, runtime_authority_registration_id_for,
+    RegisteredRuntimeAuthority, RemoteDockerTlsAuthority, LocalDockerSocketAuthority, runtime_authority_registration_id_for,
 )
-from control_plane_kit_operations.runtime_secret_uses import required_secret_uses_for_runtime_effect, _secret_use_key
+from control_plane_kit_operations.runtime_secret_uses import required_prepared_runtime_secret_uses, _secret_use_key
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +27,29 @@ class PreparedRuntimeInvocationProfile:
     target_fingerprint: str
 
 
+def _workload_shape(intent):
+    return (type(intent) is RuntimeEffectIntent and intent.runtime_kind is RuntimeKind.DOCKER
+        and type(intent.operation) in (StartNode, ReconcileNode)
+        and intent.kind in (RuntimeEffectKind.REALIZE_ACTIVITY, RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1))
+
+
+def workload_preparation_candidate(intent):
+    """Actual workload/pull preparation, independently of runtime registration."""
+    if not _workload_shape(intent):
+        return False
+    if (type(intent.operation.target) is not NodeTarget or len(intent.products) != 1
+            or type(intent.products[0]) is not RuntimeProductMaterial
+            or intent.products[0].node_id != intent.operation.target.node_id):
+        raise ValueError("prepared workload node material is invalid")
+    request = runtime_effect_request_for_intent(intent,
+        effect_id="prepared-runtime-candidate", secret_resolution_grants=())
+    return bool(required_prepared_runtime_secret_uses(request, None))
+
+
 def runtime_preparation_candidate(intent):
+    if _workload_shape(intent):
+        preparation = workload_preparation_candidate(intent)
+        return intent.authority_ref is not None or preparation
     return (type(intent) is RuntimeEffectIntent and intent.kind is RuntimeEffectKind.REALIZE_ACTIVITY
         and type(intent.operation) in (StartRuntime, ReconcileRuntime, StopRuntime,
             RemoveRuntimeResource, StopNode, RemoveNodeResource) and intent.runtime_kind is RuntimeKind.DOCKER
@@ -36,13 +58,18 @@ def runtime_preparation_candidate(intent):
 
 def prepared_runtime_observation_supported(intent):
     """Closed selected-observer support; this grants no observation authority."""
-    return runtime_preparation_candidate(intent) and type(intent.operation) is not StopRuntime
+    return (type(intent) is RuntimeEffectIntent and intent.kind is RuntimeEffectKind.REALIZE_ACTIVITY
+        and intent.runtime_kind is RuntimeKind.DOCKER and intent.authority_ref is not None
+        and type(intent.operation) in (StartRuntime, ReconcileRuntime, RemoveRuntimeResource,
+            StopNode, RemoveNodeResource))
 
 
 def prepared_runtime_invocation_profile(intent, *, original_event_id, runtime_authority):
     if (not runtime_preparation_candidate(intent)
             or type(runtime_authority) is not RegisteredRuntimeAuthority
-            or type(runtime_authority.authority) is not RemoteDockerTlsAuthority
+            or not (type(runtime_authority.authority) is RemoteDockerTlsAuthority
+                or (type(runtime_authority.authority) is LocalDockerSocketAuthority
+                    and workload_preparation_candidate(intent)))
             or runtime_authority.workspace_id != intent.source.workspace_id
             or runtime_authority.authority_ref != intent.authority_ref
             or runtime_authority.runtime_kind is not intent.runtime_kind):
@@ -52,7 +79,7 @@ def prepared_runtime_invocation_profile(intent, *, original_event_id, runtime_au
             runtime_authority.workspace_id, runtime_authority.authority_ref,
             runtime_authority.runtime_kind, runtime_authority.authority):
         raise ValueError("prepared runtime registration is incongruent")
-    if type(intent.operation) in (StopNode, RemoveNodeResource):
+    if type(intent.operation) in (StartNode, ReconcileNode, StopNode, RemoveNodeResource):
         if (type(intent.operation.target) is not NodeTarget or len(intent.products) != 1
                 or type(intent.products[0]) is not RuntimeProductMaterial):
             raise ValueError("prepared runtime node material is invalid")
@@ -69,7 +96,7 @@ def prepared_runtime_invocation_profile(intent, *, original_event_id, runtime_au
         runtime_id = intent.operation.target.runtime_id
     request = runtime_effect_request_for_intent(intent,
         effect_id=original_event_id, secret_resolution_grants=())
-    uses = required_secret_uses_for_runtime_effect(request, runtime_authority)
+    uses = required_prepared_runtime_secret_uses(request, runtime_authority)
     if not uses:
         raise ValueError("prepared runtime target has no preparation")
     target = dict(domain="cpk.prepared-runtime-final-target.v1", kind="prepared-runtime-dispatch",

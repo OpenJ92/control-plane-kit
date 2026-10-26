@@ -317,6 +317,20 @@ class RuntimeAuthorityStore:
         _validate_identifier(registration_id, "registration_id")
         if not isinstance(authority_ref, RuntimeAuthorityReference):
             raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            where = "registration_id=%s AND workspace_id=%s AND authority_ref=%s"
+            parameters = (registration_id, workspace_id, authority_ref.reference_id)
+            if for_update:
+                read.query("SELECT 1 FROM cpk_runtime_authorities WHERE " + where + " FOR UPDATE",
+                    parameters, records=1, octets=1, cells=1)
+            columns = tuple((name, "json" if name in ("authority", "metadata")
+                else "time" if name == "admitted_at" else "text", 64 if limit is None else limit)
+                for name, limit in _HISTORICAL_COLUMNS)
+            rows = read.bounded_rows("cpk_runtime_authorities", columns, where, parameters)
+            if not rows:
+                raise RuntimeAuthorityNotFound("registered runtime authority was not found")
+            return _row_to_authority(rows[0])
         selection = ("SELECT registration_id,workspace_id,authority_ref,runtime_kind,authority,admitted_by,"
             "admitted_at,status,metadata FROM cpk_runtime_authorities " if for_update else _HISTORICAL_SELECT)
         row = self._connection.execute(selection

@@ -60,13 +60,13 @@ from control_plane_kit_operations.effect_permissions import (
     _require_execution_binding,
 )
 from control_plane_kit_operations.execution_invocations import (
-    ExecutionInvocationKind, ExecutionInvocationRecord,
+    ExecutionInvocationKind, ExecutionInvocationRecord, ExecutionInvocationConflict,
     signed_health_invocation_target_fingerprint,
 )
 from control_plane_kit_operations.prepared_runtime_invocations import (
-    runtime_preparation_candidate, prepared_runtime_invocation_profile,
+    runtime_preparation_candidate, prepared_runtime_invocation_profile, workload_preparation_candidate,
 )
-from control_plane_kit_operations.runtime_authorities import RemoteDockerTlsAuthority, RuntimeAuthorityNotFound
+from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority, RemoteDockerTlsAuthority, RuntimeAuthorityNotFound
 from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
 )
@@ -332,7 +332,9 @@ class EffectAttemptStartService:
                     else:
                         configuration_preparation = evidence_contexts.enter_context(
                             stores.configuration_preparation._start_scope(
-                                unit_of_work, command, request, run, plan, guard, event_kind, prefix))
+                                unit_of_work, command, request, run, plan, guard, event_kind, prefix,
+                                prepared_runtime=(self._permission_policy is not None
+                                    and runtime_preparation_candidate(command.intent))))
                 except (KeyError, ValueError, TypeError, AttributeError):
                     configuration_preparation = None
                 if configuration_preparation is None:
@@ -344,12 +346,20 @@ class EffectAttemptStartService:
             if (self._permission_policy is not None and health is None
                     and event_kind is ActivityEventKind.STEP_STARTED
                     and runtime_preparation_candidate(command.intent)):
+                if command.intent.authority_ref is None:
+                    raise EffectAttemptStartConflict("prepared workload requires registered runtime authority")
                 try:
                     runtime = stores.runtime_authorities.get_active_for_update(
                         request.identity.workspace_id, command.intent.authority_ref)
                 except RuntimeAuthorityNotFound:
                     raise EffectAttemptStartDenied(_AUTHORITY_ERROR) from None
-                if type(runtime.authority) is RemoteDockerTlsAuthority:
+                except (ValueError, TypeError, AttributeError):
+                    if configuration_preparation is None:
+                        raise
+                    raise EffectAttemptStartConflict("configuration runtime preparation is unavailable") from None
+                if (type(runtime.authority) is RemoteDockerTlsAuthority
+                        or (type(runtime.authority) is LocalDockerSocketAuthority
+                            and workload_preparation_candidate(command.intent))):
                     prepared_runtime = runtime
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
@@ -407,16 +417,21 @@ class EffectAttemptStartService:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
             final_invocation = None
             if prepared_runtime is not None:
-                profile = prepared_runtime_invocation_profile(command.intent,
-                    original_event_id=event.event_id, runtime_authority=prepared_runtime)
-                final_invocation = ExecutionInvocationRecord(command_context.receipt,
-                    request.identity.workspace_id, expected_attempt.state.identity.activity_id,
-                    ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH, profile.target_fingerprint,
-                    event.occurred_at, attempt=expected_attempt.state.identity.attempt,
-                    original_event_id=event.event_id, request_fingerprint=expected_attempt.state.request_fingerprint,
-                    runtime_registration_id=profile.runtime_registration_id)
-                if stores.execution.add_command_invocation(final_invocation) != final_invocation:
-                    raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+                try:
+                    profile = prepared_runtime_invocation_profile(command.intent,
+                        original_event_id=event.event_id, runtime_authority=prepared_runtime)
+                    final_invocation = ExecutionInvocationRecord(command_context.receipt,
+                        request.identity.workspace_id, expected_attempt.state.identity.activity_id,
+                        ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH, profile.target_fingerprint,
+                        event.occurred_at, attempt=expected_attempt.state.identity.attempt,
+                        original_event_id=event.event_id, request_fingerprint=expected_attempt.state.request_fingerprint,
+                        runtime_registration_id=profile.runtime_registration_id)
+                    if stores.execution.add_command_invocation(final_invocation) != final_invocation:
+                        raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+                except (ValueError, TypeError, AttributeError, ExecutionInvocationConflict):
+                    if configuration_preparation is None:
+                        raise
+                    raise EffectAttemptStartConflict("configuration prepared invocation is unavailable") from None
             if health_write is not None:
                 result = retain_health_start(unit_of_work, health_write, result)
                 if self._permission_policy is not None:
@@ -450,6 +465,10 @@ class EffectAttemptStartService:
                     else:
                         stores.configuration_preparation._require_original(intent_record)
             except (KeyError, ValueError, TypeError, AttributeError):
+                permission_failed = True
+            except ExecutionInvocationConflict:
+                if configuration_preparation is None:
+                    raise
                 permission_failed = True
             else:
                 permission_failed = False

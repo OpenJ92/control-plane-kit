@@ -47,6 +47,14 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
         WorkspaceCommandService(self.unit_of_work,
             clock=lambda: "2026-07-22T12:00:00Z", id_factory=lambda: "graph-initial").create(
                 CreateWorkspace("workspace-a", "Configuration preparation", "operator-a", IdempotencyKey("origin-create")))
+        runtime_authority = getattr(self, "configuration_runtime_authority", None)
+        if runtime_authority is not None:
+            with self.unit_of_work() as uow:
+                self.configuration_runtime = uow.stores.runtime_authorities.register(
+                    workspace_id="workspace-a", authority_ref=base.runtimes["docker"].authority_ref,
+                    runtime_kind=base.runtimes["docker"].kind, authority=runtime_authority,
+                    admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
+                uow.commit()
         plan = ActivityPlan((PlannedActivity(ActivityId("origin-runtime"), StartRuntime(RuntimeTarget("docker"))),))
         requirement = ApprovalPolicy().requirement_for(plan)
         with self.unit_of_work() as uow:
@@ -68,7 +76,9 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
                 "manager-a", ApprovalDecisionKind.APPROVED, requirement.required_scope, "2026-07-22T12:03:30Z"))
             uow.commit()
         admit_fixture_plan(self, request_id="origin-request", session_id="origin-session", plan_id="origin-plan",
-            approval_request_id="origin-approval", key="origin-admit")
+            approval_request_id="origin-approval", key="origin-admit",
+            actor_scopes=((PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE)
+                if runtime_authority is not None else (PolicyScope.PLAN_EXECUTE,)))
         engine = coordinator_fixture.ExecutionCoordinatorTests()
         engine.database_url, engine.connection = self.database_url, self.connection
         identities = count(1)
@@ -118,6 +128,13 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
         base = execution_graph("empty-runtime", runtime_id="docker")
         desired = _configuration_graph(product,
             selection=getattr(self, "configuration_selected_value", "approved-desired"))
+        if getattr(self, "configuration_runtime_authority", None) is not None:
+            from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+            reference = RuntimeAuthorityReference("configuration-runtime")
+            base = replace(base, runtimes={key: replace(runtime, authority_ref=reference)
+                for key, runtime in base.runtimes.items()})
+            desired = replace(desired, runtimes={key: replace(runtime, authority_ref=reference)
+                for key, runtime in desired.runtimes.items()})
         if existing:
             base = desired
         if existing:
@@ -186,7 +203,9 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
                 run=stores.execution.get_run("run-a"), plan_record=plan,
                 base_graph=stores.realized_graphs.get(plan.base_realized_projection_id),
                 desired_graph=stores.realized_graphs.get(plan.desired_realized_projection_id),
-                registered_products=(self.configuration_product,), fence=self.seeded_fence)
+                registered_products=(self.configuration_product,), fence=self.seeded_fence,
+                runtime_authorities=((self.configuration_runtime,)
+                    if getattr(self, "configuration_runtime_authority", None) is not None else ()))
         original = _runtime_effect_intent_for_context(context, self.configuration_activity)
         return replace(original, kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
             configuration_instances=self.configuration_selection(original))

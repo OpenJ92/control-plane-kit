@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from control_plane_kit_core.planning import (StartNode, ReconcileNode, StopNode, RemoveNodeResource,
     StopRuntime, RemoveRuntimeResource, RemoveSocketConnection, CleanupConfigurationInstances)
-from control_plane_kit_core.runtime_effects import RuntimeEffectRequest
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectRequest
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_for_request, runtime_effect_intent_fingerprint
 from control_plane_kit_core.secret_installation import secret_material_selection_fingerprint
 from control_plane_kit_core.secret_selections import SecretVersionSelection
@@ -116,3 +116,26 @@ def required_secret_uses_for_runtime_effect(
         )
     )
 
+
+def required_prepared_runtime_secret_uses(request, authority):
+    """Actual node-execution roles; probe credentials belong to their observer."""
+    if (type(request.operation) not in (StartNode, ReconcileNode)
+            or request.kind not in (RuntimeEffectKind.REALIZE_ACTIVITY, RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1)):
+        return required_secret_uses_for_runtime_effect(request, authority)
+    request.__post_init__()
+    uses = set()
+    for material in request.products:
+        for selection in material.secret_selections:
+            if type(selection) is not SecretVersionSelection:
+                raise InvalidOperationCommand("runtime consumer version is not selected")
+            uses.add(selection)
+        if material.pull_authority is not None:
+            uses.add(OperationalSecretUse(material.pull_authority.credential_reference,
+                SecretUseIntent.OCI_PULL_CREDENTIAL))
+    if authority is not None and type(authority.authority) is RemoteDockerTlsAuthority:
+        uses.update((OperationalSecretUse(authority.authority.ca_certificate,
+                SecretUseIntent.DOCKER_REMOTE_TLS_CA_CERTIFICATE),
+            OperationalSecretUse(authority.authority.client_certificate,
+                SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_CERTIFICATE),
+            OperationalSecretUse(authority.authority.client_key, SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_KEY)))
+    return tuple(sorted(uses, key=_secret_use_key))

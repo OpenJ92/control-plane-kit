@@ -294,9 +294,16 @@ class PostgresExecutionStore:
         _invocation_record(record)
         _require_invocation_owners(self, record, fresh=True)
         try:
-            self._connection.execute("INSERT INTO cpk_execution_command_invocations ("
+            sql = ("INSERT INTO cpk_execution_command_invocations ("
                 + ", ".join(_INVOCATION_COLUMNS) + ") VALUES ("
-                + ", ".join("%s" for _ in _INVOCATION_COLUMNS) + ")", _invocation_values(record))
+                + ", ".join("%s" for _ in _INVOCATION_COLUMNS) + ")")
+            from .configuration_evidence import _active_read
+            if (read := _active_read(self._connection)) is not None:
+                if read.query(sql + " RETURNING 1", _invocation_values(record),
+                        records=1, octets=1, cells=1) != [(1,)]:
+                    raise ExecutionInvocationConflict(record.invocation_id)
+            else:
+                self._connection.execute(sql, _invocation_values(record))
         except IntegrityError:
             raise ExecutionInvocationConflict(record.invocation_id) from None
         return record
@@ -306,10 +313,21 @@ class PostgresExecutionStore:
         _invocation_id(invocation_id)
         if type(for_update) is not bool:
             raise ExecutionInvocationConflict()
-        row = self._connection.execute(_INVOCATION_SELECT
-            + " WHERE run_id=%s AND command_key=%s AND invocation_id=%s"
-            + (" FOR UPDATE" if for_update else ""),
-            (command.run_id, command.idempotency_key, invocation_id)).fetchone()
+        where = "run_id=%s AND command_key=%s AND invocation_id=%s"
+        parameters = (command.run_id, command.idempotency_key, invocation_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            if for_update:
+                read.query("SELECT 1 FROM cpk_execution_command_invocations WHERE " + where + " FOR UPDATE",
+                    parameters, records=1, octets=1, cells=1)
+            columns = tuple((name, "json" if name == "descriptor" else "int" if name in ("version", "attempt")
+                else "time" if name in ("decision_at", "completed_at") else "text",
+                8192 if name == "descriptor" else 2048) for name in _INVOCATION_COLUMNS)
+            rows = read.bounded_rows("cpk_execution_command_invocations", columns, where, parameters)
+            row = rows[0] if rows else None
+        else:
+            row = self._connection.execute(_INVOCATION_SELECT + " WHERE " + where
+                + (" FOR UPDATE" if for_update else ""), parameters).fetchone()
         if row is None:
             return None
         record = _invocation_row(row)

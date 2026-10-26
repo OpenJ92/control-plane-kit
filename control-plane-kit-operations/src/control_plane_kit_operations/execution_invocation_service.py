@@ -43,7 +43,8 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAt
 from control_plane_kit_operations.effect_attempt_start import StartEffectAttempt, _valid_start_command
 from control_plane_kit_operations.runtime_secret_uses import OperationalSecretUse, secret_authorization_command
 from control_plane_kit_operations.secret_providers import (
-    AuthorizedSecretUse, authorize_secret_use_in_unit_of_work, validate_authorized_secret_use,
+    AuthorizedSecretUse, AuthorizedSecretVersionUse, authorize_secret_use_in_unit_of_work,
+    authorize_secret_version_use_in_unit_of_work, validate_authorized_secret_use,
 )
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
 from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
@@ -404,8 +405,8 @@ class ExecutionInvocationService:
         if kind is Kind.SECRET_RESOLUTION:
             authorized = stores.secret_use_authorizations.get(marker.workspace_id, authorization_id)
             validate_authorized_secret_use(authorized)
-            _require(type(authorized) is AuthorizedSecretUse)
-            use = OperationalSecretUse(authorized.reference, authorized.intent)
+            use = (authorized.selection if type(authorized) is AuthorizedSecretVersionUse
+                else OperationalSecretUse(authorized.reference, authorized.intent))
             request = stores.execution.get_request(bound.start.request_id)
             _require(use in profile.required_uses and authorized.session_id == request.identity.session_id)
             runtime_request = runtime_effect_request_for_intent(bound.start.intent,
@@ -413,8 +414,10 @@ class ExecutionInvocationService:
             expected = secret_authorization_command(runtime_request, use,
                 actor_subject=bound.context.original.actor_id, requested_at=authorized.requested_at,
                 actor_scopes=bound.context.original.granted_scopes, session_id=request.identity.session_id)
+            role_fields = (("selection", "request_fingerprint", "selection_fingerprint")
+                if type(authorized) is AuthorizedSecretVersionUse else ("reference", "intent", "probe_id"))
             for name in ("workspace_id", "actor_subject", "operation_id", "session_id", "run_id",
-                    "activity_id", "effect_id", "reference", "intent", "correlation_id", "probe_id"):
+                    "activity_id", "effect_id", "correlation_id", *role_fields):
                 _require(getattr(authorized, name) == getattr(expected, name))
             current = stores.execution.command_invocation_for_slot(bound.context.receipt,
                 activity_id=marker.activity_id, kind=kind, authorization_id=authorization_id)
@@ -485,11 +488,15 @@ class ExecutionInvocationService:
                         if authorized is not None:
                             runtime_request = runtime_effect_request_for_intent(bound.start.intent,
                                 effect_id=marker.original_event_id, secret_resolution_grants=())
-                            use = OperationalSecretUse(authorized.reference, authorized.intent)
+                            versioned = type(authorized) is AuthorizedSecretVersionUse
+                            use = (authorized.selection if versioned
+                                else OperationalSecretUse(authorized.reference, authorized.intent))
                             command = secret_authorization_command(runtime_request, use,
                                 actor_subject=original.actor_id, requested_at=authorized.requested_at,
                                 actor_scopes=decision.effective_scopes, session_id=request.identity.session_id)
-                            retained, _ = authorize_secret_use_in_unit_of_work(uow, command)
+                            authorize = (authorize_secret_version_use_in_unit_of_work if versioned
+                                else authorize_secret_use_in_unit_of_work)
+                            retained, _ = authorize(uow, command)
                             _require(retained == authorized)
                     observation = stores.execution.observe_request_lease_for_update(request.identity.request_id)
                     _require(observation.request == request and not observation.expired)

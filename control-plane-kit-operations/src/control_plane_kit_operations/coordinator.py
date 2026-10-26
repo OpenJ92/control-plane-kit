@@ -145,8 +145,9 @@ from control_plane_kit_operations.execution_invocations import (
 )
 from control_plane_kit_operations.prepared_runtime_invocations import (
     runtime_preparation_candidate, prepared_runtime_invocation_profile,
-    prepared_runtime_observation_supported,
+    prepared_runtime_observation_supported, workload_preparation_candidate,
 )
+from control_plane_kit_operations.runtime_secret_uses import required_prepared_runtime_secret_uses
 from control_plane_kit_operations.health_signing_authority import (
     HealthSigningAuthorityPair, HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
 )
@@ -171,7 +172,7 @@ from control_plane_kit_operations.products import (
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority,
     RegisteredRuntimeAuthorityDelivery,
-    RemoteDockerTlsAuthority,
+    RemoteDockerTlsAuthority, LocalDockerSocketAuthority,
 )
 from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_execution_is_unsupported,
@@ -802,6 +803,7 @@ class RuntimeInterpreterDispatcher:
                 request,
                 authority=authority,
                 session_id=context.request.identity.session_id if invocations is not None else None,
+                prepared=invocations is not None,
             )
         except ExecutionInvocationControlError:
             raise
@@ -865,8 +867,10 @@ class RuntimeInterpreterDispatcher:
         *,
         authority: RegisteredRuntimeAuthority | None,
         session_id=None,
+        prepared=False,
     ) -> RuntimeEffectRequest:
-        required_uses = required_secret_uses_for_runtime_effect(request, authority)
+        required_uses = (required_prepared_runtime_secret_uses(request, authority) if prepared
+            else required_secret_uses_for_runtime_effect(request, authority))
         if not required_uses:
             return request
         if self.secret_use_authorizer is None:
@@ -1684,7 +1688,8 @@ class ExecutionCoordinator:
         if type(dispatcher) is ActivityExecutionDispatcher:
             dispatcher = dispatcher.runtime
         return (self._invocation_service is not None and type(dispatcher) is RuntimeInterpreterDispatcher
-            and adapter_accepts_invocations(dispatcher.interpreters.get(intent.runtime_kind), "execute_with_authority"))
+            and adapter_accepts_invocations(dispatcher.interpreters.get(intent.runtime_kind), "execute_with_authority")
+            and adapter_is_qualified(dispatcher.interpreters.get(intent.runtime_kind), intent, "execute_with_authority"))
 
     def _original_runtime_marker(self, command_context, start, attempt):
         """Current command lock, original immutable history; never observation authority."""
@@ -1788,10 +1793,15 @@ class ExecutionCoordinator:
                     intent = _propose_configuration(identity, _runtime_effect_intent_for_context(context, planned))
                 runtime_candidate = self._permission_policy is not None and runtime_preparation_candidate(intent)
                 if runtime_candidate:
+                    if intent.authority_ref is None and current.status is not CoordinatorStatus.IN_FLIGHT:
+                        return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
+                            attempted, planned.activity_id.value)
                     selected = tuple(value for value in context.runtime_authorities
                         if value.workspace_id == intent.source.workspace_id
                             and value.authority_ref == intent.authority_ref and value.runtime_kind is intent.runtime_kind)
-                    if len(selected) == 1 and type(selected[0].authority) is RemoteDockerTlsAuthority:
+                    if len(selected) == 1 and (type(selected[0].authority) is RemoteDockerTlsAuthority
+                            or (type(selected[0].authority) is LocalDockerSocketAuthority
+                                and workload_preparation_candidate(intent))):
                         prepared_runtime = selected[0]
                         if current.status is not CoordinatorStatus.IN_FLIGHT and not self._runtime_profile_ready(intent):
                             return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,

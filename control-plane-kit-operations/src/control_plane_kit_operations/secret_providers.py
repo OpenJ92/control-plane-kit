@@ -768,27 +768,7 @@ class SecretUseAuthorizationService:
         _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
         validate_canonical_utc_timestamp(command.requested_at)
         with self._unit_of_work_factory() as unit:
-            store = unit.stores.secret_use_authorizations
-            store.lock_correlation(command.workspace_id, command.correlation_id)
-            reference = unit.stores.secret_references.get_active_for_update(command.workspace_id, command.selection.reference)
-            provider = unit.stores.secret_providers.require_active_registration_for_update(
-                command.workspace_id, reference.provider_registration_id)
-            _validate_reference_admission(reference, provider)
-            if command.selection.intent not in reference.allowed_intents:
-                raise SecretProviderRegistrationError("secret use intent is outside reference admission")
-            fingerprint = _version_authorization_fingerprint(command, reference.registration_id, provider.registration_id)
-            candidate = AuthorizedSecretVersionUse(
-                authorization_id="suse_" + fingerprint, reference_registration_id=reference.registration_id,
-                provider_registration_id=provider.registration_id, intent_fingerprint=fingerprint,
-                **{item.name: getattr(command, item.name) for item in fields(command) if item.name != "actor_scopes"})
-            existing = store.for_correlation(command.workspace_id, command.correlation_id)
-            if existing is not None:
-                if type(existing) is not AuthorizedSecretVersionUse or existing.intent_fingerprint != fingerprint:
-                    raise SecretUseAuthorizationConflict("secret use correlation was reused with different intent")
-                authorized = existing
-            else:
-                store.add(candidate)
-                authorized = candidate
+            authorized, provider = authorize_secret_version_use_in_unit_of_work(unit, command)
             grant = SecretVersionResolutionGrant(endpoint_reference=provider.endpoint_reference,
                 credential_reference=provider.credential_reference,
                 **{item.name: getattr(authorized, item.name) for item in fields(authorized) if item.name != "requested_at"})
@@ -827,6 +807,39 @@ class SecretUseAuthorizationService:
             )
             unit_of_work.commit()
             return grant
+
+
+def authorize_secret_version_use_in_unit_of_work(
+    unit: Any, command: AuthorizeSecretVersionUse,
+) -> tuple[AuthorizedSecretVersionUse, RegisteredSecretProvider]:
+    """Authorize the exact selected version in the caller's transaction."""
+    if type(command) is not AuthorizeSecretVersionUse:
+        raise SecretProviderRegistrationError("version authorization requires exact command")
+    AuthorizeSecretVersionUse.__post_init__(command)
+    _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+    validate_canonical_utc_timestamp(command.requested_at)
+    store = unit.stores.secret_use_authorizations
+    store.lock_correlation(command.workspace_id, command.correlation_id)
+    reference = unit.stores.secret_references.get_active_for_update(command.workspace_id, command.selection.reference)
+    provider = unit.stores.secret_providers.require_active_registration_for_update(
+        command.workspace_id, reference.provider_registration_id)
+    _validate_reference_admission(reference, provider)
+    if command.selection.intent not in reference.allowed_intents:
+        raise SecretProviderRegistrationError("secret use intent is outside reference admission")
+    fingerprint = _version_authorization_fingerprint(command, reference.registration_id, provider.registration_id)
+    candidate = AuthorizedSecretVersionUse(
+        authorization_id="suse_" + fingerprint, reference_registration_id=reference.registration_id,
+        provider_registration_id=provider.registration_id, intent_fingerprint=fingerprint,
+        **{item.name: getattr(command, item.name) for item in fields(command) if item.name != "actor_scopes"})
+    existing = store.for_correlation(command.workspace_id, command.correlation_id)
+    if existing is not None:
+        if type(existing) is not AuthorizedSecretVersionUse or existing.intent_fingerprint != fingerprint:
+            raise SecretUseAuthorizationConflict("secret use correlation was reused with different intent")
+        authorized = existing
+    else:
+        store.add(candidate)
+        authorized = candidate
+    return authorized, provider
 
 
 def authorize_secret_use_in_unit_of_work(
