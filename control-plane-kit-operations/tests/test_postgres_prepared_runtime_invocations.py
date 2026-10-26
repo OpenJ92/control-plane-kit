@@ -26,7 +26,8 @@ from tests.postgres_effect_attempt_reconciliation_fixture import UnitOfWorkLedge
 
 
 class _PreparedRuntimeInvocationFixture(CurrentEffectPermissionFixture):
-    def reset_start_truth(self, *, compensation=False, plan=None, desired=None, base=None, product_document=None):
+    def reset_start_truth(self, *, compensation=False, plan=None, desired=None, base=None, product_document=None,
+            runtime_authority=None):
         self.assertFalse(compensation)
         self.reference = RuntimeAuthorityReference("prepared-runtime")
         if plan is None:
@@ -45,7 +46,7 @@ class _PreparedRuntimeInvocationFixture(CurrentEffectPermissionFixture):
         with self.unit_of_work() as uow:
             self.runtime = uow.stores.runtime_authorities.register(
                 workspace_id="workspace-a", authority_ref=self.reference, runtime_kind=RuntimeKind.DOCKER,
-                authority=RemoteDockerTlsAuthority("tcp://runtime.example.test:2376",
+                authority=runtime_authority if runtime_authority is not None else RemoteDockerTlsAuthority("tcp://runtime.example.test:2376",
                     SecretReference("secret://runtime/ca"), SecretReference("secret://runtime/cert"),
                     SecretReference("secret://runtime/key")),
                 admitted_by="operator-a", admitted_at=self.clock())
@@ -56,6 +57,7 @@ class _PreparedRuntimeInvocationFixture(CurrentEffectPermissionFixture):
         self.runtime_fence = ExecutionLeaseFence(opened.request.claim.worker_id, opened.request.claim.generation)
         engine.lifecycle_with_ids("prepared-run-start", "prepared-run-action").execute(
             StartActivityRun("run-a", authority, self.runtime_fence, IdempotencyKey("prepared-run-start")))
+        return engine
 
     def admitted(self, *, scopes=None, factory=None):
         scopes = (self.operate,) if scopes is None else scopes
