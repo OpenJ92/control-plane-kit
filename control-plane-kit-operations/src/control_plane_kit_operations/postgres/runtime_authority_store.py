@@ -37,6 +37,7 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityNotFound,
     RuntimeAuthorityRegistrationConflict,
     RuntimeAuthorityRegistrationError,
+    _validate_identifier,
 )
 
 
@@ -297,10 +298,9 @@ class RuntimeAuthorityStore:
 
     def get_registration_for_update(self, workspace_id, authority_ref, registration_id):
         """Lock one retained identity, including revoked rows used by exact replay."""
-        from control_plane_kit_operations.workspace_permissions import _text
-        _text(workspace_id)
-        _text(registration_id)
-        if type(authority_ref) is not RuntimeAuthorityReference:
+        _validate_identifier(workspace_id, "workspace_id")
+        _validate_identifier(registration_id, "registration_id")
+        if not isinstance(authority_ref, RuntimeAuthorityReference):
             raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR)
         row = self._connection.execute(
             "SELECT registration_id,workspace_id,authority_ref,runtime_kind,authority,admitted_by,"
