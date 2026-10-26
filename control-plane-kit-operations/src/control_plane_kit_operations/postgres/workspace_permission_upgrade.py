@@ -8,6 +8,9 @@ from importlib.resources import files
 from psycopg.pq import TransactionStatus
 from psycopg.types.json import Jsonb
 
+from control_plane_kit_operations.managed_runtime_assignments import (
+    GrantManagedRuntimeAccess, ManagedRuntimeCapabilityPolicy, managed_runtime_assignment_intent,
+)
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspace_permissions import (
     GrantWorkspacePermissions, WorkspaceAdministrationContext, WorkspaceAdministrationPolicy,
@@ -50,6 +53,7 @@ class WorkspacePermissionUpgradePlan:
     idempotency_key: IdempotencyKey
     source_contract_sha256: str = _SOURCE_SHA256
     target_contract_sha256: str = CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256
+    managed_runtime_grants: tuple[GrantManagedRuntimeAccess, ...] = ()
 
     def __post_init__(self):
         if type(self.context) is not WorkspaceAdministrationContext:
@@ -66,6 +70,17 @@ class WorkspacePermissionUpgradePlan:
             if key in seen:
                 raise WorkspacePermissionUpgradeError("upgrade seed target is duplicated")
             seen.add(key)
+        if type(self.managed_runtime_grants) is not tuple or len(self.managed_runtime_grants) > 1024:
+            raise WorkspacePermissionUpgradeError("managed runtime seeds are malformed")
+        seen = set()
+        for grant in self.managed_runtime_grants:
+            if (type(grant) is not GrantManagedRuntimeAccess or grant.context != self.context
+                    or grant.expected_revision != 0):
+                raise WorkspacePermissionUpgradeError("managed runtime seed command is malformed")
+            key = (grant.workspace_id, grant.runtime_id, grant.authority_ref)
+            if key in seen:
+                raise WorkspacePermissionUpgradeError("managed runtime seed target is duplicated")
+            seen.add(key)
         for value in (self.source_contract_sha256, self.target_contract_sha256):
             if type(value) is not str or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
                 raise WorkspacePermissionUpgradeError("upgrade contract fingerprint is malformed")
@@ -74,7 +89,9 @@ class WorkspacePermissionUpgradePlan:
         return dict(installation_id=self.context.installation_id, actor=self.context.identity.descriptor(),
             idempotency_key=self.idempotency_key.value, source_contract_sha256=self.source_contract_sha256,
             target_contract_sha256=self.target_contract_sha256,
-            grants=[permission_intent(grant, "grant") for grant in self.grants])
+            grants=[permission_intent(grant, "grant") for grant in self.grants],
+            managed_runtime_grants=[managed_runtime_assignment_intent(grant, "grant")
+                                    for grant in self.managed_runtime_grants])
 
     @property
     def fingerprint(self):
@@ -83,6 +100,10 @@ class WorkspacePermissionUpgradePlan:
     @property
     def seed_fingerprint(self):
         return permission_fingerprint(dict(grants=self.descriptor()["grants"]))
+
+    @property
+    def managed_seed_fingerprint(self):
+        return permission_fingerprint(dict(managed_runtime_grants=self.descriptor()["managed_runtime_grants"]))
 
 
 @dataclass(frozen=True)
@@ -151,10 +172,13 @@ def _matches(receipt, plan):
         and receipt.target_contract_sha256 == plan.target_contract_sha256
         and receipt.seed_fingerprint == plan.seed_fingerprint
         and receipt.seed_count == len(plan.grants)
+        and receipt.managed_seed_fingerprint == plan.managed_seed_fingerprint
+        and receipt.managed_seed_count == len(plan.managed_runtime_grants)
         and receipt.plan_fingerprint == plan.fingerprint)
 
 
-def upgrade_workspace_permissions(connection, plan, *, administration_policy, clock, id_factory):
+def upgrade_workspace_permissions(connection, plan, *, administration_policy, clock, id_factory,
+                                  capability_policy=None):
     """Apply one reviewed plan; active caller transactions retain commit authority."""
     _require_plan(plan, administration_policy)
     verified = False
@@ -182,16 +206,28 @@ def upgrade_workspace_permissions(connection, plan, *, administration_policy, cl
                 # receipts even if a credential identity was subsequently removed.
                 for grant in plan.grants:
                     administration_policy.require_known(grant.target)
+                if plan.managed_runtime_grants:
+                    if (type(capability_policy) is not ManagedRuntimeCapabilityPolicy
+                            or capability_policy.installation_id != plan.context.installation_id):
+                        raise WorkspacePermissionUpgradeError("managed seed capability policy is unavailable")
+                    for grant in plan.managed_runtime_grants:
+                        capability_policy.require(grant.capability_id)
                 receipt = WorkspacePermissionUpgradeReceipt(plan.context.installation_id,
                     plan.context.identity, plan.idempotency_key.value, clock(),
                     plan.source_contract_sha256, plan.target_contract_sha256,
-                    plan.seed_fingerprint, len(plan.grants), plan.fingerprint)
+                    plan.seed_fingerprint, len(plan.grants), plan.fingerprint,
+                    plan.managed_seed_fingerprint, len(plan.managed_runtime_grants))
                 connection.execute(_ADDITIVE_SQL)
                 connection.execute("INSERT INTO cpk_workspace_permission_installation "
                     "(singleton,installation_id,receipt) VALUES (true,%s,%s)",
                     (receipt.installation_id, Jsonb(receipt.descriptor())))
                 for grant in plan.grants:
                     store.change(grant, "grant", clock=clock, id_factory=id_factory)
+                from .managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
+                assignments = ManagedRuntimeAssignmentStore(connection)
+                for grant in plan.managed_runtime_grants:
+                    assignments.change(grant, "grant", capability_policy=capability_policy,
+                                       clock=clock, id_factory=id_factory)
                 _lock_and_validate(connection, CURRENT_POSTGRES_SCHEMA_CONTRACT)
                 result = WorkspacePermissionUpgradeResult(receipt, False, provisional)
             verified = True

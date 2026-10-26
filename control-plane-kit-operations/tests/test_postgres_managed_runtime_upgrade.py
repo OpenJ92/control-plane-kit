@@ -188,6 +188,43 @@ class PostgresManagedRuntimeUpgradeTests(unittest.TestCase):
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_managed_runtime_assignment_receipts")
                          .fetchone()[0], 1)
 
+    def test_new_management_seeds_require_installer_admission_and_exact_registration(self):
+        plan = self.plan()
+        before = self.old_rows()
+        with self.assertRaises(postgres.WorkspacePermissionUpgradeError):
+            postgres.upgrade_workspace_permissions(self.connection, plan, administration_policy=self.policy,
+                                                    clock=self.clock, id_factory=lambda: uuid4().hex)
+        self.assert_no_policy_tables()
+        with self.assertRaises(postgres.WorkspacePermissionUpgradeError):
+            self.upgrade(plan, capabilities=operations.ManagedRuntimeCapabilityPolicy("installation-a", ()))
+        self.assert_no_policy_tables()
+        wrong_registration = replace(plan, managed_runtime_grants=(replace(self.managed_seed(),
+            registration_id=self.authorities["workspace-b"].registration_id),))
+        with self.assertRaises(postgres.WorkspacePermissionUpgradeError):
+            self.upgrade(wrong_registration)
+        self.assert_no_policy_tables()
+        self.assertEqual(self.old_rows(), before)
+        with self.assertRaises(postgres.WorkspacePermissionUpgradeError):
+            replace(plan, managed_runtime_grants=(self.managed_seed(), self.managed_seed()))
+
+    def test_management_seed_correlation_is_strict_on_decode_and_independent_inspection(self):
+        plan = self.plan()
+        self.upgrade(plan)
+        self.connection.execute("UPDATE cpk_workspace_permission_installation "
+                                "SET receipt=receipt || '{\"managed_seed_count\":true}'::jsonb")
+        with self.assertRaises(postgres.SchemaInstallationError):
+            postgres.install_schema(self.connection)
+        self.assertEqual(postgres.inspect_workspace_permission_upgrade(
+            self.connection, plan, administration_policy=self.policy).status, "unknown")
+        self.connection.execute("UPDATE cpk_workspace_permission_installation SET receipt="
+            "receipt || jsonb_build_object('managed_seed_count',1,'managed_seed_fingerprint',repeat('0',64))")
+        self.assertEqual(postgres.inspect_workspace_permission_upgrade(
+            self.connection, plan, administration_policy=self.policy).status, "conflicting-receipt")
+        with self.assertRaises(postgres.WorkspacePermissionUpgradeError):
+            self.upgrade(plan)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_managed_runtime_assignment_receipts")
+                         .fetchone()[0], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

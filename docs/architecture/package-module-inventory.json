@@ -37,10 +37,10 @@
       "semantic_roles": ["values", "persistence", "validation", "authorization"],
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["WorkspacePermissionUpgradePlan", "WorkspacePermissionUpgradeResult", "WorkspacePermissionUpgradeInspection", "WorkspacePermissionUpgradeError", "WorkspacePermissionUpgradeUncertain", "upgrade_workspace_permissions", "inspect_workspace_permission_upgrade"],
-      "internal_dependencies": ["control_plane_kit_operations.workflows", "control_plane_kit_operations.workspace_permissions", "control_plane_kit_operations.postgres.current_data_validation", "control_plane_kit_operations.postgres.current_schema_contract", "control_plane_kit_operations.postgres.current_schema_verification", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.workspace_permission_store"],
+      "internal_dependencies": ["control_plane_kit_operations.workflows", "control_plane_kit_operations.workspace_permissions", "control_plane_kit_operations.managed_runtime_assignments", "control_plane_kit_operations.postgres.current_data_validation", "control_plane_kit_operations.postgres.current_schema_contract", "control_plane_kit_operations.postgres.current_schema_verification", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.workspace_permission_store", "control_plane_kit_operations.postgres.managed_runtime_assignment_store"],
       "known_package_consumers": ["control_plane_kit_operations.postgres"],
       "optional_external_dependencies": ["psycopg"],
-      "protecting_tests": ["tests/test_postgres_workspace_permission_upgrade.py"],
+      "protecting_tests": ["tests/test_postgres_workspace_permission_upgrade.py", "tests/test_postgres_managed_runtime_upgrade.py"],
       "motivation": "Explicit exact-prior additive policy adoption with preserved old history, original receipt replay, caller transaction authority and bounded inspection after uncertainty."
     },
     {
