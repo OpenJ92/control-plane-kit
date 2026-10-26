@@ -204,6 +204,10 @@ EXACT_START_DEPENDENCIES = {
 }
 
 EXACT_INTERPRETER_DEPENDENCIES = {
+    "control_plane_kit_operations.execution_invocations",
+    "control_plane_kit_operations.prepared_runtime_invocations",
+    "control_plane_kit_operations.runtime_authorities",
+    "control_plane_kit_operations.effect_run_prefix",
     "control_plane_kit_operations.managed_effect_plan",
     "control_plane_kit_operations.managed_runtime_assignments",
     "control_plane_kit_operations.effect_permissions",

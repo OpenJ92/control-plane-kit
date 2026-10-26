@@ -292,11 +292,11 @@ class PostgresPreparedRuntimeAdmissionTests(_PreparedRuntimeInvocationFixture, u
         self.uses = required_secret_uses_for_runtime_effect(self.request, self.runtime)
         registrations = SecretProviderRegistrationService(self.unit_of_work)
         provider = registrations.register_provider(RegisterSecretProviderCommand(
-            workspace_id="workspace-a", provider_id=SecretProviderId("runtime-provider"),
+            workspace_id="workspace-a", provider_id=SecretProviderId("runtime"),
             provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS, display_name="Runtime target fixture",
             endpoint_reference=SecretProviderEndpointReference("runtime-provider"),
             credential_reference=SecretReference("secret://bootstrap/runtime/token"),
-            allowed_reference_prefixes=(SecretReference("secret://runtime"),),
+            allowed_reference_prefixes=tuple(use.reference for use in self.uses),
             allowed_intents=tuple(use.intent for use in self.uses), admitted_by="operator-a", admitted_at=now(),
             actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
         for use in self.uses:
