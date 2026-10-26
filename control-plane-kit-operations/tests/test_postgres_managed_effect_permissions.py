@@ -77,6 +77,7 @@ class _ManagedPermissionStartFixture(PostgresHealthEffectStartFixture, Lifecycle
         self.admin_context = self.admin_policy.authorize(AuthenticatedPrincipal(self.admin))
         permissions = operations.WorkspacePermissionCommandService(self.unit_of_work,
             administration_policy=self.admin_policy, clock=self.clock, id_factory=lambda: uuid4().hex)
+        self.permission_service = permissions
         permissions.initialize(self.admin_context, idempotency_key=IdempotencyKey("initialize"))
         permissions.grant(operations.GrantWorkspacePermissions(self.admin_context,
             "workspace-a", self.worker, (self.operate, *HEALTH_SCOPES), 0, IdempotencyKey("grant")))
@@ -224,6 +225,39 @@ class PostgresNativeManagementPermissionTests(_ManagedPermissionStartFixture, un
 
     def test_native_alternate_authority_pair_must_match_pinned_graph(self):
         self.assert_alternate_authority_denied()
+
+    def test_each_native_control_scope_is_current_even_with_operate_and_management(self):
+        revision = 1
+        for scope in (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE):
+            with self.subTest(scope=scope):
+                self.permission_service.revoke(operations.RevokeWorkspacePermissions(
+                    self.admin_context, "workspace-a", self.worker, (scope,), revision,
+                    IdempotencyKey("revoke-" + scope.value)))
+                with self.unit_of_work() as uow:
+                    self.assertTrue(self.policy.evaluate_in_unit_of_work(uow, self.original,
+                        required_scopes=(self.operate,), managed_target=self.selected).allowed)
+                    uow.commit()
+                before = self.health_snapshot()
+                with self.assertRaises(EffectAttemptStartDenied):
+                    self.admit()
+                self.assertEqual(self.health_snapshot(), before)
+                self.permission_service.grant(operations.GrantWorkspacePermissions(
+                    self.admin_context, "workspace-a", self.worker, (scope,), revision + 1,
+                    IdempotencyKey("restore-" + scope.value)))
+                revision += 2
+        self.assertIsInstance(self.admit(), NewlyStarted)
+
+    def test_native_original_context_needs_no_signing_or_secret_scope(self):
+        self.permission_service.revoke(operations.RevokeWorkspacePermissions(
+            self.admin_context, "workspace-a", self.worker,
+            (PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE), 1,
+            IdempotencyKey("remove-signing-scopes")))
+        self.original = operations.WorkspaceContextResolver(self.unit_of_work,
+            installation_id="installation-a").resolve(AuthenticatedPrincipal(self.worker), "workspace-a")
+        self.assertEqual(set(self.original.granted_scopes), {
+            self.operate, PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE})
+        self.bound = self.binding(key="native-control-only")
+        self.assertIsInstance(self.admit(), NewlyStarted)
 
     def test_management_revoke_wins_before_native_start_without_dispatch(self):
         self.require_management_interface(self.service().execute)

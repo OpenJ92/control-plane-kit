@@ -25,7 +25,11 @@ from control_plane_kit_core.planning import (
     project_activity_journal,
 )
 from control_plane_kit_operations.activity_journal import activity_journal_events
-from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
+from control_plane_kit_operations.runtime_management_targets import (
+    is_native_connection_operation, is_signed_management_health_operation,
+)
+from control_plane_kit_operations.managed_runtime_assignments import ManagedRuntimeSelection
+from control_plane_kit_operations.managed_effect_plan import require_managed_effect_plan
 from control_plane_kit_operations.effect_attempt_start import (
     EffectAttemptStartConflict,
     EffectAttemptStartDenied,
@@ -101,17 +105,19 @@ class EffectAttemptStartService:
         self,
         command: StartEffectAttempt,
         *, command_context: EffectCommandContext | None = None,
+        managed_target: ManagedRuntimeSelection | None = None,
     ) -> EffectAttemptStartResult:
         if getattr(getattr(command, "intent", None), "kind", None) is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
             from control_plane_kit_operations._configuration_preparation import _configuration_accounting
             with _configuration_accounting(command.transition.identity.run_id.value, join=True):
-                return self._execute(command, None, command_context)
-        return self._execute(command, None, command_context)
+                return self._execute(command, None, command_context, managed_target)
+        return self._execute(command, None, command_context, managed_target)
 
     def execute_health(
         self,
         command: StartHealthEffectAttempt,
         *, command_context: EffectCommandContext | None = None,
+        managed_target: ManagedRuntimeSelection | None = None,
     ) -> HealthEffectAttemptStartResult:
         if not _valid_health_command(command):
             raise InvalidOperationCommand("health effect start command is invalid")
@@ -119,17 +125,18 @@ class EffectAttemptStartService:
             PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
         if any(scope not in command.context.granted_scopes for scope in required):
             raise EffectAttemptStartDenied("health effect start scope is missing")
-        return self._execute(command.start, command, command_context)
+        return self._execute(command.start, command, command_context, managed_target)
 
     def _execute(
         self,
         command: StartEffectAttempt,
         health: StartHealthEffectAttempt | None,
         command_context: EffectCommandContext | None,
+        managed_target: ManagedRuntimeSelection | None,
     ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
         for pass_number in range(2):
             try:
-                return self._execute_once(command, health, command_context)
+                return self._execute_once(command, health, command_context, managed_target)
             except _StartLocatorChanged:
                 if pass_number:
                     break
@@ -140,6 +147,7 @@ class EffectAttemptStartService:
         command: StartEffectAttempt,
         health: StartHealthEffectAttempt | None,
         command_context: EffectCommandContext | None,
+        managed_target: ManagedRuntimeSelection | None,
     ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
         if not _valid_start_command(command):
             raise InvalidOperationCommand(
@@ -254,6 +262,8 @@ class EffectAttemptStartService:
                 permission_failed = False
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            if self._permission_policy is None and managed_target is not None:
+                raise EffectAttemptStartDenied("current effect permission is unavailable")
             if self._permission_policy is not None:
                 refused = False
                 try:
@@ -261,12 +271,26 @@ class EffectAttemptStartService:
                         request, run, command.authority, command.fence)
                     if health is not None and health.context != original:
                         raise EffectPermissionDenied("health permission binding is unavailable")
+                    native = is_native_connection_operation(command.intent.operation)
+                    managed = native or is_signed_management_health_operation(command.intent.operation)
+                    if managed:
+                        pinned_runtime = require_managed_effect_plan(stores, command.intent, request)
+                        if (type(managed_target) is not ManagedRuntimeSelection
+                                or managed_target.installation_id != self._permission_policy.installation_id
+                                or managed_target.workspace_id != request.identity.workspace_id
+                                or managed_target.runtime_id != command.intent.operation.target.runtime_id
+                                or managed_target.authority_ref != pinned_runtime.authority_ref):
+                            raise EffectPermissionDenied("management target binding is unavailable")
+                    elif managed_target is not None:
+                        raise EffectPermissionDenied("management target does not apply")
                     required = (PolicyScope.EXECUTION_OPERATE,)
+                    if native:
+                        required += (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE)
                     if health is not None:
                         required += (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE,
                             PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
                     decision = self._permission_policy.evaluate_in_unit_of_work(
-                        unit_of_work, original, required_scopes=required)
+                        unit_of_work, original, required_scopes=required, managed_target=managed_target)
                     refused = not decision.allowed
                 except (EffectPermissionDenied, OperationsRecordError, KeyError, ValueError, TypeError):
                     refused = True

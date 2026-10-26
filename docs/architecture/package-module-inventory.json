@@ -2,6 +2,20 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.managed_effect_plan",
+      "destination": "control_plane_kit_operations.managed_effect_plan",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/managed_effect_plan.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["authorization", "transformations"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": ["control_plane_kit_core.approval_subjects", "control_plane_kit_core.planning", "control_plane_kit_core.policies", "control_plane_kit_core.topology", "control_plane_kit_operations.plan_derivation", "control_plane_kit_operations.records", "control_plane_kit_operations.runtime_management_admission", "control_plane_kit_operations.runtime_management_targets"],
+      "known_package_consumers": ["control_plane_kit_operations.effect_attempt_start_interpreter", "control_plane_kit_operations.effect_attempt_fold_interpreter"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_postgres_managed_effect_permissions.py", "tests/test_postgres_native_connection_fold.py"],
+      "motivation": "Reuse accepted management plan, graph pin, approval and runtime binding checks without new admission or current membership in historical completion."
+    },
+    {
       "module": "control_plane_kit_operations.effect_permissions",
       "destination": "control_plane_kit_operations.effect_permissions",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_permissions.py",
@@ -11216,6 +11230,8 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_start_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations.managed_effect_plan",
+        "control_plane_kit_operations.managed_runtime_assignments",
         "control_plane_kit_operations.effect_permissions",
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_core.runtime_effects",
@@ -11323,10 +11339,10 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations.managed_effect_plan",
         "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_operations.effect_run_prefix",
-        "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning",
         "control_plane_kit_core.policies",

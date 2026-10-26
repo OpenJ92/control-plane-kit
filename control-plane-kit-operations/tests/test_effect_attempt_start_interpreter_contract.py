@@ -204,6 +204,8 @@ EXACT_START_DEPENDENCIES = {
 }
 
 EXACT_INTERPRETER_DEPENDENCIES = {
+    "control_plane_kit_operations.managed_effect_plan",
+    "control_plane_kit_operations.managed_runtime_assignments",
     "control_plane_kit_operations.effect_permissions",
     "control_plane_kit_operations._configuration_preparation",
     "control_plane_kit_core.runtime_effects",
@@ -266,7 +268,7 @@ class EffectAttemptStartInterpreterContractTests(
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptStartService.execute).parameters),
-            ("self", "command", "command_context"),
+            ("self", "command", "command_context", "managed_target"),
         )
 
     def test_scope_rejection_is_categorical_and_precedes_unit_of_work(self) -> None:

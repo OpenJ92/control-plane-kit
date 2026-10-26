@@ -417,8 +417,8 @@ class EffectAttemptFoldInterpreterContractTests(
         self.assertEqual(
             set(interpreter["internal_dependencies"]),
             {
+                "control_plane_kit_operations.managed_effect_plan",
                 "control_plane_kit_operations._configuration_preparation",
-                "control_plane_kit_core.approval_subjects",
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.planning",
                 "control_plane_kit_core.policies",
