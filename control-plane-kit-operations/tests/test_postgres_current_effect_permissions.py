@@ -198,6 +198,17 @@ class PostgresCurrentEffectPermissionTests(
         self.assertEqual(calls, [])
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], 0)
 
+    def test_existing_receipt_key_contract_is_preserved_for_bound_start(self):
+        binding = self.binding(key="execute-" + chr(127) + "-a")
+        command = self.start_command()
+        started = self.fresh_start().execute(command, command_context=binding)
+        self.assertIsInstance(started, NewlyStarted)
+        with self.unit_of_work() as uow:
+            receipt = uow.stores.execution.command_receipt_for_idempotency(
+                "run-a", binding.receipt.idempotency_key)
+            self.assertEqual(receipt.idempotency_key, binding.receipt.idempotency_key)
+            uow.commit()
+
     def test_admission_wins_then_owned_result_can_fold_after_revocation(self):
         binding = self.binding()
         command = self.start_command()

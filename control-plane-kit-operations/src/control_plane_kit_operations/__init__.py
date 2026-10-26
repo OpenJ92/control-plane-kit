@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from control_plane_kit_core import DeploymentProgramStage
 
+from .effect_permissions import (
+    CurrentEffectDecision, CurrentWorkspaceEffectPolicy, EffectCommandContext,
+    EffectPermissionDenied, ExecutionCommandReference,
+)
+
 from .managed_runtime_assignments import (
     ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
     RevokeManagedRuntimeAccess, ManagedRuntimeAssignment, ManagedRuntimeAssignmentStatus,
@@ -695,6 +700,8 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "CurrentEffectDecision", "CurrentWorkspaceEffectPolicy", "EffectCommandContext",
+    "EffectPermissionDenied", "ExecutionCommandReference",
     "ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess",
     "RevokeManagedRuntimeAccess", "ManagedRuntimeAssignment", "ManagedRuntimeAssignmentStatus",
     "ManagedRuntimeAssignmentReceipt", "ManagedRuntimeAssignmentResult", "ManagedRuntimeAssignmentError",

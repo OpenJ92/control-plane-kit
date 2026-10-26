@@ -51,6 +51,10 @@ from control_plane_kit_operations.records import (
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
+from control_plane_kit_operations.effect_permissions import (
+    CurrentWorkspaceEffectPolicy, EffectCommandContext, EffectPermissionDenied,
+    _require_execution_binding,
+)
 from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
 )
@@ -82,9 +86,13 @@ class EffectAttemptStartService:
         *,
         id_factory: Callable[[], str],
         health_receiver_decoders: HealthReceiverDecoders = HealthReceiverDecoders(()),
+        permission_policy: CurrentWorkspaceEffectPolicy | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._id_factory = id_factory
+        if permission_policy is not None and type(permission_policy) is not CurrentWorkspaceEffectPolicy:
+            raise EffectPermissionDenied("effect permission policy is invalid")
+        self._permission_policy = permission_policy
         if type(health_receiver_decoders) is not HealthReceiverDecoders:
             raise HealthReceiverTrustError("health receiver trust is unavailable")
         self._health_receiver_decoders = replace(health_receiver_decoders)
@@ -92,16 +100,18 @@ class EffectAttemptStartService:
     def execute(
         self,
         command: StartEffectAttempt,
+        *, command_context: EffectCommandContext | None = None,
     ) -> EffectAttemptStartResult:
         if getattr(getattr(command, "intent", None), "kind", None) is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
             from control_plane_kit_operations._configuration_preparation import _configuration_accounting
             with _configuration_accounting(command.transition.identity.run_id.value, join=True):
-                return self._execute(command, None)
-        return self._execute(command, None)
+                return self._execute(command, None, command_context)
+        return self._execute(command, None, command_context)
 
     def execute_health(
         self,
         command: StartHealthEffectAttempt,
+        *, command_context: EffectCommandContext | None = None,
     ) -> HealthEffectAttemptStartResult:
         if not _valid_health_command(command):
             raise InvalidOperationCommand("health effect start command is invalid")
@@ -109,16 +119,17 @@ class EffectAttemptStartService:
             PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
         if any(scope not in command.context.granted_scopes for scope in required):
             raise EffectAttemptStartDenied("health effect start scope is missing")
-        return self._execute(command.start, command)
+        return self._execute(command.start, command, command_context)
 
     def _execute(
         self,
         command: StartEffectAttempt,
         health: StartHealthEffectAttempt | None,
+        command_context: EffectCommandContext | None,
     ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
         for pass_number in range(2):
             try:
-                return self._execute_once(command, health)
+                return self._execute_once(command, health, command_context)
             except _StartLocatorChanged:
                 if pass_number:
                     break
@@ -128,6 +139,7 @@ class EffectAttemptStartService:
         self,
         command: StartEffectAttempt,
         health: StartHealthEffectAttempt | None,
+        command_context: EffectCommandContext | None,
     ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
         if not _valid_start_command(command):
             raise InvalidOperationCommand(
@@ -242,6 +254,24 @@ class EffectAttemptStartService:
                 permission_failed = False
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            if self._permission_policy is not None:
+                refused = False
+                try:
+                    original = _require_execution_binding(stores, command_context,
+                        request, run, command.authority, command.fence)
+                    if health is not None and health.context != original:
+                        raise EffectPermissionDenied("health permission binding is unavailable")
+                    required = (PolicyScope.EXECUTION_OPERATE,)
+                    if health is not None:
+                        required += (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE,
+                            PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
+                    decision = self._permission_policy.evaluate_in_unit_of_work(
+                        unit_of_work, original, required_scopes=required)
+                    refused = not decision.allowed
+                except (EffectPermissionDenied, OperationsRecordError, KeyError, ValueError, TypeError):
+                    refused = True
+                if refused:
+                    raise EffectAttemptStartDenied("current effect permission is unavailable")
             admission = None
             try:
                 _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
