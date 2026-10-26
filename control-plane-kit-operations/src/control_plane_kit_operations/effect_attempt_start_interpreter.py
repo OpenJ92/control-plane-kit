@@ -63,6 +63,10 @@ from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationKind, ExecutionInvocationRecord,
     signed_health_invocation_target_fingerprint,
 )
+from control_plane_kit_operations.prepared_runtime_invocations import (
+    runtime_preparation_candidate, prepared_runtime_invocation_profile,
+)
+from control_plane_kit_operations.runtime_authorities import RemoteDockerTlsAuthority, RuntimeAuthorityNotFound
 from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
 )
@@ -336,6 +340,17 @@ class EffectAttemptStartService:
             if health is not None:
                 admission = admit_health_start(stores, health, request, plan, event_kind,
                     self._health_receiver_decoders)
+            prepared_runtime = None
+            if (self._permission_policy is not None and health is None
+                    and event_kind is ActivityEventKind.STEP_STARTED
+                    and runtime_preparation_candidate(command.intent)):
+                try:
+                    runtime = stores.runtime_authorities.get_active_for_update(
+                        request.identity.workspace_id, command.intent.authority_ref)
+                except RuntimeAuthorityNotFound:
+                    raise EffectAttemptStartDenied(_AUTHORITY_ERROR) from None
+                if type(runtime.authority) is RemoteDockerTlsAuthority:
+                    prepared_runtime = runtime
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
@@ -391,6 +406,17 @@ class EffectAttemptStartService:
                     raise
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
             final_invocation = None
+            if prepared_runtime is not None:
+                profile = prepared_runtime_invocation_profile(command.intent,
+                    original_event_id=event.event_id, runtime_authority=prepared_runtime)
+                final_invocation = ExecutionInvocationRecord(command_context.receipt,
+                    request.identity.workspace_id, expected_attempt.state.identity.activity_id,
+                    ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH, profile.target_fingerprint,
+                    event.occurred_at, attempt=expected_attempt.state.identity.attempt,
+                    original_event_id=event.event_id, request_fingerprint=expected_attempt.state.request_fingerprint,
+                    runtime_registration_id=profile.runtime_registration_id)
+                if stores.execution.add_command_invocation(final_invocation) != final_invocation:
+                    raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             if health_write is not None:
                 result = retain_health_start(unit_of_work, health_write, result)
                 if self._permission_policy is not None:

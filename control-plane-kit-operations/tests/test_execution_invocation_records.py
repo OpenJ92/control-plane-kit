@@ -1,7 +1,10 @@
 """Closed invocation evidence is not a permit or a retained provider result."""
 
 from dataclasses import replace
+import hashlib
 import unittest
+
+import rfc8785
 
 from control_plane_kit_operations.effect_permissions import ExecutionCommandReference
 from control_plane_kit_operations.execution_invocations import (
@@ -16,7 +19,28 @@ class ExecutionInvocationRecordTests(unittest.TestCase):
     def planned(self):
         return ExecutionInvocationRecord(ExecutionCommandReference("run-a", "execute-\x7f-a", "a" * 64),
             "workspace-a", "start-runtime", Kind.PREPARED_RUNTIME_DISPATCH, "b" * 64,
-            "2030-01-01T00:00:00Z", attempt=1, original_event_id="original-start", request_fingerprint="c" * 64)
+            "2030-01-01T00:00:00Z", attempt=1, original_event_id="original-start", request_fingerprint="c" * 64,
+            runtime_registration_id="runtime-registration-a")
+
+    def test_prepared_anchor_is_required_and_other_kind_identity_is_unchanged(self):
+        planned = self.planned()
+        for anchor in (None, "", True, "x" * 513):
+            with self.subTest(anchor_type=type(anchor).__name__), self.assertRaises(OperationsRecordError):
+                replace(planned, runtime_registration_id=anchor)
+        missing = planned.descriptor()
+        del missing["runtime_registration_id"]
+        with self.assertRaises(OperationsRecordError):
+            ExecutionInvocationRecord.from_descriptor(missing)
+        signed = replace(planned, kind=Kind.SIGNED_HEALTH_TRANSPORT, runtime_registration_id=None)
+        self.assertNotIn("runtime_registration_id", signed.descriptor())
+        legacy_correlation = dict(version=1, command=dict(run_id="run-a", idempotency_key="execute-\x7f-a",
+            intent_fingerprint="a" * 64), workspace_id="workspace-a", activity_id="start-runtime",
+            kind="signed-health-transport", slot_key="singleton", target_fingerprint="b" * 64,
+            attempt=1, original_event_id="original-start", request_fingerprint="c" * 64, authorization_id=None)
+        self.assertEqual(signed.invocation_id, hashlib.sha256(rfc8785.dumps(legacy_correlation)).hexdigest())
+        self.assertEqual(ExecutionInvocationRecord.from_descriptor(signed.descriptor()), signed)
+        with self.assertRaises(OperationsRecordError):
+            replace(signed, runtime_registration_id="runtime-registration-a")
 
     def test_exact_codec_preserves_original_correlation_across_decision_and_classification(self):
         planned = self.planned()

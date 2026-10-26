@@ -8,7 +8,7 @@ from control_plane_kit_core.operations import RecoveryDecisionKind
 from control_plane_kit_operations.effect_permissions import ExecutionCommandReference
 from tests.execution_lease_recovery_fixture import PostgresExecutionLeaseRecoveryFixture
 from tests import test_postgres_managed_execution_receipts as receipt_fixtures
-from tests.test_postgres_current_effect_permissions import CurrentEffectPermissionFixture
+from tests.test_postgres_prepared_runtime_invocations import _PreparedRuntimeInvocationFixture
 from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationRecord, ExecutionInvocationKind as Kind,
     ExecutionInvocationDecision as Decision, ExecutionInvocationDisposition as Disposition,
@@ -89,21 +89,17 @@ class PostgresExecutionCommandInvocationTests(PostgresExecutionLeaseRecoveryFixt
             (self.parent.run_id, self.parent.idempotency_key)).fetchone()[0], 0)
 
 
-class PostgresExecutionInvocationStateTests(CurrentEffectPermissionFixture, unittest.TestCase):
+class PostgresExecutionInvocationStateTests(_PreparedRuntimeInvocationFixture, unittest.TestCase):
     def setUp(self):
         super().setUp()
-        self.bound = self.binding()
-        self.started = self.fresh_start().execute(self.start_command(), command_context=self.bound).attempt
+        self.bound, _, started = self.admitted()
+        self.started = started.attempt
         self.at = self.started.original_start_event.occurred_at
 
     def planned(self):
         with self.unit_of_work() as uow:
-            intent = uow.stores.effect_attempt_intents.get(self.started.state.identity)
-        return ExecutionInvocationRecord(self.bound.receipt, "workspace-a", "start-runtime",
-            Kind.PREPARED_RUNTIME_DISPATCH, "2" * 64, self.at,
-            attempt=self.started.state.identity.attempt,
-            original_event_id=self.started.original_start_event.event_id,
-            request_fingerprint=intent.request_fingerprint)
+            return uow.stores.execution.command_invocation_for_slot(self.bound.receipt,
+                activity_id=self.started.state.identity.activity_id, kind=Kind.PREPARED_RUNTIME_DISPATCH)
 
     def insert(self, record):
         with self.unit_of_work() as uow:
@@ -125,7 +121,6 @@ class PostgresExecutionInvocationStateTests(CurrentEffectPermissionFixture, unit
 
     def test_planned_decision_is_transactional_and_first_committed_denial_is_immutable(self):
         planned = self.planned()
-        self.insert(planned)
         self.revoke()
         denied = planned.decided(Decision(2, denial_code="required-scope-denied"), self.at)
         with self.unit_of_work() as uow:
@@ -145,7 +140,6 @@ class PostgresExecutionInvocationStateTests(CurrentEffectPermissionFixture, unit
 
     def test_owned_classification_survives_revoke_and_parent_completion_without_new_permission(self):
         planned = self.planned()
-        self.insert(planned)
         admitted = planned.decided(Decision(1), self.at)
         with self.unit_of_work() as uow:
             self.assertTrue(uow.stores.execution.replace_command_invocation(planned, admitted))
@@ -171,7 +165,6 @@ class PostgresExecutionInvocationStateTests(CurrentEffectPermissionFixture, unit
 
     def test_completed_parent_cannot_gain_a_new_planned_decision(self):
         planned = self.planned()
-        self.insert(planned)
         self.complete_parent()
         with self.assertRaises(ExecutionInvocationConflict):
             with self.unit_of_work() as uow:
@@ -184,17 +177,17 @@ class PostgresExecutionInvocationStateTests(CurrentEffectPermissionFixture, unit
                 {"original_event_id": "seed-run-started"}, {"request_fingerprint": "f" * 64}, {"attempt": 2}):
             with self.subTest(changes=changes), self.assertRaises(ExecutionInvocationConflict):
                 self.insert(replace(planned, **changes))
-        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 1)
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.effect_attempts.get(self.started.state.identity), self.started)
 
     def test_pages_are_bounded_and_cursor_cannot_cross_parent_scope(self):
         planned = self.planned()
-        records = (planned, replace(planned, kind=Kind.ENDPOINT_OBSERVATION,
+        records = (planned, replace(planned, kind=Kind.ENDPOINT_OBSERVATION, runtime_registration_id=None,
             disposition=Disposition.ADMITTED, decision_at=self.at, decision=Decision(1), outcome=Outcome.PENDING),
-            replace(planned, kind=Kind.RECONCILIATION_OBSERVATION,
+            replace(planned, kind=Kind.RECONCILIATION_OBSERVATION, runtime_registration_id=None,
                 disposition=Disposition.ADMITTED, decision_at=self.at, decision=Decision(1), outcome=Outcome.PENDING))
-        for record in records:
+        for record in records[1:]:
             self.insert(record)
         with self.unit_of_work() as uow:
             first = uow.stores.execution.command_invocations(planned.command, limit=1)
@@ -211,7 +204,6 @@ class PostgresExecutionInvocationStateTests(CurrentEffectPermissionFixture, unit
 
     def test_corrupt_descriptor_refuses_reads_and_schema_verification_without_repair(self):
         planned = self.planned()
-        self.insert(planned)
         corrupt = dict(planned.descriptor(), unexpected="corrupt")
         self.connection.execute("UPDATE cpk_execution_command_invocations SET descriptor=%s WHERE invocation_id=%s",
             (Jsonb(corrupt), planned.invocation_id))

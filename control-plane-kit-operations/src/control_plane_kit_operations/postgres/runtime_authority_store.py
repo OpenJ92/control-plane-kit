@@ -44,6 +44,14 @@ from control_plane_kit_operations.runtime_authorities import (
 _LOOKUP_ERROR = "runtime authority lookup is invalid"
 _ROW_ERROR = "registered runtime authority row is invalid"
 
+_HISTORICAL_COLUMNS = (("registration_id", 2048), ("workspace_id", 2048),
+    ("authority_ref", 2048), ("runtime_kind", 64), ("authority", 65536),
+    ("admitted_by", 2048), ("admitted_at", None), ("status", 64), ("metadata", 16384))
+_HISTORICAL_SELECT = "SELECT " + ",".join(
+    name if limit is None else
+    f"CASE WHEN octet_length({name}::text)<={limit} THEN {name} END"
+    for name, limit in _HISTORICAL_COLUMNS) + " FROM cpk_runtime_authorities "
+
 
 class RuntimeAuthorityStore:
     """Persist runtime authorities admitted into one workspace."""
@@ -296,20 +304,30 @@ class RuntimeAuthorityStore:
             ),
         )
 
+    def get_registration(self, workspace_id, authority_ref, registration_id):
+        """Read one retained identity without current selection or row locking."""
+        return self._registration(workspace_id, authority_ref, registration_id, for_update=False)
+
     def get_registration_for_update(self, workspace_id, authority_ref, registration_id):
         """Lock one retained identity, including revoked rows used by exact replay."""
+        return self._registration(workspace_id, authority_ref, registration_id, for_update=True)
+
+    def _registration(self, workspace_id, authority_ref, registration_id, *, for_update):
         _validate_identifier(workspace_id, "workspace_id")
         _validate_identifier(registration_id, "registration_id")
         if not isinstance(authority_ref, RuntimeAuthorityReference):
             raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR)
-        row = self._connection.execute(
-            "SELECT registration_id,workspace_id,authority_ref,runtime_kind,authority,admitted_by,"
-            "admitted_at,status,metadata FROM cpk_runtime_authorities "
-            "WHERE registration_id=%s AND workspace_id=%s AND authority_ref=%s FOR UPDATE",
+        selection = ("SELECT registration_id,workspace_id,authority_ref,runtime_kind,authority,admitted_by,"
+            "admitted_at,status,metadata FROM cpk_runtime_authorities " if for_update else _HISTORICAL_SELECT)
+        row = self._connection.execute(selection
+            + "WHERE registration_id=%s AND workspace_id=%s AND authority_ref=%s"
+            + (" FOR UPDATE" if for_update else ""),
             (registration_id, workspace_id, authority_ref.reference_id),
         ).fetchone()
         if row is None:
             raise RuntimeAuthorityNotFound("registered runtime authority was not found")
+        if not for_update and (type(row) is not tuple or len(row) != 9 or any(value is None for value in row)):
+            raise RuntimeAuthorityRegistrationError(_ROW_ERROR)
         return _row_to_authority(row)
 
     def revoke(

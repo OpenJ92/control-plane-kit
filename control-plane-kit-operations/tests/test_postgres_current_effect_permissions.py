@@ -87,17 +87,18 @@ class CurrentEffectPermissionFixture(PostgresEffectAttemptStartFixture, Lifecycl
             installation_id="installation-a",
             capability_policy=operations.ManagedRuntimeCapabilityPolicy("installation-a", ()))
 
-    def binding(self, *, original=None, key="execute-a", generation=7):
+    def binding(self, *, original=None, key="execute-a", generation=7, scopes=None):
         original = original or self.original
+        scopes = (self.operate,) if scopes is None else scopes
         intent = records.ManagedExecutionCommandIntent.from_context(original)
         with self.unit_of_work() as uow:
             run = uow.stores.execution.get_run("run-a")
             fingerprint = records.execution_command_intent_fingerprint(
-                run_id="run-a", worker_id="worker-a", authority_scopes=(self.operate,),
+                run_id="run-a", worker_id="worker-a", authority_scopes=scopes,
                 claim_generation=generation, max_effects=1, managed_intent=intent)
             receipt = records.ExecutionCommandReceiptRecord(
                 run_id="run-a", idempotency_key=key, intent_fingerprint=fingerprint,
-                worker_id="worker-a", authority_scopes=(self.operate,), claim_generation=generation,
+                worker_id="worker-a", authority_scopes=scopes, claim_generation=generation,
                 max_effects=1, admitted_at=self.clock(), initial_run=run, managed_intent=intent)
             uow.stores.execution.add_command_receipt(receipt)
             uow.commit()

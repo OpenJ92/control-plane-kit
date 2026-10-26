@@ -350,6 +350,34 @@ class PostgresExecutionStore:
         _require_invocation_owners(self, record)
         return record
 
+    def original_final_invocation(self, identity, *, original_event_id, request_fingerprint, kind):
+        """Bounded original candidates; malformed history never becomes absence."""
+        from control_plane_kit_core.operations import EffectAttemptIdentity
+        if (type(identity) is not EffectAttemptIdentity or kind not in (
+                ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT, ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+                or type(kind) is not ExecutionInvocationKind):
+            raise ExecutionInvocationConflict()
+        try:
+            EffectAttemptIdentity(identity.run_id, identity.activity_id, identity.attempt)
+            _invocation_id(request_fingerprint)
+            if type(original_event_id) is not str or not original_event_id or len(original_event_id) > 512:
+                raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            raise ExecutionInvocationConflict() from None
+        rows = self._connection.execute(_INVOCATION_SELECT
+            + " WHERE run_id=%s AND activity_id=%s AND attempt=%s AND kind=%s LIMIT 2",
+            (identity.run_id.value, identity.activity_id, identity.attempt, kind.value)).fetchall()
+        if not rows:
+            return None
+        if len(rows) != 1:
+            raise ExecutionInvocationConflict()
+        record = _invocation_row(rows[0])
+        if (record.original_event_id != original_event_id
+                or record.request_fingerprint != request_fingerprint):
+            raise ExecutionInvocationConflict(record.invocation_id)
+        _require_invocation_owners(self, record)
+        return record
+
     def replace_command_invocation(self, expected: ExecutionInvocationRecord,
             replacement: ExecutionInvocationRecord) -> bool:
         """CAS one planned decision or pending classification; never a permit."""
@@ -1735,6 +1763,15 @@ def _require_invocation_owners(store, record, *, fresh=False):
                     or attempt.original_start_event.event_id != record.original_event_id
                     or intent.intent.source.workspace_id != record.workspace_id
                     or intent.intent.source.plan_id != run.plan_id):
+                raise ExecutionInvocationConflict(record.invocation_id)
+        if record.kind is ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH:
+            from .runtime_authority_store import RuntimeAuthorityStore
+            from control_plane_kit_operations.prepared_runtime_invocations import prepared_runtime_invocation_profile
+            runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                record.workspace_id, intent.intent.authority_ref, record.runtime_registration_id)
+            profile = prepared_runtime_invocation_profile(intent.intent,
+                original_event_id=record.original_event_id, runtime_authority=runtime)
+            if profile.target_fingerprint != record.target_fingerprint:
                 raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.SECRET_RESOLUTION:
             authorized = SecretUseAuthorizationStore(store._connection).get(record.workspace_id, record.authorization_id)

@@ -1,6 +1,6 @@
 """Bounded command-owned invocation history; records never grant a call."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 import hashlib
@@ -153,6 +153,7 @@ class ExecutionInvocationRecord:
     completed_at: str | None = None
     completion_code: str | None = None
     version: int = 1
+    runtime_registration_id: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self):
         _require(type(self.version) is int and self.version == 1
@@ -165,6 +166,10 @@ class ExecutionInvocationRecord:
             and type(self.kind) is ExecutionInvocationKind and _sha(self.target_fingerprint)
             and type(self.disposition) is ExecutionInvocationDisposition)
         created = _time(self.created_at)
+        if self.kind is ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH:
+            _require(_text(self.runtime_registration_id))
+        else:
+            _require(self.runtime_registration_id is None)
         correlation = (self.attempt, self.original_event_id, self.request_fingerprint)
         _require(all(value is None for value in correlation) or (
             type(self.attempt) is int and 1 <= self.attempt <= 2147483647
@@ -211,12 +216,15 @@ class ExecutionInvocationRecord:
         return self.authorization_id if self.kind is ExecutionInvocationKind.SECRET_RESOLUTION else "singleton"
 
     def correlation(self):
-        return dict(version=self.version, command=dict(run_id=self.command.run_id,
+        value = dict(version=self.version, command=dict(run_id=self.command.run_id,
             idempotency_key=self.command.idempotency_key, intent_fingerprint=self.command.intent_fingerprint),
             workspace_id=self.workspace_id, activity_id=self.activity_id, kind=self.kind.value,
             slot_key=self.slot_key, target_fingerprint=self.target_fingerprint,
             attempt=self.attempt, original_event_id=self.original_event_id,
             request_fingerprint=self.request_fingerprint, authorization_id=self.authorization_id)
+        if self.kind is ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH:
+            value["runtime_registration_id"] = self.runtime_registration_id
+        return value
 
     @property
     def invocation_id(self):
@@ -231,10 +239,14 @@ class ExecutionInvocationRecord:
 
     @classmethod
     def from_descriptor(cls, payload):
-        _require(type(payload) is dict and len(payload) == 19 and set(payload) == {
+        _require(type(payload) is dict)
+        keys = {
             "version", "command", "workspace_id", "activity_id", "kind", "slot_key", "target_fingerprint",
             "attempt", "original_event_id", "request_fingerprint", "authorization_id", "invocation_id",
-            "created_at", "disposition", "decision_at", "decision", "outcome", "completed_at", "completion_code"})
+            "created_at", "disposition", "decision_at", "decision", "outcome", "completed_at", "completion_code"}
+        if payload.get("kind") == ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH.value:
+            keys.add("runtime_registration_id")
+        _require(set(payload) == keys)
         try:
             values = dict(payload)
             identity, slot = values.pop("invocation_id"), values.pop("slot_key")
