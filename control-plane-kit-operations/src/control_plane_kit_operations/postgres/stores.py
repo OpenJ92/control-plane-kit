@@ -76,6 +76,7 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.workspace_permission_store import WorkspacePermissionStore
 from control_plane_kit_operations.postgres.managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
+from control_plane_kit_operations.postgres.runtime_effect_origin_store import RuntimeEffectOriginStore
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,7 @@ class PostgresStoreBundle:
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
     effect_attempt_intents: EffectAttemptIntentStore = field(init=False)
+    runtime_effect_origins: RuntimeEffectOriginStore = field(init=False)
     configuration_preparation: ConfigurationPreparationStore = field(init=False)
     configuration_completions: ConfigurationCompletionStore = field(init=False)
     configuration_acceptance: ConfigurationAcceptanceStore = field(init=False)
@@ -141,6 +143,7 @@ class PostgresStoreBundle:
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "runtime_effect_origins", RuntimeEffectOriginStore(self.connection))
         object.__setattr__(self, "workspace_permissions", WorkspacePermissionStore(self.connection))
         object.__setattr__(self, "managed_runtime_assignments", ManagedRuntimeAssignmentStore(self.connection))
         object.__setattr__(self, "secret_material_provision_attempts", SecretMaterialProvisionAttemptStore(self.connection))

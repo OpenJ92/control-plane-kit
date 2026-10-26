@@ -1858,7 +1858,7 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
     indexes=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
-CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = 'f9557c38ae31fc26e597f19ffa04ad6983b1d7d9c91dc24e4688380ee5ad606b'
+CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = '470abffa86f4d9cec7cda040e7c83471f83aa46bc8a0a12a7a75d89c7be6419a'
 
 MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT = CurrentSchemaContract(
     relations=(
@@ -1973,4 +1973,41 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
     columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + EXECUTION_INVOCATION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
     constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + EXECUTION_INVOCATION_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
     indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + EXECUTION_INVOCATION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+)
+
+RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=(
+        RelationContract(name="cpk_runtime_effect_origins", kind="r", persistence="p", access_method="heap", replica_identity="d", is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
+    ),
+    columns=(
+        ColumnContract(relation="cpk_runtime_effect_origins", name="run_id", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="activity_id", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="attempt", type_namespace="pg_catalog", formatted_type="integer", not_null=True, identity="", generated="", collation_namespace=None, collation_name=None, default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="workspace_id", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="command_key", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="parent_fingerprint", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="request_fingerprint", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="original_event_id", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="runtime_registration_id", type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None),
+        ColumnContract(relation="cpk_runtime_effect_origins", name="descriptor", type_namespace="pg_catalog", formatted_type="jsonb", not_null=True, identity="", generated="", collation_namespace=None, collation_name=None, default_expression=None),
+    ),
+    constraints=(
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_effect_origins_pkey", kind="p", validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=("run_id", "activity_id", "attempt"), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression=None),
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_origins_attempt_check", kind="c", validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=("attempt",), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(attempt > 0)"),
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_origins_descriptor_check", kind="c", validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=("descriptor",), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="((jsonb_typeof(descriptor) = 'object'::text) AND (octet_length((descriptor)::text) <= 8192))"),
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_origins_parent_fk", kind="f", validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=("run_id", "command_key"), referenced_relation="cpk_execution_command_receipts", referenced_columns=("run_id", "idempotency_key"), update_action="a", delete_action="a", match_type="s", check_expression=None),
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_origins_workspace_fk", kind="f", validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=("workspace_id",), referenced_relation="cpk_workspaces", referenced_columns=("workspace_id",), update_action="a", delete_action="a", match_type="s", check_expression=None),
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_origins_intent_fk", kind="f", validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=("run_id", "activity_id", "attempt", "request_fingerprint", "original_event_id"), referenced_relation="cpk_effect_attempt_intents", referenced_columns=("run_id", "activity_id", "attempt", "request_fingerprint", "original_event_id"), update_action="a", delete_action="a", match_type="s", check_expression=None),
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_origins_attempt_fk", kind="f", validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=("run_id", "activity_id", "attempt"), referenced_relation="cpk_effect_attempts", referenced_columns=("run_id", "activity_id", "attempt"), update_action="a", delete_action="a", match_type="s", check_expression=None),
+        ConstraintContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_origins_registration_fk", kind="f", validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=("runtime_registration_id",), referenced_relation="cpk_runtime_authorities", referenced_columns=("registration_id",), update_action="a", delete_action="a", match_type="s", check_expression=None),
+    ),
+    indexes=(
+        IndexContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_effect_origins_pkey", owning_constraint="cpk_runtime_effect_origins_pkey", access_method="btree", unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=("run_id", "activity_id", "attempt"), include_entries=(), opclasses=("pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.int4_ops"), collations=("pg_catalog.default", "pg_catalog.default", None), options=(0, 0, 0), predicate=None, expressions=None),
+    ),
+)
+CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
+    columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )

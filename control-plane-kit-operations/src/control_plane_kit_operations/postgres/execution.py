@@ -1857,21 +1857,11 @@ def _require_invocation_owners(store, record, *, fresh=False):
             if record.target_fingerprint not in targets:
                 raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.RECONCILIATION_OBSERVATION:
-            from control_plane_kit_operations.prepared_runtime_invocations import (
-                prepared_runtime_observation_supported, prepared_runtime_reconciliation_target_fingerprint,
-            )
-            original = store.original_final_invocation(identity,
-                original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
-            if (original is None or original.command == record.command
-                    or original.disposition is not ExecutionInvocationDisposition.ADMITTED
-                    or not prepared_runtime_observation_supported(intent.intent)
-                    or record.target_fingerprint != prepared_runtime_reconciliation_target_fingerprint(
-                        original_invocation_id=original.invocation_id,
-                        original_target_fingerprint=original.target_fingerprint,
-                        original_request_fingerprint=original.request_fingerprint,
-                        runtime_registration_id=original.runtime_registration_id)):
+            from .runtime_observation_source import original_observation_source
+            original, _, _, target = original_observation_source(store._connection, intent)
+            if original.command == record.command or record.target_fingerprint != target:
                 raise ExecutionInvocationConflict(record.invocation_id)
+
         if record.kind is ExecutionInvocationKind.SECRET_RESOLUTION:
             authorized = SecretUseAuthorizationStore(store._connection).get(record.workspace_id, record.authorization_id)
             if record.attempt is not None:
@@ -1902,6 +1892,24 @@ def _require_invocation_owners(store, record, *, fresh=False):
                         actor_subject=parent.managed_intent.actor.subject_id, session_id=request.identity.session_id,
                         requested_at=authorized.requested_at, actor_scopes=())
                     require_ordinary_verification_authorization(authorized, command)
+            if record.attempt is not None and authorized.effect_id == record.original_event_id:
+                original_marker = store.original_final_invocation(identity,
+                    original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+                origin = None
+                from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+                if original_marker is None and intent.intent.kind is RuntimeEffectKind.REALIZE_ACTIVITY:
+                    from .runtime_effect_origin_store import RuntimeEffectOriginStore
+                    origin = RuntimeEffectOriginStore(store._connection).get(identity)
+                original_command = original_marker.command if original_marker is not None else (
+                    None if origin is None else origin.command)
+                if original_command is not None and original_command != record.command:
+                    from .runtime_observation_source import original_observation_source
+                    from control_plane_kit_operations.runtime_secret_uses import OperationalSecretUse
+                    _, _, observation_profile, _ = original_observation_source(store._connection, intent)
+                    if (OperationalSecretUse(authorized.reference, authorized.intent) not in observation_profile.required_uses
+                            or authorized.probe_id is not None):
+                        raise ExecutionInvocationConflict(record.invocation_id)
             linked = record.original_event_id is not None and authorized.effect_id == record.original_event_id
             if not linked and authorized.effect_id is None and record.attempt is not None:
                 # Signed health uses its existing operation identity, not the

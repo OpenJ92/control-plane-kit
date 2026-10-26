@@ -61,6 +61,7 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_request_for_intent,
 )
 from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectKind,
     RuntimeEffectFailure,
     RuntimeEffectRequest,
     RuntimeEffectResult,
@@ -1723,6 +1724,16 @@ class ExecutionCoordinator:
         except Exception:
             raise ExecutionInvocationConflict() from None
 
+    def _original_runtime_selection(self, identity, intent, *, marker=None):
+        try:
+            with self._unit_of_work_factory() as uow:
+                original = marker if marker is not None else uow.stores.runtime_effect_origins.get(identity)
+                runtime = (None if original is None else uow.stores.runtime_authorities.get_registration(
+                    intent.source.workspace_id, intent.authority_ref, original.runtime_registration_id))
+                return original, runtime
+        except (KeyError, ValueError, TypeError, AttributeError):
+            raise ExecutionInvocationConflict() from None
+
     def _execution_steps(self, command: ExecuteActivityRun, *, managed: bool = False, command_context=None):
         attempted = 0
         current: ExecutionCoordinatorResult | None = None
@@ -1890,14 +1901,19 @@ class ExecutionCoordinator:
                     else:
                         existing = started.__class__ is ExistingAttempt
 
+            if (self._permission_policy is not None and existing and intent.authority_ref is None
+                    and attempt.state.status is EffectAttemptStatus.STARTED):
+                return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
+                    attempted, planned.activity_id.value)
+
             if runtime_candidate and service_failure is None and selected_conflict is None:
                 marker = self._original_runtime_marker(command_context, start_command, attempt)
                 if existing:
                     # Current local selection cannot exempt ambiguous original
                     # history; admitted work needs a separate fresh observation.
-                    if marker is None:
-                        raise ExecutionInvocationConflict()
                     if ordinary_verification:
+                        if marker is None:
+                            raise ExecutionInvocationConflict()
                         # Inspect the original family before marker shortcuts. It
                         # never authorizes continuing an interrupted sequence.
                         if type(self._invocation_service) is not ExecutionInvocationService:
@@ -1908,18 +1924,23 @@ class ExecutionCoordinator:
                         self._invocation_service.inspect_ordinary_verification(original_bound)
                         return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
                             attempted, planned.activity_id.value)
-                    if marker.disposition is ExecutionInvocationDisposition.PLANNED:
-                        raise ExecutionInvocationPlanned(marker.invocation_id)
-                    if marker.disposition is ExecutionInvocationDisposition.DENIED:
-                        raise ExecutionInvocationDenied(marker.invocation_id)
-                    if (attempt.state.status is EffectAttemptStatus.STARTED
-                            and not prepared_runtime_observation_supported(intent)):
+                    if marker is not None:
+                        if marker.disposition is ExecutionInvocationDisposition.PLANNED:
+                            raise ExecutionInvocationPlanned(marker.invocation_id)
+                        if marker.disposition is ExecutionInvocationDisposition.DENIED:
+                            raise ExecutionInvocationDenied(marker.invocation_id)
+                    from .runtime_effect_origins import original_runtime_observation_supported
+                    original, original_runtime = self._original_runtime_selection(attempt.state.identity, intent, marker=marker)
+                    if original is None:
+                        raise ExecutionInvocationConflict()
+                    if not original_runtime_observation_supported(intent, original_runtime):
                         return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
                             attempted, planned.activity_id.value)
+                    requires_original = marker is None or not prepared_runtime_observation_supported(intent)
                     if (type(self._reconciliation_service) is not EffectAttemptReconciliationService
                             or not self._reconciliation_service._prepared_invocation_ready(
-                                self._permission_policy, self._invocation_service)):
-                        raise ExecutionInvocationConflict(marker.invocation_id)
+                                self._permission_policy, self._invocation_service, original=requires_original)):
+                        raise ExecutionInvocationConflict()
                     reconcile_prepared = True
                 elif prepared_runtime is not None:
                     if marker is None or not self._runtime_profile_ready(intent):
@@ -2065,6 +2086,18 @@ class ExecutionCoordinator:
                     effect_id=attempt.original_start_event.event_id,
                     secret_resolution_grants=(),
                 )
+                if (self._permission_policy is not None and invocations is None and request.authority_ref is not None
+                        and request.kind is RuntimeEffectKind.REALIZE_ACTIVITY):
+                    from .runtime_effect_origins import unprepared_runtime_origin_supported
+                    selected_runtime = _runtime_authority_for_request(realization, request)
+                    origin, retained_runtime = self._original_runtime_selection(attempt.state.identity, intent)
+                    if origin is not None:
+                        if (origin.command != command_context.receipt or type(selected_runtime) is not RegisteredRuntimeAuthority
+                                or replace(retained_runtime, status=selected_runtime.status) != selected_runtime):
+                            raise ExecutionInvocationConflict()
+                    elif (type(selected_runtime) is RegisteredRuntimeAuthority
+                            and unprepared_runtime_origin_supported(intent, selected_runtime)):
+                        raise ExecutionInvocationConflict()
                 runtime_result = None
                 uncertainty_reason = None
                 cancelled = None

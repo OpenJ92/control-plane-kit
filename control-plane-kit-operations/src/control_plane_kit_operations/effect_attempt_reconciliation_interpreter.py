@@ -7,6 +7,7 @@ from typing import Any, Callable
 from control_plane_kit_core.operations import EffectAttemptStatus
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RemoteDockerTlsConnectionAdmission
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservationEvidence,
     RuntimeEffectObservationFailure,
@@ -118,12 +119,13 @@ class EffectAttemptReconciliationService:
             unit_of_work_factory
         )
 
-    def _prepared_invocation_ready(self, permission_policy, invocation_service):
+    def _prepared_invocation_ready(self, permission_policy, invocation_service, *, original=False):
         return (type(self) is EffectAttemptReconciliationService
             and permission_policy is not None and self._permission_policy == permission_policy
             and type(invocation_service) is ExecutionInvocationService
             and self._invocation_service is invocation_service
-            and adapter_accepts_invocations(self._observer, "observe"))
+            and adapter_accepts_invocations(self._observer, "observe")
+            and (not original or self._observer.original_runtime_observation_invocations))
 
     def execute(
         self,
@@ -239,23 +241,26 @@ class EffectAttemptReconciliationService:
                     request_fingerprint=attempt.state.request_fingerprint,
                     kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH) if candidate else None)
                 if dynamic:
-                    if not candidate or marker is None or command_context is None:
+                    if command_context is None:
                         raise ExecutionInvocationConflict()
-                    if marker.command == command_context.receipt:
-                        raise ExecutionInvocationConflict(marker.invocation_id)
-                    if marker.disposition is ExecutionInvocationDisposition.PLANNED:
-                        raise ExecutionInvocationPlanned(marker.invocation_id)
-                    if marker.disposition is ExecutionInvocationDisposition.DENIED:
-                        raise ExecutionInvocationDenied(marker.invocation_id)
-                    if not self._prepared_invocation_ready(self._permission_policy, self._invocation_service):
+                    from .postgres.runtime_observation_source import original_observation_source
+                    original_source, runtime_authority, profile, _ = original_observation_source(
+                        stores.connection, intent_record)
+                    if original_source.command == command_context.receipt:
                         raise ExecutionInvocationConflict()
-                    runtime_authority = stores.runtime_authorities.get_registration(marker.workspace_id,
-                        intent_record.intent.authority_ref, marker.runtime_registration_id)
+                    if not self._prepared_invocation_ready(self._permission_policy, self._invocation_service,
+                            original=profile.requires_original_qualification):
+                        raise ExecutionInvocationConflict()
                     prepared = True
                 elif marker is not None:
                     # Absence is a trusted legacy composition boundary, not
                     # proof that damaged history was originally unprepared.
                     raise ExecutionInvocationConflict(marker.invocation_id)
+                elif (intent_record.intent.kind is RuntimeEffectKind.REALIZE_ACTIVITY
+                        and intent_record.intent.authority_ref is not None
+                        and getattr(stores, "runtime_effect_origins", None) is not None
+                        and stores.runtime_effect_origins.get(attempt.state.identity) is not None):
+                    raise ExecutionInvocationConflict()
 
             if (
                 not invalid_truth
@@ -437,12 +442,10 @@ def _authorize_required_secrets(
     runtime_request: Any,
     runtime_authority: RegisteredRuntimeAuthority | None,
     observed_at: str,
-    *, session_id=None,
+    *, session_id=None, observation_uses=None,
 ) -> tuple[ResolutionGrant, ...]:
-    uses = required_secret_uses_for_runtime_effect(
-        runtime_request,
-        runtime_authority,
-    )
+    uses = (required_secret_uses_for_runtime_effect(runtime_request, runtime_authority)
+        if observation_uses is None else observation_uses)
     if type(uses) is not tuple or (
         uses and PolicyScope.SECRET_PROVIDER_USE not in command.authority.scopes
     ):
@@ -488,7 +491,8 @@ def _fresh_observed_fold(
     if not callable(getattr(observer, "observe", None)):
         raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
     grants = _authorize_required_secrets(self, command, attempt, intent_record,
-        runtime_request, runtime_authority, observed_at, session_id=session_id)
+        runtime_request, runtime_authority, observed_at, session_id=session_id,
+        observation_uses=None if invocations is None else invocations.profile.required_uses)
     runtime_request = runtime_effect_request_for_intent(intent_record.intent,
         effect_id=attempt.original_start_event.event_id, secret_resolution_grants=grants)
 

@@ -2224,3 +2224,24 @@ CREATE TABLE cpk_execution_command_invocations (
     CONSTRAINT cpk_invocations_authorization_fk FOREIGN KEY (authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id)
 );
 CREATE INDEX cpk_invocations_command_page ON cpk_execution_command_invocations (run_id, command_key, invocation_id);
+
+CREATE TABLE cpk_runtime_effect_origins (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    command_key text NOT NULL,
+    parent_fingerprint text NOT NULL,
+    request_fingerprint text NOT NULL,
+    original_event_id text NOT NULL,
+    runtime_registration_id text NOT NULL,
+    descriptor jsonb NOT NULL,
+    CONSTRAINT cpk_runtime_effect_origins_pkey PRIMARY KEY (run_id, activity_id, attempt),
+    CONSTRAINT cpk_runtime_origins_attempt_check CHECK ((attempt > 0)),
+    CONSTRAINT cpk_runtime_origins_descriptor_check CHECK (((jsonb_typeof(descriptor) = 'object'::text) AND (octet_length((descriptor)::text) <= 8192))),
+    CONSTRAINT cpk_runtime_origins_parent_fk FOREIGN KEY (run_id, command_key) REFERENCES cpk_execution_command_receipts(run_id, idempotency_key),
+    CONSTRAINT cpk_runtime_origins_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id),
+    CONSTRAINT cpk_runtime_origins_intent_fk FOREIGN KEY (run_id, activity_id, attempt, request_fingerprint, original_event_id) REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt, request_fingerprint, original_event_id),
+    CONSTRAINT cpk_runtime_origins_attempt_fk FOREIGN KEY (run_id, activity_id, attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt),
+    CONSTRAINT cpk_runtime_origins_registration_fk FOREIGN KEY (runtime_registration_id) REFERENCES cpk_runtime_authorities(registration_id)
+);

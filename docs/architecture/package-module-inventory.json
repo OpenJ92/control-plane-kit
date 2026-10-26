@@ -2,6 +2,157 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.runtime_effect_origins",
+      "destination": "control_plane_kit_operations.runtime_effect_origins",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effect_origins.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations._temporal",
+        "control_plane_kit_operations.effect_permissions",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_secret_uses"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_runtime_effect_origins.py",
+        "tests/test_postgres_original_runtime_observation.py"
+      ],
+      "motivation": "Immutable original selection and the selected observer scope; no permit or provider outcome."
+    },
+    {
+      "module": "control_plane_kit_operations.runtime_observation_invocations",
+      "destination": "control_plane_kit_operations.runtime_observation_invocations",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_observation_invocations.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_operations.execution_invocations",
+        "control_plane_kit_operations.prepared_runtime_invocations",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_effect_origins",
+        "control_plane_kit_operations.runtime_secret_uses"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_runtime_effect_origins.py",
+        "tests/test_postgres_original_runtime_observation.py"
+      ],
+      "motivation": "Closed fresh observation targets and actual connection-only roles."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.runtime_effect_origin_store",
+      "destination": "control_plane_kit_operations.postgres.runtime_effect_origin_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/runtime_effect_origin_store.py",
+      "owner": "operation",
+      "role": "durable-store",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_effect_origins"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_runtime_effect_origins.py",
+        "tests/test_postgres_original_runtime_observation.py"
+      ],
+      "motivation": "Caller-owned immutable selection storage, exact owner joins and bounded current-row verification."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.runtime_observation_source",
+      "destination": "control_plane_kit_operations.postgres.runtime_observation_source",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/runtime_observation_source.py",
+      "owner": "operation",
+      "role": "durable-store",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_operations.execution_invocations",
+        "control_plane_kit_operations.prepared_runtime_invocations",
+        "control_plane_kit_operations.runtime_observation_invocations"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_runtime_effect_origins.py",
+        "tests/test_postgres_original_runtime_observation.py"
+      ],
+      "motivation": "Resolve the exact original prepared or unprepared source without current-registration substitution."
+    },
+    {
       "module": "control_plane_kit_operations.ordinary_verification_invocations",
       "destination": "control_plane_kit_operations.ordinary_verification_invocations",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/ordinary_verification_invocations.py",

@@ -228,3 +228,12 @@ required resolutions. Failure can retain only an ordered prefix or frontier
 credential. Pending evidence blocks completion; unknown evidence requires a direct
 uncertain result. Completed replay performs no new work; an interrupted sequence
 cannot resume from returned invocation records.
+
+OBSERVE / #2049 checks the newly retained original local selection against the
+already loaded realization authority before unprepared provider dispatch. A
+replacement mismatch stops before IO; it cannot substitute today's registration
+or add a second execution permit. Later dynamic observation uses the exact
+original selection and fresh admission. Known unsupported observer shapes use
+the existing UNSUPPORTED result; missing/corrupt provenance is a closed conflict.
+Terminal replay remains ahead of new observer qualification. Registration is an
+authorization/history coordinate, not proof of daemon identity.

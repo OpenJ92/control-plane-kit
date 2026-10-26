@@ -346,6 +346,7 @@ class EffectAttemptStartService:
                 admission = admit_health_start(stores, health, request, plan, event_kind,
                     self._health_receiver_decoders)
             prepared_runtime = None
+            original_runtime = None
             ordinary_verification = ordinary_verification_candidate(command.intent)
             if (self._permission_policy is not None and health is None
                     and event_kind is ActivityEventKind.STEP_STARTED
@@ -365,6 +366,10 @@ class EffectAttemptStartService:
                         or (type(runtime.authority) is LocalDockerSocketAuthority
                             and (workload_preparation_candidate(command.intent) or ordinary_verification))):
                     prepared_runtime = runtime
+                else:
+                    from .runtime_effect_origins import unprepared_runtime_origin_supported
+                    if unprepared_runtime_origin_supported(command.intent, runtime):
+                        original_runtime = runtime
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
@@ -420,6 +425,13 @@ class EffectAttemptStartService:
                     raise
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
             final_invocation = None
+            if original_runtime is not None:
+                from .runtime_effect_origins import RuntimeEffectOriginRecord
+                origin = RuntimeEffectOriginRecord(command_context.receipt, request.identity.workspace_id,
+                    expected_attempt.state.identity, event.event_id, expected_attempt.state.request_fingerprint,
+                    original_runtime.registration_id, event.occurred_at)
+                if stores.runtime_effect_origins.insert_absent(origin) != origin:
+                    raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             if prepared_runtime is not None:
                 try:
                     profile_builder = (ordinary_verification_invocation_profile if ordinary_verification
@@ -466,6 +478,9 @@ class EffectAttemptStartService:
                 if (final_invocation is not None and stores.execution.command_invocation(
                         final_invocation.command, final_invocation.invocation_id) != final_invocation):
                     raise ValueError("persisted final invocation changed")
+                if (original_runtime is not None
+                        and stores.runtime_effect_origins.get(expected_attempt.state.identity) != origin):
+                    raise ValueError("persisted original runtime selection changed")
                 if configuration_preparation is not None:
                     if cleanup_store is not None:
                         cleanup_store._verify_start(configuration_preparation)

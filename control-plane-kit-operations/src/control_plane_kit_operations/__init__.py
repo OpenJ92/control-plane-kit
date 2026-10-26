@@ -8,6 +8,7 @@ from .effect_permissions import (
     CurrentEffectDecision, CurrentWorkspaceEffectPolicy, EffectCommandContext,
     EffectPermissionDenied, ExecutionCommandReference,
 )
+from .runtime_effect_origins import RuntimeEffectOriginRecord
 from .execution_invocations import (
     ExecutionInvocationRecord, ExecutionInvocationKind, ExecutionInvocationDisposition,
     ExecutionInvocationOutcome, ExecutionInvocationDecision, ExecutionInvocationControlError,
@@ -708,6 +709,7 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "RuntimeEffectOriginRecord",
     "ExecutionInvocationService", "BoundExecutionInvocations",
     "ExecutionInvocationRecord", "ExecutionInvocationKind", "ExecutionInvocationDisposition",
     "ExecutionInvocationOutcome", "ExecutionInvocationDecision", "ExecutionInvocationControlError",

@@ -35,10 +35,7 @@ from control_plane_kit_operations.ordinary_verification_invocations import (
     ordinary_verification_candidate, ordinary_verification_invocation_profile,
     ordinary_verification_authorization_command, require_ordinary_verification_authorization,
 )
-from control_plane_kit_operations.prepared_runtime_invocations import (
-    prepared_runtime_invocation_profile, prepared_runtime_reconciliation_target_fingerprint,
-    prepared_runtime_observation_supported,
-)
+from control_plane_kit_operations.prepared_runtime_invocations import prepared_runtime_invocation_profile
 from control_plane_kit_operations.effect_attempt_reconciliation import (
     ReconcileEffectAttempt, _valid_reconcile_command, _require_current_claim, _require_historical_lineage,
 )
@@ -165,7 +162,7 @@ class _BoundReconciliationInvocations:
     command: ReconcileEffectAttempt
     attempt: EffectAttemptRecord
     intent_record: EffectAttemptIntentRecord
-    marker: ExecutionInvocationRecord
+    marker: object
     runtime: object
     profile: object
     target: str
@@ -770,26 +767,12 @@ class ExecutionInvocationService:
             and intent_record.request_id == command.request_id
             and intent_record.workspace_id == request.identity.workspace_id
             and intent_record.intent.source.plan_id == run.plan_id)
-        marker = stores.execution.original_final_invocation(identity,
-            original_event_id=attempt.original_start_event.event_id,
-            request_fingerprint=attempt.state.request_fingerprint, kind=Kind.PREPARED_RUNTIME_DISPATCH)
-        _require(marker is not None and marker.command != context.receipt)
-        if marker.disposition is Disposition.PLANNED:
-            raise ExecutionInvocationPlanned(marker.invocation_id)
-        if marker.disposition is Disposition.DENIED:
-            raise ExecutionInvocationDenied(marker.invocation_id)
-        _require(marker.disposition is Disposition.ADMITTED)
-        runtime = stores.runtime_authorities.get_registration(marker.workspace_id,
-            intent_record.intent.authority_ref, marker.runtime_registration_id)
+        from .postgres.runtime_observation_source import original_observation_source
+        marker, runtime, profile, target = original_observation_source(stores.connection, intent_record)
+        _require(marker.command != context.receipt)
         _require(type(runtime_authority) is type(runtime)
             and replace(runtime, status=runtime_authority.status) == runtime_authority)
-        profile = prepared_runtime_invocation_profile(intent_record.intent,
-            original_event_id=marker.original_event_id, runtime_authority=runtime)
-        _require(profile.target_fingerprint == marker.target_fingerprint)
-        _require(prepared_runtime_observation_supported(intent_record.intent))
-        target = prepared_runtime_reconciliation_target_fingerprint(
-            original_invocation_id=marker.invocation_id, original_target_fingerprint=marker.target_fingerprint,
-            original_request_fingerprint=marker.request_fingerprint, runtime_registration_id=marker.runtime_registration_id)
+
         return marker, runtime, profile, target
 
     def bind_reconciliation(self, *, command_context, command, attempt, intent_record,
@@ -819,7 +802,10 @@ class ExecutionInvocationService:
         _require(type(bound) is _BoundReconciliationInvocations and bound.service is self)
         marker, runtime, profile, target = self._reconciliation_material(stores, bound.context,
             bound.command, bound.attempt, bound.intent_record, bound.runtime)
-        _require(marker.invocation_id == bound.marker.invocation_id and profile == bound.profile
+        same_source = (marker.invocation_id == bound.marker.invocation_id
+            if type(marker) is ExecutionInvocationRecord and type(bound.marker) is ExecutionInvocationRecord
+            else marker == bound.marker)
+        _require(same_source and profile == bound.profile
             and target == bound.target and replace(runtime, status=bound.runtime.status) == bound.runtime)
         authorized = None
         if kind is Kind.SECRET_RESOLUTION:

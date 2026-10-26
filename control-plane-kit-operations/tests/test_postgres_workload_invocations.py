@@ -20,6 +20,7 @@ from tests.test_runtime_interpreter_dispatcher import _registered_product, graph
 
 class _WorkloadInvocationFixture(_PreparedRuntimeInvocationFixture):
     workload_preparation = True
+    workload_checks = False
     workload_authority = True
     workload_runtime_authority = LocalDockerSocketAuthority()
 
@@ -29,7 +30,8 @@ class _WorkloadInvocationFixture(_PreparedRuntimeInvocationFixture):
             from control_plane_kit_core.verification import VerificationContract
             material = replace(material, product=replace(material.product,
                 runtime_contract=replace(material.product.runtime_contract,
-                    secret_deliveries=(), verification=VerificationContract())), secret_selections=())
+                    secret_deliveries=(), verification=(material.product.runtime_contract.verification
+                        if self.workload_checks else VerificationContract()))), secret_selections=())
         document = ProductDescriptorCodec().encode_document(material.product)
         product = RegisteredProduct.from_document(workspace_id="workspace-a",
             descriptor_document=document, source=_registered_product().source,

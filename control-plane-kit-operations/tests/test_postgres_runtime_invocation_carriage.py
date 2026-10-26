@@ -591,6 +591,14 @@ class PostgresRuntimeInvocationPriorEffectTests(_PreparedRuntimeCarriageFixture,
 
 
 class RuntimeInvocationRegistrationTests(unittest.TestCase):
+    def test_original_observation_qualification_is_explicit_exact_boolean(self):
+        self.assertFalse(RuntimeAdapterRegistration(object()).original_runtime_observation_invocations)
+        self.assertTrue(RuntimeAdapterRegistration(object(),
+            original_runtime_observation_invocations=True).original_runtime_observation_invocations)
+        for value in (1, "yes", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                RuntimeAdapterRegistration(object(), original_runtime_observation_invocations=value)
+
     def test_profile_is_closed_and_exact_without_changing_positional_version_flags(self):
         class Profile(str):
             pass
