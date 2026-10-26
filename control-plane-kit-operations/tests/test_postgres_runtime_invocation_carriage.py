@@ -141,10 +141,10 @@ class _PreparedRuntimeCarriageFixture(_PreparedRuntimeInvocationFixture):
                 allowed_intents=(intent,), admitted_by="operator-a", admitted_at=now(),
                 actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
 
-    def composition(self, *, profile=True, service=True, wrapped=True, outer_wrapper=None, exact_versions=False):
+    def composition(self, *, profile=True, service=True, wrapped=True, outer_wrapper=None, exact_versions=False, ordinary=False):
         registration = RuntimeAdapterRegistration(self.adapter,
             exact_version_execute_with_authority=exact_versions,
-            invocation_profile="cpk.semantic-invocations.v1" if profile else None)
+            invocation_profile="cpk.semantic-invocations.v1" if profile else None, ordinary_verification_invocations=ordinary)
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: registration},
             SecretUseAuthorizationService(self.ledger))
         adapter = ActivityExecutionDispatcher(dispatcher) if wrapped else dispatcher

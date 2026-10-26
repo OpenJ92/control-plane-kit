@@ -31,6 +31,10 @@ from control_plane_kit_operations.health_signing_authority import (
 )
 from control_plane_kit_operations.managed_effect_plan import require_managed_effect_plan
 from control_plane_kit_operations.managed_runtime_assignments import ManagedRuntimeSelection
+from control_plane_kit_operations.ordinary_verification_invocations import (
+    ordinary_verification_candidate, ordinary_verification_invocation_profile,
+    ordinary_verification_authorization_command, require_ordinary_verification_authorization,
+)
 from control_plane_kit_operations.prepared_runtime_invocations import (
     prepared_runtime_invocation_profile, prepared_runtime_reconciliation_target_fingerprint,
     prepared_runtime_observation_supported,
@@ -43,7 +47,7 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAt
 from control_plane_kit_operations.effect_attempt_start import StartEffectAttempt, _valid_start_command
 from control_plane_kit_operations.runtime_secret_uses import OperationalSecretUse, secret_authorization_command
 from control_plane_kit_operations.secret_providers import (
-    AuthorizedSecretUse, AuthorizedSecretVersionUse, authorize_secret_use_in_unit_of_work,
+    AuthorizedSecretUse, AuthorizedSecretVersionUse, authorize_secret_use_in_unit_of_work, authorize_runtime_secret_command,
     authorize_secret_version_use_in_unit_of_work, validate_authorized_secret_use,
 )
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
@@ -111,6 +115,47 @@ class _BoundRuntimeInvocations:
 
     def record_outcome(self, permit, outcome):
         self.service._record_outcome(self, permit, outcome)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _BoundOrdinaryVerificationInvocations(_BoundRuntimeInvocations):
+    # Per-call public grant metadata only; never resolved values or a UoW.
+    check_grants: tuple = ()
+
+    def record_outcome(self, permit, outcome):
+        _require(type(permit) is _Permit and (
+            permit.record.kind is Kind.ORDINARY_VERIFICATION_ACQUISITION
+            or (permit.record.kind is Kind.SECRET_RESOLUTION
+                and all(permit.record.authorization_id != grant.authorization_id for _, grant in self.check_grants))))
+        self.service._record_outcome(self, permit, outcome)
+
+    def for_check(self, check_id):
+        try:
+            check = self.profile.check(check_id)
+            grants = tuple(grant for identity, grant in self.check_grants if identity == check_id)
+            _require(len(grants) == (0 if check.credential_use is None else 1))
+            return _BoundOrdinaryVerificationCheck(self, check, grants[0] if grants else None)
+        except Exception:
+            raise ExecutionInvocationConflict() from None
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _BoundOrdinaryVerificationCheck:
+    parent: _BoundOrdinaryVerificationInvocations
+    check: object
+    credential_grant: object
+    control_error = ExecutionInvocationControlError
+
+    def admit(self, kind, *, authorization_id=None):
+        return self.parent.service._admit_runtime(self.parent, kind, authorization_id, check=self.check)
+
+    def record_outcome(self, permit, outcome):
+        _require(type(permit) is _Permit and (
+            (permit.record.kind is Kind.ORDINARY_VERIFICATION_CHECK
+                and permit.record.target_fingerprint == self.check.target_fingerprint)
+            or (permit.record.kind is Kind.SECRET_RESOLUTION and self.credential_grant is not None
+                and permit.record.authorization_id == self.credential_grant.authorization_id)))
+        self.parent.service._record_outcome(self.parent, permit, outcome, check=self.check)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -196,7 +241,7 @@ class ExecutionInvocationService:
 
     def _binding(self, stores, bound, *, fresh):
         start = (bound.command if type(bound) is _BoundReconciliationInvocations else
-            bound.start if type(bound) is _BoundRuntimeInvocations else bound.start.start)
+            bound.start if type(bound) in (_BoundRuntimeInvocations, _BoundOrdinaryVerificationInvocations) else bound.start.start)
         request = stores.execution.get_request(start.request_id)
         run = stores.execution.get_run(bound.context.receipt.run_id)
         return _require_execution_binding(stores, bound.context, request, run,
@@ -313,7 +358,7 @@ class ExecutionInvocationService:
         _require(admitted is not None)
         return _Permit(bound.owner, admitted)
 
-    def _record_outcome(self, bound, permit, outcome):
+    def _record_outcome(self, bound, permit, outcome, *, check=None):
         control = None
         try:
             _require(type(permit) is _Permit and permit.owner is bound.owner
@@ -328,7 +373,19 @@ class ExecutionInvocationService:
                 stores.execution.command_receipt_for_idempotency(reference.run_id,
                     reference.idempotency_key, for_update=True)
                 self._binding(stores, bound, fresh=False)
-                if type(bound) is _BoundRuntimeInvocations:
+                if type(bound) is _BoundOrdinaryVerificationInvocations:
+                    _, _, _, authorizations, _ = self._ordinary_history(stores, bound)
+                    if permit.record.kind is Kind.SECRET_RESOLUTION:
+                        _require(any(role[0] == check and value is not None
+                            and value.authorization_id == permit.record.authorization_id
+                            for role, value in authorizations))
+                    elif check is None:
+                        _require(permit.record.kind is Kind.ORDINARY_VERIFICATION_ACQUISITION)
+                    else:
+                        _require(bound.profile.check(check.check_id) == check
+                            and permit.record.kind is Kind.ORDINARY_VERIFICATION_CHECK
+                            and permit.record.target_fingerprint == check.target_fingerprint)
+                elif type(bound) is _BoundRuntimeInvocations:
                     self._runtime_history(stores, bound, Kind.PREPARED_RUNTIME_DISPATCH, None)
                 elif type(bound) is _BoundReconciliationInvocations:
                     self._reconciliation_history(stores, bound, Kind.RECONCILIATION_OBSERVATION, None)
@@ -368,14 +425,17 @@ class ExecutionInvocationService:
         evidence = stores.effect_attempt_intents.get(identity)
         _require(evidence.intent == start.intent and evidence.original_start_event == attempt.original_start_event)
         marker = stores.execution.command_invocation_for_slot(context.receipt,
-            activity_id=identity.activity_id, kind=Kind.PREPARED_RUNTIME_DISPATCH)
+            activity_id=identity.activity_id, kind=(Kind.ORDINARY_VERIFICATION_ACQUISITION
+                if ordinary_verification_candidate(start.intent) else Kind.PREPARED_RUNTIME_DISPATCH))
         _require(marker is not None and marker.attempt == identity.attempt
             and marker.original_event_id == attempt.original_start_event.event_id
             and marker.request_fingerprint == attempt.state.request_fingerprint
             and marker.created_at == attempt.original_start_event.occurred_at)
         runtime = stores.runtime_authorities.get_registration(marker.workspace_id,
             start.intent.authority_ref, marker.runtime_registration_id)
-        profile = prepared_runtime_invocation_profile(start.intent,
+        profile_builder = (ordinary_verification_invocation_profile if ordinary_verification_candidate(start.intent)
+            else prepared_runtime_invocation_profile)
+        profile = profile_builder(start.intent,
             original_event_id=marker.original_event_id, runtime_authority=runtime)
         _require(profile.target_fingerprint == marker.target_fingerprint)
         return marker, runtime, profile
@@ -389,7 +449,9 @@ class ExecutionInvocationService:
                 reference = command_context.receipt
                 uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
                 marker, runtime, profile = self._runtime_material(uow.stores, command_context, start, started)
-                bound = _BoundRuntimeInvocations(self, command_context, start, started, marker, runtime, profile)
+                bound_type = (_BoundOrdinaryVerificationInvocations if ordinary_verification_candidate(start.intent)
+                    else _BoundRuntimeInvocations)
+                bound = bound_type(self, command_context, start, started, marker, runtime, profile)
         except Exception:
             failed = True
         if failed:
@@ -445,20 +507,27 @@ class ExecutionInvocationService:
             raise ExecutionInvocationConflict()
         return marker
 
-    def _admit_runtime(self, bound, kind, authorization_id):
+    def _admit_runtime(self, bound, kind, authorization_id, *, check=None):
         admitted, control = None, None
         try:
-            _require(type(kind) is str and type(bound) is _BoundRuntimeInvocations and bound.service is self)
+            ordinary = type(bound) is _BoundOrdinaryVerificationInvocations
+            _require(type(kind) is str and (ordinary or type(bound) is _BoundRuntimeInvocations) and bound.service is self)
             kind = Kind(kind)
-            _require(kind in (Kind.SECRET_RESOLUTION, Kind.PREPARED_RUNTIME_DISPATCH))
+            _require(kind in ((Kind.SECRET_RESOLUTION, Kind.ORDINARY_VERIFICATION_ACQUISITION,
+                Kind.ORDINARY_VERIFICATION_CHECK) if ordinary else (Kind.SECRET_RESOLUTION, Kind.PREPARED_RUNTIME_DISPATCH)))
+            _require(ordinary or check is None)
             with self._unit_of_work_factory() as uow:
                 stores, reference = uow.stores, bound.context.receipt
                 stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
-                marker, current, target, authorized = self._runtime_history(stores, bound, kind, authorization_id)
+                if ordinary:
+                    marker, current, target, authorized = self._ordinary_admission_history(
+                        stores, bound, kind, authorization_id, check)
+                else:
+                    marker, current, target, authorized = self._runtime_history(stores, bound, kind, authorization_id)
                 if current is not None and current.disposition is not Disposition.PLANNED:
                     control = (ExecutionInvocationDenied(current.invocation_id)
                         if current.disposition is Disposition.DENIED else ExecutionInvocationExisting(current.invocation_id))
-                elif marker.disposition is not Disposition.PLANNED:
+                elif not ordinary and marker.disposition is not Disposition.PLANNED:
                     control = (ExecutionInvocationDenied(marker.invocation_id)
                         if marker.disposition is Disposition.DENIED else ExecutionInvocationExisting(marker.invocation_id))
                 else:
@@ -493,7 +562,8 @@ class ExecutionInvocationService:
                                 else OperationalSecretUse(authorized.reference, authorized.intent))
                             command = secret_authorization_command(runtime_request, use,
                                 actor_subject=original.actor_id, requested_at=authorized.requested_at,
-                                actor_scopes=decision.effective_scopes, session_id=request.identity.session_id)
+                                actor_scopes=decision.effective_scopes, session_id=request.identity.session_id,
+                                probe_id=authorized.probe_id if ordinary else None)
                             authorize = (authorize_secret_version_use_in_unit_of_work if versioned
                                 else authorize_secret_use_in_unit_of_work)
                             retained, _ = authorize(uow, command)
@@ -501,7 +571,7 @@ class ExecutionInvocationService:
                     observation = stores.execution.observe_request_lease_for_update(request.identity.request_id)
                     _require(observation.request == request and not observation.expired)
                     evidence = ExecutionInvocationDecision(decision.permission_revision, denial_code=decision.denial_code)
-                    if kind is Kind.PREPARED_RUNTIME_DISPATCH:
+                    if kind in (Kind.PREPARED_RUNTIME_DISPATCH, Kind.ORDINARY_VERIFICATION_ACQUISITION):
                         record = marker.decided(evidence, observation.observed_at)
                         _require(stores.execution.replace_command_invocation(marker, record))
                     else:
@@ -526,6 +596,159 @@ class ExecutionInvocationService:
         _require(admitted is not None)
         return _Permit(bound.owner, admitted)
 
+
+    def authorize_ordinary_verification(self, bound, request, authorizer):
+        """Authorize declared metadata eagerly; secret bytes remain per reached check."""
+        _require(type(bound) is _BoundOrdinaryVerificationInvocations and bound.service is self)
+        expected = runtime_effect_request_for_intent(bound.start.intent,
+            effect_id=bound.marker.original_event_id, secret_resolution_grants=())
+        _require(request == expected)
+        with self._unit_of_work_factory() as uow:
+            operation = uow.stores.execution.get_request(bound.start.request_id)
+        connection_grants, check_grants = [], []
+        for role in bound.profile.secret_roles:
+            _require(authorizer is not None)
+            command = ordinary_verification_authorization_command(request, role,
+                actor_subject=bound.context.original.actor_id, session_id=operation.identity.session_id,
+                requested_at=bound.marker.created_at, actor_scopes=bound.context.original.granted_scopes)
+            grant = authorize_runtime_secret_command(authorizer, command)
+            if role[0] is None:
+                connection_grants.append(grant)
+            else:
+                check_grants.append((role[0].check_id, grant))
+        return (replace(request, secret_resolution_grants=tuple(connection_grants)),
+            replace(bound, check_grants=tuple(check_grants)))
+
+    def _ordinary_history(self, stores, bound):
+        """Validate the complete closed family, including an unfinished frontier."""
+        _require(type(bound) is _BoundOrdinaryVerificationInvocations and bound.service is self)
+        marker, runtime, profile = self._runtime_material(stores, bound.context, bound.start, bound.started)
+        _require(marker.invocation_id == bound.marker.invocation_id and profile == bound.profile
+            and replace(runtime, status=bound.runtime.status) == bound.runtime)
+        request = stores.execution.get_request(bound.start.request_id)
+        runtime_request = runtime_effect_request_for_intent(bound.start.intent,
+            effect_id=marker.original_event_id, secret_resolution_grants=())
+        authorizations = []
+        for role in profile.secret_roles:
+            command = ordinary_verification_authorization_command(runtime_request, role,
+                actor_subject=bound.context.original.actor_id, session_id=request.identity.session_id,
+                requested_at=marker.created_at, actor_scopes=bound.context.original.granted_scopes)
+            authorized = stores.secret_use_authorizations.for_correlation(marker.workspace_id, command.correlation_id)
+            if authorized is not None:
+                require_ordinary_verification_authorization(authorized, command)
+            authorizations.append((role, authorized))
+        records = stores.execution.ordinary_verification_invocations(marker, profile)
+        _require(sum(row.invocation_id == marker.invocation_id for row in records) == 1)
+        checks, resolutions = {}, {}
+        for row in records:
+            _require(row.attempt == marker.attempt and row.original_event_id == marker.original_event_id
+                and row.request_fingerprint == marker.request_fingerprint)
+            if row.kind is Kind.ORDINARY_VERIFICATION_ACQUISITION:
+                _require(row == marker)
+            elif row.kind is Kind.ORDINARY_VERIFICATION_CHECK:
+                _require(row.target_fingerprint in tuple(check.target_fingerprint for check in profile.checks)
+                    and row.target_fingerprint not in checks)
+                checks[row.target_fingerprint] = row
+            else:
+                matches = tuple(authorized for _, authorized in authorizations
+                    if authorized is not None and authorized.authorization_id == row.authorization_id)
+                _require(len(matches) == 1 and row.target_fingerprint == secret_invocation_target_fingerprint(matches[0])
+                    and row.authorization_id not in resolutions)
+                resolutions[row.authorization_id] = row
+
+        def resolution(role):
+            authorized = next(value for candidate, value in authorizations if candidate == role)
+            return None if authorized is None else resolutions.get(authorized.authorization_id)
+
+        tls = tuple(resolution(role) for role in profile.secret_roles if role[0] is None)
+        if marker.disposition is not Disposition.PLANNED:
+            _require(all(self._returned(row) for row in tls))
+        prefix_returned = True
+        for check in profile.checks:
+            row = checks.get(check.target_fingerprint)
+            credential = resolution((check, check.credential_use)) if check.credential_use is not None else None
+            if row is not None or credential is not None:
+                _require(prefix_returned and self._returned(marker))
+            if row is not None and check.credential_use is not None:
+                _require(self._returned(credential))
+            prefix_returned = prefix_returned and self._returned(row)
+        return marker, checks, resolutions, tuple(authorizations), records
+
+    @staticmethod
+    def _returned(record):
+        return (record is not None and record.disposition is Disposition.ADMITTED
+            and record.outcome is Outcome.RETURNED)
+
+    def _ordinary_admission_history(self, stores, bound, kind, authorization_id, check):
+        marker, checks, resolutions, authorizations, _ = self._ordinary_history(stores, bound)
+        authorized = None
+        if check is not None:
+            _require(bound.profile.check(check.check_id) == check
+                and kind in (Kind.SECRET_RESOLUTION, Kind.ORDINARY_VERIFICATION_CHECK))
+        else:
+            _require(kind in (Kind.SECRET_RESOLUTION, Kind.ORDINARY_VERIFICATION_ACQUISITION))
+        if kind is Kind.SECRET_RESOLUTION:
+            matches = tuple(value for role, value in authorizations if role[0] == check
+                and value is not None and value.authorization_id == authorization_id)
+            _require(len(matches) == 1)
+            authorized, = matches
+            current, target = resolutions.get(authorization_id), secret_invocation_target_fingerprint(authorized)
+        elif kind is Kind.ORDINARY_VERIFICATION_CHECK:
+            _require(authorization_id is None and check is not None)
+            current, target = checks.get(check.target_fingerprint), check.target_fingerprint
+        else:
+            _require(authorization_id is None and check is None)
+            current, target = marker, marker.target_fingerprint
+        if current is not None and current.disposition is not Disposition.PLANNED:
+            return marker, current, target, authorized
+        if check is None:
+            _require(marker.disposition is Disposition.PLANNED)
+            if kind is Kind.ORDINARY_VERIFICATION_ACQUISITION:
+                for role, value in authorizations:
+                    if role[0] is None:
+                        _require(value is not None and self._returned(resolutions.get(value.authorization_id)))
+        else:
+            _require(self._returned(marker))
+            for previous in bound.profile.checks:
+                if previous == check:
+                    break
+                _require(self._returned(checks.get(previous.target_fingerprint)))
+            if kind is Kind.SECRET_RESOLUTION:
+                _require(check.target_fingerprint not in checks)
+            elif check.credential_use is not None:
+                value = next(value for role, value in authorizations if role[0] == check)
+                _require(value is not None and self._returned(resolutions.get(value.authorization_id)))
+        return marker, current, target, authorized
+
+    def inspect_ordinary_verification(self, bound, result=None):
+        """Coverage is necessary for success; only the typed result owns health truth."""
+        from control_plane_kit_core.operations.execution import EffectResultKind
+        control, marker = None, None
+        try:
+            with self._unit_of_work_factory() as uow:
+                reference = bound.context.receipt
+                uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, checks, resolutions, authorizations, records = self._ordinary_history(uow.stores, bound)
+                _require(not any(row.outcome is Outcome.PENDING for row in records))
+                if any(row.outcome is Outcome.UNKNOWN for row in records):
+                    _require(result is not None and result.kind is EffectResultKind.UNCERTAIN)
+                denied = next((row for row in records if row.disposition is Disposition.DENIED), None)
+                if denied is not None:
+                    raise ExecutionInvocationDenied(denied.invocation_id)
+                if marker.disposition is Disposition.PLANNED:
+                    raise ExecutionInvocationPlanned(marker.invocation_id)
+                if result is not None and result.kind is EffectResultKind.SUCCEEDED:
+                    _require(self._returned(marker)
+                        and all(self._returned(checks.get(check.target_fingerprint)) for check in bound.profile.checks)
+                        and all(value is not None and self._returned(resolutions.get(value.authorization_id))
+                            for _, value in authorizations))
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        return marker
 
     def _reconciliation_material(self, stores, context, command, attempt, intent_record, runtime_authority):
         _require(type(context) is EffectCommandContext and _valid_reconcile_command(command)

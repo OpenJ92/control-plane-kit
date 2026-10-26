@@ -337,7 +337,7 @@ class PostgresExecutionStore:
         return record
 
     def command_invocation_for_slot(self, command: ExecutionCommandReference, *,
-            activity_id, kind, authorization_id=None):
+            activity_id, kind, authorization_id=None, check_target=None):
         """Non-locking exact unique-slot lookup; no new admission or repair."""
         import re
         _invocation_reference(command)
@@ -345,7 +345,14 @@ class PostgresExecutionStore:
                 or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", activity_id) is None
                 or type(kind) is not ExecutionInvocationKind):
             raise ExecutionInvocationConflict()
-        if kind is ExecutionInvocationKind.SECRET_RESOLUTION:
+        if check_target is not None and kind is not ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK:
+            raise ExecutionInvocationConflict()
+        if kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK:
+            _invocation_id(check_target)
+            if authorization_id is not None:
+                raise ExecutionInvocationConflict()
+            slot = check_target
+        elif kind is ExecutionInvocationKind.SECRET_RESOLUTION:
             if (type(authorization_id) is not str
                     or re.fullmatch(r"suse_[0-9a-f]{64}", authorization_id) is None):
                 raise ExecutionInvocationConflict()
@@ -372,7 +379,8 @@ class PostgresExecutionStore:
         """Bounded original candidates; malformed history never becomes absence."""
         from control_plane_kit_core.operations import EffectAttemptIdentity
         if (type(identity) is not EffectAttemptIdentity or kind not in (
-                ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT, ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+                ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT, ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH,
+                ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
                 or type(kind) is not ExecutionInvocationKind):
             raise ExecutionInvocationConflict()
         try:
@@ -395,6 +403,35 @@ class PostgresExecutionStore:
             raise ExecutionInvocationConflict(record.invocation_id)
         _require_invocation_owners(self, record)
         return record
+
+    def ordinary_verification_invocations(self, marker, profile):
+        """Read only the original bounded family, including one overflow witness."""
+        from control_plane_kit_operations.ordinary_verification_invocations import OrdinaryVerificationInvocationProfile
+        from .configuration_evidence import _active_read
+        _invocation_record(marker)
+        if (marker.kind is not ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION
+                or type(profile) is not OrdinaryVerificationInvocationProfile
+                or profile.target_fingerprint != marker.target_fingerprint):
+            raise ExecutionInvocationConflict()
+        # This closed REALIZE/WaitForHealthy path has no configuration suffix.
+        # Refuse a configuration ledger rather than perform unaccounted reads.
+        if _active_read(self._connection) is not None:
+            raise ExecutionInvocationConflict()
+        _require_invocation_owners(self, marker)
+        rows = self._connection.execute(_INVOCATION_SELECT
+            + " WHERE run_id=%s AND command_key=%s AND activity_id=%s AND attempt=%s"
+            + " AND kind IN ('ordinary-verification-acquisition','ordinary-verification-check','secret-resolution')"
+            + ' ORDER BY invocation_id COLLATE "C" LIMIT %s',
+            (marker.command.run_id, marker.command.idempotency_key, marker.activity_id,
+                marker.attempt, profile.family_bound + 1)).fetchall()
+        if len(rows) > profile.family_bound:
+            raise ExecutionInvocationConflict()
+        records = tuple(_invocation_row(row) for row in rows)
+        for record in records:
+            if record.command != marker.command:
+                raise ExecutionInvocationConflict()
+            _require_invocation_owners(self, record)
+        return records
 
     def replace_command_invocation(self, expected: ExecutionInvocationRecord,
             replacement: ExecutionInvocationRecord) -> bool:
@@ -1791,6 +1828,34 @@ def _require_invocation_owners(store, record, *, fresh=False):
                 original_event_id=record.original_event_id, runtime_authority=runtime)
             if profile.target_fingerprint != record.target_fingerprint:
                 raise ExecutionInvocationConflict(record.invocation_id)
+        if record.kind in (ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
+                ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK):
+            from .runtime_authority_store import RuntimeAuthorityStore
+            from control_plane_kit_operations.ordinary_verification_invocations import ordinary_verification_invocation_profile
+            if record.kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION:
+                original = record
+                # The original attempt has one acquisition, even across commands.
+                rows = store._connection.execute(
+                    "SELECT invocation_id FROM cpk_execution_command_invocations "
+                    "WHERE run_id=%s AND activity_id=%s AND attempt=%s "
+                    "AND kind='ordinary-verification-acquisition' LIMIT 2",
+                    (record.command.run_id, record.activity_id, record.attempt)).fetchall()
+                if any(row != (record.invocation_id,) for row in rows):
+                    raise ExecutionInvocationConflict(record.invocation_id)
+            else:
+                original = store.original_final_invocation(identity,
+                    original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                    kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                if original is None or original.command != record.command:
+                    raise ExecutionInvocationConflict(record.invocation_id)
+            runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
+            profile = ordinary_verification_invocation_profile(intent.intent,
+                original_event_id=record.original_event_id, runtime_authority=runtime)
+            targets = ((profile.target_fingerprint,) if original is record else
+                tuple(check.target_fingerprint for check in profile.checks))
+            if record.target_fingerprint not in targets:
+                raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.RECONCILIATION_OBSERVATION:
             from control_plane_kit_operations.prepared_runtime_invocations import (
                 prepared_runtime_observation_supported, prepared_runtime_reconciliation_target_fingerprint,
@@ -1809,6 +1874,34 @@ def _require_invocation_owners(store, record, *, fresh=False):
                 raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.SECRET_RESOLUTION:
             authorized = SecretUseAuthorizationStore(store._connection).get(record.workspace_id, record.authorization_id)
+            if record.attempt is not None:
+                from control_plane_kit_operations.ordinary_verification_invocations import (
+                    ordinary_verification_candidate, ordinary_verification_invocation_profile,
+                    ordinary_verification_authorization_command, require_ordinary_verification_authorization,
+                )
+                if ordinary_verification_candidate(intent.intent):
+                    from .runtime_authority_store import RuntimeAuthorityStore
+                    from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
+                    original = store.original_final_invocation(identity,
+                        original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                        kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                    if original is None or original.command != record.command:
+                        raise ExecutionInvocationConflict(record.invocation_id)
+                    runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                        record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
+                    profile = ordinary_verification_invocation_profile(intent.intent,
+                        original_event_id=record.original_event_id, runtime_authority=runtime)
+                    roles = tuple(role for role in profile.secret_roles
+                        if role[1].reference == authorized.reference and role[1].intent == authorized.intent
+                        and (None if role[0] is None else role[0].probe_id) == authorized.probe_id)
+                    if len(roles) != 1:
+                        raise ExecutionInvocationConflict(record.invocation_id)
+                    command = ordinary_verification_authorization_command(
+                        runtime_effect_request_for_intent(intent.intent,
+                            effect_id=record.original_event_id, secret_resolution_grants=()), roles[0],
+                        actor_subject=parent.managed_intent.actor.subject_id, session_id=request.identity.session_id,
+                        requested_at=authorized.requested_at, actor_scopes=())
+                    require_ordinary_verification_authorization(authorized, command)
             linked = record.original_event_id is not None and authorized.effect_id == record.original_event_id
             if not linked and authorized.effect_id is None and record.attempt is not None:
                 # Signed health uses its existing operation identity, not the

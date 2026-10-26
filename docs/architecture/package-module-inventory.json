@@ -2,6 +2,44 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.ordinary_verification_invocations",
+      "destination": "control_plane_kit_operations.ordinary_verification_invocations",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/ordinary_verification_invocations.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.types",
+        "control_plane_kit_core.verification",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_secret_uses",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.execution_invocation_service",
+        "control_plane_kit_operations.postgres.execution"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_postgres_probe_invocations.py",
+        "tests/test_postgres_probe_invocation_admission.py"
+      ],
+      "motivation": "Closed ordinary-verification acquisition/check targets and check-scoped metadata roles, owned by Operations; no provider IO or health-result evaluation."
+    },
+    {
       "module": "control_plane_kit_operations.runtime_secret_uses",
       "destination": "control_plane_kit_operations.runtime_secret_uses",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_secret_uses.py",

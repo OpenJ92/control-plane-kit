@@ -34,19 +34,22 @@ def _secret_use_key(use):
     raise InvalidOperationCommand("runtime secret use role is malformed")
 
 
-def secret_authorization_command(request, use, *, actor_subject, requested_at, actor_scopes, session_id=None):
+def secret_authorization_command(request, use, *, actor_subject, requested_at, actor_scopes, session_id=None,
+        probe_id=None):
     """Pure projection of the original request and an explicit resolution role."""
     _secret_use_key(use)
     values = dict(workspace_id=request.source.workspace_id, actor_subject=actor_subject,
         operation_id=request.source.request_id, run_id=request.source.run_id.value,
         activity_id=request.activity_id.value, effect_id=request.effect_id, session_id=session_id)
     if type(use) is SecretVersionSelection:
+        if probe_id is not None:
+            raise InvalidOperationCommand("consumer version cannot carry a probe identity")
         values.update(selection=use,
             request_fingerprint=runtime_effect_intent_fingerprint(runtime_effect_intent_for_request(request)),
             selection_fingerprint=secret_material_selection_fingerprint(request))
         return AuthorizeSecretVersionUse(**values, correlation_id=secret_version_use_correlation_for(**values),
             requested_at=requested_at, actor_scopes=actor_scopes)
-    values.update(reference=use.reference, intent=use.intent)
+    values.update(reference=use.reference, intent=use.intent, probe_id=probe_id)
     return AuthorizeSecretUse(**values, correlation_id=secret_use_correlation_for(**values),
         requested_at=requested_at, actor_scopes=actor_scopes)
 

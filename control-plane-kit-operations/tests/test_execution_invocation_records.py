@@ -16,6 +16,19 @@ from control_plane_kit_operations.records import OperationsRecordError
 
 
 class ExecutionInvocationRecordTests(unittest.TestCase):
+    def test_ordinary_verification_kinds_preserve_acquisition_anchor_and_check_slots(self):
+        acquisition = replace(self.planned(), kind=Kind.ORDINARY_VERIFICATION_ACQUISITION)
+        check = replace(acquisition.decided(Decision(1), acquisition.created_at),
+            kind=Kind.ORDINARY_VERIFICATION_CHECK, runtime_registration_id=None)
+        self.assertEqual(acquisition.slot_key, "singleton")
+        self.assertEqual(check.slot_key, check.target_fingerprint)
+        for record in (acquisition, check):
+            self.assertEqual(ExecutionInvocationRecord.from_descriptor(record.descriptor()), record)
+        with self.assertRaises(OperationsRecordError):
+            replace(check, disposition=Disposition.PLANNED, decision=None, decision_at=None, outcome=None)
+        with self.assertRaises(OperationsRecordError):
+            replace(check, attempt=None, original_event_id=None, request_fingerprint=None)
+
     def planned(self):
         return ExecutionInvocationRecord(ExecutionCommandReference("run-a", "execute-\x7f-a", "a" * 64),
             "workspace-a", "start-runtime", Kind.PREPARED_RUNTIME_DISPATCH, "b" * 64,

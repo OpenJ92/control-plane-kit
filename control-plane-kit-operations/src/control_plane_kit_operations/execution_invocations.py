@@ -47,6 +47,8 @@ class ExecutionInvocationKind(StrEnum):
     SIGNED_HEALTH_TRANSPORT = "signed-health-transport"
     PREPARED_RUNTIME_DISPATCH = "prepared-runtime-dispatch"
     RECONCILIATION_OBSERVATION = "reconciliation-observation"
+    ORDINARY_VERIFICATION_ACQUISITION = "ordinary-verification-acquisition"
+    ORDINARY_VERIFICATION_CHECK = "ordinary-verification-check"
 
 
 class ExecutionInvocationDisposition(StrEnum):
@@ -63,7 +65,7 @@ class ExecutionInvocationOutcome(StrEnum):
 
 
 _FINAL_KINDS = (ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT,
-    ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+    ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH, ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
 _DENIAL_CODES = frozenset(("workspace-permission-denied", "required-scope-denied",
     "management-target-denied", "management-authority-denied", "management-assignment-denied",
     "secret-use-denied"))
@@ -166,7 +168,7 @@ class ExecutionInvocationRecord:
             and type(self.kind) is ExecutionInvocationKind and _sha(self.target_fingerprint)
             and type(self.disposition) is ExecutionInvocationDisposition)
         created = _time(self.created_at)
-        if self.kind is ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH:
+        if self.kind in (ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH, ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION):
             _require(_text(self.runtime_registration_id))
         else:
             _require(self.runtime_registration_id is None)
@@ -174,7 +176,7 @@ class ExecutionInvocationRecord:
         _require(all(value is None for value in correlation) or (
             type(self.attempt) is int and 1 <= self.attempt <= 2147483647
             and _text(self.original_event_id) and _sha(self.request_fingerprint)))
-        if self.kind in (*_FINAL_KINDS, ExecutionInvocationKind.RECONCILIATION_OBSERVATION):
+        if self.kind in (*_FINAL_KINDS, ExecutionInvocationKind.RECONCILIATION_OBSERVATION, ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK):
             _require(self.attempt is not None)
         if self.kind is ExecutionInvocationKind.SECRET_RESOLUTION:
             _require(type(self.authorization_id) is str
@@ -213,6 +215,8 @@ class ExecutionInvocationRecord:
 
     @property
     def slot_key(self):
+        if self.kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK:
+            return self.target_fingerprint
         return self.authorization_id if self.kind is ExecutionInvocationKind.SECRET_RESOLUTION else "singleton"
 
     def correlation(self):
@@ -222,7 +226,7 @@ class ExecutionInvocationRecord:
             slot_key=self.slot_key, target_fingerprint=self.target_fingerprint,
             attempt=self.attempt, original_event_id=self.original_event_id,
             request_fingerprint=self.request_fingerprint, authorization_id=self.authorization_id)
-        if self.kind is ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH:
+        if self.kind in (ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH, ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION):
             value["runtime_registration_id"] = self.runtime_registration_id
         return value
 
@@ -244,7 +248,7 @@ class ExecutionInvocationRecord:
             "version", "command", "workspace_id", "activity_id", "kind", "slot_key", "target_fingerprint",
             "attempt", "original_event_id", "request_fingerprint", "authorization_id", "invocation_id",
             "created_at", "disposition", "decision_at", "decision", "outcome", "completed_at", "completion_code"}
-        if payload.get("kind") == ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH.value:
+        if payload.get("kind") in (ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH.value, ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION.value):
             keys.add("runtime_registration_id")
         _require(set(payload) == keys)
         try:

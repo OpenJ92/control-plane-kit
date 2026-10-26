@@ -63,6 +63,9 @@ from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationKind, ExecutionInvocationRecord, ExecutionInvocationConflict,
     signed_health_invocation_target_fingerprint,
 )
+from control_plane_kit_operations.ordinary_verification_invocations import (
+    ordinary_verification_candidate, ordinary_verification_invocation_profile,
+)
 from control_plane_kit_operations.prepared_runtime_invocations import (
     runtime_preparation_candidate, prepared_runtime_invocation_profile, workload_preparation_candidate,
 )
@@ -343,9 +346,10 @@ class EffectAttemptStartService:
                 admission = admit_health_start(stores, health, request, plan, event_kind,
                     self._health_receiver_decoders)
             prepared_runtime = None
+            ordinary_verification = ordinary_verification_candidate(command.intent)
             if (self._permission_policy is not None and health is None
                     and event_kind is ActivityEventKind.STEP_STARTED
-                    and runtime_preparation_candidate(command.intent)):
+                    and (runtime_preparation_candidate(command.intent) or ordinary_verification)):
                 if command.intent.authority_ref is None:
                     raise EffectAttemptStartConflict("prepared workload requires registered runtime authority")
                 try:
@@ -359,7 +363,7 @@ class EffectAttemptStartService:
                     raise EffectAttemptStartConflict("configuration runtime preparation is unavailable") from None
                 if (type(runtime.authority) is RemoteDockerTlsAuthority
                         or (type(runtime.authority) is LocalDockerSocketAuthority
-                            and workload_preparation_candidate(command.intent))):
+                            and (workload_preparation_candidate(command.intent) or ordinary_verification))):
                     prepared_runtime = runtime
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
@@ -418,11 +422,14 @@ class EffectAttemptStartService:
             final_invocation = None
             if prepared_runtime is not None:
                 try:
-                    profile = prepared_runtime_invocation_profile(command.intent,
+                    profile_builder = (ordinary_verification_invocation_profile if ordinary_verification
+                        else prepared_runtime_invocation_profile)
+                    profile = profile_builder(command.intent,
                         original_event_id=event.event_id, runtime_authority=prepared_runtime)
                     final_invocation = ExecutionInvocationRecord(command_context.receipt,
                         request.identity.workspace_id, expected_attempt.state.identity.activity_id,
-                        ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH, profile.target_fingerprint,
+                        (ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION if ordinary_verification
+                            else ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH), profile.target_fingerprint,
                         event.occurred_at, attempt=expected_attempt.state.identity.attempt,
                         original_event_id=event.event_id, request_fingerprint=expected_attempt.state.request_fingerprint,
                         runtime_registration_id=profile.runtime_registration_id)

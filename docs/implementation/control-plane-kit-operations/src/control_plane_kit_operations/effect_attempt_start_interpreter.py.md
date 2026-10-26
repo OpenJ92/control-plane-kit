@@ -70,3 +70,10 @@ Replay rejects nonexact intent-record types before reading an attribute or
 invoking equality on them. Configuration protection validation only runs after
 that nominal boundary; the hostile-subclass regression keeps this ordering
 observable without allocating IDs or mutating history.
+
+For the dynamic ordinary Docker verification family (#2048), original start
+requires a registered runtime and atomically retains a planned acquisition marker
+with event, intent and attempt. Its target commits the original request and exact
+registration, including local registrations. Registration represents declared
+authorization identity, not verified daemon identity. This changes source and the
+final batch schema contract; it does not execute a production migration.

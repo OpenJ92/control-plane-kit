@@ -137,11 +137,16 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
 from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
 from control_plane_kit_operations.health_effect_attempt_start import StartHealthEffectAttempt
-from control_plane_kit_operations.execution_invocation_service import BoundExecutionInvocations, ExecutionInvocationService
+from control_plane_kit_operations.execution_invocation_service import (
+    BoundExecutionInvocations, ExecutionInvocationService, _BoundOrdinaryVerificationInvocations,
+)
 from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationControlError, ExecutionInvocationDenied, ExecutionInvocationPlanned,
     ExecutionInvocationConflict, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
     ExecutionInvocationKind,
+)
+from control_plane_kit_operations.ordinary_verification_invocations import (
+    ordinary_verification_candidate, ordinary_verification_invocation_profile,
 )
 from control_plane_kit_operations.prepared_runtime_invocations import (
     runtime_preparation_candidate, prepared_runtime_invocation_profile,
@@ -793,18 +798,22 @@ class RuntimeInterpreterDispatcher:
         if not adapter_is_qualified(interpreter, request, arm):
             return _unsupported_runtime_result(request, "runtime.secret-version-unsupported",
                 "runtime adapter is not qualified for exact consumer versions", runtime_kind=runtime_kind)
+        if type(invocations) is _BoundOrdinaryVerificationInvocations and not interpreter.ordinary_verification_invocations:
+            raise ExecutionInvocationConflict()
         interpreter = registered_adapter(interpreter)
         if not callable(getattr(interpreter, arm, None)):
             return _unsupported_runtime_result(request, "runtime.authority-interpreter-unsupported",
                 "runtime adapter does not implement the required arm", runtime_kind=runtime_kind)
         try:
-            request = self._authorize_secret_resolutions(
-                context,
-                request,
-                authority=authority,
-                session_id=context.request.identity.session_id if invocations is not None else None,
-                prepared=invocations is not None,
-            )
+            if type(invocations) is _BoundOrdinaryVerificationInvocations:
+                request, invocations = invocations.service.authorize_ordinary_verification(
+                    invocations, request, self.secret_use_authorizer)
+            else:
+                request = self._authorize_secret_resolutions(
+                    context, request, authority=authority,
+                    session_id=context.request.identity.session_id if invocations is not None else None,
+                    prepared=invocations is not None,
+                )
         except ExecutionInvocationControlError:
             raise
         except SecretProviderRegistrationError:
@@ -1689,7 +1698,9 @@ class ExecutionCoordinator:
             dispatcher = dispatcher.runtime
         return (self._invocation_service is not None and type(dispatcher) is RuntimeInterpreterDispatcher
             and adapter_accepts_invocations(dispatcher.interpreters.get(intent.runtime_kind), "execute_with_authority")
-            and adapter_is_qualified(dispatcher.interpreters.get(intent.runtime_kind), intent, "execute_with_authority"))
+            and adapter_is_qualified(dispatcher.interpreters.get(intent.runtime_kind), intent, "execute_with_authority")
+            and (not ordinary_verification_candidate(intent)
+                or dispatcher.interpreters[intent.runtime_kind].ordinary_verification_invocations))
 
     def _original_runtime_marker(self, command_context, start, attempt):
         """Current command lock, original immutable history; never observation authority."""
@@ -1705,7 +1716,8 @@ class ExecutionCoordinator:
                 return stores.execution.original_final_invocation(attempt.state.identity,
                     original_event_id=attempt.original_start_event.event_id,
                     request_fingerprint=attempt.state.request_fingerprint,
-                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+                    kind=(ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION
+                        if ordinary_verification_candidate(start.intent) else ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH))
         except ExecutionInvocationControlError:
             raise
         except Exception:
@@ -1782,6 +1794,7 @@ class ExecutionCoordinator:
             transition = None
             runtime_candidate, prepared_runtime, invocations = False, None, None
             reconcile_prepared = False
+            ordinary_verification = False
             if not legacy:
                 identity = EffectAttemptIdentity(RunId(context.run.run_id), planned.activity_id.value, 1)
                 if type(context) is _ConfigurationReplayContext:
@@ -1791,7 +1804,9 @@ class ExecutionCoordinator:
                 else:
                     from control_plane_kit_operations._configuration_preparation import _propose_configuration
                     intent = _propose_configuration(identity, _runtime_effect_intent_for_context(context, planned))
-                runtime_candidate = self._permission_policy is not None and runtime_preparation_candidate(intent)
+                ordinary_verification = self._permission_policy is not None and ordinary_verification_candidate(intent)
+                runtime_candidate = self._permission_policy is not None and (runtime_preparation_candidate(intent)
+                    or ordinary_verification)
                 if runtime_candidate:
                     if intent.authority_ref is None and current.status is not CoordinatorStatus.IN_FLIGHT:
                         return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
@@ -1801,7 +1816,7 @@ class ExecutionCoordinator:
                             and value.authority_ref == intent.authority_ref and value.runtime_kind is intent.runtime_kind)
                     if len(selected) == 1 and (type(selected[0].authority) is RemoteDockerTlsAuthority
                             or (type(selected[0].authority) is LocalDockerSocketAuthority
-                                and workload_preparation_candidate(intent))):
+                                and (workload_preparation_candidate(intent) or ordinary_verification))):
                         prepared_runtime = selected[0]
                         if current.status is not CoordinatorStatus.IN_FLIGHT and not self._runtime_profile_ready(intent):
                             return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
@@ -1882,6 +1897,17 @@ class ExecutionCoordinator:
                     # history; admitted work needs a separate fresh observation.
                     if marker is None:
                         raise ExecutionInvocationConflict()
+                    if ordinary_verification:
+                        # Inspect the original family before marker shortcuts. It
+                        # never authorizes continuing an interrupted sequence.
+                        if type(self._invocation_service) is not ExecutionInvocationService:
+                            raise ExecutionInvocationConflict(marker.invocation_id)
+                        original_context = replace(command_context, receipt=marker.command)
+                        original_bound = self._invocation_service.bind_runtime(command_context=original_context,
+                            start=start_command, started=NewlyStarted(attempt))
+                        self._invocation_service.inspect_ordinary_verification(original_bound)
+                        return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
+                            attempted, planned.activity_id.value)
                     if marker.disposition is ExecutionInvocationDisposition.PLANNED:
                         raise ExecutionInvocationPlanned(marker.invocation_id)
                     if marker.disposition is ExecutionInvocationDisposition.DENIED:
@@ -1899,7 +1925,9 @@ class ExecutionCoordinator:
                     if marker is None or not self._runtime_profile_ready(intent):
                         raise ExecutionInvocationConflict()
                     try:
-                        profile = prepared_runtime_invocation_profile(intent,
+                        profile_builder = (ordinary_verification_invocation_profile if ordinary_verification
+                            else prepared_runtime_invocation_profile)
+                        profile = profile_builder(intent,
                             original_event_id=attempt.original_start_event.event_id, runtime_authority=prepared_runtime)
                     except (ValueError, TypeError, AttributeError):
                         raise ExecutionInvocationConflict() from None
@@ -2055,6 +2083,13 @@ class ExecutionCoordinator:
                     except ExecutionInvocationDenied:
                         if invocations is None:
                             raise
+                        if ordinary_verification:
+                            try:
+                                self._invocation_service.inspect_ordinary_verification(invocations)
+                            except ExecutionInvocationDenied:
+                                pass
+                            else:
+                                raise ExecutionInvocationConflict()
                         return ExecutionCoordinatorResult(context.run, CoordinatorStatus.AUTHORIZATION_DENIED,
                             attempted, planned.activity_id.value)
                     except ExecutionInvocationControlError:
@@ -2077,7 +2112,8 @@ class ExecutionCoordinator:
                     )
                 if invocations is not None:
                     try:
-                        final = self._invocation_service.inspect_runtime_dispatch(invocations)
+                        final = (self._invocation_service.inspect_ordinary_verification(invocations, runtime_result)
+                            if ordinary_verification else self._invocation_service.inspect_runtime_dispatch(invocations))
                         if final.disposition is ExecutionInvocationDisposition.PLANNED:
                             raise ExecutionInvocationPlanned(final.invocation_id)
                         if final.disposition is ExecutionInvocationDisposition.DENIED:

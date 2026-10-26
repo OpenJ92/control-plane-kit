@@ -19,17 +19,23 @@ from tests.test_runtime_interpreter_dispatcher import _registered_product, graph
 
 
 class _ProbeInvocationFixture(_PreparedRuntimeInvocationFixture):
+    empty_checks = False
+    authorityless = False
+    no_credentials = False
+    runtime_authority = None
     def reset_start_truth(self, **_options):
         material = product_material()
         check, = material.product.runtime_contract.verification.checks
+        if self.no_credentials:
+            check = replace(check, authentication=None)
         contract = replace(material.product.runtime_contract, secret_deliveries=(),
-            verification=VerificationContract((replace(check, check_id="database-first"),
+            verification=VerificationContract(() if self.empty_checks else (replace(check, check_id="database-first"),
                 replace(check, check_id="database-second"))))
         document = ProductDescriptorCodec().encode_document(replace(material.product, runtime_contract=contract))
         product = RegisteredProduct.from_document(workspace_id="workspace-a", descriptor_document=document,
             source=_registered_product().source, imported_by="operator-a", imported_at=self.clock())
         desired = graph_with_node(RuntimeKind.DOCKER,
-            authority_ref=RuntimeAuthorityReference("prepared-runtime"), registered_product=product)
+            authority_ref=None if self.authorityless else RuntimeAuthorityReference("prepared-runtime"), registered_product=product)
         node = desired.nodes["api"]
         desired = replace(desired, nodes={"api": replace(node, sockets=contract.sockets,
             block_spec=replace(node.block_spec, verification=contract.verification))})
@@ -37,7 +43,7 @@ class _ProbeInvocationFixture(_PreparedRuntimeInvocationFixture):
         plan = ActivityPlan((PlannedActivity(ActivityId(self.activity_id), WaitForHealthy(NodeTarget("api"))),))
         self.engine = super().reset_start_truth(plan=plan, base=replace(desired, name="current"),
             desired=replace(desired, name="desired"), product_document=document,
-            runtime_authority=LocalDockerSocketAuthority())
+            runtime_authority=self.runtime_authority or LocalDockerSocketAuthority())
 
 
 class PostgresProbeInvocationTargets(_ProbeInvocationFixture, unittest.TestCase):
