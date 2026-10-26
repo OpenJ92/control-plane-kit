@@ -124,6 +124,7 @@ COORDINATOR_EXPORTS = {
     "RuntimeInterpreterDispatcher",
 }
 COORDINATOR_DEPENDENCIES = {
+    "control_plane_kit_operations.managed_runtime_assignments",
     "control_plane_kit_operations.effect_permissions",
     "control_plane_kit_operations.managed_effect_plan",
     "control_plane_kit_operations._configuration_preparation",
@@ -206,6 +207,7 @@ def _exact_imports(*rows: tuple[str, str | None, str | None]):
 
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
+    ("control_plane_kit_operations.managed_runtime_assignments", "ManagedRuntimeSelection", None),
     ("control_plane_kit_operations.effect_permissions", "CurrentWorkspaceEffectPolicy", None),
     ("control_plane_kit_operations.effect_permissions", "EffectCommandContext", None),
     ("control_plane_kit_operations.effect_permissions", "EffectPermissionDenied", None),
@@ -532,6 +534,19 @@ def _exact_calls(*rows: tuple[str | None, int]):
 
 
 EXACT_COORDINATOR_CALLS = _exact_calls(
+    # #2039 current native reobservation admission, not a duplicate invocation.
+    ("control_plane_kit_core.planning.ActivityId", 1),
+    ("context.plan.activity", 1),
+    ("control_plane_kit_operations.runtime_effects._runtime_effect_intent_for_context", 1),
+    ("self._current_management_selection", 1),
+    ("ExecutionCoordinatorConflict", 2),
+    ("type", 1),
+    ("self._permission_policy.evaluate_in_unit_of_work", 1),
+    ("ExecutionCoordinatorResult", 1),
+    ("dataclasses.replace", 1),
+    ("_command_result_record", 1),
+    ("stores.execution.add_command_receipt", 1),
+    ("uow.commit", 1),
     # #2039 carries original command authority into existing admission owners.
     ("type", 3),
     ("ExecutionCoordinatorDenied", 2),

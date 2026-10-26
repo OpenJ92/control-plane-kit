@@ -216,7 +216,7 @@ class ManagedReobservationAdmissionTests(ManagedApplicationFixture):
             (self.run_id, self.native_id)).fetchall()
         self.assertEqual(attempts, [(1,), (2,)])
 
-    def admission_commit_fault(self, key, *, after_commit):
+    def admission_commit_fault(self, key, *, after_commit, receipt_status="incomplete"):
         commit = PostgresUnitOfWork.commit
         exit_unit = PostgresUnitOfWork.__exit__
         fired = []
@@ -224,7 +224,7 @@ class ManagedReobservationAdmissionTests(ManagedApplicationFixture):
 
         def interrupt(unit):
             receipt = unit.stores.execution.command_receipt_for_idempotency(self.run_id, key)
-            if not fired and not pending and receipt is not None and receipt.status.value == "incomplete":
+            if not fired and not pending and receipt is not None and receipt.status.value == receipt_status:
                 # Deliberately do not require successor presence to trigger: a
                 # split receipt-before-start commit must fail the atomicity law.
                 if after_commit:

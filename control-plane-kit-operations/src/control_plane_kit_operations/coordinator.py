@@ -120,6 +120,7 @@ from control_plane_kit_operations.effect_permissions import (
     ExecutionCommandReference, _require_execution_binding,
 )
 from control_plane_kit_operations.managed_effect_plan import require_managed_effect_plan
+from control_plane_kit_operations.managed_runtime_assignments import ManagedRuntimeSelection
 from control_plane_kit_operations.effect_attempts import (
     EffectAttemptRecord, EffectAttemptEventEvidence, effect_attempt_state_fingerprint,
 )
@@ -1355,7 +1356,15 @@ class ExecutionCoordinator:
         context = self._load_context(execution)
         if self._managed_preflight(context, command.context) is not None:
             raise ExecutionCoordinatorDenied("native reobservation capability is unavailable")
-        admitted = self._admit_reobservation(command, provenance, context)
+        options = {}
+        if self._permission_policy is not None:
+            try:
+                activity = context.plan.activity(ActivityId(command.predecessor.activity_id))
+                intent = _runtime_effect_intent_for_context(context, activity)
+                options["managed_target"] = self._current_management_selection(context, intent)
+            except (KeyError, ValueError):
+                raise ExecutionCoordinatorConflict("native predecessor selection is unavailable") from None
+        admitted = self._admit_reobservation(command, provenance, context, **options)
         if type(admitted) is ExecutionCoordinatorResult:
             return admitted
         activity = context.plan.activity(ActivityId(command.predecessor.activity_id))
@@ -1376,7 +1385,7 @@ class ExecutionCoordinator:
         self._complete_command(execution, result, provenance)
         return result
 
-    def _admit_reobservation(self, command, provenance, context):
+    def _admit_reobservation(self, command, provenance, context, *, managed_target=None):
         execution = command.execution
         fingerprint = _execution_command_fingerprint(execution, provenance)
         with self._unit_of_work_factory() as uow:
@@ -1428,12 +1437,37 @@ class ExecutionCoordinator:
                     or projection.state.step(SagaStepId(command.predecessor.activity_id)).status is not SagaStepStatus.WAITING
                     or not history or history[-1] != prior.latest_transition_event):
                 raise ExecutionCoordinatorConflict("native predecessor is not the current waiting step")
+            denied = False
+            if self._permission_policy is not None:
+                bound = (type(managed_target) is ManagedRuntimeSelection
+                    and managed_target.installation_id == self._permission_policy.installation_id
+                    and managed_target.workspace_id == provenance.workspace_id
+                    and managed_target.runtime_id == intent.intent.operation.target.runtime_id
+                    and managed_target.authority_ref == intent.intent.authority_ref)
+                decision = self._permission_policy.evaluate_in_unit_of_work(uow, command.context,
+                    required_scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.NODE_CONTROL_READ,
+                        PolicyScope.NODE_CONTROL_EXECUTE), managed_target=managed_target if bound else None)
+                denied = not bound or not decision.allowed
             runtime = stores.runtime_authorities.get_active_for_update(provenance.workspace_id, intent.intent.authority_ref)
             if runtime != self._selected_managed_runtime(context, intent.intent):
                 raise ExecutionCoordinatorDenied("native reobservation runtime authority changed")
             clock = stores.execution.observe_request_lease_for_update(request.identity.request_id)
             if clock.request != request or clock.expired:
                 raise ExecutionCoordinatorDenied("native reobservation lease expired")
+            receipt = ExecutionCommandReceiptRecord(run_id=execution.run_id,
+                idempotency_key=execution.idempotency_key.value, intent_fingerprint=fingerprint,
+                worker_id=execution.authority.worker_id, authority_scopes=execution.authority.scopes,
+                claim_generation=execution.fence.generation, max_effects=1, admitted_at=clock.observed_at,
+                initial_run=run, managed_intent=provenance)
+            if denied:
+                result = ExecutionCoordinatorResult(run, CoordinatorStatus.AUTHORIZATION_DENIED,
+                    0, command.predecessor.activity_id)
+                receipt = replace(receipt, status=ExecutionCommandReceiptStatus.COMPLETED,
+                    completed_at=clock.observed_at, result=_command_result_record(result))
+                if stores.execution.add_command_receipt(receipt) != receipt:
+                    raise ExecutionCoordinatorConflict("native denial acknowledgement is incongruent")
+                uow.commit()
+                return result
             state = fold_effect_attempt(None, EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
                 provenance.successor, request_fingerprint=intent.request_fingerprint,
                 prior_attempt=command.predecessor), fence=EffectAttemptFence(execution.fence.worker_id,
@@ -1445,11 +1479,6 @@ class ExecutionCoordinator:
                     state.identity.attempt, effect_attempt_state_fingerprint(state)).descriptor()}))
             attempt = EffectAttemptRecord(state, event, event)
             successor_intent = EffectAttemptIntentRecord(state.identity, event, intent.intent)
-            receipt = ExecutionCommandReceiptRecord(run_id=execution.run_id,
-                idempotency_key=execution.idempotency_key.value, intent_fingerprint=fingerprint,
-                worker_id=execution.authority.worker_id, authority_scopes=execution.authority.scopes,
-                claim_generation=execution.fence.generation, max_effects=1, admitted_at=clock.observed_at,
-                initial_run=run, managed_intent=provenance)
             if (stores.execution.add_event(event) != event
                     or stores.effect_attempt_intents.insert(successor_intent) != successor_intent
                     or stores.effect_attempts.insert_absent(attempt) != attempt

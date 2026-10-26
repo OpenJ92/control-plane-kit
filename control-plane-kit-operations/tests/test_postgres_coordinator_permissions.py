@@ -3,7 +3,9 @@
 import asyncio
 from dataclasses import replace
 import inspect
+import threading
 import unittest
+from unittest import mock
 from uuid import uuid4
 
 import control_plane_kit_operations as operations
@@ -12,7 +14,7 @@ from control_plane_kit_core.operations.lifecycle import ActivityEventKind
 from control_plane_kit_core.planning import AllocatePublicIngress, ManagementBootstrapStage
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
-    ExecuteManagedActivityRun, ExecutionCoordinator, ExecutionCoordinatorDenied,
+    ExecuteManagedActivityRun, ExecutionCoordinator, ExecutionCoordinatorDenied, ExecutionCoordinatorConflict,
     ReobserveConnectorConnection,
 )
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
@@ -23,6 +25,9 @@ from control_plane_kit_operations.records import ExecutionCommandReceiptStatus
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.postgres_effect_attempt_coordinator_fixture import PostgresEffectAttemptCoordinatorFixture
 from tests.receiver_health_execution_fixture import ReceiverHealthExecutionFixture
+from tests.lifecycle_lock_fixture import LifecycleLockFixture
+from tests.postgres_effect_attempt_reconciliation_fixture import UnitOfWorkLedger
+from tests import test_managed_reobservation_admission as reobservation_fixtures
 from tests.test_managed_application_chain import ForbiddenRecovery, now
 
 
@@ -204,24 +209,27 @@ class _CoordinatorManagementPermissionFixture(_CurrentCoordinatorPermission, Rec
             self.assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
                 "workspace-a", "docker", runtime.authority_ref, runtime.registration_id,
                 "local-docker", 0, IdempotencyKey("management")))
-        fold = EffectAttemptFoldService(self.unit_of_work, id_factory=self.ids["effect-fold"])
+        return self.permission_coordinator(), ExecuteManagedActivityRun(execution, self.original), runtime
+
+    def permission_coordinator(self, factory=None):
+        factory = factory or self.unit_of_work
+        fold = EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
         from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
         from control_plane_kit_operations.ingress_authorities import IngressAuthorityProviderKind
         from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
         from control_plane_kit_operations.secret_providers import SecretUseAuthorizationService
         adapter = ActivityExecutionDispatcher(runtime=self.runtime,
-            ingress=IngressRealizationAdapter(self.unit_of_work,
+            ingress=IngressRealizationAdapter(factory,
                 {IngressAuthorityProviderKind.CLOUDFLARE: self.ingress}, now,
-                SecretUseAuthorizationService(self.unit_of_work)))
-        owner = ExecutionCoordinator(self.unit_of_work,
-            lifecycle=RunLifecycleCommandService(self.unit_of_work, clock=now, id_factory=self.ids["lifecycle"]),
-            adapter=adapter, start_service=EffectAttemptStartService(self.unit_of_work,
+                SecretUseAuthorizationService(factory)))
+        return ExecutionCoordinator(factory,
+            lifecycle=RunLifecycleCommandService(factory, clock=now, id_factory=self.ids["lifecycle"]),
+            adapter=adapter, start_service=EffectAttemptStartService(factory,
                 id_factory=self.ids["effect-start"], health_receiver_decoders=self.registry,
                 permission_policy=self.policy), fold_service=fold,
-            reconciliation_service=EffectAttemptReconciliationService(self.unit_of_work, ForbiddenRecovery(), fold),
+            reconciliation_service=EffectAttemptReconciliationService(factory, ForbiddenRecovery(), fold),
             clock=now, id_factory=self.ids["execution"], managed_health=self.health,
-            health_signing_authority=self.reload_service(), permission_policy=self.policy)
-        return owner, ExecuteManagedActivityRun(execution, self.original), runtime
+            health_signing_authority=self.reload_service(factory), permission_policy=self.policy)
 
 
 class PostgresCoordinatorManagementPermissionTests(_CoordinatorManagementPermissionFixture):
@@ -316,7 +324,7 @@ class PostgresCoordinatorManagementPermissionTests(_CoordinatorManagementPermiss
         self.assertEqual(self.health.native_reads, [])
 
 
-class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissionFixture):
+class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissionFixture, LifecycleLockFixture):
     async def waiting(self):
         owner, command, runtime = await self.prepared()
         result = await owner.execute_managed(command)
@@ -329,7 +337,7 @@ class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissio
             prior[0].state.identity)
         return owner, reobserve, runtime, prior
 
-    def assert_no_successor(self, command, before, prior):
+    def assert_no_successor(self, command, before, prior, *, receipt_expected=True):
         self.assertEqual(self.history(), before)
         self.assertEqual(self.native_attempt(1), prior)
         self.assertEqual(len(self.health.native_reads), 1)
@@ -340,6 +348,9 @@ class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissio
             with self.assertRaises(KeyError):
                 uow.stores.effect_attempt_intents.get(successor)
         receipt = self.receipt(command.execution)
+        if not receipt_expected:
+            self.assertIsNone(receipt)
+            return
         self.assertEqual(receipt.managed_intent.predecessor, command.predecessor)
         self.assertEqual(receipt.managed_intent.successor, successor)
 
@@ -353,6 +364,9 @@ class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissio
         self.permissions.grant(operations.GrantWorkspacePermissions(self.admin_context,
             "workspace-a", self.member, (PolicyScope.EXECUTION_OPERATE,), 2, IdempotencyKey("restore")))
         self.assertEqual(await owner.reobserve(command), denied)
+        self.assert_no_successor(command, before, prior)
+        with self.assertRaises(ExecutionCoordinatorConflict):
+            await owner.reobserve(replace(command, predecessor=replace(command.predecessor, attempt=2)))
         self.assert_no_successor(command, before, prior)
 
     async def test_current_assignment_denial_preserves_predecessor_and_replays_after_regrant(self):
@@ -375,6 +389,7 @@ class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissio
         self.assertEqual(result.effects_attempted, 1)
         self.assertEqual(len(self.health.native_reads), 2)
         successor, retained = self.native_attempt(2)
+        self.assertEqual(successor.state.prior_attempt, command.predecessor)
         self.assertEqual(successor.state.status.value, "not_ready")
         self.assertEqual(retained.attempt, successor)
         self.assertEqual(self.native_attempt(1), prior)
@@ -382,3 +397,184 @@ class PostgresNativeReobservationPermissionTests(_CoordinatorManagementPermissio
         self.assertEqual(await owner.reobserve(command), result)
         self.assertEqual(self.history(), before)
         self.assertEqual(len(self.health.native_reads), 2)
+
+    async def revoke_admission_race(self, *, assignment, admission_first):
+        _, command, runtime, prior = await self.waiting()
+        before = self.history()
+        revoked = threading.Event()
+        instrumentation = []
+
+        def revoke(factory):
+            if assignment:
+                service = operations.ManagedRuntimeAssignmentCommandService(factory,
+                    administration_policy=self.admin_policy, capability_policy=self.capabilities,
+                    clock=now, id_factory=lambda: uuid4().hex)
+                result = service.revoke(operations.RevokeManagedRuntimeAccess(self.admin_context,
+                    "workspace-a", "docker", runtime.authority_ref, 1, IdempotencyKey("race-revoke")))
+            else:
+                service = operations.WorkspacePermissionCommandService(factory,
+                    administration_policy=self.admin_policy, clock=now, id_factory=lambda: uuid4().hex)
+                result = service.revoke(operations.RevokeWorkspacePermissions(self.admin_context,
+                    "workspace-a", self.member, (PolicyScope.EXECUTION_OPERATE,), 1, IdempotencyKey("race-revoke")))
+            revoked.set()
+            return result
+
+        def admit(factory):
+            ledger = UnitOfWorkLedger(factory)
+            owner = self.permission_coordinator(ledger)
+            observe = self.health.observe_connection
+            async def returned(*args):
+                if ledger.active:
+                    instrumentation.append("native capability inside admission transaction")
+                if admission_first and not revoked.wait(8):
+                    instrumentation.append("revocation did not commit before native result")
+                return await observe(*args)
+            with mock.patch.object(self.health, "observe_connection", returned):
+                return asyncio.run(owner.reobserve(command))
+
+        def permission(query, _):
+            return "FROM cpk_workspace_permissions" in query and "FOR UPDATE" in query
+
+        def authority(query, _):
+            return "FROM cpk_runtime_authorities" in query and "FOR UPDATE" in query
+
+        if not assignment:
+            pause = select = permission
+        elif not admission_first:
+            # Revoke holds the authority row before the real preselection read.
+            pause = select = authority
+        else:
+            # Ignore preliminary selection transactions; identify the admission
+            # connection at A, and the revoker by its original assignment read.
+            local = threading.local()
+            def select(query, parameters):
+                if permission(query, parameters):
+                    local.admission = True
+                    return True
+                if "FROM cpk_managed_runtime_assignments" in query and "FOR UPDATE" not in query:
+                    local.administration = True
+                return authority(query, parameters) and getattr(local, "administration", False)
+            def pause(query, parameters):
+                return authority(query, parameters) and getattr(local, "admission", False)
+
+        first, second = self.opposing_commands(admit if admission_first else revoke,
+            revoke if admission_first else admit, pause, connection_query=select)
+        result = (first if admission_first else second).result()
+        (second if admission_first else first).result()
+        self.assertEqual(instrumentation, [])
+        self.assertTrue(revoked.is_set())
+        if admission_first:
+            self.assertEqual(result.effects_attempted, 1)
+            successor, retained = self.native_attempt(2)
+            self.assertEqual(successor.state.prior_attempt, command.predecessor)
+            self.assertEqual(successor.state.status.value, "not_ready")
+            self.assertEqual(retained.attempt, successor)
+            self.assertEqual(self.native_attempt(1), prior)
+            self.assertEqual(len(self.health.native_reads), 2)
+        else:
+            self.assert_denial(result, command.execution, command.predecessor.activity_id)
+            self.assert_no_successor(command, before, prior)
+
+    async def test_permission_revoke_wins_real_reobservation_admission_lock(self):
+        await self.revoke_admission_race(assignment=False, admission_first=False)
+
+    async def test_reobservation_admission_wins_permission_revoke_and_retains_result(self):
+        await self.revoke_admission_race(assignment=False, admission_first=True)
+
+    async def test_assignment_revoke_wins_real_reobservation_selection_lock(self):
+        await self.revoke_admission_race(assignment=True, admission_first=False)
+
+    async def test_reobservation_admission_wins_assignment_revoke_and_retains_result(self):
+        await self.revoke_admission_race(assignment=True, admission_first=True)
+
+    async def test_regranted_assignment_cannot_replace_the_expected_selected_revision(self):
+        owner, command, runtime, prior = await self.waiting()
+        before = self.history()
+        select = owner._current_management_selection
+        selections = []
+        def changed(context, intent):
+            selected = select(context, intent)
+            self.assertEqual(self.tracker.active, 0)
+            selections.append(selected)
+            self.assignments.revoke(operations.RevokeManagedRuntimeAccess(self.admin_context,
+                "workspace-a", "docker", runtime.authority_ref, 1, IdempotencyKey("stale-revoke")))
+            self.assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
+                "workspace-a", "docker", runtime.authority_ref, runtime.registration_id,
+                "local-docker", 2, IdempotencyKey("stale-regrant")))
+            return selected
+        with mock.patch.object(owner, "_current_management_selection", changed):
+            denied = await owner.reobserve(command)
+        self.assertEqual(len(selections), 1)
+        self.assertEqual(selections[0].revision, 1)
+        current = operations.ManagedRuntimeSelectionService(self.unit_of_work,
+            capability_policy=self.capabilities).select(workspace_id="workspace-a", runtime_id="docker", authority=runtime)
+        self.assertEqual(current.revision, 3)
+        self.assert_denial(denied, command.execution, command.predecessor.activity_id)
+        self.assert_no_successor(command, before, prior)
+
+    async def test_independently_allowed_assignment_must_match_the_pinned_native_target(self):
+        owner, command, runtime, prior = await self.waiting()
+        self.assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
+            "workspace-a", "different-runtime", runtime.authority_ref, runtime.registration_id,
+            "local-docker", 0, IdempotencyKey("other-runtime")))
+        selected = operations.ManagedRuntimeSelectionService(self.unit_of_work,
+            capability_policy=self.capabilities).select(workspace_id="workspace-a",
+                runtime_id="different-runtime", authority=runtime)
+        with self.unit_of_work() as uow:
+            self.assertTrue(self.policy.evaluate_in_unit_of_work(uow, self.original,
+                required_scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.NODE_CONTROL_READ,
+                    PolicyScope.NODE_CONTROL_EXECUTE), managed_target=selected).allowed)
+        before = self.history()
+        with mock.patch.object(owner, "_current_management_selection", return_value=selected):
+            denied = await owner.reobserve(command)
+        self.assert_denial(denied, command.execution, command.predecessor.activity_id)
+        self.assert_no_successor(command, before, prior)
+
+    async def test_original_invocation_ceiling_denies_before_successor_admission(self):
+        owner, command, _, prior = await self.waiting()
+        from control_plane_kit_core.identity import WorkspaceGrant
+        scopes = tuple(scope for scope in self.original.granted_scopes if scope is not PolicyScope.NODE_CONTROL_EXECUTE)
+        original = AuthenticatedPrincipal(self.member, (WorkspaceGrant("workspace-a", scopes),)).command_context("workspace-a")
+        before = self.history()
+        command = replace(command, context=original)
+        denied = await owner.reobserve(command)
+        self.assert_denial(denied, command.execution, command.predecessor.activity_id)
+        self.assert_no_successor(command, before, prior)
+
+    async def test_denial_receipt_rollback_and_lost_ack_never_create_a_successor(self):
+        owner, command, _, prior = await self.waiting()
+        self.revoke_operate()
+        before = self.history()
+        for after_commit in (False, True):
+            with self.subTest(after_commit=after_commit):
+                fault, fired = reobservation_fixtures.ManagedReobservationAdmissionTests.admission_commit_fault(
+                    self, command.execution.idempotency_key.value,
+                    after_commit=after_commit, receipt_status="completed")
+                with fault, self.assertRaises(reobservation_fixtures.InterruptedAdmission):
+                    await owner.reobserve(command)
+                self.assertEqual(len(fired), 1)
+                self.assert_no_successor(command, before, prior, receipt_expected=after_commit)
+                if after_commit:
+                    replay = await owner.reobserve(command)
+                    self.assert_denial(replay, command.execution, command.predecessor.activity_id)
+                    self.assert_no_successor(command, before, prior)
+
+    async def test_lost_admission_ack_retains_uncertainty_without_native_io(self):
+        owner, command, _, prior = await self.waiting()
+        fault, fired = reobservation_fixtures.ManagedReobservationAdmissionTests.admission_commit_fault(
+            self, command.execution.idempotency_key.value, after_commit=True)
+        with fault, self.assertRaises(reobservation_fixtures.InterruptedAdmission):
+            await owner.reobserve(command)
+        self.assertEqual(len(fired), 1)
+        self.assertEqual(len(self.health.native_reads), 1)
+        self.assertEqual(self.native_attempt(1), prior)
+        with self.unit_of_work() as uow:
+            successor = uow.stores.effect_attempts.get(replace(command.predecessor, attempt=2))
+            self.assertEqual(successor.state.status.value, "started")
+            self.assertEqual(successor.state.prior_attempt, command.predecessor)
+        self.assertIs(self.receipt(command.execution).status, ExecutionCommandReceiptStatus.INCOMPLETE)
+        before = self.history()
+        replay = await owner.reobserve(command)
+        self.assertEqual(replay.status.value, "uncertain")
+        self.assertEqual(self.history(), before)
+        self.assertEqual(len(self.health.native_reads), 1)

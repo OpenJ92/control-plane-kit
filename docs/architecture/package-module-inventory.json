@@ -38,7 +38,7 @@
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess", "RevokeManagedRuntimeAccess", "ManagedRuntimeAssignment", "ManagedRuntimeAssignmentStatus", "ManagedRuntimeAssignmentReceipt", "ManagedRuntimeAssignmentResult", "ManagedRuntimeAssignmentError", "ManagedRuntimeAssignmentCommandService", "ManagedRuntimeAssignmentReadService", "ManagedRuntimeAssignmentPage", "ManagedRuntimeAssignmentListCursor", "ManagedRuntimeAssignmentHistoryCursor", "ManagedRuntimeSelection", "ManagedRuntimeSelectionService", "select_managed_runtime_assignment", "managed_runtime_assignment_id", "managed_runtime_assignment_intent"],
       "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.runtime_authority", "control_plane_kit_core.types", "control_plane_kit_operations._temporal", "control_plane_kit_operations.runtime_authorities", "control_plane_kit_operations.workflows", "control_plane_kit_operations.workspace_permissions"],
-      "known_package_consumers": ["control_plane_kit_operations.postgres.managed_runtime_assignment_store"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.managed_runtime_assignment_store", "control_plane_kit_operations.coordinator"],
       "optional_external_dependencies": ["rfc8785"],
       "protecting_tests": ["tests/test_postgres_managed_runtime_assignments.py"],
       "motivation": "Separate exact management permission and immutable installer capability IDs, with bounded administrative commands and transport-free selection."
@@ -10930,7 +10930,8 @@
         "control_plane_kit_operations.runtime_adapter_registration",
         "control_plane_kit_core.secret_installation",
         "control_plane_kit_operations.effect_permissions",
-        "control_plane_kit_operations.managed_effect_plan"
+        "control_plane_kit_operations.managed_effect_plan",
+        "control_plane_kit_operations.managed_runtime_assignments"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
