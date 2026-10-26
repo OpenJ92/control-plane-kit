@@ -517,14 +517,14 @@ class PostgresRuntimeInvocationCarriageTests(_PreparedRuntimeCarriageFixture, un
             port.admit("prepared-runtime-dispatch")
         self.assert_existing_stop(operations.ExecutionInvocationDenied)
 
-    def test_existing_admitted_pending_and_classified_history_never_observes(self):
+    def test_unqualified_existing_admitted_pending_and_classified_history_never_observes(self):
         bound, start, started = self.seed_start()
         service = operations.ExecutionInvocationService(self.ledger, permission_policy=self.policy(), clock=now)
         port = service.bind_runtime(command_context=bound, start=start, started=started)
         permit = port.admit("prepared-runtime-dispatch")
-        self.assert_existing_stop(operations.ExecutionInvocationExisting, key="existing-pending")
+        self.assert_existing_stop(operations.ExecutionInvocationConflict, key="existing-pending")
         port.record_outcome(permit, "returned")
-        self.assert_existing_stop(operations.ExecutionInvocationExisting, key="existing-classified")
+        self.assert_existing_stop(operations.ExecutionInvocationConflict, key="existing-classified")
 
     def test_remote_original_current_local_missing_marker_cannot_use_local_observation(self):
         from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority

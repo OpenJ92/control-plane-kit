@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from control_plane_kit_core.operations import EffectAttemptStatus
-from control_plane_kit_core.operations.lifecycle import ExecutionRequestStatus
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RemoteDockerTlsConnectionAdmission
 from control_plane_kit_core.runtime_effect_observation import (
@@ -36,9 +35,18 @@ from control_plane_kit_operations.effect_attempt_reconciliation import (
     EffectAttemptReconciliationNotFound,
     ReconcileEffectAttempt,
     RuntimeEffectObserver,
-    _valid_reconcile_command,
+    _valid_reconcile_command, _require_current_claim, _require_historical_lineage,
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+from control_plane_kit_operations.effect_permissions import (
+    CurrentWorkspaceEffectPolicy, EffectCommandContext, EffectPermissionDenied, _require_execution_binding,
+)
+from control_plane_kit_operations.execution_invocation_service import ExecutionInvocationService
+from control_plane_kit_operations.execution_invocations import (
+    ExecutionInvocationConflict, ExecutionInvocationDenied, ExecutionInvocationPlanned,
+    ExecutionInvocationKind, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
+)
+from control_plane_kit_operations.prepared_runtime_invocations import runtime_preparation_candidate
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     ObservedEffectOutcome,
@@ -70,7 +78,9 @@ from control_plane_kit_operations.secret_providers import (
     SecretUseAuthorizationService,
     authorize_runtime_secret_command,
 )
-from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration, adapter_is_qualified, registered_adapter
+from control_plane_kit_operations.runtime_adapter_registration import (
+    RuntimeAdapterRegistration, adapter_is_qualified, registered_adapter, adapter_accepts_invocations,
+)
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
@@ -88,7 +98,19 @@ class EffectAttemptReconciliationService:
         unit_of_work_factory: Callable[[], Any],
         observer: RuntimeEffectObserver | RuntimeAdapterRegistration,
         fold_service: Any,
+        *, permission_policy=None, invocation_service=None,
     ) -> None:
+        if permission_policy is not None and type(permission_policy) is not CurrentWorkspaceEffectPolicy:
+            raise ExecutionInvocationConflict()
+        if permission_policy is not None:
+            try:
+                permission_policy.__post_init__()
+            except (EffectPermissionDenied, ValueError, TypeError, AttributeError):
+                raise ExecutionInvocationConflict() from None
+        if invocation_service is not None and (type(invocation_service) is not ExecutionInvocationService
+                or permission_policy is None or invocation_service.permission_policy != permission_policy):
+            raise ExecutionInvocationConflict()
+        self._permission_policy, self._invocation_service = permission_policy, invocation_service
         self._unit_of_work_factory = unit_of_work_factory
         self._observer = observer
         self._fold_service = fold_service
@@ -96,19 +118,28 @@ class EffectAttemptReconciliationService:
             unit_of_work_factory
         )
 
+    def _prepared_invocation_ready(self, permission_policy, invocation_service):
+        return (type(self) is EffectAttemptReconciliationService
+            and permission_policy is not None and self._permission_policy == permission_policy
+            and type(invocation_service) is ExecutionInvocationService
+            and self._invocation_service is invocation_service
+            and adapter_accepts_invocations(self._observer, "observe"))
+
     def execute(
         self,
         command: ReconcileEffectAttempt,
+        *, command_context=None,
     ) -> EffectAttemptFoldResult:
         if not _valid_reconcile_command(command):
             raise InvalidOperationCommand("effect attempt reconciliation command is invalid")
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
         with _configuration_accounting(command.identity.run_id.value, join=True, active=False):
-            return self._execute(command)
+            return self._execute(command, command_context=command_context)
 
     def _execute(
         self,
         command: ReconcileEffectAttempt,
+        *, command_context=None,
     ) -> EffectAttemptFoldResult:
         if not _valid_reconcile_command(command):
             raise InvalidOperationCommand(
@@ -121,6 +152,15 @@ class EffectAttemptReconciliationService:
 
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
+            if command_context is not None:
+                if type(command_context) is not EffectCommandContext:
+                    raise ExecutionInvocationConflict()
+                try:
+                    command_context.__post_init__()
+                except (EffectPermissionDenied, ValueError, TypeError, AttributeError):
+                    raise ExecutionInvocationConflict() from None
+                reference = command_context.receipt
+                stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
             from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
             if not _ACCOUNTING.get().active:
                 stores.configuration_preparation._configure_run(command.identity.run_id.value)
@@ -133,6 +173,11 @@ class EffectAttemptReconciliationService:
             attempt = _attempt_for_update(stores, command.identity)
             _require_current_claim(command, request, run, attempt)
             _require_historical_lineage(command, attempt)
+            if command_context is not None:
+                try:
+                    _require_execution_binding(stores, command_context, request, run, command.authority, command.fence)
+                except EffectPermissionDenied:
+                    raise ExecutionInvocationConflict() from None
             if attempt.state.status is not EffectAttemptStatus.STARTED:
                 try:
                     route = stores.configuration_preparation._configure_run(command.identity.run_id.value,
@@ -148,6 +193,9 @@ class EffectAttemptReconciliationService:
             observation = None
             intent_record = None
             runtime_authority = None
+            prepared = False
+            dynamic = any(value is not None for value in (
+                self._permission_policy, self._invocation_service, command_context))
             try:
                 observation = stores.execution.observe_request_lease_for_update(
                     command.request_id
@@ -184,9 +232,35 @@ class EffectAttemptReconciliationService:
                         != attempt.state.request_fingerprint
                     )
 
+            if not invalid_truth and not denied:
+                candidate = runtime_preparation_candidate(intent_record.intent)
+                marker = (stores.execution.original_final_invocation(attempt.state.identity,
+                    original_event_id=attempt.original_start_event.event_id,
+                    request_fingerprint=attempt.state.request_fingerprint,
+                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH) if candidate else None)
+                if dynamic:
+                    if not candidate or marker is None or command_context is None:
+                        raise ExecutionInvocationConflict()
+                    if marker.command == command_context.receipt:
+                        raise ExecutionInvocationConflict(marker.invocation_id)
+                    if marker.disposition is ExecutionInvocationDisposition.PLANNED:
+                        raise ExecutionInvocationPlanned(marker.invocation_id)
+                    if marker.disposition is ExecutionInvocationDisposition.DENIED:
+                        raise ExecutionInvocationDenied(marker.invocation_id)
+                    if not self._prepared_invocation_ready(self._permission_policy, self._invocation_service):
+                        raise ExecutionInvocationConflict()
+                    runtime_authority = stores.runtime_authorities.get_registration(marker.workspace_id,
+                        intent_record.intent.authority_ref, marker.runtime_registration_id)
+                    prepared = True
+                elif marker is not None:
+                    # Absence is a trusted legacy composition boundary, not
+                    # proof that damaged history was originally unprepared.
+                    raise ExecutionInvocationConflict(marker.invocation_id)
+
             if (
                 not invalid_truth
                 and not denied
+                and not prepared
                 and intent_record.intent.authority_ref is not None
             ):
                 try:
@@ -228,6 +302,9 @@ class EffectAttemptReconciliationService:
                 except (KeyError, ValueError, TypeError, AttributeError):
                     raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR) from None
 
+        invocations = (self._invocation_service.bind_reconciliation(command_context=command_context,
+            command=command, attempt=attempt, intent_record=intent_record, runtime_authority=runtime_authority)
+            if prepared else None)
         return _fresh_observed_fold(
             self,
             command,
@@ -236,6 +313,7 @@ class EffectAttemptReconciliationService:
             runtime_authority,
             observation.observed_at,
             original_plan,
+            invocations=invocations, session_id=request.identity.session_id if prepared else None,
         )
 
 
@@ -300,44 +378,6 @@ def _attempt_for_update(stores: Any, identity: Any) -> EffectAttemptRecord:
     return attempt
 
 
-def _require_current_claim(
-    command: ReconcileEffectAttempt,
-    request: ExecutionRequestRecord,
-    run: ActivityRunRecord,
-    attempt: EffectAttemptRecord,
-) -> None:
-    if (
-        request.identity.request_id != command.request_id
-        or run.run_id != command.identity.run_id.value
-        or run.admission.request_id != request.identity.request_id
-        or run.plan_id != request.identity.plan_id
-        or attempt.state.identity != command.identity
-    ):
-        raise EffectAttemptReconciliationConflict(_INVALID_TRUTH_ERROR)
-    claim = request.claim
-    if (
-        request.status is not ExecutionRequestStatus.CLAIMED
-        or claim is None
-        or claim.fence != command.fence
-    ):
-        raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
-
-
-def _require_historical_lineage(
-    command: ReconcileEffectAttempt,
-    attempt: EffectAttemptRecord,
-) -> None:
-    historical = attempt.state.fence
-    if attempt.state.recovery_decision is not None or (
-        command.fence.generation < historical.generation
-        or (
-            command.fence.generation == historical.generation
-            and command.fence.worker_id != historical.worker_id
-        )
-    ):
-        raise EffectAttemptReconciliationConflict(_REPLAY_ERROR)
-
-
 def _existing_fold(
     stores: Any,
     request: ExecutionRequestRecord,
@@ -397,6 +437,7 @@ def _authorize_required_secrets(
     runtime_request: Any,
     runtime_authority: RegisteredRuntimeAuthority | None,
     observed_at: str,
+    *, session_id=None,
 ) -> tuple[ResolutionGrant, ...]:
     uses = required_secret_uses_for_runtime_effect(
         runtime_request,
@@ -411,9 +452,10 @@ def _authorize_required_secrets(
     authorization_error = False
     for use in uses:
         try:
+            options = {} if session_id is None else dict(session_id=session_id)
             authorization = secret_authorization_command(runtime_request, use,
                 actor_subject=command.authority.worker_id, requested_at=observed_at,
-                actor_scopes=command.authority.scopes)
+                actor_scopes=command.authority.scopes, **options)
             grant = authorize_runtime_secret_command(self._secret_use_authorizer, authorization)
         except (
             SecretProviderAuthorizationDenied,
@@ -436,6 +478,7 @@ def _fresh_observed_fold(
     runtime_authority: RegisteredRuntimeAuthority | None,
     observed_at: str,
     original_plan,
+    *, invocations=None, session_id=None,
 ) -> EffectAttemptFoldResult:
     runtime_request = runtime_effect_request_for_intent(intent_record.intent,
         effect_id=attempt.original_start_event.event_id)
@@ -445,7 +488,7 @@ def _fresh_observed_fold(
     if not callable(getattr(observer, "observe", None)):
         raise EffectAttemptReconciliationDenied(_AUTHORITY_ERROR)
     grants = _authorize_required_secrets(self, command, attempt, intent_record,
-        runtime_request, runtime_authority, observed_at)
+        runtime_request, runtime_authority, observed_at, session_id=session_id)
     runtime_request = runtime_effect_request_for_intent(intent_record.intent,
         effect_id=attempt.original_start_event.event_id, secret_resolution_grants=grants)
 
@@ -461,10 +504,17 @@ def _fresh_observed_fold(
     observation_request = RuntimeEffectObservationRequest(
         runtime_request, connection_admission=connection_admission
     )
-    observation_result = observer.observe(
-        observation_request,
-        runtime_authority,
-    )
+    observation_result = (observer.observe(observation_request, runtime_authority) if invocations is None else
+        observer.observe(observation_request, runtime_authority, invocations=invocations))
+    if invocations is not None:
+        final = self._invocation_service.inspect_reconciliation_observation(invocations)
+        if final is None:
+            raise ExecutionInvocationConflict()
+        if final.disposition is ExecutionInvocationDisposition.DENIED:
+            raise ExecutionInvocationDenied(final.invocation_id)
+        if (final.disposition is not ExecutionInvocationDisposition.ADMITTED
+                or final.outcome is ExecutionInvocationOutcome.PENDING):
+            raise ExecutionInvocationConflict(final.invocation_id)
     failure = None
     outcome = None
     guarded = None

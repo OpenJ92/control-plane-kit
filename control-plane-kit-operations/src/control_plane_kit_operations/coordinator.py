@@ -141,7 +141,7 @@ from control_plane_kit_operations.execution_invocation_service import BoundExecu
 from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationControlError, ExecutionInvocationDenied, ExecutionInvocationPlanned,
     ExecutionInvocationConflict, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
-    ExecutionInvocationExisting, ExecutionInvocationKind,
+    ExecutionInvocationKind,
 )
 from control_plane_kit_operations.prepared_runtime_invocations import (
     runtime_preparation_candidate, prepared_runtime_invocation_profile,
@@ -1775,6 +1775,7 @@ class ExecutionCoordinator:
             intent = None
             transition = None
             runtime_candidate, prepared_runtime, invocations = False, None, None
+            reconcile_prepared = False
             if not legacy:
                 identity = EffectAttemptIdentity(RunId(context.run.run_id), planned.activity_id.value, 1)
                 if type(context) is _ConfigurationReplayContext:
@@ -1866,16 +1867,20 @@ class ExecutionCoordinator:
             if runtime_candidate and service_failure is None and selected_conflict is None:
                 marker = self._original_runtime_marker(command_context, start_command, attempt)
                 if existing:
-                    # Until fresh reconciliation has its own admission, current
-                    # local selection cannot exempt ambiguous original history.
+                    # Current local selection cannot exempt ambiguous original
+                    # history; admitted work needs a separate fresh observation.
                     if marker is None:
                         raise ExecutionInvocationConflict()
                     if marker.disposition is ExecutionInvocationDisposition.PLANNED:
                         raise ExecutionInvocationPlanned(marker.invocation_id)
                     if marker.disposition is ExecutionInvocationDisposition.DENIED:
                         raise ExecutionInvocationDenied(marker.invocation_id)
-                    raise ExecutionInvocationExisting(marker.invocation_id)
-                if prepared_runtime is not None:
+                    if (type(self._reconciliation_service) is not EffectAttemptReconciliationService
+                            or not self._reconciliation_service._prepared_invocation_ready(
+                                self._permission_policy, self._invocation_service)):
+                        raise ExecutionInvocationConflict(marker.invocation_id)
+                    reconcile_prepared = True
+                elif prepared_runtime is not None:
                     if marker is None or not self._runtime_profile_ready(intent):
                         raise ExecutionInvocationConflict()
                     try:
@@ -1947,14 +1952,22 @@ class ExecutionCoordinator:
                 else:
                     reconciled: EffectAttemptFoldResult | None = None
                     try:
+                        options = dict(command_context=command_context) if reconcile_prepared else {}
                         reconciled = self._reconciliation_service.execute(
                             ReconcileEffectAttempt(
                                 context.request.identity.request_id,
                                 attempt.state.identity,
                                 command.authority,
                                 command.fence,
-                            )
+                            ), **options,
                         )
+                    except ExecutionInvocationDenied:
+                        if not reconcile_prepared:
+                            raise
+                        return ExecutionCoordinatorResult(context.run, CoordinatorStatus.AUTHORIZATION_DENIED,
+                            attempted, planned.activity_id.value)
+                    except ExecutionInvocationControlError:
+                        raise
                     except EffectAttemptReconciliationNotFound:
                         service_failure = "not-found"
                         service_message = (

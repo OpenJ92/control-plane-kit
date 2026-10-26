@@ -69,7 +69,8 @@
         "control_plane_kit_operations.coordinator",
         "control_plane_kit_operations.effect_attempt_start_interpreter",
         "control_plane_kit_operations.execution_invocation_service",
-        "control_plane_kit_operations.postgres.execution"
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
       ],
       "optional_external_dependencies": [
         "rfc8785"
@@ -77,7 +78,8 @@
       "protecting_tests": [
         "tests/test_postgres_prepared_runtime_invocations.py",
         "tests/test_postgres_execution_invocations.py",
-        "tests/test_postgres_runtime_invocation_carriage.py"
+        "tests/test_postgres_runtime_invocation_carriage.py",
+        "tests/test_postgres_runtime_reconciliation_invocations.py"
       ],
       "motivation": "Closed original StartRuntime remote-TLS target profile binds exact retained registration and required-use roles without current authority or effects."
     },
@@ -116,11 +118,16 @@
         "control_plane_kit_operations.secret_providers",
         "control_plane_kit_operations.effect_run_prefix",
         "control_plane_kit_operations.effect_attempt_start_interpreter",
-        "control_plane_kit_operations.records"
+        "control_plane_kit_operations.records",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.effect_attempt_reconciliation",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_attempt_intent_evidence"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
-        "control_plane_kit_operations.coordinator"
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
       ],
       "optional_external_dependencies": [
         "rfc8785"
@@ -128,7 +135,8 @@
       "protecting_tests": [
         "tests/test_postgres_health_invocation_service.py",
         "tests/test_postgres_local_health_invocation.py",
-        "tests/test_postgres_prepared_runtime_invocations.py"
+        "tests/test_postgres_prepared_runtime_invocations.py",
+        "tests/test_postgres_runtime_reconciliation_invocations.py"
       ],
       "motivation": "Fresh semantic invocation admission and original result classification under the existing command owner; no provider calls or parallel execution loop."
     },
@@ -11143,7 +11151,8 @@
         "tests/test_secret_installation_admission.py",
         "tests/test_postgres_secret_installation_admission.py",
         "tests/test_postgres_coordinator_permissions.py",
-        "tests/test_postgres_runtime_invocation_carriage.py"
+        "tests/test_postgres_runtime_invocation_carriage.py",
+        "tests/test_postgres_runtime_reconciliation_invocations.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -11604,11 +11613,13 @@
         "control_plane_kit_operations.execution_leases",
         "control_plane_kit_operations.lifecycle",
         "control_plane_kit_operations.runtime_authorities",
-        "control_plane_kit_operations.workflows"
+        "control_plane_kit_operations.workflows",
+        "control_plane_kit_core.operations.lifecycle"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
-        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
+        "control_plane_kit_operations.execution_invocation_service"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_reconciliation",
@@ -11617,7 +11628,8 @@
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
-        "tests/test_effect_attempt_reconciliation_contract.py"
+        "tests/test_effect_attempt_reconciliation_contract.py",
+        "tests/test_postgres_runtime_reconciliation_invocations.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -11635,7 +11647,6 @@
         "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_operations._configuration_preparation",
         "control_plane_kit_core.operations",
-        "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.policies",
         "control_plane_kit_core.runtime_authority",
         "control_plane_kit_core.runtime_effect_observation",
@@ -11651,7 +11662,11 @@
         "control_plane_kit_operations.workflows",
         "control_plane_kit_core.secret_version_grants",
         "control_plane_kit_operations.runtime_adapter_registration",
-        "control_plane_kit_core.secret_installation"
+        "control_plane_kit_core.secret_installation",
+        "control_plane_kit_operations.effect_permissions",
+        "control_plane_kit_operations.execution_invocation_service",
+        "control_plane_kit_operations.execution_invocations",
+        "control_plane_kit_operations.prepared_runtime_invocations"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations"
@@ -11669,7 +11684,8 @@
         "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
         "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
         "tests/test_postgres_effect_attempt_reconciliation_rollback.py",
-        "tests/test_postgres_secret_installation_admission.py"
+        "tests/test_postgres_secret_installation_admission.py",
+        "tests/test_postgres_runtime_reconciliation_invocations.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -13348,7 +13364,8 @@
         "tests/test_receiver_admission_execution_evidence.py",
         "tests/test_postgres_execution_invocations.py",
         "tests/test_postgres_health_invocation_service.py",
-        "tests/test_postgres_prepared_runtime_invocations.py"
+        "tests/test_postgres_prepared_runtime_invocations.py",
+        "tests/test_postgres_runtime_reconciliation_invocations.py"
       ]
     }
   ],

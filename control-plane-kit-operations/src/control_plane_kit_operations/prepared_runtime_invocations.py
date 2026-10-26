@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import hashlib
+import re
 import rfc8785
 
 from control_plane_kit_core.planning import StartRuntime
@@ -54,3 +55,16 @@ def prepared_runtime_invocation_profile(intent, *, original_event_id, runtime_au
         required_uses=[list(_secret_use_key(use)) for use in uses])
     return PreparedRuntimeInvocationProfile(runtime_authority.registration_id, uses,
         hashlib.sha256(rfc8785.dumps(target)).hexdigest())
+
+
+def prepared_runtime_reconciliation_target_fingerprint(*, original_invocation_id,
+        original_target_fingerprint, original_request_fingerprint, runtime_registration_id):
+    if (any(type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            for value in (original_invocation_id, original_target_fingerprint, original_request_fingerprint))
+            or type(runtime_registration_id) is not str or not 1 <= len(runtime_registration_id) <= 512
+            or any(ord(character) < 32 for character in runtime_registration_id)):
+        raise ValueError("prepared reconciliation target is invalid")
+    target = dict(domain="cpk.prepared-runtime-reconciliation-target.v1", kind="reconciliation-observation",
+        original_invocation_id=original_invocation_id, original_target_fingerprint=original_target_fingerprint,
+        original_request_fingerprint=original_request_fingerprint, runtime_registration_id=runtime_registration_id)
+    return hashlib.sha256(rfc8785.dumps(target)).hexdigest()

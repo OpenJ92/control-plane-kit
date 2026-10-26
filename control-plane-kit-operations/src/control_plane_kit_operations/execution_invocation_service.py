@@ -7,6 +7,7 @@ from typing import Protocol
 import rfc8785
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.operations import EffectAttemptStatus
 from control_plane_kit_core.planning import ManagementBootstrapStage, ObserveManagementBootstrap
 from control_plane_kit_operations.effect_attempt_start import NewlyStarted
 from control_plane_kit_operations.effect_permissions import (
@@ -14,7 +15,7 @@ from control_plane_kit_operations.effect_permissions import (
 )
 from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationControlError, ExecutionInvocationConflict, ExecutionInvocationDenied,
-    ExecutionInvocationExisting, ExecutionInvocationRecord, ExecutionInvocationDecision,
+    ExecutionInvocationExisting, ExecutionInvocationPlanned, ExecutionInvocationRecord, ExecutionInvocationDecision,
     ExecutionInvocationKind as Kind, ExecutionInvocationDisposition as Disposition,
     ExecutionInvocationOutcome as Outcome, secret_invocation_target_fingerprint,
     signed_health_invocation_target_fingerprint,
@@ -30,7 +31,14 @@ from control_plane_kit_operations.health_signing_authority import (
 )
 from control_plane_kit_operations.managed_effect_plan import require_managed_effect_plan
 from control_plane_kit_operations.managed_runtime_assignments import ManagedRuntimeSelection
-from control_plane_kit_operations.prepared_runtime_invocations import prepared_runtime_invocation_profile
+from control_plane_kit_operations.prepared_runtime_invocations import (
+    prepared_runtime_invocation_profile, prepared_runtime_reconciliation_target_fingerprint,
+)
+from control_plane_kit_operations.effect_attempt_reconciliation import (
+    ReconcileEffectAttempt, _valid_reconcile_command, _require_current_claim, _require_historical_lineage,
+)
+from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
 from control_plane_kit_operations.effect_attempt_start import StartEffectAttempt, _valid_start_command
 from control_plane_kit_operations.runtime_secret_uses import OperationalSecretUse, secret_authorization_command
 from control_plane_kit_operations.secret_providers import (
@@ -103,6 +111,27 @@ class _BoundRuntimeInvocations:
         self.service._record_outcome(self, permit, outcome)
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _BoundReconciliationInvocations:
+    service: object
+    context: EffectCommandContext
+    command: ReconcileEffectAttempt
+    attempt: EffectAttemptRecord
+    intent_record: EffectAttemptIntentRecord
+    marker: ExecutionInvocationRecord
+    runtime: object
+    profile: object
+    target: str
+    owner: object = field(default_factory=object)
+    control_error = ExecutionInvocationControlError
+
+    def admit(self, kind, *, authorization_id=None):
+        return self.service._admit_reconciliation(self, kind, authorization_id)
+
+    def record_outcome(self, permit, outcome):
+        self.service._record_outcome(self, permit, outcome)
+
+
 class ExecutionInvocationService:
     def __init__(self, unit_of_work_factory, *, permission_policy, clock,
             health_receiver_decoders=HealthReceiverDecoders(())):
@@ -164,7 +193,8 @@ class ExecutionInvocationService:
         return marker
 
     def _binding(self, stores, bound, *, fresh):
-        start = bound.start if type(bound) is _BoundRuntimeInvocations else bound.start.start
+        start = (bound.command if type(bound) is _BoundReconciliationInvocations else
+            bound.start if type(bound) is _BoundRuntimeInvocations else bound.start.start)
         request = stores.execution.get_request(start.request_id)
         run = stores.execution.get_run(bound.context.receipt.run_id)
         return _require_execution_binding(stores, bound.context, request, run,
@@ -298,6 +328,8 @@ class ExecutionInvocationService:
                 self._binding(stores, bound, fresh=False)
                 if type(bound) is _BoundRuntimeInvocations:
                     self._runtime_history(stores, bound, Kind.PREPARED_RUNTIME_DISPATCH, None)
+                elif type(bound) is _BoundReconciliationInvocations:
+                    self._reconciliation_history(stores, bound, Kind.RECONCILIATION_OBSERVATION, None)
                 current = stores.execution.command_invocation(reference, permit.record.invocation_id, for_update=True)
                 _require(current is not None)
                 if current.outcome is Outcome.PENDING:
@@ -472,6 +504,196 @@ class ExecutionInvocationService:
                             decision_at=observation.observed_at, decision=evidence,
                             outcome=Outcome.PENDING if decision.allowed else None)
                         _require(stores.execution.add_command_invocation(record) == record)
+                    uow.commit()
+                    if decision.allowed:
+                        admitted = record
+                    else:
+                        control = ExecutionInvocationDenied(record.invocation_id)
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        _require(admitted is not None)
+        return _Permit(bound.owner, admitted)
+
+
+    def _reconciliation_material(self, stores, context, command, attempt, intent_record, runtime_authority):
+        _require(type(context) is EffectCommandContext and _valid_reconcile_command(command)
+            and type(attempt) is EffectAttemptRecord and type(intent_record) is EffectAttemptIntentRecord)
+        context.__post_init__()
+        attempt.__post_init__()
+        intent_record.__post_init__()
+        identity = command.identity
+        _require(attempt.state.identity == identity and intent_record.identity == identity
+            and intent_record.original_start_event == attempt.original_start_event
+            and intent_record.request_fingerprint == attempt.state.request_fingerprint
+            and context.receipt.run_id == identity.run_id.value)
+        _require_historical_lineage(command, attempt)
+        request = stores.execution.get_request(command.request_id)
+        run = stores.execution.get_run(context.receipt.run_id)
+        _require_execution_binding(stores, context, request, run, command.authority, command.fence,
+            require_incomplete=False)
+        _require(intent_record == stores.effect_attempt_intents.get(identity)
+            and intent_record.request_id == command.request_id
+            and intent_record.workspace_id == request.identity.workspace_id
+            and intent_record.intent.source.plan_id == run.plan_id)
+        marker = stores.execution.original_final_invocation(identity,
+            original_event_id=attempt.original_start_event.event_id,
+            request_fingerprint=attempt.state.request_fingerprint, kind=Kind.PREPARED_RUNTIME_DISPATCH)
+        _require(marker is not None and marker.command != context.receipt)
+        if marker.disposition is Disposition.PLANNED:
+            raise ExecutionInvocationPlanned(marker.invocation_id)
+        if marker.disposition is Disposition.DENIED:
+            raise ExecutionInvocationDenied(marker.invocation_id)
+        _require(marker.disposition is Disposition.ADMITTED)
+        runtime = stores.runtime_authorities.get_registration(marker.workspace_id,
+            intent_record.intent.authority_ref, marker.runtime_registration_id)
+        _require(type(runtime_authority) is type(runtime)
+            and replace(runtime, status=runtime_authority.status) == runtime_authority)
+        profile = prepared_runtime_invocation_profile(intent_record.intent,
+            original_event_id=marker.original_event_id, runtime_authority=runtime)
+        _require(profile.target_fingerprint == marker.target_fingerprint)
+        target = prepared_runtime_reconciliation_target_fingerprint(
+            original_invocation_id=marker.invocation_id, original_target_fingerprint=marker.target_fingerprint,
+            original_request_fingerprint=marker.request_fingerprint, runtime_registration_id=marker.runtime_registration_id)
+        return marker, runtime, profile, target
+
+    def bind_reconciliation(self, *, command_context, command, attempt, intent_record,
+            runtime_authority) -> BoundExecutionInvocations:
+        bound, control = None, None
+        try:
+            _require(type(command_context) is EffectCommandContext)
+            command_context.__post_init__()
+            with self._unit_of_work_factory() as uow:
+                reference = command_context.receipt
+                uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, runtime, profile, target = self._reconciliation_material(uow.stores,
+                    command_context, command, attempt, intent_record, runtime_authority)
+                _require(attempt.state.status is EffectAttemptStatus.STARTED
+                    and uow.stores.effect_attempts.get(command.identity) == attempt)
+                bound = _BoundReconciliationInvocations(self, command_context, command,
+                    attempt, intent_record, marker, runtime, profile, target)
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        return bound
+
+    def _reconciliation_history(self, stores, bound, kind, authorization_id):
+        _require(type(bound) is _BoundReconciliationInvocations and bound.service is self)
+        marker, runtime, profile, target = self._reconciliation_material(stores, bound.context,
+            bound.command, bound.attempt, bound.intent_record, bound.runtime)
+        _require(marker.invocation_id == bound.marker.invocation_id and profile == bound.profile
+            and target == bound.target and replace(runtime, status=bound.runtime.status) == bound.runtime)
+        authorized = None
+        if kind is Kind.SECRET_RESOLUTION:
+            authorized = stores.secret_use_authorizations.get(marker.workspace_id, authorization_id)
+            validate_authorized_secret_use(authorized)
+            _require(type(authorized) is AuthorizedSecretUse)
+            use = OperationalSecretUse(authorized.reference, authorized.intent)
+            request = stores.execution.get_request(bound.command.request_id)
+            _require(use in profile.required_uses and authorized.session_id == request.identity.session_id)
+            runtime_request = runtime_effect_request_for_intent(bound.intent_record.intent,
+                effect_id=marker.original_event_id, secret_resolution_grants=())
+            expected = secret_authorization_command(runtime_request, use,
+                actor_subject=bound.context.original.actor_id, requested_at=authorized.requested_at,
+                actor_scopes=bound.context.original.granted_scopes, session_id=request.identity.session_id)
+            for name in ("workspace_id", "actor_subject", "operation_id", "session_id", "run_id",
+                    "activity_id", "effect_id", "reference", "intent", "correlation_id", "probe_id"):
+                _require(getattr(authorized, name) == getattr(expected, name))
+            target = secret_invocation_target_fingerprint(authorized)
+        else:
+            _require(kind is Kind.RECONCILIATION_OBSERVATION and authorization_id is None)
+        current = stores.execution.command_invocation_for_slot(bound.context.receipt,
+            activity_id=marker.activity_id, kind=kind, authorization_id=authorization_id)
+        if current is not None:
+            _require(current.target_fingerprint == target and current.attempt == marker.attempt
+                and current.original_event_id == marker.original_event_id
+                and current.request_fingerprint == marker.request_fingerprint)
+        return marker, current, target, authorized
+
+    def inspect_reconciliation_observation(self, bound: BoundExecutionInvocations) -> ExecutionInvocationRecord | None:
+        current, control = None, None
+        try:
+            _require(type(bound) is _BoundReconciliationInvocations and bound.service is self)
+            with self._unit_of_work_factory() as uow:
+                reference = bound.context.receipt
+                uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                _, current, _, _ = self._reconciliation_history(uow.stores, bound,
+                    Kind.RECONCILIATION_OBSERVATION, None)
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        return current
+
+    def _admit_reconciliation(self, bound, kind, authorization_id):
+        admitted, control = None, None
+        try:
+            _require(type(kind) is str and type(bound) is _BoundReconciliationInvocations and bound.service is self)
+            kind = Kind(kind)
+            _require(kind in (Kind.SECRET_RESOLUTION, Kind.RECONCILIATION_OBSERVATION))
+            with self._unit_of_work_factory() as uow:
+                stores, reference = uow.stores, bound.context.receipt
+                stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, current, target, authorized = self._reconciliation_history(stores, bound, kind, authorization_id)
+                final = (current if kind is Kind.RECONCILIATION_OBSERVATION else
+                    self._reconciliation_history(stores, bound, Kind.RECONCILIATION_OBSERVATION, None)[1])
+                existing = current if current is not None else final
+                if existing is not None:
+                    control = (ExecutionInvocationDenied(existing.invocation_id)
+                        if existing.disposition is Disposition.DENIED else ExecutionInvocationExisting(existing.invocation_id))
+                else:
+                    guard = stores.graphs.lock_receiver_lifecycle(marker.workspace_id)
+                    request = stores.execution.get_request_for_update(bound.command.request_id)
+                    prefix = _lock_effect_run_prefix(uow, request, reference.run_id, latest_required=True)
+                    stores.execution.command_receipt_for_idempotency(reference.run_id,
+                        reference.idempotency_key, for_update=True)
+                    attempt = stores.effect_attempts.get_for_update(bound.command.identity)
+                    _require(attempt == bound.attempt and attempt.state.status is EffectAttemptStatus.STARTED
+                        and prefix.latest_run == prefix.requested_run
+                        and prefix.requested_run.status is ActivityRunStatus.RUNNING)
+                    _require_current_claim(bound.command, request, prefix.requested_run, attempt)
+                    _require_historical_lineage(bound.command, attempt)
+                    session = stores.activity_history.get_session_for_update(request.identity.session_id)
+                    _require(session.status is OperationSessionStatus.OPEN)
+                    original = self._binding(stores, bound, fresh=True)
+                    scopes = (PolicyScope.EXECUTION_OPERATE,)
+                    if kind is Kind.SECRET_RESOLUTION:
+                        scopes += (PolicyScope.SECRET_PROVIDER_USE,)
+                    decision = self._permission_policy.evaluate_in_unit_of_work(uow, original, required_scopes=scopes)
+                    _require_fresh_effect_receiver_permission(stores, request, guard,
+                        bound.intent_record.intent, compensation=False)
+                    if decision.allowed:
+                        runtime = stores.runtime_authorities.get_registration_for_update(marker.workspace_id,
+                            bound.intent_record.intent.authority_ref, marker.runtime_registration_id)
+                        _require(runtime.status.value == "active"
+                            and replace(runtime, status=bound.runtime.status) == bound.runtime)
+                        if authorized is not None:
+                            runtime_request = runtime_effect_request_for_intent(bound.intent_record.intent,
+                                effect_id=marker.original_event_id, secret_resolution_grants=())
+                            use = OperationalSecretUse(authorized.reference, authorized.intent)
+                            authorization = secret_authorization_command(runtime_request, use,
+                                actor_subject=original.actor_id, requested_at=authorized.requested_at,
+                                actor_scopes=decision.effective_scopes, session_id=request.identity.session_id)
+                            retained, _ = authorize_secret_use_in_unit_of_work(uow, authorization)
+                            _require(retained == authorized)
+                    observation = stores.execution.observe_request_lease_for_update(request.identity.request_id)
+                    _require(observation.request == request and not observation.expired)
+                    evidence = ExecutionInvocationDecision(decision.permission_revision, denial_code=decision.denial_code)
+                    record = ExecutionInvocationRecord(reference, marker.workspace_id, marker.activity_id,
+                        kind, target, observation.observed_at, attempt=marker.attempt,
+                        original_event_id=marker.original_event_id, request_fingerprint=marker.request_fingerprint,
+                        authorization_id=authorization_id, disposition=Disposition.ADMITTED if decision.allowed else Disposition.DENIED,
+                        decision_at=observation.observed_at, decision=evidence,
+                        outcome=Outcome.PENDING if decision.allowed else None)
+                    _require(stores.execution.add_command_invocation(record) == record)
                     uow.commit()
                     if decision.allowed:
                         admitted = record

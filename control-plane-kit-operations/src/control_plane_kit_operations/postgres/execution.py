@@ -1773,6 +1773,19 @@ def _require_invocation_owners(store, record, *, fresh=False):
                 original_event_id=record.original_event_id, runtime_authority=runtime)
             if profile.target_fingerprint != record.target_fingerprint:
                 raise ExecutionInvocationConflict(record.invocation_id)
+        if record.kind is ExecutionInvocationKind.RECONCILIATION_OBSERVATION:
+            from control_plane_kit_operations.prepared_runtime_invocations import prepared_runtime_reconciliation_target_fingerprint
+            original = store.original_final_invocation(identity,
+                original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+            if (original is None or original.command == record.command
+                    or original.disposition is not ExecutionInvocationDisposition.ADMITTED
+                    or record.target_fingerprint != prepared_runtime_reconciliation_target_fingerprint(
+                        original_invocation_id=original.invocation_id,
+                        original_target_fingerprint=original.target_fingerprint,
+                        original_request_fingerprint=original.request_fingerprint,
+                        runtime_registration_id=original.runtime_registration_id)):
+                raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.SECRET_RESOLUTION:
             authorized = SecretUseAuthorizationStore(store._connection).get(record.workspace_id, record.authorization_id)
             linked = record.original_event_id is not None and authorized.effect_id == record.original_event_id

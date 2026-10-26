@@ -1306,6 +1306,7 @@ class EffectAttemptCoordinatorContractTests(
                 "tests/test_postgres_effect_attempt_coordinator_first_replay.py",
                 "tests/test_postgres_coordinator_permissions.py",
                 "tests/test_postgres_runtime_invocation_carriage.py",
+                "tests/test_postgres_runtime_reconciliation_invocations.py",
                 "tests/test_managed_application_chain.py",
                 "tests/test_managed_health_boundaries.py",
                 "tests/test_managed_reobservation_admission.py",

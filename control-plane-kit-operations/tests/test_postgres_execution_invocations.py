@@ -184,9 +184,7 @@ class PostgresExecutionInvocationStateTests(_PreparedRuntimeInvocationFixture, u
     def test_pages_are_bounded_and_cursor_cannot_cross_parent_scope(self):
         planned = self.planned()
         records = (planned, replace(planned, kind=Kind.ENDPOINT_OBSERVATION, runtime_registration_id=None,
-            disposition=Disposition.ADMITTED, decision_at=self.at, decision=Decision(1), outcome=Outcome.PENDING),
-            replace(planned, kind=Kind.RECONCILIATION_OBSERVATION, runtime_registration_id=None,
-                disposition=Disposition.ADMITTED, decision_at=self.at, decision=Decision(1), outcome=Outcome.PENDING))
+            disposition=Disposition.ADMITTED, decision_at=self.at, decision=Decision(1), outcome=Outcome.PENDING))
         for record in records[1:]:
             self.insert(record)
         with self.unit_of_work() as uow:
