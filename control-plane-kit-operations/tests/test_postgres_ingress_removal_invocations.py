@@ -80,7 +80,7 @@ class PostgresIngressRemovalInvocationTests(_CurrentCoordinatorPermission, Manag
                 self.fail("ingress removal did not become ready")
             request = uow.stores.execution.get_request(self.request_id)
             uow.commit()
-        self.configure_permissions(self.worker.identity, installation="ingress-removal")
+        self.configure_permissions(self.worker.identity, installation="coordinator-permission")
         self.ingress = StagedIngressPort(self)
         service = IngressInvocationService(self.unit_of_work, permission_policy=self.policy, clock=now)
         adapter = ActivityExecutionDispatcher(self.runtime, IngressRealizationAdapter(self.unit_of_work,
