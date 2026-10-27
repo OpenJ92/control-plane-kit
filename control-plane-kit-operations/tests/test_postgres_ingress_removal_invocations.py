@@ -103,6 +103,13 @@ class PostgresIngressRemovalInvocationTests(_CurrentCoordinatorPermission, Manag
             return next(resource for resource in uow.stores.ingress_resources.list_cloudflare("workspace-a")
                 if resource.epoch == self.original_resource.epoch)
 
+    def ingress_history(self):
+        from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, RunReadScope
+        with self.unit_of_work().run_events_snapshot() as snapshot:
+            page = snapshot.run_events(ReadPageRequest(ReadCollection.RUN_EVENTS,
+                RunReadScope("workspace-a", self.run_id), 100))
+            return next(event["ingress"] for event in page.items if "ingress" in event)
+
     async def test_success_requires_revoke_then_remove_and_folds_exact_epoch(self):
         owner, command = await self.prepared_removal()
         result = await owner.execute_managed(command)
@@ -110,6 +117,9 @@ class PostgresIngressRemovalInvocationTests(_CurrentCoordinatorPermission, Manag
         self.assertEqual(self.ingress.calls, ["secret-resolution", "ingress-custody-revoke", "ingress-provider-remove"])
         self.assertEqual(self.resource().status, OwnedIngressResourceStatus.REMOVED)
         self.assertEqual(self.resource().removed_by_run_id, self.run_id)
+        history = self.ingress_history()
+        self.assertEqual(history["owner_fold"], "removed")
+        self.assertEqual(history["current_owner_state"], "removed")
         self.assertEqual(await owner.execute_managed(command), result)
         self.assertEqual(len(self.ingress.calls), 3)
 
@@ -120,6 +130,29 @@ class PostgresIngressRemovalInvocationTests(_CurrentCoordinatorPermission, Manag
         self.assertEqual(result.status.value, "unsupported")
         self.assertEqual(self.ingress.calls, ["secret-resolution"])
         self.assertEqual(self.resource(), self.original_resource)
+
+    async def test_later_owner_removal_preserves_earlier_denial_history(self):
+        owner, command = await self.prepared_removal()
+        self.ingress.after_token = self.revoke_operate
+        result = await owner.execute_managed(command)
+        self.assertEqual(result.status.value, "unsupported")
+        before = self.ingress_history()
+        self.assertEqual(before["current_owner_state"], "active")
+        self.assertEqual([unit["disposition"] for unit in before["units"]], ["admitted", "denied"])
+        # Model the later owner's successful resource transitions with the real
+        # resource store. This read regression neither executes nor authorizes B.
+        with self.unit_of_work() as uow:
+            uow.stores.ingress_resources.mark_removing("workspace-a", self.original_resource.ingress_id,
+                source_run_id="later-removal-run")
+            uow.stores.ingress_resources.mark_removed("workspace-a", self.original_resource.ingress_id,
+                removed_at=now(), removed_by_run_id="later-removal-run")
+            uow.commit()
+        after = self.ingress_history()
+        self.assertEqual(after["units"], before["units"])
+        self.assertEqual(after["owner_fold"], "not-folded-by-this-command")
+        self.assertEqual(after["current_owner_state"], "removed")
+        self.assertEqual(self.ingress.calls, ["secret-resolution"])
+        self.assertEqual(await owner.execute_managed(command), result)
 
     async def test_custody_completion_after_revoke_retains_removing_and_stops_provider(self):
         owner, command = await self.prepared_removal()

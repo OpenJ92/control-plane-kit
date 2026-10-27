@@ -79,6 +79,9 @@ Remove cannot clean an incomplete allocation; partial-allocation cleanup remains
 explicitly unsupported. Successful allocation and desired-empty teardown retain
 their normal paths. The outer `effects_attempted` count still counts admitted
 activity intent, while the ingress units report the finer capability history.
+The summary separates `current_owner_state` from `owner_fold`. A later normal
+removal by another run remains visible without attributing that success to an
+earlier denied command or hiding its retained unit evidence.
 
 Dynamic ingress composition requires `IngressInvocationService` and an explicit
 `IngressProviderRegistration` for profile `cpk.ingress-invocations.v1`. Passing

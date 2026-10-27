@@ -173,15 +173,18 @@ class RunEventsSnapshot:
                 source_run_id=context.original_resource.source_run_id, removed_at=None,
                 removed_by_run_id=None) == context.original_resource)
             if resource.status is OwnedIngressResourceStatus.REMOVED:
-                require(resource.removed_by_run_id == context.command.run_id
-                    and resource.source_run_id == context.command.run_id
+                if resource.removed_by_run_id != context.command.run_id:
+                    return "not-folded-by-this-command", resource.status.value
+                require(resource.source_run_id == context.command.run_id
                     and set(facts) == {"custody-revoke-returned", "provider-removal-returned"})
-                return "removed"
+                return "removed", resource.status.value
             require(resource.status in (OwnedIngressResourceStatus.ACTIVE, OwnedIngressResourceStatus.REMOVING,
                 OwnedIngressResourceStatus.UNCERTAIN))
-            return resource.status.value
+            return ("not-recorded" if resource.source_run_id in
+                (context.original_resource.source_run_id, context.command.run_id)
+                else "not-folded-by-this-command"), resource.status.value
         if resource is None and secret is None:
-            return "not-recorded"
+            return "not-recorded", "absent"
         require(resource is not None and secret is not None and set(facts) == {"provider-created", "custody-write-returned"})
         provider, custody = facts["provider-created"], facts["custody-write-returned"]
         receipt = custody_receipt_from_descriptor(custody["receipt"])
@@ -198,7 +201,7 @@ class RunEventsSnapshot:
             ("status", "text", 64)), "registration_id=%s", (secret.reference_registration_id,))
         require(len(rows) == 1 and rows[0][:3] == (context.workspace_id, receipt.reference.reference_id,
             receipt.provider_registration_id) and rows[0][3] in ("active", "revoked", "superseded"))
-        return resource.status.value
+        return resource.status.value, resource.status.value
 
     def _summary(self, workspace_id, event):
         if event.kind is not ActivityEventKind.STEP_STARTED:
@@ -227,8 +230,9 @@ class RunEventsSnapshot:
                 value["result"] = metadata
                 value["recorded_at"] = result.recorded_at
             units.append(value)
+        owner_fold, current_owner_state = self._fold(context, facts)
         summary = dict(version=1, context_id=context.context_id, operation=context.operation,
-            units=units, owner_fold=self._fold(context, facts), command_receipt=receipt_state,
+            units=units, owner_fold=owner_fold, current_owner_state=current_owner_state, command_receipt=receipt_state,
             callback_acknowledgement="delivery-not-established-by-history", partial_allocation_cleanup="unsupported")
         if len(invocations) < len(context.sequence):
             summary["next_unit"] = dict(kind=context.sequence[len(invocations)].value, state="not-admitted")
