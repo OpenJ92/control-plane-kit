@@ -16,6 +16,7 @@ from .execution_invocations import (
     ExecutionInvocationConflict, ExecutionInvocationCursor, ExecutionInvocationPage,
 )
 from .execution_invocation_service import ExecutionInvocationService, BoundExecutionInvocations
+from .ingress_invocation_service import IngressInvocationService
 
 from .managed_runtime_assignments import (
     ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
@@ -394,6 +395,7 @@ from .ingress_realization import (
     IngressAllocationResult,
     IngressProviderInterpreter,
     IngressRealizationAdapter,
+    IngressProviderRegistration,
 )
 from .graph_authoring import (
     GraphAuthoringError,
@@ -711,6 +713,7 @@ __version__ = "0.1.0"
 __all__ = [
     "RuntimeEffectOriginRecord",
     "ExecutionInvocationService", "BoundExecutionInvocations",
+    "IngressInvocationService",
     "ExecutionInvocationRecord", "ExecutionInvocationKind", "ExecutionInvocationDisposition",
     "ExecutionInvocationOutcome", "ExecutionInvocationDecision", "ExecutionInvocationControlError",
     "ExecutionInvocationDenied", "ExecutionInvocationExisting", "ExecutionInvocationPlanned",
@@ -1090,6 +1093,7 @@ __all__ = [
     "IngressAllocationResult",
     "IngressProviderInterpreter",
     "IngressRealizationAdapter",
+    "IngressProviderRegistration",
     "InvalidExecutionLeaseFence",
     "ImportProductDescriptorCommand",
     "InlineDescriptorSource",

@@ -106,6 +106,8 @@ def _current_schema_is_exact(connection: PostgresConnection) -> bool:
         validate_execution_invocation_rows(connection)
         from .runtime_effect_origin_store import validate_runtime_effect_origin_rows
         validate_runtime_effect_origin_rows(connection)
+        from .ingress_invocation_store import validate_ingress_invocation_rows
+        validate_ingress_invocation_rows(connection)
     except (CurrentRowDrift, WorkspacePermissionError):
         return False
     return True

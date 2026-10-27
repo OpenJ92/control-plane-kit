@@ -52,12 +52,16 @@ class _OperationsHistoryReadProjection:
         execution_store: ExecutionStore | None = None,
         *,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+        run_event_scope=None,
+        ingress_summary=None,
     ) -> None:
         self._require_workspace = require_workspace
         self._graph_topology_store = graph_topology_store
         self._activity_history_store = activity_history_store
         self._execution_store = execution_store
         self._graph_codec = graph_codec
+        self._run_event_scope = run_event_scope
+        self._ingress_summary = ingress_summary
 
     def activity_sessions(
         self,
@@ -119,15 +123,26 @@ class _OperationsHistoryReadProjection:
         workspace_id = request.scope.workspace_id
         self._require_workspace(workspace_id)
         store = self._execution()
-        try:
-            run = store.get_run(request.scope.run_id)
-            execution_request = store.get_request(run.admission.request_id)
-        except KeyError:
-            raise ReadModelError("missing run in workspace") from None
-        identity = getattr(execution_request, "identity", None)
-        if getattr(identity, "workspace_id", None) != workspace_id:
-            raise ReadModelError("missing run in workspace")
-        return store.event_page(request).map(_event_descriptor)
+        if self._run_event_scope is not None:
+            self._run_event_scope(workspace_id, request.scope.run_id)
+        else:
+            try:
+                run = store.get_run(request.scope.run_id)
+                execution_request = store.get_request(run.admission.request_id)
+            except KeyError:
+                raise ReadModelError("missing run in workspace") from None
+            identity = getattr(execution_request, "identity", None)
+            if getattr(identity, "workspace_id", None) != workspace_id:
+                raise ReadModelError("missing run in workspace")
+
+        def descriptor(event):
+            value = _event_descriptor(event)
+            if self._ingress_summary is not None:
+                summary = self._ingress_summary(workspace_id, event)
+                if summary is not None:
+                    value["ingress"] = summary
+            return value
+        return store.event_page(request).map(descriptor)
 
     def session_plans(
         self,

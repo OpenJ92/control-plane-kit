@@ -227,17 +227,18 @@ class _CoordinatorManagementPermissionFixture(_CurrentCoordinatorPermission, Rec
         return self.permission_coordinator(), ExecuteManagedActivityRun(execution, self.original), runtime
 
     def permission_coordinator(self, factory=None, *, invocation_service=True,
-            invocation_profile="cpk.semantic-invocations.v1"):
+            invocation_profile="cpk.semantic-invocations.v1", ingress_invocations=None, qualify_ingress=True):
         factory = factory or self.unit_of_work
         fold = EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
         from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
         from control_plane_kit_operations.ingress_authorities import IngressAuthorityProviderKind
-        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter, IngressProviderRegistration
         from control_plane_kit_operations.secret_providers import SecretUseAuthorizationService
         adapter = ActivityExecutionDispatcher(runtime=self.runtime,
             ingress=IngressRealizationAdapter(factory,
-                {IngressAuthorityProviderKind.CLOUDFLARE: self.ingress}, now,
-                SecretUseAuthorizationService(factory)))
+                {IngressAuthorityProviderKind.CLOUDFLARE: IngressProviderRegistration(self.ingress,
+                    "cpk.ingress-invocations.v1") if ingress_invocations is not None and qualify_ingress else self.ingress}, now,
+                SecretUseAuthorizationService(factory), invocation_service=ingress_invocations))
         health = (self.health if type(self.health) is _ControlledInvocationHealth
             else _ControlledInvocationHealth(self, self.health))
         if invocation_service is True:
@@ -265,9 +266,14 @@ class PostgresCoordinatorManagementPermissionTests(_CoordinatorManagementPermiss
         self.assertEqual(self.history(), before)
         self.assertEqual(self.ingress.create_allocation_names, [])
 
-    async def test_legacy_admitted_result_survives_current_revocation(self):
+    async def test_ingress_admitted_custody_result_survives_current_revocation(self):
         owner, command, _ = await self.prepared(legacy=True)
-        self.ingress.on_create = self.revoke_operate
+        from tests.ingress_invocation_fixture import StagedIngressPort
+        from control_plane_kit_operations.ingress_invocation_service import IngressInvocationService
+        self.ingress = StagedIngressPort(self)
+        self.ingress.after_custody = self.revoke_operate
+        owner = self.permission_coordinator(ingress_invocations=IngressInvocationService(
+            self.unit_of_work, permission_policy=self.policy, clock=now))
         result = await owner.execute_managed(command)
         self.assertEqual(result.status.value, "progressed")
         self.assertEqual(result.effects_attempted, 1)

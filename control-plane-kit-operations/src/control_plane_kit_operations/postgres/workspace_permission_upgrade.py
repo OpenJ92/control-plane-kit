@@ -33,6 +33,7 @@ _ADDITIVE_SQL = files(__package__).joinpath("workspace_permission_schema.sql").r
 _ADDITIVE_SQL += "\n" + files(__package__).joinpath("managed_runtime_assignment_schema.sql").read_text(encoding="utf-8")
 _ADDITIVE_SQL += "\n" + files(__package__).joinpath("execution_invocation_schema.sql").read_text(encoding="utf-8")
 _ADDITIVE_SQL += "\n" + files(__package__).joinpath("runtime_effect_origin_schema.sql").read_text(encoding="utf-8")
+_ADDITIVE_SQL += "\n" + files(__package__).joinpath("ingress_invocation_schema.sql").read_text(encoding="utf-8")
 _TRY_LOCK_SQL = _ADVISORY_LOCK_SQL.replace("pg_advisory_xact_lock", "pg_try_advisory_xact_lock")
 
 
@@ -167,6 +168,8 @@ def _lock_and_validate(connection, contract):
         validate_execution_invocation_rows(connection)
         from .runtime_effect_origin_store import validate_runtime_effect_origin_rows
         validate_runtime_effect_origin_rows(connection)
+        from .ingress_invocation_store import validate_ingress_invocation_rows
+        validate_ingress_invocation_rows(connection)
 
 
 def _matches(receipt, plan):

@@ -629,6 +629,14 @@ class ActivityExecutionDispatcher:
     runtime: ActivityExecutionAdapter
     ingress: ActivityExecutionAdapter | None = None
 
+    def execute_ingress(self, context, *, command_context):
+        """Dynamic ingress never falls through to an unqualified legacy adapter."""
+        if self.ingress is None or not hasattr(self.ingress, "execute_ingress"):
+            return ActivityExecutionOutcome.unsupported(FailureEvidence(
+                FailureCategory.OPERATOR_REVIEW, "ingress.admission-owner-missing",
+                "dynamic ingress requires its invocation admission owner"))
+        return self.ingress.execute_ingress(context, command_context=command_context)
+
     def __post_init__(self) -> None:
         if not hasattr(self.runtime, "execute"):
             raise InvalidOperationCommand("runtime activity adapter must expose execute")
@@ -1024,6 +1032,11 @@ class ExecutionCoordinator:
                 or permission_policy is None
                 or invocation_service.permission_policy != permission_policy):
             raise ExecutionCoordinatorDenied("coordinator invocation composition is invalid")
+        if type(adapter) is ActivityExecutionDispatcher and adapter.ingress is not None:
+            ingress_invocations = getattr(adapter.ingress, "invocation_service", None)
+            if ingress_invocations is not None and (
+                    permission_policy is None or ingress_invocations.permission_policy != permission_policy):
+                raise ExecutionCoordinatorDenied("coordinator ingress permission composition is invalid")
         registration = None
         if isinstance(managed_health, ManagedHealthAdapterRegistration):
             if type(managed_health) is not ManagedHealthAdapterRegistration:
@@ -1974,7 +1987,17 @@ class ExecutionCoordinator:
             if legacy:
                 assert realization is not None
                 try:
-                    legacy_outcome = self._adapter.execute(realization)
+                    if (self._permission_policy is not None and isinstance(planned.operation,
+                            (AllocatePublicIngress, RemovePublicIngress))):
+                        if not hasattr(self._adapter, "execute_ingress"):
+                            legacy_outcome = ActivityExecutionOutcome.unsupported(FailureEvidence(
+                                FailureCategory.OPERATOR_REVIEW, "ingress.admission-owner-missing",
+                                "dynamic ingress requires its invocation admission owner"))
+                        else:
+                            legacy_outcome = self._adapter.execute_ingress(realization,
+                                command_context=command_context)
+                    else:
+                        legacy_outcome = self._adapter.execute(realization)
                 except Exception as error:  # noqa: BLE001 - adapter uncertainty.
                     legacy_outcome = ActivityExecutionOutcome.uncertain(
                         FailureEvidence(

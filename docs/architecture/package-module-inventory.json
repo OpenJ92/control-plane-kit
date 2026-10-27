@@ -2,6 +2,183 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.ingress_invocations",
+      "destination": "control_plane_kit_operations.ingress_invocations",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/ingress_invocations.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.public_ingress",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_operations._temporal",
+        "control_plane_kit_operations.effect_permissions",
+        "control_plane_kit_operations.execution_invocations",
+        "control_plane_kit_operations.ingress_authorities",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_ingress_invocations.py",
+        "tests/test_postgres_ingress_invocation_admission.py"
+      ],
+      "motivation": "Bounded ingress unit admission, immutable facts and coherent public history; provider effects remain in interpreters."
+    },
+    {
+      "module": "control_plane_kit_operations.ingress_invocation_service",
+      "destination": "control_plane_kit_operations.ingress_invocation_service",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/ingress_invocation_service.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "authorization",
+        "commands",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+        "IngressInvocationService"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_permissions",
+        "control_plane_kit_operations.effect_run_prefix",
+        "control_plane_kit_operations.execution_invocations",
+        "control_plane_kit_operations.health_signing_authority",
+        "control_plane_kit_operations.ingress_authorities",
+        "control_plane_kit_operations.ingress_invocations",
+        "control_plane_kit_operations.ingress_realization",
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_ingress_invocations.py",
+        "tests/test_postgres_ingress_invocation_admission.py"
+      ],
+      "motivation": "Bounded ingress unit admission, immutable facts and coherent public history; provider effects remain in interpreters."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.ingress_invocation_store",
+      "destination": "control_plane_kit_operations.postgres.ingress_invocation_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/ingress_invocation_store.py",
+      "owner": "operation",
+      "role": "durable-store",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.execution_invocations",
+        "control_plane_kit_operations.ingress_invocations",
+        "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.temporal",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_ingress_invocations.py",
+        "tests/test_postgres_ingress_invocation_admission.py"
+      ],
+      "motivation": "Bounded ingress unit admission, immutable facts and coherent public history; provider effects remain in interpreters."
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.ingress_history_read",
+      "destination": "control_plane_kit_operations.postgres.ingress_history_read",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/ingress_history_read.py",
+      "owner": "operation",
+      "role": "durable-store",
+      "semantic_roles": [
+        "values",
+        "transformations",
+        "validation"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.execution_invocations",
+        "control_plane_kit_operations.ingress_authorities",
+        "control_plane_kit_operations.ingress_invocations",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.ingress_authority_store",
+        "control_plane_kit_operations.postgres.ingress_invocation_store",
+        "control_plane_kit_operations.postgres.temporal",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.read_services.errors",
+        "control_plane_kit_operations.read_services.operations_history",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "tests/test_postgres_ingress_invocations.py",
+        "tests/test_postgres_ingress_invocation_admission.py"
+      ],
+      "motivation": "Bounded ingress unit admission, immutable facts and coherent public history; provider effects remain in interpreters."
+    },
+    {
       "module": "control_plane_kit_operations.runtime_effect_origins",
       "destination": "control_plane_kit_operations.runtime_effect_origins",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effect_origins.py",

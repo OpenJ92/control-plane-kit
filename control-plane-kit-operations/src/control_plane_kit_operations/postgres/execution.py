@@ -1796,6 +1796,9 @@ def _require_invocation_owners(store, record, *, fresh=False):
     from .effect_attempt_store import EffectAttemptStore
     from .secret_provider_store import SecretUseAuthorizationStore
     try:
+        from .ingress_invocation_store import require_ingress_invocation_owner
+        if require_ingress_invocation_owner(store._connection, record, fresh=fresh):
+            return
         parent = store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
         if (parent is None or parent.intent_fingerprint != record.command.intent_fingerprint
                 or parent.managed_intent is None or parent.managed_intent.workspace_id != record.workspace_id

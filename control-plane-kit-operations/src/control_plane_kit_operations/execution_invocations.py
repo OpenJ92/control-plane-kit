@@ -49,6 +49,10 @@ class ExecutionInvocationKind(StrEnum):
     RECONCILIATION_OBSERVATION = "reconciliation-observation"
     ORDINARY_VERIFICATION_ACQUISITION = "ordinary-verification-acquisition"
     ORDINARY_VERIFICATION_CHECK = "ordinary-verification-check"
+    INGRESS_PROVIDER_CREATE = "ingress-provider-create"
+    INGRESS_CUSTODY_WRITE = "ingress-custody-write"
+    INGRESS_CUSTODY_REVOKE = "ingress-custody-revoke"
+    INGRESS_PROVIDER_REMOVE = "ingress-provider-remove"
 
 
 class ExecutionInvocationDisposition(StrEnum):
@@ -173,6 +177,10 @@ class ExecutionInvocationRecord:
         else:
             _require(self.runtime_registration_id is None)
         correlation = (self.attempt, self.original_event_id, self.request_fingerprint)
+        if self.kind in (ExecutionInvocationKind.INGRESS_PROVIDER_CREATE,
+                ExecutionInvocationKind.INGRESS_CUSTODY_WRITE, ExecutionInvocationKind.INGRESS_CUSTODY_REVOKE,
+                ExecutionInvocationKind.INGRESS_PROVIDER_REMOVE):
+            _require(all(value is None for value in correlation))
         _require(all(value is None for value in correlation) or (
             type(self.attempt) is int and 1 <= self.attempt <= 2147483647
             and _text(self.original_event_id) and _sha(self.request_fingerprint)))

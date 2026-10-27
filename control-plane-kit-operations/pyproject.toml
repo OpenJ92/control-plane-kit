@@ -32,4 +32,4 @@ where = ["src"]
 include = ["control_plane_kit_operations*"]
 
 [tool.setuptools.package-data]
-control_plane_kit_operations = ["postgres/current_schema.sql", "postgres/workspace_permission_schema.sql", "postgres/managed_runtime_assignment_schema.sql", "postgres/execution_invocation_schema.sql", "postgres/runtime_effect_origin_schema.sql"]
+control_plane_kit_operations = ["postgres/current_schema.sql", "postgres/workspace_permission_schema.sql", "postgres/managed_runtime_assignment_schema.sql", "postgres/execution_invocation_schema.sql", "postgres/runtime_effect_origin_schema.sql", "postgres/ingress_invocation_schema.sql"]

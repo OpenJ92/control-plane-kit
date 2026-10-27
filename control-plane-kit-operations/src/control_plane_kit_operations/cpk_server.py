@@ -552,6 +552,13 @@ class CpkServerReadService:
             except ReadPageError:
                 raise CpkServerApplicationError(400, "draft read identity is malformed") from None
             _draft_revision(read_arguments)
+        if request.route_id == "read.run-events":
+            try:
+                with self._unit_of_work_factory().run_events_snapshot() as snapshot:
+                    return snapshot.run_events(page_request).descriptor()
+            except (ReadModelError, ReadPageError) as error:
+                status = 400 if isinstance(error, ReadPageError) else _read_error_status(error)
+                raise CpkServerApplicationError(status, str(error)) from None
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {

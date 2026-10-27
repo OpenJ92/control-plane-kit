@@ -98,6 +98,19 @@ class IngressProviderInterpreter(Protocol):
 
 
 @dataclass(frozen=True)
+class IngressProviderRegistration:
+    """Trusted composition assertion, qualified by the owning adapter suite."""
+
+    adapter: IngressProviderInterpreter
+    invocation_profile: str
+
+    def __post_init__(self):
+        if (type(self.invocation_profile) is not str or self.invocation_profile != "cpk.ingress-invocations.v1"
+                or not hasattr(self.adapter, "create") or not hasattr(self.adapter, "teardown")):
+            raise InvalidOperationCommand("ingress invocation composition is invalid")
+
+
+@dataclass(frozen=True)
 class IngressRealizationAdapter:
     """Activity adapter for named public ingress effects."""
 
@@ -105,6 +118,7 @@ class IngressRealizationAdapter:
     interpreters: Mapping[IngressAuthorityProviderKind, IngressProviderInterpreter]
     clock: Any
     secret_use_authorizer: SecretUseResolutionAuthorizer | None = None
+    invocation_service: Any = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.interpreters, Mapping):
@@ -115,8 +129,12 @@ class IngressRealizationAdapter:
                 raise InvalidOperationCommand(
                     "ingress interpreter keys must be provider kinds"
                 )
-            if not hasattr(interpreter, "create") or not hasattr(
-                interpreter,
+            selected = interpreter
+            if type(interpreter) is IngressProviderRegistration:
+                interpreter.__post_init__()
+                selected = interpreter.adapter
+            if not hasattr(selected, "create") or not hasattr(
+                selected,
                 "teardown",
             ):
                 raise InvalidOperationCommand(
@@ -156,6 +174,71 @@ class IngressRealizationAdapter:
                 ),
             )
         )
+
+    def execute_ingress(self, context, *, command_context):
+        """Explicit dynamic path; legacy allocation compensation stays separate."""
+        from control_plane_kit_operations.ingress_invocation_service import IngressInvocationService
+        from control_plane_kit_operations.execution_invocations import (
+            ExecutionInvocationControlError, ExecutionInvocationDenied,
+        )
+        if type(self.invocation_service) is not IngressInvocationService:
+            return _unsupported(context, "ingress.admission-owner-missing",
+                "dynamic ingress requires its invocation admission owner")
+        operation = context.activity.operation
+        if type(operation) not in (AllocatePublicIngress, RemovePublicIngress):
+            return _unsupported(context, "ingress.operation-unsupported", "unsupported ingress operation")
+        try:
+            allocating = type(operation) is AllocatePublicIngress
+            graph = DEFAULT_GRAPH_CODEC.decode((context.desired_graph if allocating else context.base_graph).graph_descriptor)
+            ingress = _ingress_by_id(graph, operation.target.ingress_id)
+            authority = self._active_authority(context, ingress)
+            registration = self.interpreters.get(authority.provider_kind)
+            if type(registration) is not IngressProviderRegistration:
+                return _unsupported(context, "ingress.invocation-provider-unqualified",
+                    "dynamic ingress requires an explicitly qualified provider adapter")
+            registration.__post_init__()
+            interpreter = registration.adapter
+            resource, generated_secret = None, None
+            if not allocating:
+                with self.unit_of_work_factory() as uow:
+                    resource = uow.stores.ingress_resources.require_active_cloudflare(
+                        context.request.identity.workspace_id, ingress.ingress_id)
+                    plan = cloudflare_ingress_teardown_plan(authority=authority.authority, resource=resource)
+                    if tuple(action.kind for action in plan.actions) == (
+                            CloudflareIngressTeardownActionKind.SKIP_RETAINED_OR_EXTERNAL,):
+                        return ActivityExecutionOutcome.succeeded(BoundedEvidence.from_mapping(plan.descriptor()))
+                    generated_secret = uow.stores.generated_ingress_secrets.get_by_source(
+                        workspace_id=resource.workspace_id, purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                        source_run_id=resource.source_run_id, source_activity_id=resource.source_activity_id,
+                        source_event_id=resource.source_event_id)
+            grant = self._authorize_api_token(context, authority.authority)
+            custody = (self._generated_secret_custody_grant(context, authority.authority) if allocating
+                else self._secret_custody_grant(context, authority.authority, generated_secret.secret_ref))
+            bound = self.invocation_service.bind(command_context=command_context, realization=context,
+                ingress=ingress, authority=authority, resolution_grant=grant, custody_grant=custody,
+                original_resource=resource, original_secret=generated_secret)
+            if allocating:
+                interpreter.create(ingress, authority=authority.authority,
+                    allocation_name=_allocation_name(context, ingress), origin_service_url=_origin_service_url(graph, ingress),
+                    secret_resolution_grant=grant, secret_custody_grant=custody, invocations=bound)
+            else:
+                interpreter.teardown(authority=authority.authority, resources=resource,
+                    secret_resolution_grant=grant, secret_custody_grant=custody, invocations=bound)
+            # A returned provider object is not durable success. The owner fold
+            # requires the acknowledged closed records for all reached units.
+            resource = self.invocation_service.fold(bound)
+            return ActivityExecutionOutcome.succeeded(BoundedEvidence.from_mapping(dict(
+                provider_kind=authority.provider_kind.value, ingress_id=ingress.ingress_id,
+                runtime_id=resource.runtime_id, hostname=ingress.hostname, tunnel_id=resource.tunnel_id,
+                dns_record_id=resource.dns_record_id, lifecycle=ingress.lifecycle.value)))
+        except ExecutionInvocationDenied:
+            return _unsupported(context, "ingress.authorization-denied", "current ingress unit permission was denied")
+        except ExecutionInvocationControlError:
+            return _uncertain("ingress.invocation-uncertain", "InvocationControl")
+        except Exception:
+            # No fresh authority is inferred for cleanup, even after an apparently
+            # successful provider return or a failed final owner commit.
+            return _uncertain("ingress.invocation-uncertain", "IngressOutcomeUnknown")
 
     def _allocate(
         self,
@@ -437,7 +520,7 @@ class IngressRealizationAdapter:
             raise InvalidOperationCommand(
                 f"no ingress interpreter is configured for {provider_kind.value!r}"
             )
-        return interpreter
+        return interpreter.adapter if type(interpreter) is IngressProviderRegistration else interpreter
 
     def _authorize_api_token(
         self,
