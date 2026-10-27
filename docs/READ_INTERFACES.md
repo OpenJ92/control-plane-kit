@@ -62,18 +62,18 @@ transport. Those prerequisites remain separate owner actions.
 
 Arguments are closed and acting identity never comes from payload. The adapter
 validates public input before owner invocation, passes page limits 1..10
-(default10) to the owner and returns its descriptors/cursors unchanged. Cursors
+(default 10) to the owner and returns its descriptors/cursors unchanged. Cursors
 remain bound to installation, workspace and their exact target. A page is an
 independent owner read, not a cross-request snapshot. Creation returns its
 historical administration receipt on replay. Ordinary legacy workspace creation
 retains its separate response in static mode.
 
-Malformed input is400, administrative denial403, typed missing requested
-resource404 and typed revision/idempotent-intent conflict409. Unclassified
-owner/store failure is a fixed, redacted503. An inconsistent persisted receipt
+Malformed input is 400, administrative denial 403, typed missing requested
+resource 404 and typed revision/idempotent-intent conflict 409. Unclassified
+owner/store failure is a fixed, redacted 503. An inconsistent persisted receipt
 is not a caller conflict, and an unavailable outcome does not promise rollback,
-transience or safe retry. The Core route budgets are64KiB for input and single
-results, and1MiB for pages. Existing owner value domains still apply: workspace
+transience or safe retry. The Core route budgets are 64 KiB for input and single
+results, and 1 MiB for pages. Existing owner value domains still apply: workspace
 record identifiers/names and graph actor subjects reject control characters;
 permission identity fields have their own bounds.
 
