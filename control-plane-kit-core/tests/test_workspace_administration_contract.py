@@ -6,7 +6,8 @@ from control_plane_kit_core.operations import (
     ApplicationServiceBinding, ApprovalPolicy, ControlPlaneServiceRole,
     DeploymentProgramBoundary, ExternalEffectPolicy, HttpApiContract, HttpApiRouteContract,
     HttpAuthScope, HttpMethod, HttpOperationSafety, InvalidAdapterParityContract,
-    InvalidHttpApiContract, McpStreamableHttpContract,
+    InvalidHttpApiContract, InvalidReadProjectionContract, McpStreamableHttpContract,
+    ReadProjectionContract, ReadProjectionPolicy, canonical_operator_read_projection_set,
     ServiceTransactionBoundary, StoreParticipation, UnitOfWorkBoundary,
     operator_adapter_security_parity, operator_command_http_routes, operator_command_parity,
     operator_read_http_routes, operator_read_projection_parity,
@@ -126,6 +127,28 @@ class WorkspaceAdministrationContractTests(unittest.TestCase):
             with self.subTest(role=role, scope=scope):
                 with self.assertRaises(InvalidHttpApiContract):
                     replace(route, service_role=role, auth_scope=scope)
+
+    def test_canonical_administration_projections_preserve_workspace_target_and_policy(self):
+        projections = canonical_operator_read_projection_set()
+        administrative = tuple(value for value in projections.projections
+            if value.service_role is ControlPlaneServiceRole.AUTHORIZATION)
+        self.assertEqual({value.operation_id for value in administrative},
+            {"read." + name for name, *_ in READS})
+        for name, _, _, schema in READS:
+            with self.subTest(projection=name):
+                value = projections.projection("read." + name)
+                self.assertEqual((value.kind.value, value.response_schema), (name, schema))
+                self.assertIs(value.policy, ReadProjectionPolicy.AUTHORIZED_WORKSPACE_ADMINISTRATION)
+                self.assertIs(value.auth_scope, HttpAuthScope.ADMIN)
+                self.assertIs(value.safety, HttpOperationSafety.READ_ONLY)
+                self.assertTrue(value.requires_workspace_scope)
+                paged = schema.endswith("Page")
+                self.assertEqual((value.paged, value.max_page_size), (paged, 10 if paged else None))
+                self.assertEqual(ReadProjectionContract.from_descriptor(value.descriptor()), value)
+                with self.assertRaises(InvalidReadProjectionContract):
+                    replace(value, auth_scope=HttpAuthScope.READ)
+                with self.assertRaises(InvalidReadProjectionContract):
+                    replace(value, service_role=ControlPlaneServiceRole.READS)
 
 
 if __name__ == "__main__":
