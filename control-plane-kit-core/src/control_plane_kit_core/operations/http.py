@@ -158,10 +158,13 @@ class HttpApiRouteContract:
         if self.safety is HttpOperationSafety.READ_ONLY:
             if self.method is not HttpMethod.GET:
                 raise InvalidHttpApiContract("read-only routes must use GET")
-            if self.service_role is not ControlPlaneServiceRole.READS:
-                raise InvalidHttpApiContract("read-only routes must use reads service")
-            if self.auth_scope is not HttpAuthScope.READ:
-                raise InvalidHttpApiContract("read-only routes require read scope")
+            if (self.service_role, self.auth_scope) not in {
+                (ControlPlaneServiceRole.READS, HttpAuthScope.READ),
+                (ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN),
+            }:
+                raise InvalidHttpApiContract(
+                    "read-only routes require reads/read or authorization/admin"
+                )
         elif self.safety is HttpOperationSafety.COMMAND:
             if self.method is HttpMethod.GET:
                 raise InvalidHttpApiContract("command routes must not use GET")
@@ -509,6 +512,23 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "SecretReferenceDetailReadResponse",
             ),
         )
+    ) + tuple(
+        HttpApiRouteContract(
+            route_id=route_id, method=HttpMethod.GET, path_template=path,
+            service_role=ControlPlaneServiceRole.AUTHORIZATION,
+            auth_scope=HttpAuthScope.ADMIN, safety=HttpOperationSafety.READ_ONLY,
+            request_schema=HttpSchemaRef("WorkspaceAdministrationReadRequest"),
+            response_schema=HttpSchemaRef(schema, max_bytes=1048576 if schema.endswith("Page") else 65536),
+            errors=HttpErrorContract(statuses=(400, 401, 403, 404, 409, 413, 503)),
+        )
+        for route_id, path, schema in (
+            ("read.workspace-permissions", "/workspaces/{workspace_id}/permissions", "WorkspacePermissionPage"),
+            ("read.workspace-permission", "/workspaces/{workspace_id}/permissions/inspect", "WorkspacePermissionRecord"),
+            ("read.workspace-permission-history", "/workspaces/{workspace_id}/permissions/history", "WorkspacePermissionPage"),
+            ("read.managed-runtime-assignments", "/workspaces/{workspace_id}/runtime-management", "ManagedRuntimeAssignmentPage"),
+            ("read.managed-runtime-assignment", "/workspaces/{workspace_id}/runtime-management/inspect", "ManagedRuntimeAssignment"),
+            ("read.managed-runtime-assignment-history", "/workspaces/{workspace_id}/runtime-management/history", "ManagedRuntimeAssignmentPage"),
+        )
     )
 
 
@@ -534,6 +554,21 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
             request_schema,
             response_schema,
         ) in (
+            ("command.workspace-administration.create", "/administration/workspaces",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "CreateWorkspaceAsAdministratorRequest", "WorkspaceAdministrationResult"),
+            ("command.workspace-permission.grant", "/workspaces/{workspace_id}/permissions/grant",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "GrantWorkspacePermissionsRequest", "WorkspacePermissionResult"),
+            ("command.workspace-permission.revoke", "/workspaces/{workspace_id}/permissions/revoke",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "RevokeWorkspacePermissionsRequest", "WorkspacePermissionResult"),
+            ("command.managed-runtime-access.grant", "/workspaces/{workspace_id}/runtime-management/grant",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "GrantManagedRuntimeAccessRequest", "ManagedRuntimeAssignmentResult"),
+            ("command.managed-runtime-access.revoke", "/workspaces/{workspace_id}/runtime-management/revoke",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "RevokeManagedRuntimeAccessRequest", "ManagedRuntimeAssignmentResult"),
             (
                 "command.delegation-key.register",
                 "/workspaces/{workspace_id}/delegation-keys",
@@ -943,6 +978,8 @@ def _command_route(
         request_schema=HttpSchemaRef(request_schema, max_bytes=98304
             if route_id == "command.secret-material.provision" else 65536),
         response_schema=HttpSchemaRef(response_schema),
+        errors=HttpErrorContract(statuses=(400, 401, 403, 404, 409, 413, 503))
+        if service_role is ControlPlaneServiceRole.AUTHORIZATION else HttpErrorContract(),
     )
 
 

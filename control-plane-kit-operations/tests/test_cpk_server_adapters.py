@@ -866,10 +866,13 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
-    def test_every_public_route_has_an_explicit_authorization_policy(self) -> None:
+    def test_every_ordinary_public_route_has_an_explicit_authorization_policy(self) -> None:
         route_ids = {
             route.route_id
             for route in operator_read_http_routes() + operator_command_http_routes()
+            # Administration routes use WorkspaceAdministrationPolicy instead
+            # of deriving authority from ordinary workspace scope grants.
+            if route.service_role is not ControlPlaneServiceRole.AUTHORIZATION
         }
 
         self.assertEqual(set(_ROUTE_AUTHORIZATION_POLICIES), route_ids)

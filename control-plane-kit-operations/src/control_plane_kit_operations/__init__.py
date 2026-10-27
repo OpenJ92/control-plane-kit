@@ -22,6 +22,7 @@ from .managed_runtime_assignments import (
     ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
     RevokeManagedRuntimeAccess, ManagedRuntimeAssignment, ManagedRuntimeAssignmentStatus,
     ManagedRuntimeAssignmentReceipt, ManagedRuntimeAssignmentResult, ManagedRuntimeAssignmentError,
+    ManagedRuntimeAssignmentNotFound, ManagedRuntimeAssignmentConflict,
     ManagedRuntimeAssignmentCommandService, ManagedRuntimeAssignmentReadService,
     ManagedRuntimeAssignmentPage, ManagedRuntimeAssignmentListCursor, ManagedRuntimeAssignmentHistoryCursor,
     ManagedRuntimeSelection, ManagedRuntimeSelectionService, select_managed_runtime_assignment,
@@ -205,6 +206,7 @@ from .cpk_server import (
     CpkServerReadService,
     CpkServerRouteRequest,
     CpkServerUnsupportedService,
+    CpkServerWorkspaceAdministrationService,
     cpk_server_services,
 )
 from .gateway_probes import (
@@ -723,6 +725,7 @@ __all__ = [
     "ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess",
     "RevokeManagedRuntimeAccess", "ManagedRuntimeAssignment", "ManagedRuntimeAssignmentStatus",
     "ManagedRuntimeAssignmentReceipt", "ManagedRuntimeAssignmentResult", "ManagedRuntimeAssignmentError",
+    "ManagedRuntimeAssignmentNotFound", "ManagedRuntimeAssignmentConflict",
     "ManagedRuntimeAssignmentCommandService", "ManagedRuntimeAssignmentReadService",
     "ManagedRuntimeAssignmentPage", "ManagedRuntimeAssignmentListCursor", "ManagedRuntimeAssignmentHistoryCursor",
     "ManagedRuntimeSelection", "ManagedRuntimeSelectionService", "select_managed_runtime_assignment",
@@ -1002,6 +1005,7 @@ __all__ = [
     "CpkServerReadService",
     "CpkServerRouteRequest",
     "CpkServerUnsupportedService",
+    "CpkServerWorkspaceAdministrationService",
     "ExecuteActivityRun",
     "ExecuteManagedActivityRun",
     "ReobserveConnectorConnection",

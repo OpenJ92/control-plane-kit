@@ -27,6 +27,7 @@ class AdapterParityContractTests(unittest.TestCase):
                     binding.projection_schema,
                 )
                 for binding in parity.projections
+                if binding.service_role is ControlPlaneServiceRole.READS
             ],
             [
                 (
@@ -275,7 +276,7 @@ class AdapterParityContractTests(unittest.TestCase):
         )
         self.assertEqual(
             {binding.service_role for binding in parity.projections},
-            {ControlPlaneServiceRole.READS},
+            {ControlPlaneServiceRole.READS, ControlPlaneServiceRole.AUTHORIZATION},
         )
 
     def test_parity_descriptor_is_closed_and_round_trips(self) -> None:

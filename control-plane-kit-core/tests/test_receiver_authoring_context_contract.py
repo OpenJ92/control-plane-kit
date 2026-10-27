@@ -34,5 +34,6 @@ class ReceiverAuthoringContextContractTests(unittest.TestCase):
             [(route.route_id, "get_receiver_authoring_context", "ReceiverAuthoringContextReadResponse")])
         # The new query override must not silently alter existing GET schemas.
         for other in routes:
-            if other.route_id != route.route_id:
+            if (other.route_id != route.route_id
+                    and other.service_role is ControlPlaneServiceRole.READS):
                 self.assertEqual(other.request_schema, HttpSchemaRef("EmptyRequest", max_bytes=1024))

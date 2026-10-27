@@ -41,8 +41,6 @@ def _program() -> DeploymentProgramBoundary:
 def _transaction_rule(role: ControlPlaneServiceRole) -> ServiceTransactionBoundary:
     if role is ControlPlaneServiceRole.READS:
         return ServiceTransactionBoundary(role, StoreParticipation.READ_ONLY)
-    if role is ControlPlaneServiceRole.AUTHORIZATION:
-        return ServiceTransactionBoundary(role, StoreParticipation.NONE)
     if role is ControlPlaneServiceRole.EXECUTION:
         return ServiceTransactionBoundary(
             role,
@@ -83,7 +81,9 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
     def test_security_parity_covers_read_and_command_operations(self) -> None:
         parity = _security_parity()
 
-        self.assertEqual(len(parity.operations), 81)
+        self.assertEqual({item.http_route_id for item in parity.operations},
+            {route.route_id for route in operator_read_http_routes() + operator_command_http_routes()
+             if route.route_id != "command.secret-material.provision"})
         authoring = parity.operation("read.receiver-authoring-context")
         self.assertEqual(authoring.auth_scope, HttpAuthScope.READ)
         self.assertEqual(authoring.safety, HttpOperationSafety.READ_ONLY)

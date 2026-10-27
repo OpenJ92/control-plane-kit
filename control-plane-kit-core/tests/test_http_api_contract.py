@@ -32,7 +32,8 @@ class HttpApiContractTests(unittest.TestCase):
         self.assertEqual(HttpApiRouteContract.from_descriptor(route.descriptor()), route)
 
     def test_operator_read_routes_preserve_frozen_route_inventory(self) -> None:
-        contract = HttpApiContract(operator_read_http_routes())
+        contract = HttpApiContract(tuple(route for route in operator_read_http_routes()
+            if route.service_role is ControlPlaneServiceRole.READS))
 
         self.assertEqual(
             [(route.method.value, route.path_template) for route in contract.routes],
@@ -180,6 +181,9 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/observed-state",
                 "/workspaces/{workspace_id}/operator-graph",
                 "/workspaces/{workspace_id}/overview",
+                "/workspaces/{workspace_id}/permissions",
+                "/workspaces/{workspace_id}/permissions/history",
+                "/workspaces/{workspace_id}/permissions/inspect",
                 "/workspaces/{workspace_id}/plans/{plan_id}",
                 "/workspaces/{workspace_id}/plans/{plan_id}/runs",
                 "/workspaces/{workspace_id}/receiver-authoring-context",
@@ -188,6 +192,9 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}",
                 "/workspaces/{workspace_id}/runtime-authority-deliveries",
                 "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
+                "/workspaces/{workspace_id}/runtime-management",
+                "/workspaces/{workspace_id}/runtime-management/history",
+                "/workspaces/{workspace_id}/runtime-management/inspect",
                 "/workspaces/{workspace_id}/secret-material-provisions/{request_id}",
                 "/workspaces/{workspace_id}/secret-providers",
                 "/workspaces/{workspace_id}/secret-providers/{provider_id}",

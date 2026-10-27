@@ -28,7 +28,8 @@ runtime authority, delivery, ingress authority, secret-provider, and
 secret-reference metadata. `gateway_security` owns gateway probes, delegation
 signing-key inventory, and verifier configuration.
 
-`InstanceReadService` is the single public composition facade. Its methods make
+`InstanceReadService` is the public composition facade for these ordinary
+projections. Its methods make
 explicit one-hop calls to those owners; it does not implement projection
 behavior, dispatch through reflection, or provide an alternate read API.
 
@@ -39,6 +40,65 @@ The law is:
 ```text
 interfaces expose the model; they do not define the model
 ```
+
+## Workspace Administration And Current Request Authority
+
+The Core HTTP/MCP contract also declares six workspace-local administration
+reads: permission list, exact permission, permission history, managed-runtime
+assignment list, exact assignment, and assignment history. They use the
+AUTHORIZATION service role and ADMIN transport metadata. The canonical read
+projection policy is `authorized-workspace-administration`; read-only safety
+still applies. `requires_workspace_scope=True` constrains the target workspace,
+not ordinary membership. The explicit `WorkspaceAdministrationPolicy` decides
+administrator authority from the verified full principal identity.
+
+`CpkServerWorkspaceAdministrationService` composes the existing workspace,
+permission and managed-runtime command/read owners. Supply it as
+`workspace_administration` to `cpk_server_services`. It serves those six reads
+and the five corresponding commands: administrator workspace creation,
+permission grant/revoke and managed-runtime access grant/revoke. It does not
+initialize an installation, seed policy, register a runtime or configure a
+transport. Those prerequisites remain separate owner actions.
+
+Arguments are closed and acting identity never comes from payload. The adapter
+validates public input before owner invocation, passes page limits 1..10
+(default 10) to the owner and returns its descriptors/cursors unchanged. Cursors
+remain bound to installation, workspace and their exact target. A page is an
+independent owner read, not a cross-request snapshot. Creation returns its
+historical administration receipt on replay. Ordinary legacy workspace creation
+retains its separate response in static mode.
+
+Malformed input is 400, administrative denial 403, typed missing requested
+resource 404 and typed revision/idempotent-intent conflict 409. Unclassified
+owner/store failure is a fixed, redacted 503. An inconsistent persisted receipt
+is not a caller conflict, and an unavailable outcome does not promise rollback,
+transience or safe retry. The Core route budgets are 64 KiB for input and single
+results, and 1 MiB for pages. Existing owner value domains still apply: workspace
+record identifiers/names and graph actor subjects reject control characters;
+permission identity fields have their own bounds.
+
+To use durable current permissions, construct `CpkServerOperationsApplication`
+with `authority_mode="dynamic"` and an installation-bound
+`workspace_context_resolver=WorkspaceContextResolver(...)`. The shared public
+sync/async entrance resolves each ordinary request once from its verified
+principal and bounded workspace target. It retains that admitted context during
+internal dispatch; later owner authorization may narrow it. A new public request
+resolves again, even if a previous internal request carrier is resubmitted.
+Grant changes cannot expand a request already admitted. Resolver failure has no
+startup-grant fallback.
+
+Exact administration routes instead invoke their separate administrator policy;
+dynamic mode refuses the legacy workspace-create entrance. Confidential material
+provisioning keeps its existing HTTP-only, authority and service checks before
+body access. Its material is deferred to that existing owner, never copied by
+generic request preparation or written into history.
+
+The default authority mode remains static for existing compositions. Dynamic
+mode requires a resolver; static mode rejects an accidentally supplied resolver.
+Server composition must preserve the configured application, rather than
+reconstructing one from only `.services`. These Core/Operations contracts do not
+by themselves prove Servers adoption, credential verification, raw query parsing,
+deployment or provider behavior; those are separate composition and live gates.
 
 ## Read Models
 

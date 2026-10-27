@@ -133,6 +133,41 @@ class PostgresCoordinatorPermissionTests(
         self.assertIs(receipt.status, ExecutionCommandReceiptStatus.COMPLETED)
         self.assertEqual(receipt.managed_intent.actor, self.member)
 
+    def test_dynamic_application_retains_initial_scope_ceiling_through_actual_async_execution(self):
+        from control_plane_kit_core.operations import ControlPlaneServiceRole
+        from tests.test_postgres_application_initial_context import Request, CountingResolver
+        owner, adapter, command = self.composition()
+        self.assertIsNone(self.receipt(command.execution))
+        self.permissions.revoke(operations.RevokeWorkspacePermissions(self.admin_context,
+            "workspace-a", self.member, (PolicyScope.PLAN_APPROVE,), 1, IdempotencyKey("drop-approve")))
+        resolver = CountingResolver(self.unit_of_work, installation=self.installation)
+        class GrantAfterAdmission(operations.CpkServerExecutionService):
+            async def handle_async(inner_self, request):
+                self.assertEqual(len(resolver.calls), 1)
+                self.permissions.grant(operations.GrantWorkspacePermissions(self.admin_context,
+                    "workspace-a", self.member, (PolicyScope.PLAN_APPROVE,), 2, IdempotencyKey("restore-approve")))
+                return await super().handle_async(request)
+        services = {role: operations.CpkServerUnsupportedService(role) for role in ControlPlaneServiceRole}
+        services[ControlPlaneServiceRole.EXECUTION] = GrantAfterAdmission(owner)
+        app = operations.CpkServerOperationsApplication(services, authority_mode="dynamic",
+            workspace_context_resolver=resolver)
+        request = Request("http", "command.deployment.execute", ControlPlaneServiceRole.EXECUTION,
+            {"workspace_id": "workspace-a", "run_id": command.execution.run_id},
+            {"idempotency_key": command.execution.idempotency_key.value,
+             "claim_generation": command.execution.fence.generation,
+             "max_effects": command.execution.max_effects}, AuthenticatedPrincipal(self.member))
+        result = asyncio.run(app.handle_async(request))
+        self.assertEqual((result["effects_attempted"], result["coordinator_status"]), (1, "completed"))
+        self.assertEqual(len(adapter.runtime_calls), 1)
+        self.assertEqual(resolver.calls, [(request.principal, "workspace-a")])
+        receipt = self.receipt(command.execution)
+        self.assertIs(receipt.status, ExecutionCommandReceiptStatus.COMPLETED)
+        self.assertEqual(receipt.managed_intent.actor, self.member)
+        self.assertEqual(set(receipt.managed_intent.actor_scopes), set(PolicyScope) - {PolicyScope.PLAN_APPROVE})
+        current = operations.WorkspaceContextResolver(self.unit_of_work,
+            installation_id=self.installation).resolve(request.principal, "workspace-a")
+        self.assertIn(PolicyScope.PLAN_APPROVE, current.granted_scopes)
+
     def test_revoke_before_start_is_durable_denial_and_exact_replay_after_regrant(self):
         owner, adapter, command = self.composition()
         before = self.attempt_snapshot()

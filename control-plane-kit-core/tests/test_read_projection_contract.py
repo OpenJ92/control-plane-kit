@@ -113,6 +113,8 @@ class ReadProjectionContractTests(unittest.TestCase):
 
     def test_canonical_projection_set_is_closed_bounded_and_read_only(self) -> None:
         projections = canonical_operator_read_projection_set()
+        ordinary = tuple(projection for projection in projections.projections
+            if projection.service_role is ControlPlaneServiceRole.READS)
         history_attempts = getattr(ReadProjectionKind, "DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS", None)
         history_preparations = getattr(ReadProjectionKind, "DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS", None)
         self.assertIsNotNone(history_attempts, "missing revision history attempts projection")
@@ -128,7 +130,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     projection.requires_workspace_scope,
                     projection.paged,
                 )
-                for projection in projections.projections
+                for projection in ordinary
             ],
             [
                 (
@@ -461,13 +463,13 @@ class ReadProjectionContractTests(unittest.TestCase):
         self.assertTrue(
             all(
                 projection.service_role is ControlPlaneServiceRole.READS
-                for projection in projections.projections
+                for projection in ordinary
             )
         )
         self.assertTrue(
             all(
                 projection.auth_scope is HttpAuthScope.READ
-                for projection in projections.projections
+                for projection in ordinary
             )
         )
         self.assertTrue(
