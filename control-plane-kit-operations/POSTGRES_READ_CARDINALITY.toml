@@ -643,3 +643,157 @@ category = "exact-verifier"
 sql = "strict (run_id,activity_id,attempt) keyset ordered page; LIMIT 32; current-data validation visits every retained completion identity"
 consumer_kind = "production"
 consumer = "Current schema admission validates each retained completion through ConfigurationCompletionStore.get without backfill or repair"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.original_final_invocation"
+category = "fixed-cardinality"
+sql = "Exact run/activity/attempt/kind; LIMIT 2 detects ambiguous original markers"
+consumer_kind = "production"
+consumer = "Coordinator, reconciliation and invocation validation require one congruent original final marker; no page or replay authority"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.command_invocations"
+category = "fixed-cardinality"
+sql = "Exact command; invocation_id keyset/order; validated limit 1..100 plus overflow witness, at most 101 rows"
+consumer_kind = "test-only"
+consumer = "Execution invocation storage and health marker/service tests consume this bounded internal page, not a deployed public route"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.ordinary_verification_invocations"
+category = "closed-finite"
+sql = "Exact command/activity/attempt and three allowed kinds; invocation_id COLLATE C order; LIMIT family_bound+1 with overflow refusal; family bound at most 204 from 100 checks plus connection and credential roles"
+consumer_kind = "production"
+consumer = "ExecutionInvocationService._ordinary_history validates the complete finite per-check family and refuses an active configuration ledger"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "_require_invocation_owners"
+category = "fixed-cardinality"
+sql = "Exact attempt ordinary-acquisition uniqueness query; LIMIT 2 detects ambiguous parent"
+consumer_kind = "production"
+consumer = "Shared invocation owner validation verifies the unique original acquisition before accepting check history"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "validate_execution_invocation_rows"
+category = "exact-verifier"
+sql = "Invocation-id keyset pages of 100; bounded projection; visits every retained invocation"
+consumer_kind = "production"
+consumer = "Current schema and retained upgrade validation reconstruct descriptors and verify all original owners without dispatch"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.ingress_authority_store"
+selector = "IngressResourceStore._update_cloudflare_status"
+category = "fixed-cardinality"
+sql = "UPDATE RETURNING epoch under exact workspace/ingress/epoch primary-key CAS and original status/source predicates; zero or one row"
+consumer_kind = "production"
+consumer = "Ingress realization and invocation fold require exact acknowledgement and resource readback; this fetchall consumes bounded mutation output"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.ingress_invocation_store"
+selector = "bounded_rows"
+category = "fixed-cardinality"
+sql = "Private transport uses SQL CASE validity/size guards and caller-declared LIMIT: exact owner 2, unit/result overflow 4/3, verifier pages 100, validated run-event page limit+1"
+consumer_kind = "production"
+consumer = "IngressInvocationStore exact owners/results, validate_ingress_invocation_rows keyset traversal and RunEventsSnapshot public pages share bounded transport; not every use is a singleton or verifier"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_effect_origin_store"
+selector = "RuntimeEffectOriginStore.get"
+category = "fixed-cardinality"
+sql = "Exact run/activity/attempt; LIMIT 2 rejects ambiguous original origin"
+consumer_kind = "production"
+consumer = "Coordinator and original observation source retrieve immutable registered selection with exact owner validation"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_effect_origin_store"
+selector = "RuntimeEffectOriginStore._require_owners"
+category = "fixed-cardinality"
+sql = "Exact original attempt marker exclusion for prepared-dispatch or ordinary-acquisition; LIMIT 1"
+consumer_kind = "production"
+consumer = "Original runtime origin validation refuses mixed prepared-marker and origin provenance"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_effect_origin_store"
+selector = "validate_runtime_effect_origin_rows"
+category = "exact-verifier"
+sql = "C-collated run_id/activity_id/attempt keyset pages of 100; full original joins"
+consumer_kind = "production"
+consumer = "Current schema and retained upgrade validation visit every immutable runtime origin without backfill"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.managed_runtime_assignment_store"
+selector = "ManagedRuntimeAssignmentStore.invalidate_authority"
+category = "internal-complete"
+sql = "All active assignments for exact revoked registration; strict four-field keyset batches of 64 FOR UPDATE until exhausted"
+consumer_kind = "production"
+consumer = "RuntimeAuthorityStore.revoke invalidates every dependent assignment and appends receipts inside the authority transaction; bounded fetches do not imply finite total assignments"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.managed_runtime_assignment_store"
+selector = "ManagedRuntimeAssignmentStore.list"
+category = "public-paged"
+sql = "Installation/workspace filter; runtime_id/authority_ref keyset and order; read-service limit at most 101"
+consumer_kind = "production"
+consumer = "ManagedRuntimeAssignmentReadService.list returns the bounded public Operations page without claiming deployed HTTP or MCP adoption"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.managed_runtime_assignment_store"
+selector = "ManagedRuntimeAssignmentStore.history"
+category = "public-paged"
+sql = "Exact assignment; revision greater than cursor, ordered ascending; read-service limit at most 101"
+consumer_kind = "production"
+consumer = "ManagedRuntimeAssignmentReadService.history projects retained management revisions through public Operations reads"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.managed_runtime_assignment_store"
+selector = "validate_managed_runtime_assignment_rows"
+occurrence = 1
+category = "exact-verifier"
+sql = "Assignment-id keyset pages of 64; installation, local registration/status and latest receipt validation"
+consumer_kind = "production"
+consumer = "Current schema and retained upgrade verification reconstruct every assignment and require latest receipt to match current revision"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.managed_runtime_assignment_store"
+selector = "validate_managed_runtime_assignment_rows"
+occurrence = 2
+category = "exact-verifier"
+sql = "Assignment_id/revision keyset pages of 64; validates every retained receipt and intent fingerprint"
+consumer_kind = "production"
+consumer = "Current schema and retained upgrade verification preserve management receipt history without reseeding"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.workspace_permission_store"
+selector = "WorkspacePermissionStore.list"
+category = "public-paged"
+sql = "Installation/workspace filter; full issuer/subject_id/kind keyset and order; read-service limit at most 101"
+consumer_kind = "production"
+consumer = "WorkspacePermissionReadService.list projects current full-identity membership through bounded public Operations reads"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.workspace_permission_store"
+selector = "WorkspacePermissionStore.history"
+category = "public-paged"
+sql = "Exact installation/workspace/full target identity; revision keyset and order; read-service limit at most 101"
+consumer_kind = "production"
+consumer = "WorkspacePermissionReadService.history projects immutable permission revisions without reapplying grants"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.workspace_permission_store"
+selector = "_batches"
+category = "exact-verifier"
+sql = "Private table-specific strict keyset pages of 64; visits all retained rows of the selected owner relation"
+consumer_kind = "production"
+consumer = "validate_workspace_permission_rows checks current permissions, permission receipts and administrative receipts; not a public paging API"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.workspace_permission_upgrade"
+selector = "_recognized_contract"
+category = "exact-verifier"
+sql = "Current-namespace pg_class relation/kind enumeration excluding indexes; ordered relname; LIMIT final relation count+1 (69)"
+consumer_kind = "production"
+consumer = "Explicit retained upgrade or authorized inspection recognizes accepted predecessor/final table set before locked exact validation; preliminary recognition alone is not acceptance"

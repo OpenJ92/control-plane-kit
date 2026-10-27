@@ -1,7 +1,12 @@
 """Prepared configuration markers share the original bounded start transaction."""
 
+import os
 import unittest
 from unittest import mock
+from uuid import uuid4
+
+import psycopg
+from psycopg.conninfo import make_conninfo
 
 import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
@@ -33,7 +38,15 @@ class PostgresWorkloadConfigurationInvocationTests(ConfigurationPreparationFixtu
             actor_scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE))
 
     def setUp(self):
-        super().setUp()
+        database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
+        owner = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(owner.close)
+        schema = "workload_configuration_" + uuid4().hex
+        owner.execute(f'CREATE SCHEMA "{schema}"')
+        self.addCleanup(owner.execute, f'DROP SCHEMA "{schema}" CASCADE')
+        scoped = make_conninfo(database_url, options=f"-c search_path={schema}")
+        with mock.patch.dict(os.environ, CPK_OPERATIONS_TEST_DATABASE_URL=scoped):
+            super().setUp()
         self.admin = PrincipalIdentity("issuer-a", "admin", PrincipalKind.OPERATOR)
         self.worker = PrincipalIdentity("issuer-a", "worker-a", PrincipalKind.WORKER)
         self.operate = PolicyScope.EXECUTION_OPERATE

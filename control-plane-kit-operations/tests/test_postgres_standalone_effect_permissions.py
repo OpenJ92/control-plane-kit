@@ -3,10 +3,15 @@
 from contextlib import contextmanager
 from dataclasses import replace
 import inspect
+import os
 import threading
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 from uuid import uuid4
+
+import psycopg
+from psycopg.conninfo import make_conninfo
 
 import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
@@ -28,9 +33,17 @@ from tests import test_secret_material_provision_commands as provision_cases
 
 class _StandalonePermissions(LifecycleLockFixture):
     def setUp(self):
+        database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
+        owner = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(owner.close)
+        schema = "standalone_permissions_" + uuid4().hex
+        owner.execute(f'CREATE SCHEMA "{schema}"')
+        self.addCleanup(owner.execute, f'DROP SCHEMA "{schema}" CASCADE')
+        scoped = make_conninfo(database_url, options=f"-c search_path={schema}")
         self.case = self.case_type()
-        self.case.setUp()
         self.addCleanup(self.case.doCleanups)
+        with mock.patch.dict(os.environ, CPK_OPERATIONS_TEST_DATABASE_URL=scoped):
+            self.case.setUp()
         fixture = self.case.fixture if self.generation else self.case.fixture.fixture
         self.connection, self.database_url = fixture.connection, fixture.database_url
         self.context = self.case.context

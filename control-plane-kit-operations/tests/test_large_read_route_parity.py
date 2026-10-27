@@ -286,9 +286,7 @@ class LargeReadRouteParityTests(unittest.TestCase):
             handles = seed_large_read_history(administration, selected_count=201)
 
             def connect():
-                connection = psycopg.connect(database_url)
-                connection.execute(f'SET search_path TO "{schema}"')
-                return connection
+                return psycopg.connect(database_url, options=f"-c search_path={schema}")
 
             _seed_catalogue_pages(connect, handles.activity_workspace_id)
             yield connect, handles

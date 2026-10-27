@@ -303,9 +303,9 @@ class PostgresConfigurationInstallationCapacityTests(unittest.TestCase):
                     "WHERE run_id='run-config'").fetchone(), (0,))
                 active["shape"] = shape
             return prepared
-        def measured_execute(service, command, health):
+        def measured_execute(service, command, health, command_context=None, managed_target=None):
             if command.request_id != "request-config":
-                return execute(service, command, health)
+                return execute(service, command, health, command_context, managed_target)
             observed = dict(bytes=0, rows=0, largest_cell=0, statements=0, queries=[],
                 accounting=_ACCOUNTING.get(), role_label=lambda sql, params: "selected-start")
             active.clear()
@@ -325,7 +325,7 @@ class PostgresConfigurationInstallationCapacityTests(unittest.TestCase):
                 # Keep an immutable value for this observer's interval; never
                 # reset or refund the actual command accounting.
                 active["entry"] = observed["accounting"].used
-                result = execute(service, command, health)
+                result = execute(service, command, health, command_context, managed_target)
                 active["used"] = observed["accounting"].used
                 traces.append(dict(active))
                 return result

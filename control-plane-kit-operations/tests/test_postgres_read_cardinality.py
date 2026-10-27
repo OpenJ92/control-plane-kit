@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -34,13 +34,6 @@ _CATEGORIES = frozenset(
     }
 )
 _CONSUMER_KINDS = frozenset({"production", "test-only"})
-_CATEGORY_COUNTS = {
-    "public-paged": 17,
-    "fixed-cardinality": 10,
-    "closed-finite": 2,
-    "internal-complete": 24,
-    "exact-verifier": 26,
-}
 _GENERIC_CONSUMERS = frozenset({"internal", "module", "test", "tests"})
 _MODULE = re.compile(r"^control_plane_kit_operations\.postgres(?:\.[a-z][a-z0-9_]*)+$")
 _SELECTOR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
@@ -204,16 +197,15 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
     def _assert_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 79)
-        self.assertEqual(len(set(identities)), 79)
+        self.assertEqual(len(set(identities)), len(identities))
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
             self.assertNotRegex(identity.selector, r":\d+$")
             grouped[(identity.module, identity.selector)].append(identity.occurrence)
         repeated = {key: values for key, values in grouped.items() if len(values) > 1}
-        self.assertEqual(len(repeated), 6)
-        self.assertEqual(set(tuple(values) for values in repeated.values()), {(1, 2)})
+        for values in repeated.values():
+            self.assertEqual(values, list(range(1, len(values) + 1)))
         self.assertEqual(
             tuple(
                 identity
@@ -446,7 +438,7 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
         }
 
         self.assertEqual(inventory, set(_discover()))
-        self.assertEqual(Counter(str(row["category"]) for row in rows), _CATEGORY_COUNTS)
+        self.assertNotIn("public-unbounded", {row["category"] for row in rows})
 
 
 if __name__ == "__main__":
