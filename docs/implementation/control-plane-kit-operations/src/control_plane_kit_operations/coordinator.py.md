@@ -237,3 +237,26 @@ original selection and fresh admission. Known unsupported observer shapes use
 the existing UNSUPPORTED result; missing/corrupt provenance is a closed conflict.
 Terminal replay remains ahead of new observer qualification. Registration is an
 authorization/history coordinate, not proof of daemon identity.
+
+## Admitted management dispatch selection (#2055)
+
+Dynamic health dispatch carries the existing immutable `ManagedRuntimeSelection`
+as an explicit keyword on both native and signed adapter calls. The coordinator
+retains the exact target validated by successful admission; a native successor
+retains its own target beside the admitted attempt. Signed dispatch uses the
+same value passed to the invocation owner. Selection identifies an installed
+capability; existing committed admission and lifecycle correlation remain the
+authority. Replay and ambiguous admission cannot manufacture another dispatch.
+
+Before dispatch, existing attempt/intent/registration checks also validate the
+selection's installation, workspace, runtime, authority incarnation and fixed
+capability membership. No current management assignment is reread at this join:
+an already-admitted A call may finish A after a regrant to B. Later signed units
+retain their existing fresh checks of the original A; a separately admitted
+native successor may select B. Static calls retain their original argument
+shape. Schema, generic start results, invocation-service accessors, client
+custody and cancellation semantics are unchanged. Servers owns pure mapping of
+the handed-off capability to its installed acquisition configuration.
+
+The new real-owner dispatch targets are causal-red at checkpoint 4929bb82.
+Implementation source/evidence review and focused green remain pending.

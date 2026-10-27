@@ -1,5 +1,6 @@
 """Exact admitted capability data at the real coordinator's adapter boundary."""
 from dataclasses import replace
+from unittest import mock
 from uuid import uuid4
 
 import control_plane_kit_operations as operations
@@ -7,7 +8,9 @@ from control_plane_kit_core.operations import EffectAttemptIdentity
 from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_request_for_intent, runtime_effect_intent_fingerprint,
 )
-from control_plane_kit_operations.coordinator import ReobserveConnectorConnection
+from control_plane_kit_operations.coordinator import (
+    ExecutionCoordinator, ExecutionCoordinatorDenied, ReobserveConnectorConnection,
+)
 from control_plane_kit_operations.runtime_authorities import RegisteredRuntimeAuthority
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.test_managed_application_chain import now
@@ -106,3 +109,40 @@ class PostgresManagedHealthDispatchBindingTests(_CoordinatorManagementPermission
         self.assertEqual(self.health.final_calls, [])
         self.assertEqual(await owner.execute_managed(command), result)
         self.assertEqual(len(self.health.managed_dispatches), 1)
+
+    async def assert_corrupt_handoff_refuses(self, corrupt):
+        owner, command, _, _ = await self.dispatch_case()
+        original = ExecutionCoordinator._managed_dispatch_authority
+        admitted_history = []
+        attempts = []
+        def corrupted(coordinator, command, attempt, runtime, **inputs):
+            admitted_history.append(self.history())
+            attempts.append(attempt)
+            inputs["managed_target"] = corrupt(inputs["managed_target"])
+            return original(coordinator, command, attempt, runtime, **inputs)
+        with mock.patch.object(ExecutionCoordinator, "_managed_dispatch_authority", corrupted):
+            with self.assertRaises(ExecutionCoordinatorDenied):
+                await owner.execute_managed(command)
+        self.assertEqual(len(admitted_history), 1)
+        self.assertEqual(self.history(), admitted_history[0])
+        with self.unit_of_work() as uow:
+            retained = uow.stores.effect_attempts.get(attempts[0].state.identity)
+        self.assertEqual(retained, attempts[0])
+        self.assertEqual(retained.state.status.value, "started")
+        self.assertEqual(self.health.managed_dispatches, [])
+        self.assertEqual(self.health.native_reads, [])
+        self.assertEqual(self.tracker.active, 0)
+
+    async def test_missing_dynamic_handoff_refuses_before_adapter(self):
+        await self.assert_corrupt_handoff_refuses(lambda target: None)
+
+    async def test_nonselection_dynamic_handoff_refuses_before_adapter(self):
+        await self.assert_corrupt_handoff_refuses(lambda target: object())
+
+    async def test_different_registration_handoff_refuses_before_adapter(self):
+        await self.assert_corrupt_handoff_refuses(lambda target: replace(target,
+            registration_id="different-registration"))
+
+    async def test_uninstalled_capability_handoff_refuses_before_adapter(self):
+        await self.assert_corrupt_handoff_refuses(lambda target: replace(target,
+            capability_id="uninstalled-capability"))
