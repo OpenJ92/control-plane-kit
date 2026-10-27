@@ -170,6 +170,7 @@ from control_plane_kit_operations.read_pages import (
     read_cursor_from_mapping,
 )
 from control_plane_kit_operations.records import (
+    WorkspaceRecord,
     ApprovalDecisionKind,
     GraphProjectionLineage,
 )
@@ -1812,6 +1813,7 @@ def _decode_administration_request(request, context):
         command, _ = _prepare_administration_command(context, workspace_id=workspace,
             name=values["name"], idempotency_key=IdempotencyKey(values["idempotency_key"]),
             metadata=values.get("metadata"))
+        WorkspaceRecord(command.workspace_id, command.name, metadata=command.metadata)
         return dict(workspace_id=command.workspace_id, name=command.name,
             idempotency_key=command.idempotency_key, metadata=command.metadata)
     args = {"workspace_id": workspace}

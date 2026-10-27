@@ -21,7 +21,7 @@ class PostgresWorkspaceAdministrationApplicationTests(unittest.TestCase):
     register = management_fixtures.PostgresManagedRuntimeAssignmentTests.register
     capability_policy = management_fixtures.PostgresManagedRuntimeAssignmentTests.capability_policy
 
-    def application(self, policy=None, *, permission_factory=None):
+    def application(self, policy=None, *, permission_factory=None, workspace_factory=None):
         adapter_type = getattr(operations, "CpkServerWorkspaceAdministrationService", None)
         self.assertIsNotNone(adapter_type, "shared workspace administration service is unavailable")
         policy = policy or self.admin_policy
@@ -29,7 +29,7 @@ class PostgresWorkspaceAdministrationApplicationTests(unittest.TestCase):
             administration_policy=policy, clock=self.clock, id_factory=lambda: uuid4().hex)
         adapter = adapter_type(
             administration_policy=policy,
-            workspaces=operations.WorkspaceCommandService(self.unit_of_work,
+            workspaces=operations.WorkspaceCommandService(workspace_factory or self.unit_of_work,
                 administration_policy=policy, clock=self.clock, id_factory=lambda: uuid4().hex),
             permission_commands=permissions,
             permission_reads=operations.WorkspacePermissionReadService(permission_factory or self.unit_of_work,
@@ -146,10 +146,14 @@ class PostgresWorkspaceAdministrationApplicationTests(unittest.TestCase):
 
     def test_closed_inputs_and_scope_bound_cursors_are_rejected(self):
         reads = []
+        creations = []
         def counted_reads():
             reads.append("read")
             return self.unit_of_work()
-        app, _ = self.application(permission_factory=counted_reads)
+        def counted_creations():
+            creations.append("create")
+            return self.unit_of_work()
+        app, _ = self.application(permission_factory=counted_reads, workspace_factory=counted_creations)
         for malformed in ({**self.permission(), "expected_revision": True},
                 {**self.permission(), "idempotency_key": ""},
                 {**self.permission(), "scopes": ["invented"]},
@@ -162,6 +166,11 @@ class PostgresWorkspaceAdministrationApplicationTests(unittest.TestCase):
         self.assertEqual(reads, [], "invalid page arguments must refuse before the read UoW")
         self.denied(lambda: app.handle(self.make_request("command.workspace-administration.create",
             {"name": "Invalid", "idempotency_key": "invalid-create", "metadata": {"large": "x" * 16384}})), 400)
+        for workspace, name in (("bad\x01workspace", "Name"), ("new-workspace", "bad\x01name")):
+            with self.subTest(workspace=workspace, name=name):
+                self.denied(lambda: app.handle(self.make_request("command.workspace-administration.create",
+                    {"name": name, "idempotency_key": "invalid-control"}, workspace=workspace)), 400)
+        self.assertEqual(creations, [], "malformed public creation must refuse before the owner UoW")
 
     def test_owner_outage_is_fixed_redacted_and_unchained(self):
         def unavailable():
@@ -173,9 +182,9 @@ class PostgresWorkspaceAdministrationApplicationTests(unittest.TestCase):
         self.assertIsNone(error.__context__)
 
     def test_escaped_identity_history_is_complete_bounded_and_continues_with_owner_cursor(self):
-        actor = PrincipalIdentity("a" + "\x01" * 511, "b" + "\x01" * 511, PrincipalKind.OPERATOR)
+        actor = PrincipalIdentity("a" + "\x01" * 511, "b" + '"' * 511, PrincipalKind.OPERATOR)
         target = PrincipalIdentity("c" + "\x01" * 511, "d" + "\x01" * 511, PrincipalKind.OPERATOR)
-        workspace = "w" + "\x01" * 511
+        workspace = "w" + "\\" * 511
         policy = operations.WorkspaceAdministrationPolicy("installation-a", (actor,), (actor, target))
         app, _ = self.application(policy)
         principal = AuthenticatedPrincipal(actor)
