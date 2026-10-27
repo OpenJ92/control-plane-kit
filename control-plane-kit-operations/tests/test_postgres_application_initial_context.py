@@ -6,6 +6,7 @@ import unittest
 import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import AuthenticatedPrincipal, WorkspaceGrant
 from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests import test_postgres_workspace_permissions as permission_fixtures
 
@@ -173,3 +174,37 @@ class PostgresApplicationInitialContextTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 with self.assertRaises(ValueError):
                     self.application(resolver, mode=mode)
+
+    def test_confidential_provision_refuses_before_payload_access_on_both_entrances(self):
+        service, context = self.initialize()
+        resolver = CountingResolver(self.unit_of_work)
+        app, _ = self.application(resolver)
+        services = dict(app.services)
+        services[ControlPlaneServiceRole.EXECUTION] = operations.CpkServerExecutionService(None)
+        app = replace(app, services=services)
+        accesses = []
+        class PoisonRequest:
+            route_id = "command.secret-material.provision"
+            service_role = ControlPlaneServiceRole.EXECUTION
+            surface = "mcp"
+            path_parameters = {"workspace_id": "workspace-a"}
+            principal = AuthenticatedPrincipal(self.member)
+            @property
+            def payload(inner_self):
+                accesses.append("payload")
+                raise AssertionError("confidential payload was accessed")
+        request = PoisonRequest()
+        for asynchronous in (False, True):
+            call = (lambda: asyncio.run(app.handle_async(request))) if asynchronous else lambda: app.handle(request)
+            with self.subTest(entrance="async" if asynchronous else "sync", condition="non-http"):
+                self.denied(call, 400)
+            request.surface = "http"
+            with self.subTest(entrance="async" if asynchronous else "sync", condition="no-current-grant"):
+                self.denied(call, 403)
+            request.surface = "mcp"
+        self.grant(service, context, scopes=(PolicyScope.SECRET_MATERIAL_PROVISION,
+            PolicyScope.SECRET_PROVIDER_REGISTER))
+        request.surface = "http"
+        self.denied(lambda: app.handle(request), 501)
+        self.denied(lambda: asyncio.run(app.handle_async(request)), 501)
+        self.assertEqual(accesses, [])
