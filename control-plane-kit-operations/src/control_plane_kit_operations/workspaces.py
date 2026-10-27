@@ -125,6 +125,28 @@ class CreateWorkspaceResult:
         }
 
 
+def _prepare_administration_command(context, *, workspace_id, name, idempotency_key, metadata=None):
+    """Pure existing intent preparation, shared with the application decoder."""
+    _text(workspace_id)
+    _text(name)
+    _key(idempotency_key)
+    metadata = {} if metadata is None else metadata
+    try:
+        intent = dict(installation_id=context.installation_id, actor=context.identity.descriptor(),
+                      workspace_id=workspace_id, name=name, idempotency_key=idempotency_key.value,
+                      metadata=dict(metadata))
+        encoded = rfc8785.dumps(intent)
+        if len(encoded) > 16384:
+            raise ValueError
+        fingerprint = sha256(encoded).hexdigest()
+        # Detach the initializer inputs from caller-retained mutable mappings.
+        intent = json.loads(encoded)
+    except (TypeError, ValueError, OverflowError):
+        raise WorkspacePermissionError("administrative workspace command is malformed") from None
+    return (CreateWorkspace(workspace_id, name, context.identity.subject_id, idempotency_key,
+                            intent["metadata"]), fingerprint)
+
+
 class WorkspaceCommandService:
     """Application service owning workspace creation transaction boundaries."""
 
@@ -146,24 +168,8 @@ class WorkspaceCommandService:
         if self._administration_policy is None:
             raise WorkspacePermissionDenied("workspace administration is not configured")
         self._administration_policy.require(context)
-        _text(workspace_id)
-        _text(name)
-        _key(idempotency_key)
-        metadata = {} if metadata is None else metadata
-        try:
-            intent = dict(installation_id=context.installation_id, actor=context.identity.descriptor(),
-                          workspace_id=workspace_id, name=name, idempotency_key=idempotency_key.value,
-                          metadata=dict(metadata))
-            encoded = rfc8785.dumps(intent)
-            if len(encoded) > 16384:
-                raise ValueError
-            fingerprint = sha256(encoded).hexdigest()
-            # Bind the actual initializer inputs to the fingerprinted snapshot,
-            # even if the caller retains a mutable metadata mapping.
-            intent = json.loads(encoded)
-        except (TypeError, ValueError, OverflowError):
-            raise WorkspacePermissionError("administrative workspace command is malformed") from None
-        command = CreateWorkspace(workspace_id, name, context.identity.subject_id, idempotency_key, intent["metadata"])
+        command, fingerprint = _prepare_administration_command(context, workspace_id=workspace_id,
+            name=name, idempotency_key=idempotency_key, metadata=metadata)
         with self._unit_of_work_factory() as unit_of_work:
             store = unit_of_work.stores.workspace_permissions
             prior = store.lock_administration_command(context, idempotency_key, fingerprint)

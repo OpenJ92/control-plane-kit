@@ -151,6 +151,7 @@ class PostgresWorkspaceAdministrationApplicationTests(unittest.TestCase):
             return self.unit_of_work()
         app, _ = self.application(permission_factory=counted_reads)
         for malformed in ({**self.permission(), "expected_revision": True},
+                {**self.permission(), "idempotency_key": ""},
                 {**self.permission(), "scopes": ["invented"]},
                 {**self.permission(), "target": {**self.member.descriptor(), "extra": 1}}):
             with self.subTest(payload=malformed):

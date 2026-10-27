@@ -7,6 +7,7 @@ from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_operations.managed_runtime_assignments import (
     GrantManagedRuntimeAccess, RevokeManagedRuntimeAccess, ManagedRuntimeAssignment,
     ManagedRuntimeAssignmentError, ManagedRuntimeAssignmentReceipt, ManagedRuntimeAssignmentResult,
+    ManagedRuntimeAssignmentNotFound, ManagedRuntimeAssignmentConflict,
     ManagedRuntimeAssignmentStatus, ManagedRuntimeSelection, managed_runtime_assignment_id,
     managed_runtime_assignment_intent, select_managed_runtime_assignment,
 )
@@ -76,7 +77,7 @@ class ManagedRuntimeAssignmentStore:
         if operation == "revoke":
             observed = self.get(installation, command.workspace_id, command.runtime_id, command.authority_ref)
             if observed is None:
-                raise ManagedRuntimeAssignmentError("management assignment is unavailable")
+                raise ManagedRuntimeAssignmentNotFound("management assignment is unavailable")
             registration = observed.registration_id
         try:
             authority = RuntimeAuthorityStore(self.connection).get_registration_for_update(
@@ -98,13 +99,16 @@ class ManagedRuntimeAssignmentStore:
             "WHERE assignment_id=%s AND idempotency_key=%s", (current.assignment_id, command.idempotency_key.value)).fetchone()
         if stored is not None:
             receipt = ManagedRuntimeAssignmentReceipt.from_descriptor(stored[1])
-            if (stored[0] != fingerprint or _intent_for_receipt(receipt) != fingerprint
+            if (_intent_for_receipt(receipt) != stored[0]
+                    or receipt.idempotency_key != command.idempotency_key.value
                     or receipt.resulting_assignment.assignment_id != current.assignment_id
                     or receipt.resulting_assignment.revision > current.revision):
-                raise ManagedRuntimeAssignmentError("management command key has different intent")
+                raise ManagedRuntimeAssignmentError("persisted management receipt is inconsistent")
+            if stored[0] != fingerprint:
+                raise ManagedRuntimeAssignmentConflict("management command key has different intent")
             return ManagedRuntimeAssignmentResult(receipt, replayed=True)
         if current.revision != command.expected_revision:
-            raise ManagedRuntimeAssignmentError("management assignment revision changed")
+            raise ManagedRuntimeAssignmentConflict("management assignment revision changed")
         before = current if current.revision else None
         if operation == "grant":
             after = replace(current, registration_id=registration, capability_id=command.capability_id,

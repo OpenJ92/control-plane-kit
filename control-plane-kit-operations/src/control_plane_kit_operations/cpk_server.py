@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, Protocol
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal,
     IdentityContractError,
+    PrincipalIdentity,
     PrincipalKind,
     TrustedCommandContext,
 )
@@ -206,8 +207,22 @@ from control_plane_kit_operations.workflows import (
     RecordOperationAction,
     StartOperationSession,
 )
-from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
-from control_plane_kit_operations.workspace_permissions import WorkspaceContextResolver
+from control_plane_kit_operations.workspaces import (
+    CreateWorkspace, WorkspaceCommandService, _prepare_administration_command,
+)
+from control_plane_kit_operations.workspace_permissions import (
+    WorkspaceContextResolver, WorkspaceAdministrationPolicy, GrantWorkspacePermissions,
+    RevokeWorkspacePermissions, WorkspacePermissionCommandService, WorkspacePermissionReadService,
+    WorkspacePermissionListCursor, WorkspacePermissionHistoryCursor,
+    WorkspacePermissionDenied, WorkspacePermissionConflict, WorkspacePermissionNotFound,
+    _text as _permission_text, _identity as _permission_identity,
+)
+from control_plane_kit_operations.managed_runtime_assignments import (
+    GrantManagedRuntimeAccess, RevokeManagedRuntimeAccess, ManagedRuntimeAssignmentCommandService,
+    ManagedRuntimeAssignmentReadService, ManagedRuntimeAssignmentListCursor,
+    ManagedRuntimeAssignmentHistoryCursor, ManagedRuntimeAssignmentNotFound,
+    ManagedRuntimeAssignmentConflict, _reference as _management_reference,
+)
 
 
 class CpkServerRouteRequest(Protocol):
@@ -1715,6 +1730,190 @@ class CpkServerGatewayProbeService:
         return result.descriptor()
 
 
+_ADMINISTRATION_ARGUMENTS = {
+    "command.workspace-administration.create": ({"name", "idempotency_key"}, {"metadata"}),
+    "command.workspace-permission.grant": ({"target", "scopes", "expected_revision", "idempotency_key"}, set()),
+    "command.workspace-permission.revoke": ({"target", "scopes", "expected_revision", "idempotency_key"}, set()),
+    "command.managed-runtime-access.grant": (
+        {"runtime_id", "authority_ref", "registration_id", "capability_id", "expected_revision", "idempotency_key"}, set()),
+    "command.managed-runtime-access.revoke": (
+        {"runtime_id", "authority_ref", "expected_revision", "idempotency_key"}, set()),
+    "read.workspace-permissions": (set(), {"limit", "after"}),
+    "read.workspace-permission": ({"target"}, set()),
+    "read.workspace-permission-history": ({"target"}, {"limit", "after"}),
+    "read.managed-runtime-assignments": (set(), {"limit", "after"}),
+    "read.managed-runtime-assignment": ({"runtime_id", "authority_ref"}, set()),
+    "read.managed-runtime-assignment-history": ({"runtime_id", "authority_ref"}, {"limit", "after"}),
+}
+
+
+def _administration_identity(value):
+    if type(value) is not dict or set(value) != {"issuer", "subject_id", "kind"}:
+        raise ValueError("identity shape")
+    return _permission_identity(PrincipalIdentity(value["issuer"], value["subject_id"], PrincipalKind(value["kind"])))
+
+
+def _administration_cursor(route_id, value, context, workspace_id, target=None, runtime=None, authority=None):
+    if type(value) is not dict:
+        raise ValueError("cursor shape")
+    if route_id == "read.workspace-permissions":
+        if set(value) != {"kind", "installation_id", "workspace_id", "after"} or value["kind"] != "workspace-permissions":
+            raise ValueError("cursor shape")
+        cursor = WorkspacePermissionListCursor(value["installation_id"], value["workspace_id"],
+            _administration_identity(value["after"]))
+    elif route_id == "read.workspace-permission-history":
+        if (set(value) != {"kind", "installation_id", "workspace_id", "target", "after_revision"}
+                or value["kind"] != "workspace-permission-history"):
+            raise ValueError("cursor shape")
+        cursor = WorkspacePermissionHistoryCursor(value["installation_id"], value["workspace_id"],
+            _administration_identity(value["target"]), value["after_revision"])
+        if cursor.target != target:
+            raise ValueError("cursor target")
+    elif route_id == "read.managed-runtime-assignments":
+        if set(value) != {"installation_id", "workspace_id", "after_runtime_id", "after_authority_ref"}:
+            raise ValueError("cursor shape")
+        cursor = ManagedRuntimeAssignmentListCursor(value["installation_id"], value["workspace_id"],
+            value["after_runtime_id"], RuntimeAuthorityReference(value["after_authority_ref"]))
+    elif route_id == "read.managed-runtime-assignment-history":
+        if set(value) != {"installation_id", "workspace_id", "runtime_id", "authority_ref", "after_revision"}:
+            raise ValueError("cursor shape")
+        cursor = ManagedRuntimeAssignmentHistoryCursor(value["installation_id"], value["workspace_id"],
+            value["runtime_id"], RuntimeAuthorityReference(value["authority_ref"]), value["after_revision"])
+        if (cursor.runtime_id, cursor.authority_ref) != (runtime, authority):
+            raise ValueError("cursor target")
+    else:
+        raise ValueError("cursor route")
+    if (cursor.installation_id, cursor.workspace_id) != (context.installation_id, workspace_id):
+        raise ValueError("cursor scope")
+    return cursor
+
+
+def _decode_administration_request(request, context):
+    """Pure closed argument preparation; owner calls never occur in this function."""
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise ValueError("argument mappings")
+    required, optional = _ADMINISTRATION_ARGUMENTS[request.route_id]
+    path, payload = request.path_parameters, request.payload
+    create = request.route_id == "command.workspace-administration.create"
+    if request.surface == "http" and not create:
+        valid = set(path) == {"workspace_id"} and required <= set(payload) <= required | optional
+    elif request.surface == "mcp" or (request.surface == "http" and create):
+        fields = required | {"workspace_id"}
+        valid = not path and fields <= set(payload) <= fields | optional
+    else:
+        valid = False
+    if not valid or set(path) & set(payload):
+        raise ValueError("argument fields")
+    values = {**path, **payload}
+    workspace = _permission_text(values["workspace_id"])
+    if create:
+        if "metadata" in values and type(values["metadata"]) is not dict:
+            raise ValueError("metadata shape")
+        command, _ = _prepare_administration_command(context, workspace_id=workspace,
+            name=values["name"], idempotency_key=IdempotencyKey(values["idempotency_key"]),
+            metadata=values.get("metadata"))
+        return dict(workspace_id=command.workspace_id, name=command.name,
+            idempotency_key=command.idempotency_key, metadata=command.metadata)
+    args = {"workspace_id": workspace}
+    if "target" in required:
+        args["target"] = _administration_identity(values["target"])
+    if "runtime_id" in required:
+        args["runtime_id"] = _permission_text(values["runtime_id"])
+        args["authority_ref"] = _management_reference(RuntimeAuthorityReference(values["authority_ref"]))
+    if request.route_id.startswith("command."):
+        args.update(context=context, expected_revision=values["expected_revision"],
+            idempotency_key=IdempotencyKey(values["idempotency_key"]))
+        if "scopes" in required:
+            if type(values["scopes"]) is not list or not 1 <= len(values["scopes"]) <= len(PolicyScope):
+                raise ValueError("scopes shape")
+            args["scopes"] = tuple(PolicyScope(value) for value in values["scopes"])
+            constructor = (GrantWorkspacePermissions if request.route_id == "command.workspace-permission.grant"
+                else RevokeWorkspacePermissions)
+        elif request.route_id == "command.managed-runtime-access.grant":
+            args.update(registration_id=values["registration_id"], capability_id=values["capability_id"])
+            constructor = GrantManagedRuntimeAccess
+        else:
+            constructor = RevokeManagedRuntimeAccess
+        return constructor(**args)
+    if "limit" in optional:
+        limit = values.get("limit", 10)
+        if type(limit) is not int or not 1 <= limit <= 10:
+            raise ValueError("page limit")
+        args["limit"] = limit
+        args["cursor"] = (_administration_cursor(request.route_id, values["after"], context, workspace,
+            args.get("target"), args.get("runtime_id"), args.get("authority_ref")) if "after" in values else None)
+    return args
+
+
+class CpkServerWorkspaceAdministrationService:
+    """Closed public projection of existing installation-administration owners."""
+
+    def __init__(self, *, administration_policy: WorkspaceAdministrationPolicy,
+            workspaces: WorkspaceCommandService, permission_commands: WorkspacePermissionCommandService,
+            permission_reads: WorkspacePermissionReadService,
+            management_commands: ManagedRuntimeAssignmentCommandService,
+            management_reads: ManagedRuntimeAssignmentReadService):
+        if type(administration_policy) is not WorkspaceAdministrationPolicy:
+            raise ValueError("workspace administration policy is required")
+        self._policy = administration_policy
+        self._workspaces = workspaces
+        self._permission_commands, self._permission_reads = permission_commands, permission_reads
+        self._management_commands, self._management_reads = management_commands, management_reads
+
+    def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if (request.service_role is not ControlPlaneServiceRole.AUTHORIZATION
+                or request.route_id not in _ADMINISTRATION_ARGUMENTS):
+            raise CpkServerApplicationError(404, "unknown administration route")
+        denied = False
+        try:
+            context = self._policy.authorize(request.principal)
+        except WorkspacePermissionDenied:
+            denied = True
+        if denied:
+            raise CpkServerApplicationError(403, "workspace administration is denied")
+        malformed = False
+        try:
+            prepared = _decode_administration_request(request, context)
+        except (ValueError, TypeError, KeyError, OverflowError, InvalidOperationCommand):
+            malformed = True
+        if malformed:
+            raise CpkServerApplicationError(400, "administration arguments are malformed")
+        try:
+            route = request.route_id
+            if route == "command.workspace-administration.create":
+                result = self._workspaces.create_as_administrator(context, **prepared)
+            elif route == "command.workspace-permission.grant":
+                result = self._permission_commands.grant(prepared)
+            elif route == "command.workspace-permission.revoke":
+                result = self._permission_commands.revoke(prepared)
+            elif route == "command.managed-runtime-access.grant":
+                result = self._management_commands.grant(prepared)
+            elif route == "command.managed-runtime-access.revoke":
+                result = self._management_commands.revoke(prepared)
+            elif route == "read.workspace-permissions":
+                result = self._permission_reads.list(context, **prepared)
+            elif route == "read.workspace-permission":
+                result = self._permission_reads.inspect(context, **prepared)
+            elif route == "read.workspace-permission-history":
+                result = self._permission_reads.history(context, **prepared)
+            elif route == "read.managed-runtime-assignments":
+                result = self._management_reads.list(context, **prepared)
+            elif route == "read.managed-runtime-assignment":
+                result = self._management_reads.inspect(context, **prepared)
+            else:
+                result = self._management_reads.history(context, **prepared)
+            return result.descriptor()
+        except WorkspacePermissionDenied:
+            failure = (403, "workspace administration is denied")
+        except (WorkspacePermissionNotFound, ManagedRuntimeAssignmentNotFound):
+            failure = (404, "requested administration resource was not found")
+        except (WorkspacePermissionConflict, ManagedRuntimeAssignmentConflict):
+            failure = (409, "administration command conflicts with retained truth")
+        except Exception:
+            failure = (503, "administration outcome is unavailable")
+        raise CpkServerApplicationError(*failure)
+
+
 class CpkServerUnsupportedService:
     """Explicit placeholder for service roles not extracted into operations yet."""
 
@@ -1752,6 +1951,7 @@ def cpk_server_services(
     advancement: CurrentGraphAdvancementCommandService | None = None,
     gateway_probes: GatewayProbeCommandService | None = None,
     deployment_program: DeploymentProgram | None = None,
+    workspace_administration: CpkServerWorkspaceAdministrationService | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -1812,6 +2012,10 @@ def cpk_server_services(
             else CpkServerGatewayProbeService(gateway_probes)
         ),
         **unsupported,
+        ControlPlaneServiceRole.AUTHORIZATION: (
+            unsupported[ControlPlaneServiceRole.AUTHORIZATION]
+            if workspace_administration is None else workspace_administration
+        ),
     }
 
 

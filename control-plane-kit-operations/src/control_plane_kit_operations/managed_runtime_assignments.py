@@ -25,6 +25,14 @@ class ManagedRuntimeAssignmentError(WorkspacePermissionError):
     """The exact management assignment is malformed, unavailable or conflicting."""
 
 
+class ManagedRuntimeAssignmentNotFound(ManagedRuntimeAssignmentError):
+    """The exact requested assignment does not exist."""
+
+
+class ManagedRuntimeAssignmentConflict(ManagedRuntimeAssignmentError):
+    """Submitted revision or idempotent intent conflicts with retained truth."""
+
+
 class ManagedRuntimeAssignmentStatus(StrEnum):
     ACTIVE = "active"
     REVOKED = "revoked"
@@ -416,7 +424,7 @@ class ManagedRuntimeAssignmentReadService:
             result = uow.stores.managed_runtime_assignments.get(
                 context.installation_id, workspace_id, runtime_id, authority_ref)
             if result is None:
-                raise ManagedRuntimeAssignmentError("management assignment is unavailable")
+                raise ManagedRuntimeAssignmentNotFound("management assignment is unavailable")
             return result
 
     def list(self, context, *, workspace_id, limit=50, cursor=None):
