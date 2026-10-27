@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.identity import (
@@ -22,7 +23,9 @@ from control_plane_kit_core.delegation_keys import (
     DelegationPublicKey,
 )
 from control_plane_kit_core.runtime_effects import GatewayTargetId
-from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.operations import (
+    ControlPlaneServiceRole, operator_command_http_routes, operator_read_http_routes,
+)
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secret_selections import (
@@ -204,6 +207,7 @@ from control_plane_kit_operations.workflows import (
     StartOperationSession,
 )
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+from control_plane_kit_operations.workspace_permissions import WorkspaceContextResolver
 
 
 class CpkServerRouteRequest(Protocol):
@@ -472,19 +476,51 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
 }
 
 
+_APPLICATION_ROUTE_ROLES = {
+    route.route_id: route.service_role
+    for route in (*operator_read_http_routes(), *operator_command_http_routes())
+}
+
+
+@dataclass(frozen=True)
+class _AdmittedRouteRequest:
+    """One invocation's snapshot; never a public reusable admission token."""
+
+    surface: str
+    route_id: str
+    service_role: ControlPlaneServiceRole
+    path_parameters: dict[str, str]
+    payload: dict[str, object] = field(repr=False)
+    principal: AuthenticatedPrincipal
+    context: TrustedCommandContext | None = field(repr=False)
+    dynamic_admission: bool = True
+
+
 @dataclass(frozen=True)
 class CpkServerOperationsApplication:
     """Service map consumed by cpk-server's shared HTTP/MCP boundary."""
 
     services: Mapping[ControlPlaneServiceRole, CpkServerApplicationService]
+    authority_mode: str = "static"
+    workspace_context_resolver: WorkspaceContextResolver | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         missing = tuple(role for role in ControlPlaneServiceRole if role not in self.services)
         if missing:
             names = ", ".join(role.value for role in missing)
             raise ValueError(f"missing cpk-server services: {names}")
+        if type(self.authority_mode) is not str or self.authority_mode not in {"static", "dynamic"}:
+            raise ValueError("authority_mode must be static or dynamic")
+        if self.authority_mode == "dynamic":
+            if not isinstance(self.workspace_context_resolver, WorkspaceContextResolver):
+                raise ValueError("dynamic authority requires WorkspaceContextResolver")
+        elif self.workspace_context_resolver is not None:
+            raise ValueError("static authority must not configure a workspace resolver")
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        return self._dispatch(self._prepare(request))
+
+    def _dispatch(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         try:
             service = self.services[request.service_role]
         except KeyError as error:
@@ -495,11 +531,60 @@ class CpkServerOperationsApplication:
         return service.handle(request)
 
     async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        request = self._prepare(request)
         if request.service_role is ControlPlaneServiceRole.EXECUTION:
             service = self.services[request.service_role]
             if isinstance(service, CpkServerExecutionService):
                 return await service.handle_async(request)
-        return self.handle(request)
+        return self._dispatch(request)
+
+    def _prepare(self, request: CpkServerRouteRequest) -> CpkServerRouteRequest:
+        if self.authority_mode == "static":
+            # A carrier resubmitted through any public entrance cannot retain
+            # authority from a previous invocation or another application.
+            return (replace(request, context=None, dynamic_admission=False)
+                if type(request) is _AdmittedRouteRequest else request)
+        role = _APPLICATION_ROUTE_ROLES.get(request.route_id)
+        if role is None or request.service_role is not role:
+            raise CpkServerApplicationError(404, "unknown application route")
+        if type(request.principal) is not AuthenticatedPrincipal:
+            raise CpkServerApplicationError(403, "authenticated principal is required")
+        if request.route_id == "command.workspace.create":
+            raise CpkServerApplicationError(403, "dynamic workspace creation requires administration")
+        if (request.surface not in {"http", "mcp"}
+                or not isinstance(request.path_parameters, Mapping)
+                or not isinstance(request.payload, Mapping)):
+            raise CpkServerApplicationError(400, "request arguments are malformed")
+        path, payload = deepcopy(dict(request.path_parameters)), deepcopy(dict(request.payload))
+        if "workspace_id" in path and "workspace_id" in payload and path["workspace_id"] != payload["workspace_id"]:
+            raise CpkServerApplicationError(400, "workspace target is ambiguous")
+        snapshot = _AdmittedRouteRequest(request.surface, request.route_id, role,
+            path, payload, request.principal, None)
+        # This bypass is limited to exact canonical route/role pairs above.
+        # Their service must independently invoke WorkspaceAdministrationPolicy.
+        if role is ControlPlaneServiceRole.AUTHORIZATION:
+            return snapshot
+        workspace_id = path.get("workspace_id", payload.get("workspace_id"))
+        try:
+            valid = (type(workspace_id) is str and bool(workspace_id.strip())
+                and len(workspace_id.encode("utf-8")) <= 512)
+        except UnicodeError:
+            valid = False
+        if not valid:
+            raise CpkServerApplicationError(400, "workspace target is malformed")
+        failure = None
+        try:
+            context = self.workspace_context_resolver.resolve(request.principal, workspace_id)
+        except IdentityContractError:
+            failure = (403, "workspace access is denied")
+        except Exception:
+            failure = (503, "workspace authority is unavailable")
+        if failure is not None:
+            raise CpkServerApplicationError(*failure)
+        if (type(context) is not TrustedCommandContext or context.workspace_id != workspace_id
+                or context.principal.identity != request.principal.identity):
+            raise CpkServerApplicationError(503, "workspace authority is unavailable")
+        return replace(snapshot, context=context)
 
 
 class CpkServerReadService:
@@ -2098,7 +2183,13 @@ def _trusted_context(
         raise CpkServerApplicationError(403, "authenticated principal is required")
     workspace_denied = False
     try:
-        context = principal.command_context(workspace_id)
+        if type(request) is _AdmittedRouteRequest and request.dynamic_admission:
+            context = request.context
+            if (type(context) is not TrustedCommandContext or context.workspace_id != workspace_id
+                    or context.principal.identity != principal.identity):
+                raise IdentityContractError("admitted request context is incongruent")
+        else:
+            context = principal.command_context(workspace_id)
     except IdentityContractError:
         workspace_denied = True
     if workspace_denied:
