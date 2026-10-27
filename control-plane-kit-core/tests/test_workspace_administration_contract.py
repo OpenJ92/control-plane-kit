@@ -150,6 +150,14 @@ class WorkspaceAdministrationContractTests(unittest.TestCase):
                 with self.assertRaises(InvalidReadProjectionContract):
                     replace(value, service_role=ControlPlaneServiceRole.READS)
 
+    def test_projection_auth_scope_requires_enum_values(self):
+        projections = canonical_operator_read_projection_set()
+        for name, raw_scope in (("read.workspace", "read"),
+                ("read.workspace-permissions", "admin")):
+            with self.subTest(projection=name):
+                with self.assertRaises(InvalidReadProjectionContract):
+                    replace(projections.projection(name), auth_scope=raw_scope)
+
 
 if __name__ == "__main__":
     unittest.main()

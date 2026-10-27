@@ -123,6 +123,8 @@ class ReadProjectionContract:
             raise InvalidReadProjectionContract(
                 "policy must be ReadProjectionPolicy"
             )
+        if not isinstance(self.auth_scope, HttpAuthScope):
+            raise InvalidReadProjectionContract("auth_scope must be HttpAuthScope")
         if (self.service_role, self.auth_scope) not in {
             (ControlPlaneServiceRole.READS, HttpAuthScope.READ),
             (ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN),
