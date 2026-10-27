@@ -39,9 +39,9 @@ class HealthEffectAttemptStartContractTests(HealthEffectStartValues, EffectAttem
         with self.assertRaises(FrozenInstanceError):
             command.context = context
         self.assertEqual(tuple(inspect.signature(EffectAttemptStartService).parameters),
-            ("unit_of_work_factory", "id_factory", "health_receiver_decoders"))
-        self.assertEqual(tuple(inspect.signature(EffectAttemptStartService.execute_health).parameters), ("self", "command"))
-        self.assertEqual(tuple(inspect.signature(EffectAttemptStartService.execute).parameters), ("self", "command"))
+            ("unit_of_work_factory", "id_factory", "health_receiver_decoders", "permission_policy"))
+        self.assertEqual(tuple(inspect.signature(EffectAttemptStartService.execute_health).parameters), ("self", "command", "command_context", "managed_target"))
+        self.assertEqual(tuple(inspect.signature(EffectAttemptStartService.execute).parameters), ("self", "command", "command_context", "managed_target"))
 
     def test_each_context_scope_and_execution_scope_are_independent(self):
         start = self.health_start_value()

@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=c8cc42059c06c898275ba19aa2a6bf8df3d0e93474bb23340bab7b49bcfc9141 relations=58 columns=746 constraints=668 indexes=196 foreign-keys=172 -->
+<!-- current-schema-contract: sha256=7505500ae7c663a3cc1265a16fc19abc103c45284e38a2ab297a13cdf276e061 relations=68 columns=833 constraints=766 indexes=215 foreign-keys=196 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -93,6 +93,25 @@ ancestry for effect attempts, direct configuration birth links, and supersession
 chains for provider and secret-reference registrations. Restore roots before
 their descendants and reject missing or cyclic application-level histories.
 
+## Current Permission And Invocation Extension
+
+The #2036 batch adds installation/workspace permission and administrative receipts,
+exact runtime-management assignments, semantic invocations, original runtime origins,
+and ingress context/results. These add no new multi-table cycle. Restore the
+installation binding before permission/assignment rows and their receipts; restore
+command/attempt/intent/registration parents before runtime origins and invocations,
+and original ingress events/registration before contexts and results. Existing
+secret-use authorizations also support check-specific probe roles while retaining
+parent-role uniqueness and exact correlation; no resolved secret is persisted.
+
+The ordinary installer still accepts only empty/exact-current namespaces. A separate
+explicitly authorized retained transition accepts only the frozen pre-policy contract
+or exact final contract, validates under locks and preserves caller-owned rollback,
+original seeds and uncertain commit inspection. It does not repair arbitrary drift,
+accept intermediate unshipped schemas or execute a live migration by implication.
+Incomplete ingress allocations retain known facts; #1120 owns future recovery,
+with no automatic retry/delete or normal Remove for partial-only allocation.
+
 ## Deterministic Assembly And Logical Restore
 
 ### Fresh install
@@ -111,12 +130,17 @@ The deterministic whole-database restore order is staged to respect every
 foreign key and the accepted lineage cycle:
 
 1. Insert bare `cpk_workspaces` rows with both graph/projection heads null.
+   Restore the original `cpk_workspace_permission_installation` binding, then
+   `cpk_workspace_permissions`, their `cpk_workspace_permission_receipts`, and
+   `cpk_workspace_administration_receipts` after their workspace parents exist.
 2. Restore workspace-owned roots: `cpk_graph_versions`,
    `cpk_registered_products`, `cpk_image_pull_authorities`,
    `cpk_ingress_authorities`, `cpk_runtime_authorities`,
    `cpk_runtime_authority_deliveries`, `cpk_delegation_signing_keys`,
    `cpk_gateway_key_rotations`, `cpk_observations`,
    `cpk_operation_sessions`, and root `cpk_secret_providers`.
+   Restore `cpk_managed_runtime_assignments` after their installation and exact
+   runtime registrations, then `cpk_managed_runtime_assignment_receipts`.
 3. Restore `cpk_realized_graph_projections`, then the retained original
    `cpk_workspace_initializations` receipts after their exact initial graphs and
    projections exist. Restore provider supersession descendants, then root and
@@ -167,6 +191,13 @@ foreign key and the accepted lineage cycle:
 9. Restore `cpk_health_effect_preparations` after its original event, immutable intent, effect attempt, both explicit graph projections, signing-key registrations and secret-use authorizations. Restore `cpk_node_control_attempts` only after its exact graph projection,
    transit and workload signing-key registrations, and transit and workload
    secret-use authorizations exist.
+10. Restore `cpk_runtime_effect_origins` and `cpk_ingress_invocation_contexts`
+    after their exact command receipts, attempts, intents, original events,
+    workspaces and registrations. Restore `cpk_execution_command_invocations`
+    after their command, attempt, intent, workspace and secret-use authorization
+    parents; restore `cpk_ingress_invocation_results` only after both invocation
+    and context parents. Owner validation must also prove the non-FK provenance
+    and admission relationships; restored history does not authorize dispatch.
 
 Within each phase, preserve primary, candidate, ordinal, revision, and
 supersession identities exactly. This is a logical ordering account, not a
@@ -176,7 +207,9 @@ from these rows. Before commit, verify each restored current pointer against its
 latest paired original acceptance and complete membership, or its exact original
 empty initialization when both advancement streams are absent. Never synthesize
 a missing initialization, header, original record or claim to make a restore
-pass. Accepted membership does not authorize deletion of protective history.
+pass. Validate current permissions and managed assignments against their latest
+retained receipts as well. Accepted membership does not authorize deletion of
+protective history.
 
 ## Aggregate Views
 
@@ -446,6 +479,11 @@ cpk_effect_configuration_refs -->|cpk_configuration_refs_closure_fk| cpk_configu
 cpk_effect_configuration_refs -->|cpk_configuration_refs_disposition_fk| cpk_configuration_claims
 cpk_effect_configuration_refs -->|cpk_configuration_refs_intent_fk| cpk_effect_attempt_intents
 cpk_effect_configuration_refs -->|cpk_configuration_refs_transfer_fk| cpk_configuration_claim_transfers
+cpk_execution_command_invocations -->|cpk_invocations_attempt_fk| cpk_effect_attempts
+cpk_execution_command_invocations -->|cpk_invocations_authorization_fk| cpk_secret_use_authorizations
+cpk_execution_command_invocations -->|cpk_invocations_intent_fk| cpk_effect_attempt_intents
+cpk_execution_command_invocations -->|cpk_invocations_parent_fk| cpk_execution_command_receipts
+cpk_execution_command_invocations -->|cpk_invocations_workspace_fk| cpk_workspaces
 cpk_execution_command_receipts -->|cpk_execution_command_receipts_run_id_fkey| cpk_activity_runs
 cpk_execution_receiver_scopes -->|cpk_execution_receiver_scopes_request_workspace_fk| cpk_execution_requests
 cpk_execution_requests -->|cpk_execution_requests_approval_identity_fk| cpk_approval_decisions
@@ -497,6 +535,15 @@ cpk_health_effect_preparations -->|cpk_health_effect_preparations_workload_autho
 cpk_health_effect_preparations -->|cpk_health_effect_preparations_workload_key_fk| cpk_delegation_signing_keys
 cpk_image_pull_authorities -->|cpk_image_pull_authorities_workspace_id_fkey| cpk_workspaces
 cpk_ingress_authorities -->|cpk_ingress_authorities_workspace_id_fkey| cpk_workspaces
+cpk_ingress_invocation_contexts -->|cpk_ingress_contexts_event_fk| cpk_activity_events
+cpk_ingress_invocation_contexts -->|cpk_ingress_contexts_parent_fk| cpk_execution_command_receipts
+cpk_ingress_invocation_contexts -->|cpk_ingress_contexts_registration_fk| cpk_ingress_authorities
+cpk_ingress_invocation_contexts -->|cpk_ingress_contexts_workspace_fk| cpk_workspaces
+cpk_ingress_invocation_results -->|cpk_ingress_results_context_fk| cpk_ingress_invocation_contexts
+cpk_ingress_invocation_results -->|cpk_ingress_results_invocation_fk| cpk_execution_command_invocations
+cpk_managed_runtime_assignment_receipts -->|cpk_managed_runtime_assignment_receipts_assignment_fk| cpk_managed_runtime_assignments
+cpk_managed_runtime_assignments -->|cpk_managed_runtime_assignments_installation_fk| cpk_workspace_permission_installation
+cpk_managed_runtime_assignments -->|cpk_managed_runtime_assignments_registration_fk| cpk_runtime_authorities
 cpk_node_control_attempts -->|cpk_node_control_attempts_projection_source_fk| cpk_realized_graph_projections
 cpk_node_control_attempts -->|cpk_node_control_attempts_projection_workspace_fk| cpk_realized_graph_projections
 cpk_node_control_attempts -->|cpk_node_control_attempts_transit_authorization_workspace_fk| cpk_secret_use_authorizations
@@ -517,6 +564,11 @@ cpk_realized_graph_projections -->|cpk_realized_graph_projections_workspace_id_f
 cpk_registered_products -->|cpk_registered_products_workspace_id_fkey| cpk_workspaces
 cpk_runtime_authorities -->|cpk_runtime_authorities_workspace_id_fkey| cpk_workspaces
 cpk_runtime_authority_deliveries -->|cpk_runtime_authority_deliveries_workspace_id_fkey| cpk_workspaces
+cpk_runtime_effect_origins -->|cpk_runtime_origins_attempt_fk| cpk_effect_attempts
+cpk_runtime_effect_origins -->|cpk_runtime_origins_intent_fk| cpk_effect_attempt_intents
+cpk_runtime_effect_origins -->|cpk_runtime_origins_parent_fk| cpk_execution_command_receipts
+cpk_runtime_effect_origins -->|cpk_runtime_origins_registration_fk| cpk_runtime_authorities
+cpk_runtime_effect_origins -->|cpk_runtime_origins_workspace_fk| cpk_workspaces
 cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_revision_fkey| cpk_desired_topology_draft_revisions
 cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_session_fkey| cpk_operation_sessions
 cpk_secret_material_provision_attempts -->|cpk_secret_material_provision_attempts_provider_fk| cpk_secret_providers
@@ -530,10 +582,15 @@ cpk_secret_references -->|cpk_secret_references_workspace_id_fkey| cpk_workspace
 cpk_secret_use_authorizations -->|cpk_secret_use_authorizations_provider_fk| cpk_secret_providers
 cpk_secret_use_authorizations -->|cpk_secret_use_authorizations_reference_fk| cpk_secret_references
 cpk_secret_use_authorizations -->|cpk_secret_use_authorizations_workspace_id_fkey| cpk_workspaces
+cpk_workspace_administration_receipts -->|cpk_workspace_administration_receipts_fk_0| cpk_workspace_permission_installation
+cpk_workspace_administration_receipts -->|cpk_workspace_administration_receipts_fk_1| cpk_workspaces
 cpk_workspace_initializations -->|cpk_workspace_initializations_graph_fk| cpk_graph_versions
 cpk_workspace_initializations -->|cpk_workspace_initializations_projection_fk| cpk_realized_graph_projections
 cpk_workspace_initializations -->|cpk_workspace_initializations_projection_source_fk| cpk_realized_graph_projections
 cpk_workspace_initializations -->|cpk_workspace_initializations_workspace_fk| cpk_workspaces
+cpk_workspace_permission_receipts -->|cpk_workspace_permission_receipts_fk_0| cpk_workspace_permissions
+cpk_workspace_permissions -->|cpk_workspace_permissions_fk_0| cpk_workspace_permission_installation
+cpk_workspace_permissions -->|cpk_workspace_permissions_fk_1| cpk_workspaces
 cpk_workspaces -->|cpk_workspaces_current_projection_source_fk| cpk_realized_graph_projections
 cpk_workspaces -->|cpk_workspaces_current_realized_projection_fk| cpk_realized_graph_projections
 cpk_workspaces -->|cpk_workspaces_desired_projection_source_fk| cpk_realized_graph_projections
@@ -629,6 +686,11 @@ order is semantically significant for every composite identity.
 | `cpk_configuration_refs_disposition_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind` | `cpk_configuration_claims` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, runtime_id, node_id, disposition_kind` | Deferred reciprocal scope and closed disposition-kind equality prevent ref/claim disagreement across outstanding, accepted-current and cleanup-closed states. |
 | `cpk_configuration_refs_intent_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | The ref commits to the original attempt intent and start event. |
 | `cpk_configuration_refs_transfer_fk` | `cpk_effect_configuration_refs` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, accepted_revision` | `cpk_configuration_claim_transfers` | `run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id, acceptance_revision` | An accepted-current ref retains its exact transfer allocation and revision; the deferred inverse relationship must also hold at commit. |
+| `cpk_invocations_attempt_fk` | `cpk_execution_command_invocations` | `run_id, activity_id, attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | Attempt-scoped invocations name the original effect attempt. |
+| `cpk_invocations_authorization_fk` | `cpk_execution_command_invocations` | `authorization_id, workspace_id` | `cpk_secret_use_authorizations` | `authorization_id, workspace_id` | A secret resolution retains its exact authorization within the workspace. |
+| `cpk_invocations_intent_fk` | `cpk_execution_command_invocations` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | The original request fingerprint and event match the same attempt intent. |
+| `cpk_invocations_parent_fk` | `cpk_execution_command_invocations` | `run_id, command_key` | `cpk_execution_command_receipts` | `run_id, idempotency_key` | A semantic invocation belongs to its original execution command receipt. |
+| `cpk_invocations_workspace_fk` | `cpk_execution_command_invocations` | `workspace_id` | `cpk_workspaces` | `workspace_id` | The invocation retains its workspace ownership root. |
 | `cpk_execution_command_receipts_run_id_fkey` | `cpk_execution_command_receipts` | `run_id` | `cpk_activity_runs` | `run_id` | Every admitted command receipt belongs to the exact run it may advance. |
 | `cpk_execution_receiver_scopes_request_workspace_fk` | `cpk_execution_receiver_scopes` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Immutable scope coverage belongs to the exact original request and workspace. |
 | `cpk_execution_requests_approval_identity_fk` | `cpk_execution_requests` | `approval_decision_id, approval_request_id` | `cpk_approval_decisions` | `decision_id, request_id` | The selected decision must resolve the selected request. |
@@ -680,6 +742,15 @@ order is semantically significant for every composite identity.
 | `cpk_health_effect_preparations_workload_key_fk` | `cpk_health_effect_preparations` | `workload_key_registration_id, workspace_id` | `cpk_delegation_signing_keys` | `registration_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
 | `cpk_image_pull_authorities_workspace_id_fkey` | `cpk_image_pull_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Image-pull authority registrations are workspace scoped. |
 | `cpk_ingress_authorities_workspace_id_fkey` | `cpk_ingress_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Ingress authority registrations are workspace scoped. |
+| `cpk_ingress_contexts_event_fk` | `cpk_ingress_invocation_contexts` | `original_event_id` | `cpk_activity_events` | `event_id` | The ingress context pins the original started activity event. |
+| `cpk_ingress_contexts_parent_fk` | `cpk_ingress_invocation_contexts` | `run_id, command_key` | `cpk_execution_command_receipts` | `run_id, idempotency_key` | An ingress context belongs to the original execution command receipt. |
+| `cpk_ingress_contexts_registration_fk` | `cpk_ingress_invocation_contexts` | `ingress_registration_id` | `cpk_ingress_authorities` | `registration_id` | The context pins the historical ingress registration. |
+| `cpk_ingress_contexts_workspace_fk` | `cpk_ingress_invocation_contexts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | The ingress context retains its workspace ownership root. |
+| `cpk_ingress_results_context_fk` | `cpk_ingress_invocation_results` | `context_id` | `cpk_ingress_invocation_contexts` | `context_id` | A result retains the immutable ingress context used to validate its closed payload. |
+| `cpk_ingress_results_invocation_fk` | `cpk_ingress_invocation_results` | `invocation_id` | `cpk_execution_command_invocations` | `invocation_id` | A bounded result belongs to the exact admitted invocation whose completion it records. |
+| `cpk_managed_runtime_assignment_receipts_assignment_fk` | `cpk_managed_runtime_assignment_receipts` | `assignment_id` | `cpk_managed_runtime_assignments` | `assignment_id` | The immutable revision receipt belongs to its management assignment. |
+| `cpk_managed_runtime_assignments_installation_fk` | `cpk_managed_runtime_assignments` | `installation_id` | `cpk_workspace_permission_installation` | `installation_id` | Management capability belongs to the explicit installation. |
+| `cpk_managed_runtime_assignments_registration_fk` | `cpk_managed_runtime_assignments` | `registration_id, workspace_id, authority_ref, runtime_kind` | `cpk_runtime_authorities` | `registration_id, workspace_id, authority_ref, runtime_kind` | Management permission binds the exact registered runtime and its workspace, authority and kind. |
 | `cpk_node_control_attempts_projection_source_fk` | `cpk_node_control_attempts` | `current_realized_projection_id, current_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The intended command is pinned to the exact accepted graph realized by its projection. |
 | `cpk_node_control_attempts_projection_workspace_fk` | `cpk_node_control_attempts` | `current_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The selected projection belongs to the intended command's workspace. |
 | `cpk_node_control_attempts_transit_authorization_workspace_fk` | `cpk_node_control_attempts` | `transit_authorization_id, workspace_id` | `cpk_secret_use_authorizations` | `authorization_id, workspace_id` | Transit signing custody was authorized in the same workspace before intent became durable. |
@@ -700,6 +771,11 @@ order is semantically significant for every composite identity.
 | `cpk_registered_products_workspace_id_fkey` | `cpk_registered_products` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Product descriptor registrations are workspace scoped. |
 | `cpk_runtime_authorities_workspace_id_fkey` | `cpk_runtime_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime authority registrations are workspace scoped. |
 | `cpk_runtime_authority_deliveries_workspace_id_fkey` | `cpk_runtime_authority_deliveries` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime authority delivery records are workspace scoped. |
+| `cpk_runtime_origins_attempt_fk` | `cpk_runtime_effect_origins` | `run_id, activity_id, attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | The origin identifies one original attempt rather than a new observation attempt. |
+| `cpk_runtime_origins_intent_fk` | `cpk_runtime_effect_origins` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | The original runtime target is joined to exact immutable intent and event evidence. |
+| `cpk_runtime_origins_parent_fk` | `cpk_runtime_effect_origins` | `run_id, command_key` | `cpk_execution_command_receipts` | `run_id, idempotency_key` | Original runtime provenance belongs to the admitting command receipt. |
+| `cpk_runtime_origins_registration_fk` | `cpk_runtime_effect_origins` | `runtime_registration_id` | `cpk_runtime_authorities` | `registration_id` | The origin pins the original registered runtime instead of a later active selection. |
+| `cpk_runtime_origins_workspace_fk` | `cpk_runtime_effect_origins` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime provenance is scoped to its original workspace. |
 | `cpk_saved_preparation_sources_revision_fkey` | `cpk_saved_preparation_sources` | `workspace_id, draft_id, revision` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id, revision` | Saved admission names one immutable same-workspace revision. |
 | `cpk_saved_preparation_sources_session_fkey` | `cpk_saved_preparation_sources` | `session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | Source and preparation session belong to the same workspace. |
 | `cpk_secret_material_provision_attempts_provider_fk` | `cpk_secret_material_provision_attempts` | `provider_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | Custody intent pins an existing provider registration in its exact workspace. |
@@ -713,10 +789,15 @@ order is semantically significant for every composite identity.
 | `cpk_secret_use_authorizations_provider_fk` | `cpk_secret_use_authorizations` | `provider_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | A use authorization binds the exact same-workspace provider registration. |
 | `cpk_secret_use_authorizations_reference_fk` | `cpk_secret_use_authorizations` | `reference_registration_id, workspace_id` | `cpk_secret_references` | `registration_id, workspace_id` | A use authorization binds the exact same-workspace secret reference. |
 | `cpk_secret_use_authorizations_workspace_id_fkey` | `cpk_secret_use_authorizations` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Secret use is authorized within one workspace. |
+| `cpk_workspace_administration_receipts_fk_0` | `cpk_workspace_administration_receipts` | `installation_id` | `cpk_workspace_permission_installation` | `installation_id` | Administrative replay belongs to the original installation binding. |
+| `cpk_workspace_administration_receipts_fk_1` | `cpk_workspace_administration_receipts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | The administrative receipt retains its created workspace. |
 | `cpk_workspace_initializations_graph_fk` | `cpk_workspace_initializations` | `workspace_id, initial_graph_id` | `cpk_graph_versions` | `workspace_id, graph_id` | The original initialization graph belongs to the receipt workspace. |
 | `cpk_workspace_initializations_projection_fk` | `cpk_workspace_initializations` | `initial_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The original initialization projection belongs to the receipt workspace. |
 | `cpk_workspace_initializations_projection_source_fk` | `cpk_workspace_initializations` | `initial_projection_id, initial_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The original initialization projection realizes its exact original graph. |
 | `cpk_workspace_initializations_workspace_fk` | `cpk_workspace_initializations` | `workspace_id` | `cpk_workspaces` | `workspace_id` | One original empty initialization receipt belongs to the existing workspace. |
+| `cpk_workspace_permission_receipts_fk_0` | `cpk_workspace_permission_receipts` | `installation_id, workspace_id, issuer, subject_id, kind` | `cpk_workspace_permissions` | `installation_id, workspace_id, issuer, subject_id, kind` | A revision receipt retains the exact installation, workspace and full principal identity whose permissions changed. |
+| `cpk_workspace_permissions_fk_0` | `cpk_workspace_permissions` | `installation_id` | `cpk_workspace_permission_installation` | `installation_id` | Current membership belongs to the single explicitly bound installation. |
+| `cpk_workspace_permissions_fk_1` | `cpk_workspace_permissions` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Current membership is scoped to one existing workspace. |
 | `cpk_workspaces_current_projection_source_fk` | `cpk_workspaces` | `current_realized_projection_id, current_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The current projection realizes the workspace's current graph. |
 | `cpk_workspaces_current_realized_projection_fk` | `cpk_workspaces` | `current_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The current projection belongs to the selected workspace. |
 | `cpk_workspaces_desired_projection_source_fk` | `cpk_workspaces` | `desired_realized_projection_id, desired_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The desired projection realizes the workspace's desired graph. |
@@ -729,7 +810,7 @@ order is semantically significant for every composite identity.
 - **Durable meaning and owner:** `PostgresExecutionStore` owns the ordered, bounded event stream emitted by one activity run.
 - **Identity and cardinality:** `event_id` is primary; `(run_id, ordinal)` permits exactly one event at each run position, and the validated immediate run foreign key derives the canonical run-identity law from `cpk_activity_runs`.
 - **Outgoing foreign keys:** `run_id` requires the owning run. Typed original advancement locators additionally bind that run/request, request/plan, request/workspace and the plan's exact desired revision.
-- **Inbound dependents:** Effect attempts, immutable intent/outcome evidence and compensation evidence retain original event commitments. `cpk_configuration_acceptances` retains its exact original advancement event. Generated ingress-secret records may cite event identifiers without a database foreign key.
+- **Inbound dependents:** Effect attempts, immutable intent/outcome evidence and compensation evidence retain original event commitments. `cpk_configuration_acceptances` retains its exact original advancement event; `cpk_ingress_invocation_contexts` retains its exact original event. Generated ingress-secret records may cite event identifiers without a database foreign key.
 - **Writers and transactions:** `PostgresExecutionStore.add_event` inserts ordinary events in the caller's run transaction without replay equivalence. Original advancement inserts require the exact prepared owner and publish atomically with the action, header, complete slots and current-pointer CAS; standalone advancement writes refuse.
 - **Readers and projections:** Activity-history queries read by run/ordinal. Historical receipt readers retain their run-scoped lookup; current acceptance independently selects up to two original events by workspace and descending numeric advancement revision through its partial index, then validates exact typed/payload scope and the paired action/header.
 - **Mutation, locks, retries, and idempotency:** Append-only event identity and run/ordinal uniqueness reject duplicate inserts. Advancement locators are all present only for current_graph_advanced and all null for other kinds. Command owners handle replay; current discovery never filters by a matching projection to skip malformed newest history.
@@ -801,9 +882,9 @@ deleting its retained draft history.
 - **Identity and cardinality:** `(workspace_id, ingress_id, epoch)` is primary, preserving successive observed epochs without identity collapse; independent `source_run_id` and optional `removed_by_run_id` provenance obey the canonical ASCII run grammar through direct checks.
 - **Outgoing foreign keys:** `workspace_id` must name the owning workspace.
 - **Inbound dependents:** No current table references these rows; workflows correlate source run, activity, and event identifiers as provenance values.
-- **Writers and transactions:** Ingress effects record observations and removals after provider outcomes in explicit operations transactions.
+- **Writers and transactions:** Ingress effects retain provider observations in explicit Operations transactions. Token resolution leaves resource state unchanged. After acknowledged token resolution, custody-revoke admission atomically marks the exact resource epoch REMOVING. Provider removal is separately admitted; the final owner fold requires acknowledged completion of all required units.
 - **Readers and projections:** Ingress reconciliation, cleanup, and operational projections read status, lifecycle, provider identifiers, and source provenance.
-- **Mutation, locks, retries, and idempotency:** Epoch identity and lifecycle predicates make repeated observation or removal deterministic; conflicting provider facts fail.
+- **Mutation, locks, retries, and idempotency:** Exact resource CAS binds epoch identity and lifecycle predicates; conflicting provider facts fail. Retained invocation facts do not authorize automatic retry or partial-allocation cleanup.
 - **Lifecycle, retention, deletion, and restore:** Rows are retained across observed lifecycle changes; restore the workspace first and preserve provider epoch order.
 - **JSON boundary:** `metadata` contains bounded provider metadata that supplements, but does not replace, typed resource identifiers.
 - **Sensitive material:** Hostnames, authority references, tunnel and DNS identifiers are protected network metadata; credentials and tokens are never stored.
@@ -1006,7 +1087,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `EffectAttemptIntentStore` owns one immutable protected runtime-effect intent for the exact original start event of an effect attempt.
 - **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary through `cpk_effect_attempt_intents_pkey`; `cpk_effect_attempt_intents_original_event_key` makes the original event triple independently unique, and `cpk_effect_attempt_intents_commitment_key` commits attempt identity, request fingerprint, and original event identity.
 - **Outgoing foreign keys:** Composite run/request and request/workspace references derive ownership, while the original event triple names the immutable start event.
-- **Inbound dependents:** `cpk_health_effect_preparations` and `cpk_effect_configuration_refs` retain exact historical ownership from this table. Every `cpk_effect_attempts` row must cite matching intent evidence through the reduced commitment key, making a started attempt without evidence unrepresentable.
+- **Inbound dependents:** `cpk_health_effect_preparations`, `cpk_effect_configuration_refs`, `cpk_execution_command_invocations` and `cpk_runtime_effect_origins` retain exact historical ownership from this table. Every `cpk_effect_attempts` row must cite matching intent evidence through the reduced commitment key, making a started attempt without evidence unrepresentable.
 - **Writers and transactions:** `EffectAttemptIntentStore.insert` appends on the caller connection after the event and before the attempt; it never commits, rolls back, locks, updates, deletes, or upserts.
 - **Readers and projections:** Exact identity lookup reconstructs the full public intent record; current verification scans primary-key pages of at most eight rows and rejects orphan evidence.
 - **Mutation, locks, retries, and idempotency:** Rows are immutable; primary/event uniqueness exposes races, while exact start replay reads and compares the protected evidence without rewriting it.
@@ -1045,7 +1126,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `EffectAttemptStore` owns the exact retained Operations representation of one Core effect-attempt state and the activity events that commit its beginning and latest transition.
 - **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary. Original and latest event triples are independently unique, so one event cannot silently commit two attempt roles.
 - **Outgoing foreign keys:** `run_id` names the activity run; the reduced intent-evidence commitment requires exact immutable start evidence; an optional predecessor triple names the immediately prior same-run/activity attempt; original and latest event triples name exact activity events.
-- **Inbound dependents:** `cpk_health_effect_preparations` retains exact historical ownership from this table. Retry descendants may cite a row through the self-reference, and direct outcome evidence may cite its exact attempt identity.
+- **Inbound dependents:** `cpk_health_effect_preparations`, `cpk_execution_command_invocations` and `cpk_runtime_effect_origins` retain exact historical ownership from this table. Retry descendants may cite a row through the self-reference, and direct outcome evidence may cite its exact attempt identity.
 - **Writers and transactions:** `insert_absent` and complete-prior `compare_and_set` execute within the caller's transaction after the caller has appended the referenced event; the store never commits or appends events itself.
 - **Readers and projections:** Exact reads and row-locking reads reconstruct typed Core state plus authoritative event records. Current-schema verification scans every row in bounded deterministic primary-key pages.
 - **Mutation, locks, retries, and idempotency:** Identity-targeted insert is first-write-wins. Compare-and-set matches the complete physical prior row with null-safe equality; retry appends a new attempt linked to its immediate predecessor.
@@ -1068,11 +1149,24 @@ deleting its retained draft history.
 - **Sensitive material:** Refs contain configuration digests and identities; compact reads do not transport product/configuration bodies. Errors remain bounded and redacted.
 - **Future impact:** E4.B1 provides typed accepted-current proof and ordinary reuse/carry while preserving original rows. E4.B2 and E4.C retain new-profile cleanup and transfer-writer activation respectively. Provider interpretation and growth/race/rollback acceptance remain separate.
 
+### `cpk_execution_command_invocations`
+- **Durable meaning and owner:** `PostgresExecutionStore` and `ExecutionInvocationService` own durable semantic admission/classification beneath one command.
+- **Identity and cardinality:** Invocation ID is primary; command/activity/kind/slot uniqueness separates exact secret uses and per-check targets. Applicable attempt/event/request locators are congruent.
+- **Outgoing foreign keys:** `cpk_invocations_attempt_fk` → `cpk_effect_attempts`; `cpk_invocations_authorization_fk` → `cpk_secret_use_authorizations`; `cpk_invocations_intent_fk` → `cpk_effect_attempt_intents`; `cpk_invocations_parent_fk` → `cpk_execution_command_receipts`; `cpk_invocations_workspace_fk` → `cpk_workspaces`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** `cpk_ingress_invocation_results`. Restore these only after this parent exists.
+- **Writers and transactions:** Admission checks current authority in its caller-owned transaction and returns a permit only after commit acknowledgement. Completion records against the admitted historical owner.
+- **Readers and projections:** Bounded invocation/history readers join exact command, attempt, intent, secret and ingress owners; current-data validation rejects malformed rows.
+- **Mutation, locks, retries, and idempotency:** Planned, denied, pending, completed and uncertain history never become automatic redispatch. A completed admitted unit may be recorded after revocation; later units require fresh admission.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The closed bounded descriptor agrees with indexed columns; outcome classification is not a replayable provider result.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
+
 ### `cpk_execution_command_receipts`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns admission and exact completed replay truth for one `ExecutionCoordinator` command.
 - **Identity and cardinality:** `(run_id, idempotency_key)` is primary. The canonical intent fingerprint binds worker, the complete normalized `PolicyScope` set, claim generation, and the positive decimal effect bound without retaining the key inside the fingerprint. Optional managed intent adds a separate fingerprint domain binding command kind, authenticated actor identity and workspace scopes, and exact predecessor/successor coordinates for an explicit next read. Retained identity is provenance, not current execution authority.
 - **Outgoing foreign keys:** `run_id` must name the activity run the command was admitted to advance.
-- **Inbound dependents:** No table depends on a receipt; public command replay reads it through the coordinator.
+- **Inbound dependents:** `cpk_execution_command_invocations`, `cpk_runtime_effect_origins` and `cpk_ingress_invocation_contexts` retain their original command parent. Public command replay reads receipts through the coordinator.
 - **Writers and transactions:** Admission locks the command key, validates request/run authority in the established request-before-run order, and inserts `incomplete` before progress. Completion compare-and-sets that row to `completed` in a later transaction after execution returns normally.
 - **Readers and projections:** A completed replay returns the exact stored bounded result. An incomplete replay uses a fresh locked current-run read and returns uncertainty without progress or effect dispatch; the initial run snapshot is correlation evidence only.
 - **Mutation, locks, retries, and idempotency:** State is one-way `incomplete` to `completed`; changed intent conflicts, and neither escaped execution nor completion-persistence failure authorizes redispatch.
@@ -1216,13 +1310,13 @@ deleting its retained draft history.
 - **Identity and cardinality:** `(workspace_id, purpose, source_run_id, source_activity_id, source_event_id)` is the primary provenance identity, with `source_run_id` independently constrained to the canonical ASCII run grammar.
 - **Outgoing foreign keys:** `workspace_id` must name the owning workspace.
 - **Inbound dependents:** No current relation references these rows; ingress reconciliation resolves them through store APIs.
-- **Writers and transactions:** Effects record the opaque reference after successful generation, with source provenance in the caller's unit of work.
+- **Writers and transactions:** The successful ingress owner fold records the opaque reference with original source provenance in the caller's unit of work. A separately retained invocation custody result does not by itself establish this final owner record or a complete allocation.
 - **Readers and projections:** Ingress cleanup and composition read references by workspace and purpose without resolving secret contents.
 - **Mutation, locks, retries, and idempotency:** The composite source identity makes repeated recording deterministic; an existing row must match exactly.
 - **Lifecycle, retention, deletion, and restore:** Restore workspaces before references and preserve source provenance even when external secret lifecycle later changes.
 - **JSON boundary:** `metadata` is bounded effect metadata and is not authority to resolve the referenced secret.
 - **Sensitive material:** `secret_ref` and metadata are sensitive locators; secret values and provider credentials are forbidden.
-- **Future impact:** #1556 should use the same reference-only discipline when requesting immediate signing effects.
+- **Future impact:** #1556 uses the same reference-only discipline for signing effects. #1120 retains separately planned partial-allocation recovery; partial custody facts do not authorize normal Remove, automatic retry or cleanup.
 
 ### `cpk_graph_receiver_bindings`
 - **Durable meaning and owner:** The graph store owns the complete derived receiver set for one stored authored/realized graph pair.
@@ -1293,7 +1387,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `IngressAuthorityStore` owns admitted provider authority and hostname policy for workspace ingress.
 - **Identity and cardinality:** `registration_id` is primary; authority identity and status are validated by the ingress domain.
 - **Outgoing foreign keys:** `workspace_id` binds the registration to its workspace.
-- **Inbound dependents:** No current relation points here; ingress planning resolves registrations by authority reference.
+- **Inbound dependents:** `cpk_ingress_invocation_contexts` retains the original ingress registration. Ingress planning resolves registrations by authority reference.
 - **Writers and transactions:** Admission and status change are explicit store operations before provider mutation.
 - **Readers and projections:** Ingress planners and effects read provider kind, allowed hostname policy, authority document, and credential references.
 - **Mutation, locks, retries, and idempotency:** Registration identity and validated authority references make replay deterministic; conflicting replacement requires a new registration.
@@ -1301,6 +1395,58 @@ deleting its retained draft history.
 - **JSON boundary:** `authority`, `credential_references`, and `metadata` are strict bounded documents.
 - **Sensitive material:** Credential references and allowed hostnames are protected routing metadata; no credential body or provider token is persisted.
 - **Future impact:** #1243 may interpret an accepted ingress authority for gateway relay but cannot accept caller-selected host, path, or URL truth.
+
+### `cpk_ingress_invocation_contexts`
+- **Durable meaning and owner:** `IngressInvocationStore` owns immutable command/activity context for qualified ingress allocation or removal.
+- **Identity and cardinality:** Context ID is primary; command/activity and original event identities are unique. Fingerprints bind exact ingress, authority, grant and optional original allocation.
+- **Outgoing foreign keys:** `cpk_ingress_contexts_event_fk` → `cpk_activity_events`; `cpk_ingress_contexts_parent_fk` → `cpk_execution_command_receipts`; `cpk_ingress_contexts_registration_fk` → `cpk_ingress_authorities`; `cpk_ingress_contexts_workspace_fk` → `cpk_workspaces`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** `cpk_ingress_invocation_results`. Restore these only after this parent exists.
+- **Writers and transactions:** Binding inserts immutable metadata under command ownership; reached unit admission later takes fresh policy/registration/secret/resource guards.
+- **Readers and projections:** Ingress admission, completion, final fold and the bounded run-event snapshot reuse the original context.
+- **Mutation, locks, retries, and idempotency:** Context existence is not authority to dispatch. Removal binds the exact original resource epoch; no implicit adoption or retry follows.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The closed reference-only descriptor retains bounded authority/grant and original ownership metadata, never generated token bytes.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
+
+### `cpk_ingress_invocation_results`
+- **Durable meaning and owner:** `IngressInvocationStore` owns durably retained bounded provider/custody facts and completion classifications for an admitted ingress unit. Persistence does not prove acknowledgement reached the caller.
+- **Identity and cardinality:** Invocation ID is primary, context_id binds its immutable ingress context, and recorded_at agrees with completion.
+- **Outgoing foreign keys:** `cpk_ingress_results_context_fk` → `cpk_ingress_invocation_contexts`; `cpk_ingress_results_invocation_fk` → `cpk_execution_command_invocations`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** No direct SQL dependents; owning readers retain its historical correlation.
+- **Writers and transactions:** Result insert and invocation completion CAS occur atomically in the caller-owned UoW, outside provider compensation catches.
+- **Readers and projections:** Final allocation/removal fold and repeatable-read run-event summaries consume retained closed results, separating provider facts from owner state.
+- **Mutation, locks, retries, and idempotency:** Identical result replay retains original time; changed payload conflicts. Unknown acknowledgement stops later units; final-fold failure does not trigger compensation.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** Closed variants retain bounded IDs, certainty, DNS provenance and custody receipt metadata. Read summaries strip private custody path metadata.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
+
+### `cpk_managed_runtime_assignment_receipts`
+- **Durable meaning and owner:** `ManagedRuntimeAssignmentStore` retains immutable management-grant/revoke revision receipts.
+- **Identity and cardinality:** Assignment/revision is primary; assignment/idempotency key is unique for replay.
+- **Outgoing foreign keys:** `cpk_managed_runtime_assignment_receipts_assignment_fk` → `cpk_managed_runtime_assignments`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** No direct SQL dependents; owning readers retain its historical correlation.
+- **Writers and transactions:** Each receipt commits atomically with the assignment change under its existing owner locks.
+- **Readers and projections:** Administrative history and exact intent replay expose the retained original result.
+- **Mutation, locks, retries, and idempotency:** Replay checks original intent without restoring authority or reapplying a revoked assignment.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The bounded receipt retains actor, exact selection, revision and disposition, never credential bytes.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
+
+### `cpk_managed_runtime_assignments`
+- **Durable meaning and owner:** `ManagedRuntimeAssignmentStore` owns a local installer-capability grant for one exact runtime registration.
+- **Identity and cardinality:** Assignment ID is primary; `(installation_id, workspace_id, runtime_id, authority_ref)` is unique. Registration ID, capability ID, status and revision are current assignment values, not additional components of this stable unique key.
+- **Outgoing foreign keys:** `cpk_managed_runtime_assignments_installation_fk` → `cpk_workspace_permission_installation`; `cpk_managed_runtime_assignments_registration_fk` → `cpk_runtime_authorities`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** `cpk_managed_runtime_assignment_receipts`. Restore these only after this parent exists.
+- **Writers and transactions:** Explicit management grant/revoke uses the current authority-before-assignment lock order in a caller-owned transaction.
+- **Readers and projections:** Current effect selection requires active exact registration, current assignment and installer-declared capability.
+- **Mutation, locks, retries, and idempotency:** Revocation retains the assignment and increments its revision; replacement registration cannot inherit the old grant. Registration is not daemon identity proof.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The assignment uses bounded scalar identity/status columns; no resolved connection material is stored.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
 
 ### `cpk_node_control_attempts`
 - **Durable meaning and owner:** `NodeControlAttemptStore` owns the immutable statement that one exact graph-bound node-control request, transit grant, workload grant, and custody authorization set became intended before external relay.
@@ -1384,8 +1530,8 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `RuntimeAuthorityStore` owns admitted runtime authority declarations for workspace runtime providers.
 - **Identity and cardinality:** `registration_id` is primary; domain validation governs authority reference uniqueness.
 - **Outgoing foreign keys:** `workspace_id` binds the authority to its workspace.
-- **Inbound dependents:** No current relation references registrations; runtime planning resolves them by accepted authority reference.
-- **Writers and transactions:** Admission and status change occur through explicit store operations before runtime effects.
+- **Inbound dependents:** `cpk_runtime_effect_origins` and `cpk_managed_runtime_assignments` retain exact registrations. Runtime planning resolves registrations by accepted authority reference.
+- **Writers and transactions:** Admission and status change occur through explicit store operations before runtime effects. Authority revocation invalidates its active management assignments in the same authority-owner transaction and under the authority lock.
 - **Readers and projections:** Runtime planners and interpreters read authority kind, runtime kind, document, credential references, and status.
 - **Mutation, locks, retries, and idempotency:** Registration identity is immutable and conflicting semantic authority is rejected; status transitions are guarded.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace before registrations and retain inactive authority history.
@@ -1405,6 +1551,19 @@ deleting its retained draft history.
 - **JSON boundary:** `delivery`, `secret_references`, and `metadata` are strict bounded documents.
 - **Sensitive material:** Secret references are sensitive locators only; resolved values, credentials, and delivery-time private material are never persisted.
 - **Future impact:** #1556 must resolve signing material immediately at the effect boundary rather than borrowing runtime delivery storage.
+
+### `cpk_runtime_effect_origins`
+- **Durable meaning and owner:** `RuntimeEffectOriginStore` owns original registered-runtime provenance for supported effects without a prepared marker.
+- **Identity and cardinality:** Run/activity/attempt is primary; original command fingerprint, intent, event and registration are immutable.
+- **Outgoing foreign keys:** `cpk_runtime_origins_attempt_fk` → `cpk_effect_attempts`; `cpk_runtime_origins_intent_fk` → `cpk_effect_attempt_intents`; `cpk_runtime_origins_parent_fk` → `cpk_execution_command_receipts`; `cpk_runtime_origins_registration_fk` → `cpk_runtime_authorities`; `cpk_runtime_origins_workspace_fk` → `cpk_workspaces`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** No direct SQL dependents; owning readers retain its historical correlation.
+- **Writers and transactions:** The start owner inserts the origin atomically with its original attempt evidence before capability dispatch.
+- **Readers and projections:** Fresh observation validates the original origin or prepared marker and exact historical registration; it cannot choose a replacement target.
+- **Mutation, locks, retries, and idempotency:** No backfill or inference from missing history. Original target integrity is checked again at consumption; observation is separately admitted.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The bounded typed origin descriptor carries correlation and registered identity only.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
 
 ### `cpk_saved_preparation_sources`
 - **Durable meaning and owner:** `PostgresSavedPreparationSourceStore` owns the explicit immutable saved input of a preparation session, not deployment success.
@@ -1462,14 +1621,27 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `SecretUseAuthorizationStore` owns committed authorization to use one exact provider/reference pair for one bounded intent.
 - **Identity and cardinality:** `authorization_id` is primary; workspace correlation is unique; `(authorization_id, workspace_id)` preserves exact audit identity.
 - **Outgoing foreign keys:** Workspace, provider registration, and secret-reference registration must exist and agree on workspace.
-- **Inbound dependents:** `cpk_health_effect_preparations` and `cpk_node_control_attempts` retain exact same-workspace authorizations through foreign keys. Effects consume committed authorization records by service contract.
-- **Writers and transactions:** Authorization commits in its own authorization unit of work before resolution or external I/O; optional operation/session/run/activity/effect/probe columns retain correlation provenance without an atomic owning-intent insert, and optional `run_id` has a direct locale-stable canonical ASCII check.
+- **Inbound dependents:** `cpk_health_effect_preparations`, `cpk_node_control_attempts` and `cpk_execution_command_invocations` retain exact same-workspace authorizations through foreign keys. Effects consume committed authorization records by service contract.
+- **Writers and transactions:** The standalone authorization wrapper commits its own unit of work; `authorize_secret_use_in_unit_of_work` and `authorize_secret_version_use_in_unit_of_work` join caller-owned admission/start transactions with their owning intent. Both paths require commit acknowledgement before resolution or external I/O. Optional operation/session/run/activity/effect/probe columns retain correlation provenance, and optional `run_id` has a direct locale-stable canonical ASCII check.
 - **Readers and projections:** Secret policy, effect execution, and audit projections read intent, references, actor, correlation, and operation provenance.
 - **Mutation, locks, retries, and idempotency:** Authorizations are immutable; workspace correlation and intent fingerprint distinguish replay from conflicting secret use.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, provider, and reference first; authorizations remain durable even after referenced registrations are revoked.
 - **JSON boundary:** None; all authority facts are normalized scalar identities and digests.
 - **Sensitive material:** Provider and secret references are sensitive; the row contains no resolved value, private key, compact token, signature, or provider response.
 - **Future impact:** #1553 defines exact signing-use intents; #1556 commits both signing-use authorizations with command intent; later effect work resolves only after commit. #1842 adds the two health signing-use intents to fresh stores. #1845 owns atomic approved-attempt preparation and #1846 owns authority reload.
+
+### `cpk_workspace_administration_receipts`
+- **Durable meaning and owner:** `WorkspaceCommandService.create_as_administrator`, through `WorkspacePermissionStore`, retains idempotent administrative workspace creation.
+- **Identity and cardinality:** Installation plus full actor identity and idempotency key is primary; workspace_id retains the created workspace.
+- **Outgoing foreign keys:** `cpk_workspace_administration_receipts_fk_0` → `cpk_workspace_permission_installation`; `cpk_workspace_administration_receipts_fk_1` → `cpk_workspaces`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** No direct SQL dependents; owning readers retain its historical correlation.
+- **Writers and transactions:** Workspace creation and the immutable administrative receipt share the existing caller-owned transaction.
+- **Readers and projections:** Administrative replay and bounded reads expose the original workspace result.
+- **Mutation, locks, retries, and idempotency:** Intent fingerprints distinguish an exact replay from conflicting reuse; replay does not create another workspace.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The bounded typed receipt binds original administrative intent and workspace identity.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
 
 ### `cpk_workspace_initializations`
 
@@ -1485,11 +1657,50 @@ deleting its retained draft history.
 - **Sensitive material:** Creator and idempotency coordinates are protected audit context. The receipt contains no configuration content, secret value, credential, private key, token or provider result.
 - **Future impact:** B2 current-use proof depends on this origin without inferring historical acceptance. C/D/I177 must preserve it; its empty membership is never proof that all historical allocations are unused or safe to clean up.
 
+### `cpk_workspace_permission_installation`
+- **Durable meaning and owner:** `WorkspacePermissionStore` owns the singleton installation identity and original initialization or retained-upgrade receipt.
+- **Identity and cardinality:** One true singleton row; installation_id is also unique. A different installation, actor or initialization key cannot replace it.
+- **Outgoing foreign keys:** None; this is the installation binding root.
+- **Inbound dependents:** `cpk_managed_runtime_assignments`, `cpk_workspace_administration_receipts`, `cpk_workspace_permissions`. Restore these only after this parent exists.
+- **Writers and transactions:** Explicit initialization or the reviewed retained transition writes inside the caller-owned transaction; the schema advisory lock serializes binding.
+- **Readers and projections:** Administrative installation reads and current policy resolution verify the typed original receipt.
+- **Mutation, locks, retries, and idempotency:** Exact replay returns the original receipt without reseeding. Unknown commit acknowledgement requires authorized inspection, not blind retry.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The receipt is a closed bounded initialization/upgrade value; historical seeds are not current grants.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
+
+### `cpk_workspace_permission_receipts`
+- **Durable meaning and owner:** `WorkspacePermissionStore` retains immutable grant/revoke intent and resulting scopes/revision.
+- **Identity and cardinality:** Exact installation/workspace/full identity plus idempotency key is primary; each revision is unique for that identity.
+- **Outgoing foreign keys:** `cpk_workspace_permission_receipts_fk_0` → `cpk_workspace_permissions`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** No direct SQL dependents; owning readers retain its historical correlation.
+- **Writers and transactions:** The receipt is written atomically with the current permission update by the administration owner.
+- **Readers and projections:** Administrative history and replay return the original disposition instead of applying the mutation again.
+- **Mutation, locks, retries, and idempotency:** Exact intent fingerprint replay acknowledges the old result; a changed intent conflicts and cannot restore a revoked scope.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** The bounded typed receipt carries references, scopes, revision and actor metadata; it does not grant new authority.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
+
+### `cpk_workspace_permissions`
+- **Durable meaning and owner:** `WorkspacePermissionStore` owns current workspace membership for a full issuer/subject/kind identity.
+- **Identity and cardinality:** Primary key is installation_id, workspace_id, issuer, subject_id and kind; revision is monotonic and scopes may be empty.
+- **Outgoing foreign keys:** `cpk_workspace_permissions_fk_0` → `cpk_workspace_permission_installation`; `cpk_workspace_permissions_fk_1` → `cpk_workspaces`. The exact ledger specifies columns and ownership obligations.
+- **Inbound dependents:** `cpk_workspace_permission_receipts`. Restore these only after this parent exists.
+- **Writers and transactions:** Explicit administration grants/revokes in a caller-owned transaction and appends the matching revision receipt.
+- **Readers and projections:** `WorkspaceContextResolver` resolves current grants for an authenticated full identity. `CurrentWorkspaceEffectPolicy` and `DurablePrincipalAuthorizer` also impose the applicable original request ceiling when admitting continuing work.
+- **Mutation, locks, retries, and idempotency:** Permission row/advisory ordering serializes new admissions with revocation. Regrant never enlarges an existing command ceiling.
+- **Lifecycle, retention, deletion, and restore:** Retain original identities and receipts; restore referenced parents first under their existing transaction constraints. No public physical deletion, automatic repair or provider cleanup is implied.
+- **JSON boundary:** Scopes are a bounded closed scope array, not an authentication claim supplied by a route.
+- **Sensitive material:** Full actor/target metadata and secret references are protected control-plane context. Raw credentials, private keys, tokens and provider bodies are forbidden.
+- **Future impact:** #2036 and #2051 own combined acceptance; #1120 owns separately planned partial-ingress recovery. Adapter adoption and live schema execution remain separate releases.
+
 ### `cpk_workspaces`
 - **Durable meaning and owner:** `PostgresWorkspaceStore` owns workspace identity, lifecycle, metadata, and the atomic current/desired graph-lineage heads.
 - **Identity and cardinality:** `workspace_id` is primary; one row carries current and desired graph/projection pairs plus desired revision.
 - **Outgoing foreign keys:** Each selected projection must both belong to this workspace and realize the paired current or desired authored graph.
-- **Inbound dependents:** Workspace-scoped aggregates depend on this row, including original initialization, graphs, projections, sessions, authorities, secrets, probes and rotations. Configuration acceptance belongs to the workspace through its exact projection and original execution lineage.
+- **Inbound dependents:** Workspace-scoped aggregates depend on this row, including original initialization, graphs, projections, sessions, authorities, secrets, probes and rotations. Permissions, administrative receipts, command invocations, runtime origins and ingress invocation contexts also retain workspace ownership. Configuration acceptance belongs to the workspace through its exact projection and original execution lineage.
 - **Writers and transactions:** WorkspaceCommandService creates the actual empty graph, identity projection, paired pointer and immutable initialization receipt in one UoW under L, rechecking existence before IDs. Authoring/planning own desired changes. CurrentGraphAdvancement owns accepted current CAS together with original action/event, complete header and slots.
 - **Readers and projections:** Graph state reads return paired current/desired lineage. Creation replay verifies the original initialization but returns today's current graph. Accepted-use readers prove the latest original pair/header, or exact original empty current when both advancement streams are absent.
 - **Mutation, locks, retries, and idempotency:** Desired revision and exact head predicates reject stale writers. Prepared original-owner guards protect accepted current publication; legacy configuration-free pointer helpers do not fabricate initialization or acceptance authority. Missing history refuses without repair/backfill.

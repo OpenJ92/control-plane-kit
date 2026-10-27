@@ -26,22 +26,31 @@ ATTEMPT_LOCK = (
 
 
 class LifecycleLockFixture:
-    def opposing_commands(self, leader, follower, pause_after):
+    def opposing_commands(self, leader, follower, pause_after, *, connection_query=None):
         """Hold the real leader after a selected lock; prove the follower waits.
 
         Both services keep their own SQL, decisions, commit and rollback paths.
         The pause is scheduling only; no row, store result or clock is replaced.
+        Multi-transaction commands may select their lock-owning connection by
+        its real query; the PID is published before that query can block.
         """
         reached, release = threading.Event(), threading.Event()
         leader_pids, follower_pids = Queue(), Queue()
+        leader_selected, follower_selected = threading.Event(), threading.Event()
 
         class Connection:
-            def __init__(self, connection):
+            def __init__(self, connection, pids, selected, held):
                 self.connection = connection
+                self.pids, self.selected, self.held = pids, selected, held
 
             def execute(self, query, parameters=None):
+                normalized = " ".join(str(query).split())
+                if (connection_query is not None and not self.selected.is_set()
+                        and connection_query(normalized, parameters)):
+                    self.selected.set()
+                    self.pids.put(self.connection.info.backend_pid)
                 cursor = self.connection.execute(query, parameters)
-                if not reached.is_set() and pause_after(" ".join(str(query).split()), parameters):
+                if self.held and not reached.is_set() and pause_after(normalized, parameters):
                     reached.set()
                     if not release.wait(10):
                         raise AssertionError("leader lock barrier was not released")
@@ -50,20 +59,21 @@ class LifecycleLockFixture:
             def __getattr__(self, name):
                 return getattr(self.connection, name)
 
-        def connect(pids, held=False):
+        def connect(pids, selected, held=False):
             connection = self.lock_connection()
-            pids.put(connection.info.backend_pid)
-            return Connection(connection) if held else connection
+            if connection_query is None:
+                pids.put(connection.info.backend_pid)
+            return Connection(connection, pids, selected, held) if held or connection_query is not None else connection
 
         with ThreadPoolExecutor(max_workers=2) as pool:
-            first = pool.submit(leader, lambda: PostgresUnitOfWork(lambda: connect(leader_pids, True)))
+            first = pool.submit(leader, lambda: PostgresUnitOfWork(lambda: connect(leader_pids, leader_selected, True)))
             try:
                 first_pid = leader_pids.get(timeout=5)
                 if not reached.wait(5):
                     if first.done():
                         first.result()
                     self.fail("leader never reached the selected real lock")
-                second = pool.submit(follower, lambda: PostgresUnitOfWork(lambda: connect(follower_pids)))
+                second = pool.submit(follower, lambda: PostgresUnitOfWork(lambda: connect(follower_pids, follower_selected)))
                 second_pid = follower_pids.get(timeout=5)
                 deadline = time.monotonic() + 5
                 while first_pid not in self.connection.execute(

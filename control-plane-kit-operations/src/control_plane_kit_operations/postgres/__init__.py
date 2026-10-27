@@ -1,5 +1,11 @@
 """Postgres schema foundation for durable control-plane operations."""
 
+from .workspace_permission_upgrade import (
+    WorkspacePermissionUpgradePlan, WorkspacePermissionUpgradeResult,
+    WorkspacePermissionUpgradeInspection, WorkspacePermissionUpgradeError,
+    WorkspacePermissionUpgradeUncertain, upgrade_workspace_permissions,
+    inspect_workspace_permission_upgrade,
+)
 from control_plane_kit_operations.postgres.schema import (
     PostgresConnection,
     SchemaInstallationError,
@@ -61,6 +67,10 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 )
 
 __all__ = [
+    "WorkspacePermissionUpgradePlan", "WorkspacePermissionUpgradeResult",
+    "WorkspacePermissionUpgradeInspection", "WorkspacePermissionUpgradeError",
+    "WorkspacePermissionUpgradeUncertain", "upgrade_workspace_permissions",
+    "inspect_workspace_permission_upgrade",
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
     "FailedRunCompensationStore",

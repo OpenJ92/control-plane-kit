@@ -74,6 +74,10 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretUseAuthorizationStore,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.ingress_invocation_store import IngressInvocationStore
+from control_plane_kit_operations.postgres.workspace_permission_store import WorkspacePermissionStore
+from control_plane_kit_operations.postgres.managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
+from control_plane_kit_operations.postgres.runtime_effect_origin_store import RuntimeEffectOriginStore
 
 
 @dataclass(frozen=True)
@@ -99,6 +103,8 @@ class PostgresStoreBundle:
     saved_preparation_sources: PostgresSavedPreparationSourceStore = field(init=False)
     revision_history: PostgresRevisionHistoryStore = field(init=False)
     connection: PostgresConnection
+    workspace_permissions: WorkspacePermissionStore = field(init=False)
+    managed_runtime_assignments: ManagedRuntimeAssignmentStore = field(init=False)
     workspaces: PostgresWorkspaceStore = field(init=False)
     graphs: PostgresGraphTopologyStore = field(init=False)
     realized_graphs: PostgresRealizedGraphProjectionStore = field(init=False)
@@ -106,6 +112,7 @@ class PostgresStoreBundle:
     image_pull_authorities: ImagePullAuthorityStore = field(init=False)
     ingress_authorities: IngressAuthorityStore = field(init=False)
     ingress_resources: IngressResourceStore = field(init=False)
+    ingress_invocations: IngressInvocationStore = field(init=False)
     generated_ingress_secrets: GeneratedIngressSecretReferenceStore = field(init=False)
     runtime_authorities: RuntimeAuthorityStore = field(init=False)
     runtime_authority_deliveries: RuntimeAuthorityDeliveryStore = field(init=False)
@@ -115,6 +122,7 @@ class PostgresStoreBundle:
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
     effect_attempt_intents: EffectAttemptIntentStore = field(init=False)
+    runtime_effect_origins: RuntimeEffectOriginStore = field(init=False)
     configuration_preparation: ConfigurationPreparationStore = field(init=False)
     configuration_completions: ConfigurationCompletionStore = field(init=False)
     configuration_acceptance: ConfigurationAcceptanceStore = field(init=False)
@@ -137,6 +145,10 @@ class PostgresStoreBundle:
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "ingress_invocations", IngressInvocationStore(self.connection))
+        object.__setattr__(self, "runtime_effect_origins", RuntimeEffectOriginStore(self.connection))
+        object.__setattr__(self, "workspace_permissions", WorkspacePermissionStore(self.connection))
+        object.__setattr__(self, "managed_runtime_assignments", ManagedRuntimeAssignmentStore(self.connection))
         object.__setattr__(self, "secret_material_provision_attempts", SecretMaterialProvisionAttemptStore(self.connection))
         object.__setattr__(self, "delegation_key_generation_attempts", DelegationKeyGenerationAttemptStore(self.connection))
         object.__setattr__(self, "configuration_preparation", ConfigurationPreparationStore(self.connection))

@@ -70,3 +70,20 @@ Replay rejects nonexact intent-record types before reading an attribute or
 invoking equality on them. Configuration protection validation only runs after
 that nominal boundary; the hostile-subclass regression keeps this ordering
 observable without allocating IDs or mutating history.
+
+For the dynamic ordinary Docker verification family (#2048), original start
+requires a registered runtime and atomically retains a planned acquisition marker
+with event, intent and attempt. Its target commits the original request and exact
+registration, including local registrations. Registration represents declared
+authorization identity, not verified daemon identity. This changes source and the
+final batch schema contract; it does not execute a production migration.
+
+OBSERVE / #2049 retains `RuntimeEffectOriginRecord` for newly admitted,
+registered-local ordinary starts whose selected observer supports the shape and
+whose execution needs no preparation roles. Event, original intent, attempt and
+selection share the existing transaction and commit acknowledgement. The record
+names the original command and exact registration; it is neither a second
+execution permit nor evidence that the provider call occurred. Prepared and
+ordinary-verification starts keep their existing invocation owners. Fresh
+unregistered no-preparation execution remains available; older attempts never
+acquire a fabricated selection during replay, observation or schema upgrade.

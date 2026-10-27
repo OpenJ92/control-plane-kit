@@ -14,6 +14,7 @@ from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference, SecretReference, SecretUseIntent,
 )
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+from control_plane_kit_operations.effect_permissions import CurrentWorkspaceEffectPolicy, _standalone_context_matches
 from control_plane_kit_operations.secret_providers import (
     SecretProviderNotFound, SecretProviderRegistrationError,
     generated_secret_reference_candidate, secret_custody_grant_for,
@@ -189,10 +190,13 @@ class ProvisionAttemptAdmissionService:
     calling, outside this transaction. This owner checks identity/scopes and locks
     current provider truth; it does not infer permission freshness from a tuple.
     """
-    def __init__(self, unit_of_work_factory: Any):
+    def __init__(self, unit_of_work_factory: Any, *, permission_policy: CurrentWorkspaceEffectPolicy | None = None):
         self._uow = unit_of_work_factory
+        if permission_policy is not None and type(permission_policy) is not CurrentWorkspaceEffectPolicy:
+            raise ProvisionAttemptAuthorizationDenied("provision permission policy is invalid")
+        self._permission_policy = permission_policy
 
-    def admit(self, claim, *, actor, actor_scopes, admitted_at):
+    def admit(self, claim, *, actor, actor_scopes, admitted_at, command_context=None):
         if (type(actor) is not PrincipalIdentity or actor.kind is not PrincipalKind.OPERATOR
                 or type(actor_scopes) is not tuple
                 or not all(type(scope) is PolicyScope for scope in actor_scopes)
@@ -206,6 +210,15 @@ class ProvisionAttemptAdmissionService:
                 raise ProvisionAttemptAuthorizationDenied("provision admission requires original operator")
             if attempt.state is not ProvisionAttemptState.RECEIPT_RECORDED:
                 raise ProvisionAttemptConflict("provision has no pending receipt")
+            if self._permission_policy is not None:
+                if not _standalone_context_matches(command_context, actor, attempt.intent.workspace_id,
+                        actor_scopes=actor_scopes):
+                    raise ProvisionAttemptAuthorizationDenied("provision invocation binding is unavailable")
+                decision = self._permission_policy.evaluate_in_unit_of_work(uow, command_context,
+                    required_scopes=tuple(sorted(REQUIRED_SCOPES, key=lambda scope: scope.value)))
+                if not decision.allowed:
+                    raise ProvisionAttemptAuthorizationDenied("current provision admission is denied")
+                actor_scopes = decision.effective_scopes
             grant = attempt.intent.grant
             current = None
             try:

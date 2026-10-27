@@ -25,7 +25,11 @@ from control_plane_kit_core.planning import (
     project_activity_journal,
 )
 from control_plane_kit_operations.activity_journal import activity_journal_events
-from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
+from control_plane_kit_operations.runtime_management_targets import (
+    is_native_connection_operation, is_signed_management_health_operation,
+)
+from control_plane_kit_operations.managed_runtime_assignments import ManagedRuntimeSelection
+from control_plane_kit_operations.managed_effect_plan import require_managed_effect_plan
 from control_plane_kit_operations.effect_attempt_start import (
     EffectAttemptStartConflict,
     EffectAttemptStartDenied,
@@ -51,6 +55,21 @@ from control_plane_kit_operations.records import (
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
+from control_plane_kit_operations.effect_permissions import (
+    CurrentWorkspaceEffectPolicy, EffectCommandContext, EffectPermissionDenied,
+    _require_execution_binding,
+)
+from control_plane_kit_operations.execution_invocations import (
+    ExecutionInvocationKind, ExecutionInvocationRecord, ExecutionInvocationConflict,
+    signed_health_invocation_target_fingerprint,
+)
+from control_plane_kit_operations.ordinary_verification_invocations import (
+    ordinary_verification_candidate, ordinary_verification_invocation_profile,
+)
+from control_plane_kit_operations.prepared_runtime_invocations import (
+    runtime_preparation_candidate, prepared_runtime_invocation_profile, workload_preparation_candidate,
+)
+from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority, RemoteDockerTlsAuthority, RuntimeAuthorityNotFound
 from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
 )
@@ -82,26 +101,39 @@ class EffectAttemptStartService:
         *,
         id_factory: Callable[[], str],
         health_receiver_decoders: HealthReceiverDecoders = HealthReceiverDecoders(()),
+        permission_policy: CurrentWorkspaceEffectPolicy | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._id_factory = id_factory
+        if permission_policy is not None and type(permission_policy) is not CurrentWorkspaceEffectPolicy:
+            raise EffectPermissionDenied("effect permission policy is invalid")
+        self._permission_policy = permission_policy
         if type(health_receiver_decoders) is not HealthReceiverDecoders:
             raise HealthReceiverTrustError("health receiver trust is unavailable")
         self._health_receiver_decoders = replace(health_receiver_decoders)
 
+    @property
+    def permission_policy(self) -> CurrentWorkspaceEffectPolicy | None:
+        """Expose immutable policy configuration for explicit composition checks."""
+        return self._permission_policy
+
     def execute(
         self,
         command: StartEffectAttempt,
+        *, command_context: EffectCommandContext | None = None,
+        managed_target: ManagedRuntimeSelection | None = None,
     ) -> EffectAttemptStartResult:
         if getattr(getattr(command, "intent", None), "kind", None) is RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
             from control_plane_kit_operations._configuration_preparation import _configuration_accounting
             with _configuration_accounting(command.transition.identity.run_id.value, join=True):
-                return self._execute(command, None)
-        return self._execute(command, None)
+                return self._execute(command, None, command_context, managed_target)
+        return self._execute(command, None, command_context, managed_target)
 
     def execute_health(
         self,
         command: StartHealthEffectAttempt,
+        *, command_context: EffectCommandContext | None = None,
+        managed_target: ManagedRuntimeSelection | None = None,
     ) -> HealthEffectAttemptStartResult:
         if not _valid_health_command(command):
             raise InvalidOperationCommand("health effect start command is invalid")
@@ -109,16 +141,18 @@ class EffectAttemptStartService:
             PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
         if any(scope not in command.context.granted_scopes for scope in required):
             raise EffectAttemptStartDenied("health effect start scope is missing")
-        return self._execute(command.start, command)
+        return self._execute(command.start, command, command_context, managed_target)
 
     def _execute(
         self,
         command: StartEffectAttempt,
         health: StartHealthEffectAttempt | None,
+        command_context: EffectCommandContext | None,
+        managed_target: ManagedRuntimeSelection | None,
     ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
         for pass_number in range(2):
             try:
-                return self._execute_once(command, health)
+                return self._execute_once(command, health, command_context, managed_target)
             except _StartLocatorChanged:
                 if pass_number:
                     break
@@ -128,6 +162,8 @@ class EffectAttemptStartService:
         self,
         command: StartEffectAttempt,
         health: StartHealthEffectAttempt | None,
+        command_context: EffectCommandContext | None,
+        managed_target: ManagedRuntimeSelection | None,
     ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
         if not _valid_start_command(command):
             raise InvalidOperationCommand(
@@ -242,6 +278,40 @@ class EffectAttemptStartService:
                 permission_failed = False
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            if self._permission_policy is None and managed_target is not None:
+                raise EffectAttemptStartDenied("current effect permission is unavailable")
+            if self._permission_policy is not None:
+                refused = False
+                try:
+                    original = _require_execution_binding(stores, command_context,
+                        request, run, command.authority, command.fence)
+                    if health is not None and health.context != original:
+                        raise EffectPermissionDenied("health permission binding is unavailable")
+                    native = is_native_connection_operation(command.intent.operation)
+                    managed = native or is_signed_management_health_operation(command.intent.operation)
+                    if managed:
+                        pinned_runtime = require_managed_effect_plan(stores, command.intent, request)
+                        if (type(managed_target) is not ManagedRuntimeSelection
+                                or managed_target.installation_id != self._permission_policy.installation_id
+                                or managed_target.workspace_id != request.identity.workspace_id
+                                or managed_target.runtime_id != command.intent.operation.target.runtime_id
+                                or managed_target.authority_ref != pinned_runtime.authority_ref):
+                            raise EffectPermissionDenied("management target binding is unavailable")
+                    elif managed_target is not None:
+                        raise EffectPermissionDenied("management target does not apply")
+                    required = (PolicyScope.EXECUTION_OPERATE,)
+                    if native:
+                        required += (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE)
+                    if health is not None:
+                        required += (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE,
+                            PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
+                    decision = self._permission_policy.evaluate_in_unit_of_work(
+                        unit_of_work, original, required_scopes=required, managed_target=managed_target)
+                    refused = not decision.allowed
+                except (EffectPermissionDenied, OperationsRecordError, KeyError, ValueError, TypeError):
+                    refused = True
+                if refused:
+                    raise EffectAttemptStartDenied("current effect permission is unavailable")
             admission = None
             try:
                 _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
@@ -265,7 +335,9 @@ class EffectAttemptStartService:
                     else:
                         configuration_preparation = evidence_contexts.enter_context(
                             stores.configuration_preparation._start_scope(
-                                unit_of_work, command, request, run, plan, guard, event_kind, prefix))
+                                unit_of_work, command, request, run, plan, guard, event_kind, prefix,
+                                prepared_runtime=(self._permission_policy is not None
+                                    and runtime_preparation_candidate(command.intent))))
                 except (KeyError, ValueError, TypeError, AttributeError):
                     configuration_preparation = None
                 if configuration_preparation is None:
@@ -273,6 +345,31 @@ class EffectAttemptStartService:
             if health is not None:
                 admission = admit_health_start(stores, health, request, plan, event_kind,
                     self._health_receiver_decoders)
+            prepared_runtime = None
+            original_runtime = None
+            ordinary_verification = ordinary_verification_candidate(command.intent)
+            if (self._permission_policy is not None and health is None
+                    and event_kind is ActivityEventKind.STEP_STARTED
+                    and (runtime_preparation_candidate(command.intent) or ordinary_verification)):
+                if command.intent.authority_ref is None:
+                    raise EffectAttemptStartConflict("prepared workload requires registered runtime authority")
+                try:
+                    runtime = stores.runtime_authorities.get_active_for_update(
+                        request.identity.workspace_id, command.intent.authority_ref)
+                except RuntimeAuthorityNotFound:
+                    raise EffectAttemptStartDenied(_AUTHORITY_ERROR) from None
+                except (ValueError, TypeError, AttributeError):
+                    if configuration_preparation is None:
+                        raise
+                    raise EffectAttemptStartConflict("configuration runtime preparation is unavailable") from None
+                if (type(runtime.authority) is RemoteDockerTlsAuthority
+                        or (type(runtime.authority) is LocalDockerSocketAuthority
+                            and (workload_preparation_candidate(command.intent) or ordinary_verification))):
+                    prepared_runtime = runtime
+                else:
+                    from .runtime_effect_origins import unprepared_runtime_origin_supported
+                    if unprepared_runtime_origin_supported(command.intent, runtime):
+                        original_runtime = runtime
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
@@ -327,8 +424,49 @@ class EffectAttemptStartService:
                 if configuration_preparation is None:
                     raise
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR) from None
+            final_invocation = None
+            if original_runtime is not None:
+                from .runtime_effect_origins import RuntimeEffectOriginRecord
+                origin = RuntimeEffectOriginRecord(command_context.receipt, request.identity.workspace_id,
+                    expected_attempt.state.identity, event.event_id, expected_attempt.state.request_fingerprint,
+                    original_runtime.registration_id, event.occurred_at)
+                if stores.runtime_effect_origins.insert_absent(origin) != origin:
+                    raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+            if prepared_runtime is not None:
+                try:
+                    profile_builder = (ordinary_verification_invocation_profile if ordinary_verification
+                        else prepared_runtime_invocation_profile)
+                    profile = profile_builder(command.intent,
+                        original_event_id=event.event_id, runtime_authority=prepared_runtime)
+                    final_invocation = ExecutionInvocationRecord(command_context.receipt,
+                        request.identity.workspace_id, expected_attempt.state.identity.activity_id,
+                        (ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION if ordinary_verification
+                            else ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH), profile.target_fingerprint,
+                        event.occurred_at, attempt=expected_attempt.state.identity.attempt,
+                        original_event_id=event.event_id, request_fingerprint=expected_attempt.state.request_fingerprint,
+                        runtime_registration_id=profile.runtime_registration_id)
+                    if stores.execution.add_command_invocation(final_invocation) != final_invocation:
+                        raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+                except (ValueError, TypeError, AttributeError, ExecutionInvocationConflict):
+                    if configuration_preparation is None:
+                        raise
+                    raise EffectAttemptStartConflict("configuration prepared invocation is unavailable") from None
             if health_write is not None:
                 result = retain_health_start(unit_of_work, health_write, result)
+                if self._permission_policy is not None:
+                    # The existing prefix already verified the exact command.
+                    # This records required final dispatch, never a call permit;
+                    # do not acquire a reverse command/receipt lock here.
+                    final_invocation = ExecutionInvocationRecord(
+                        command_context.receipt, request.identity.workspace_id,
+                        expected_attempt.state.identity.activity_id,
+                        ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT,
+                        signed_health_invocation_target_fingerprint(result.preparation),
+                        event.occurred_at, attempt=expected_attempt.state.identity.attempt,
+                        original_event_id=event.event_id,
+                        request_fingerprint=expected_attempt.state.request_fingerprint)
+                    if stores.execution.add_command_invocation(final_invocation) != final_invocation:
+                        raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             try:
                 prefix.require(unit_of_work, request, run.run_id, latest_required=True)
                 _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
@@ -337,12 +475,22 @@ class EffectAttemptStartService:
                         or stores.effect_attempt_intents.get(intent_record.identity) != intent_record
                         or stores.effect_attempts.get(expected_attempt.state.identity) != expected_attempt):
                     raise ValueError("persisted start changed")
+                if (final_invocation is not None and stores.execution.command_invocation(
+                        final_invocation.command, final_invocation.invocation_id) != final_invocation):
+                    raise ValueError("persisted final invocation changed")
+                if (original_runtime is not None
+                        and stores.runtime_effect_origins.get(expected_attempt.state.identity) != origin):
+                    raise ValueError("persisted original runtime selection changed")
                 if configuration_preparation is not None:
                     if cleanup_store is not None:
                         cleanup_store._verify_start(configuration_preparation)
                     else:
                         stores.configuration_preparation._require_original(intent_record)
             except (KeyError, ValueError, TypeError, AttributeError):
+                permission_failed = True
+            except ExecutionInvocationConflict:
+                if configuration_preparation is None:
+                    raise
                 permission_failed = True
             else:
                 permission_failed = False

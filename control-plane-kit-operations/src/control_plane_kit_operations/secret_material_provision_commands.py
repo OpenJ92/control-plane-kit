@@ -9,10 +9,11 @@ from control_plane_kit_core.identity import PrincipalAuthorizer, PrincipalKind, 
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import SecretCustodian, SecretReference, SecretUseIntent, SecretValue
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+from control_plane_kit_operations.effect_permissions import CurrentWorkspaceEffectPolicy, _standalone_context_matches
 from control_plane_kit_operations.secret_material_provision_attempts import (
     COMMAND_KIND, REQUIRED_SCOPES, SUPPORTED_INTENTS, ProvisionAttemptAdmissionService,
     ProvisionAttemptAuthorizationDenied, ProvisionAttemptConflict, ProvisionAttemptError,
-    ProvisionAttemptIntent, ProvisionAttemptNotFound, ProvisionedSecretMaterialReceipt,
+    ProvisionAttemptIntent, ProvisionAttemptNotFound, ProvisionAttemptState, ProvisionedSecretMaterialReceipt,
     _identifier, provision_attempt_id_for, validated_receipt,
 )
 from control_plane_kit_operations.secret_providers import (
@@ -117,15 +118,22 @@ class SecretMaterialProvisionCommandService:
     on every call. Immutable request grants alone are not that evidence. Servers
     supplies the actual adapter; this owner checks identity and the grant ceiling.
     SecretValue and transient Python strings are not promised to be zeroized.
+    With permission_policy, each claim/registration also checks the fixed scope
+    requirement against this invocation's real context and locked A permission.
+    No historical scope tuple is inferred from the retained custody intent.
     """
 
     def __init__(self, unit_of_work_factory, custodian: SecretCustodian,
-                 *, authorizer: PrincipalAuthorizer, clock: Callable[[], str]):
+                 *, authorizer: PrincipalAuthorizer, clock: Callable[[], str],
+                 permission_policy: CurrentWorkspaceEffectPolicy | None = None):
         self._uow = unit_of_work_factory
         self._custodian = custodian
         self._authorizer = authorizer
         self._clock = clock
-        self._admission = ProvisionAttemptAdmissionService(unit_of_work_factory)
+        if permission_policy is not None and type(permission_policy) is not CurrentWorkspaceEffectPolicy:
+            raise ProvisionAttemptAuthorizationDenied("provision permission policy is invalid")
+        self._permission_policy = permission_policy
+        self._admission = ProvisionAttemptAdmissionService(unit_of_work_factory, permission_policy=permission_policy)
 
     def provision_encoded(self, context, payload):
         self._authorize(context)
@@ -227,10 +235,7 @@ class SecretMaterialProvisionCommandService:
             raise ProvisionAttemptConflict("provision reservation conflicts with current authority")
         current = self._authorize(command.context)
         self._recheck(command, current, grant)
-        with self._uow() as uow:
-            claim = uow.stores.secret_material_provision_attempts.claim_initial(
-                current.workspace_id, command.request_id, claimed_at=self._now())
-            uow.commit()
+        claim = self._claim(command.context, intent)
         if claim is None:
             raise ProvisionRequestConflict(current.workspace_id, command.request_id)
 
@@ -266,7 +271,30 @@ class SecretMaterialProvisionCommandService:
         current = self._authorize(command.context)
         try:
             return self._admission.admit(claim, actor=current.principal.identity,
-                actor_scopes=current.granted_scopes, admitted_at=self._now())
+                actor_scopes=current.granted_scopes, admitted_at=self._now(), command_context=command.context)
         except (ProvisionAttemptConflict, SecretProviderRegistrationError):
             pass
         return self._read(claim.workspace_id, claim.request_id)
+
+    def _claim(self, original_context, intent):
+        denied = False
+        with self._uow() as uow:
+            store = uow.stores.secret_material_provision_attempts
+            if self._permission_policy is not None:
+                current = store.get_for_update(intent.workspace_id, intent.request_id)
+                if current.intent != intent:
+                    raise ProvisionAttemptConflict("provision claim intent changed")
+                if not _standalone_context_matches(original_context, current.intent.actor, current.intent.workspace_id):
+                    raise ProvisionAttemptAuthorizationDenied("provision invocation binding is unavailable")
+                if current.state is not ProvisionAttemptState.INTENDED:
+                    return None
+                decision = self._permission_policy.evaluate_in_unit_of_work(uow, original_context,
+                    required_scopes=tuple(sorted(REQUIRED_SCOPES, key=lambda scope: scope.value)))
+                denied = not decision.allowed
+            claim = store.claim_initial(intent.workspace_id, intent.request_id, claimed_at=self._now())
+            if denied and claim is not None:
+                store.record_refusal(claim, observed_at=self._now())
+            uow.commit()
+        if denied:
+            raise ProvisionAttemptAuthorizationDenied("current provision dispatch is denied")
+        return claim

@@ -18,6 +18,7 @@ from control_plane_kit_core.secrets import (
     SecretCustodyGrant, SecretProviderEndpointReference, SecretReference, SecretUseIntent,
 )
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+from control_plane_kit_operations.effect_permissions import CurrentWorkspaceEffectPolicy, _standalone_context_matches
 from control_plane_kit_operations.delegation_key_generation import (
     AdmitGeneratedDelegationSigningKey, DelegationKeyGenerationEvidence,
     DelegationKeyGenerationGrant, _match,
@@ -220,13 +221,17 @@ class DelegationKeyGenerationAttempt:
 
 
 class GenerationAttemptAdmissionService:
-    """Fold a retained receipt with its attempt in one caller-owned transaction."""
+    """Register retained evidence and its attempt under local admission authority."""
 
-    def __init__(self, unit_of_work_factory: Any) -> None:
+    def __init__(self, unit_of_work_factory: Any, *, permission_policy: CurrentWorkspaceEffectPolicy | None = None) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        if permission_policy is not None and type(permission_policy) is not CurrentWorkspaceEffectPolicy:
+            raise GenerationAttemptAuthorizationDenied("generation permission policy is invalid")
+        self._permission_policy = permission_policy
 
     def admit(self, claim: GenerationAttemptClaim, *, actor: PrincipalIdentity,
-              actor_scopes: tuple[PolicyScope, ...], admitted_at: str) -> DelegationKeyGenerationAttempt:
+              actor_scopes: tuple[PolicyScope, ...], admitted_at: str,
+              command_context=None) -> DelegationKeyGenerationAttempt:
         if type(claim) is not GenerationAttemptClaim:
             raise GenerationAttemptError("generation attempt claim is malformed")
         if (type(actor) is not PrincipalIdentity or type(actor_scopes) is not tuple
@@ -240,6 +245,15 @@ class GenerationAttemptAdmissionService:
                 raise GenerationAttemptAuthorizationDenied("generation attempt requires original operator")
             if attempt.state is not GenerationAttemptState.RECEIPT_RECORDED:
                 raise GenerationAttemptConflict("generation attempt has no pending admission")
+            if self._permission_policy is not None:
+                if not _standalone_context_matches(command_context, actor, attempt.intent.workspace_id,
+                        actor_scopes=actor_scopes):
+                    raise GenerationAttemptAuthorizationDenied("generation invocation binding is unavailable")
+                decision = self._permission_policy.evaluate_in_unit_of_work(uow, command_context,
+                    required_scopes=(PolicyScope.DELEGATION_KEY_GENERATE, PolicyScope.DELEGATION_KEY_REGISTER))
+                if not decision.allowed:
+                    raise GenerationAttemptAuthorizationDenied("current generation admission is denied")
+                actor_scopes = decision.effective_scopes
             admitted = admit_generated_in_unit_of_work(uow, AdmitGeneratedDelegationSigningKey(
                 grant=attempt.intent.grant, evidence=attempt.receipt,
                 admitted_by=actor.subject_id, admitted_at=admitted_at, actor_scopes=actor_scopes,

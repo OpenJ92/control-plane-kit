@@ -60,6 +60,36 @@ bounded models for:
 Read models contain no raw secret values. Authority and secret-provider reads
 expose bounded metadata and references only.
 
+For dynamically admitted public ingress, `read.run-events` enriches the original
+step-start event with its bounded `ingress` history. The route materializes the
+event page, immutable ingress selection, at most three unit decisions, at most
+two provider/custody results, and allocation-owner state in one fresh read-only
+repeatable-read transaction. It reuses the operations-history event projection;
+the stored event payload and ordinal are unchanged. Malformed or oversized
+retained facts produce a bounded read error rather than disappearing from the
+page. Secret references, credentials, endpoint references and custody receipts
+are excluded from this public summary.
+
+The history distinguishes provider facts, custody outcomes and the final
+allocation record. A stored result does not prove its acknowledgement reached
+the caller, and a pending admitted unit is an unknown outcome. If provider
+creation succeeds but custody or the final allocation record fails, the known
+facts remain visible. The first version has no automatic retry/delete and normal
+Remove cannot clean an incomplete allocation; partial-allocation cleanup remains
+explicitly unsupported. Successful allocation and desired-empty teardown retain
+their normal paths. The outer `effects_attempted` count still counts admitted
+activity intent, while the ingress units report the finer capability history.
+The summary separates `current_owner_state` from `owner_fold`. A later normal
+removal by another run remains visible without attributing that success to an
+earlier denied command or hiding its retained unit evidence.
+
+Dynamic ingress composition requires `IngressInvocationService` and an explicit
+`IngressProviderRegistration` for profile `cpk.ingress-invocations.v1`. Passing
+an unqualified legacy adapter, including a wrapper accepting arbitrary keyword
+arguments, refuses before provider entry. The registration asserts reviewed
+adapter support; the actual Interpreter and Server owning suites must establish
+adoption. The Operations port fixtures establish only Operations semantics.
+
 `read.secret-material-provision` is an unpaged exact workspace/request lookup,
 available through HTTP and MCP. It requires workspace visibility and
 `secret-provider:read` independently of the provision command. Its public DTO

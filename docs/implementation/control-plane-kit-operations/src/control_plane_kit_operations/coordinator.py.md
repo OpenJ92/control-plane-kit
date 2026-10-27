@@ -206,3 +206,34 @@ workspace/current graph/projection/runtime/node/accounting checks remain intact;
 incomplete origin never becomes a usable native realization. A succeeded runtime
 replacement still requires a REPLACED configuration receipt, or remains uncertain.
 No grant window, retry policy, health mapping or current authorization is changed.
+
+## Ordinary verification admission (#2048)
+
+Dynamic Docker `WaitForHealthy` selects a separate registered-runtime invocation
+family. The adapter must explicitly declare ordinary-verification support in
+addition to the semantic invocation profile. Missing registration or qualification
+refuses before a fresh start. Trusted installer/legacy composition remains separate.
+
+The original start records acquisition identity atomically with intent and attempt.
+Metadata authorization remains eager; parent request grants cover connection TLS,
+while the trusted check binding carries the exact PostgreSQL grant derived from
+that check's immutable target. Each reached check independently admits its bounded
+work. Operations enforces membership, order and current permission; the Interpreter
+continues to own endpoint policy, secret-byte timing, sampling, health results and
+cleanup. Returned invocation evidence does not itself establish healthy state.
+
+Completion checks the bounded original family before classifying planned/denied
+acquisition. Success requires returned acquisition, all declared checks and their
+required resolutions. Failure can retain only an ordered prefix or frontier
+credential. Pending evidence blocks completion; unknown evidence requires a direct
+uncertain result. Completed replay performs no new work; an interrupted sequence
+cannot resume from returned invocation records.
+
+OBSERVE / #2049 checks the newly retained original local selection against the
+already loaded realization authority before unprepared provider dispatch. A
+replacement mismatch stops before IO; it cannot substitute today's registration
+or add a second execution permit. Later dynamic observation uses the exact
+original selection and fresh admission. Known unsupported observer shapes use
+the existing UNSUPPORTED result; missing/corrupt provenance is a closed conflict.
+Terminal replay remains ahead of new observer qualification. Registration is an
+authorization/history coordinate, not proof of daemon identity.

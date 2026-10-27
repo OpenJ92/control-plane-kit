@@ -79,6 +79,13 @@ class PostgresUnitOfWork:
             yield ConfigurationCleanupSnapshot(stores)
 
     @contextmanager
+    def run_events_snapshot(self):
+        """Materialize run-event history and ingress facts in one fresh snapshot."""
+        from .ingress_history_read import RunEventsSnapshot
+        with self._read_snapshot() as stores:
+            yield RunEventsSnapshot(stores.connection)
+
+    @contextmanager
     def _read_snapshot(self):
         if self._entered or self._connection is not None:
             raise UnitOfWorkStateError("snapshot requires a fresh unit of work")

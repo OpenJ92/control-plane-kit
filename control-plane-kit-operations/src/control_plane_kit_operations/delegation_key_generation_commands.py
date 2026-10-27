@@ -20,6 +20,7 @@ from control_plane_kit_operations.delegation_key_generation_attempts import (
     GenerationAttemptState, _identifier, generation_attempt_id_for, validated_receipt,
 )
 from control_plane_kit_operations.delegation_signing_keys import DelegationSigningKeyConflict
+from control_plane_kit_operations.effect_permissions import CurrentWorkspaceEffectPolicy, _standalone_context_matches
 from control_plane_kit_operations.secret_providers import (
     SecretProviderRegistrationError,
 )
@@ -87,16 +88,23 @@ class DelegationKeyGenerationCommandService:
     Operations enforces the original identity/workspace and request-grant ceiling;
     Servers composition must name and prove the actual authority adapter. This
     port does not promise token/session revocation beyond its identity contract.
+    With permission_policy, fixed operation scopes are also checked in each
+    claim/registration transaction against the real invocation context and A.
+    Existing intents retain actor/target, not the first invocation's scopes.
     """
 
     def __init__(self, unit_of_work_factory: Any, generator: DelegationKeyGenerator,
-                 *, authorizer: PrincipalAuthorizer, clock: Callable[[], str]):
+                 *, authorizer: PrincipalAuthorizer, clock: Callable[[], str],
+                 permission_policy: CurrentWorkspaceEffectPolicy | None = None):
         self._uow = unit_of_work_factory
         self._generator = generator
         self._authorizer = authorizer
         self._clock = clock
+        if permission_policy is not None and type(permission_policy) is not CurrentWorkspaceEffectPolicy:
+            raise GenerationAttemptAuthorizationDenied("generation permission policy is invalid")
+        self._permission_policy = permission_policy
         self._generation = DelegationKeyGenerationService(unit_of_work_factory)
-        self._admission = GenerationAttemptAdmissionService(unit_of_work_factory)
+        self._admission = GenerationAttemptAdmissionService(unit_of_work_factory, permission_policy=permission_policy)
 
     def generate(self, command: GenerateDelegationKeyCommand) -> GeneratedDelegationKeyReceipt:
         if type(command) is not GenerateDelegationKeyCommand:
@@ -212,15 +220,42 @@ class DelegationKeyGenerationCommandService:
         self._recheck_provider(attempt.intent, current)
         if attempt.receipt is None:
             self._require_new_destination(attempt.intent.grant)
-        with self._uow() as uow:
-            store = uow.stores.delegation_key_generation_attempts
-            claim = (store.claim_reconciliation if reconcile else store.claim_initial)(
-                attempt.intent.workspace_id, attempt.intent.request_id,
-                expected_fence=attempt.fence, claimed_at=self._now(),
-            )
-            uow.commit()
+        claim = self._claim(original_context, attempt, reconcile=reconcile)
         if claim is None:
             return self._read(attempt.intent.workspace_id, attempt.intent.request_id)
+        return self._dispatch_claim(original_context, attempt, claim)
+
+    def _claim(self, original_context, attempt, *, reconcile):
+        denied = False
+        with self._uow() as uow:
+            store = uow.stores.delegation_key_generation_attempts
+            if self._permission_policy is not None:
+                current = store.get_for_update(attempt.intent.workspace_id, attempt.intent.request_id)
+                if current.intent != attempt.intent:
+                    raise GenerationAttemptConflict("generation claim intent changed")
+                if not _standalone_context_matches(original_context, current.intent.actor, current.intent.workspace_id):
+                    raise GenerationAttemptAuthorizationDenied("generation invocation binding is unavailable")
+                if current != attempt:
+                    return None
+                decision = self._permission_policy.evaluate_in_unit_of_work(uow, original_context,
+                    required_scopes=tuple(sorted(_REQUIRED_SCOPES, key=lambda scope: scope.value)))
+                denied = not decision.allowed
+            if denied:
+                if not reconcile and current.state is GenerationAttemptState.INTENDED:
+                    claim = store.claim_initial(current.intent.workspace_id, current.intent.request_id,
+                        expected_fence=current.fence, claimed_at=self._now())
+                    if claim is not None:
+                        store.record_refusal(claim, observed_at=self._now())
+            else:
+                claim = (store.claim_reconciliation if reconcile else store.claim_initial)(
+                    attempt.intent.workspace_id, attempt.intent.request_id,
+                    expected_fence=attempt.fence, claimed_at=self._now())
+            uow.commit()
+        if denied:
+            raise GenerationAttemptAuthorizationDenied("current generation dispatch is denied")
+        return claim
+
+    def _dispatch_claim(self, original_context, attempt, claim):
         if attempt.receipt is None:
             # Claim commit can take time. Recheck after it, immediately before
             # invocation, without holding a transaction across either port.
@@ -252,7 +287,7 @@ class DelegationKeyGenerationCommandService:
         try:
             self._recheck_provider(attempt.intent, current)
             return self._admission.admit(claim, actor=current.principal.identity,
-                                         actor_scopes=current.granted_scopes, admitted_at=self._now())
+                actor_scopes=current.granted_scopes, admitted_at=self._now(), command_context=original_context)
         except (GenerationAttemptConflict, DelegationKeyGenerationConflict,
                 DelegationSigningKeyConflict, SecretProviderRegistrationError):
             # Provider receipt survives refusal; explicit reconciliation is the

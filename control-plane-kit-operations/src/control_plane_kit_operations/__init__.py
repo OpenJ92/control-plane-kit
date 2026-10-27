@@ -4,6 +4,42 @@ from __future__ import annotations
 
 from control_plane_kit_core import DeploymentProgramStage
 
+from .effect_permissions import (
+    CurrentEffectDecision, CurrentWorkspaceEffectPolicy, EffectCommandContext,
+    EffectPermissionDenied, ExecutionCommandReference,
+)
+from .runtime_effect_origins import RuntimeEffectOriginRecord
+from .execution_invocations import (
+    ExecutionInvocationRecord, ExecutionInvocationKind, ExecutionInvocationDisposition,
+    ExecutionInvocationOutcome, ExecutionInvocationDecision, ExecutionInvocationControlError,
+    ExecutionInvocationDenied, ExecutionInvocationExisting, ExecutionInvocationPlanned,
+    ExecutionInvocationConflict, ExecutionInvocationCursor, ExecutionInvocationPage,
+)
+from .execution_invocation_service import ExecutionInvocationService, BoundExecutionInvocations
+from .ingress_invocation_service import IngressInvocationService
+
+from .managed_runtime_assignments import (
+    ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
+    RevokeManagedRuntimeAccess, ManagedRuntimeAssignment, ManagedRuntimeAssignmentStatus,
+    ManagedRuntimeAssignmentReceipt, ManagedRuntimeAssignmentResult, ManagedRuntimeAssignmentError,
+    ManagedRuntimeAssignmentCommandService, ManagedRuntimeAssignmentReadService,
+    ManagedRuntimeAssignmentPage, ManagedRuntimeAssignmentListCursor, ManagedRuntimeAssignmentHistoryCursor,
+    ManagedRuntimeSelection, ManagedRuntimeSelectionService, select_managed_runtime_assignment,
+)
+from .workspace_permissions import (
+    WorkspaceAdministrationContext, WorkspaceAdministrationPolicy,
+    WorkspaceAdministrationReceipt, WorkspaceAdministrationResult,
+    GrantWorkspacePermissions, RevokeWorkspacePermissions,
+    WorkspacePermissionRecord, WorkspacePermissionReceipt, WorkspacePermissionResult,
+    WorkspacePermissionInitializationReceipt, WorkspacePermissionInitializationResult,
+    WorkspacePermissionUpgradeReceipt,
+    WorkspacePermissionCommandService, WorkspaceContextResolver, DurablePrincipalAuthorizer,
+    WorkspacePermissionReadService, WorkspacePermissionPage,
+    WorkspacePermissionListCursor, WorkspacePermissionHistoryCursor,
+    WorkspacePermissionError, WorkspacePermissionDenied, WorkspacePermissionConflict,
+    WorkspacePermissionNotFound,
+)
+
 from .approvals import (
     ApprovalAuthorizationDenied,
     ApprovalCommandService,
@@ -50,6 +86,7 @@ from .coordinator import (
     ExecuteManagedActivityRun,
     ReobserveConnectorConnection,
     ManagedHealthEffectPort,
+    ManagedHealthAdapterRegistration,
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
@@ -358,6 +395,7 @@ from .ingress_realization import (
     IngressAllocationResult,
     IngressProviderInterpreter,
     IngressRealizationAdapter,
+    IngressProviderRegistration,
 )
 from .graph_authoring import (
     GraphAuthoringError,
@@ -673,6 +711,32 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "RuntimeEffectOriginRecord",
+    "ExecutionInvocationService", "BoundExecutionInvocations",
+    "IngressInvocationService",
+    "ExecutionInvocationRecord", "ExecutionInvocationKind", "ExecutionInvocationDisposition",
+    "ExecutionInvocationOutcome", "ExecutionInvocationDecision", "ExecutionInvocationControlError",
+    "ExecutionInvocationDenied", "ExecutionInvocationExisting", "ExecutionInvocationPlanned",
+    "ExecutionInvocationConflict", "ExecutionInvocationCursor", "ExecutionInvocationPage",
+    "CurrentEffectDecision", "CurrentWorkspaceEffectPolicy", "EffectCommandContext",
+    "EffectPermissionDenied", "ExecutionCommandReference",
+    "ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess",
+    "RevokeManagedRuntimeAccess", "ManagedRuntimeAssignment", "ManagedRuntimeAssignmentStatus",
+    "ManagedRuntimeAssignmentReceipt", "ManagedRuntimeAssignmentResult", "ManagedRuntimeAssignmentError",
+    "ManagedRuntimeAssignmentCommandService", "ManagedRuntimeAssignmentReadService",
+    "ManagedRuntimeAssignmentPage", "ManagedRuntimeAssignmentListCursor", "ManagedRuntimeAssignmentHistoryCursor",
+    "ManagedRuntimeSelection", "ManagedRuntimeSelectionService", "select_managed_runtime_assignment",
+    "WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy",
+    "WorkspaceAdministrationReceipt", "WorkspaceAdministrationResult",
+    "GrantWorkspacePermissions", "RevokeWorkspacePermissions",
+    "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult",
+    "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult",
+    "WorkspacePermissionUpgradeReceipt",
+    "WorkspacePermissionCommandService", "WorkspaceContextResolver", "DurablePrincipalAuthorizer",
+    "WorkspacePermissionReadService", "WorkspacePermissionPage",
+    "WorkspacePermissionListCursor", "WorkspacePermissionHistoryCursor",
+    "WorkspacePermissionError", "WorkspacePermissionDenied", "WorkspacePermissionConflict",
+    "WorkspacePermissionNotFound",
     "BeginFailedRunCompensation",
     "FailedRunCompensationCommandService",
     "FailedRunCompensationConflict",
@@ -942,6 +1006,7 @@ __all__ = [
     "ExecuteManagedActivityRun",
     "ReobserveConnectorConnection",
     "ManagedHealthEffectPort",
+    "ManagedHealthAdapterRegistration",
     "ExecutionCoordinator",
     "ExecutionCoordinatorConflict",
     "ExecutionCoordinatorDenied",
@@ -1028,6 +1093,7 @@ __all__ = [
     "IngressAllocationResult",
     "IngressProviderInterpreter",
     "IngressRealizationAdapter",
+    "IngressProviderRegistration",
     "InvalidExecutionLeaseFence",
     "ImportProductDescriptorCommand",
     "InlineDescriptorSource",

@@ -136,6 +136,16 @@ class TrackingUnitOfWork:
         finally:
             self._factory.active -= 1
 
+    @contextmanager
+    def run_events_snapshot(self):
+        self._factory.entered += 1
+        self._factory.active += 1
+        try:
+            with self._inner.run_events_snapshot() as snapshot:
+                yield snapshot
+        finally:
+            self._factory.active -= 1
+
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         try:
             self._inner.__exit__(exc_type, exc, traceback)

@@ -126,6 +126,23 @@ def operational_substitution(grant):
 
 
 class SecretVersionDispatchTests(unittest.TestCase):
+    def test_explicit_session_correlates_each_role_without_changing_legacy_projection(self):
+        from control_plane_kit_operations.runtime_secret_uses import secret_authorization_command
+        from control_plane_kit_operations.secret_providers import authorize_runtime_secret_command
+        context = selected_context(shared_probe=True)
+        request = runtime_effect_request_for_context(context)
+        authorizer = VersionAuthorizer()
+        for use in required_secret_uses_for_runtime_effect(request, None):
+            values = dict(actor_subject=context.authority.worker_id, requested_at=context.intent_event.occurred_at,
+                actor_scopes=context.authority.scopes)
+            old = secret_authorization_command(request, use, **values)
+            self.assertEqual(old, secret_authorization_command(request, use, **values, session_id=None))
+            current = secret_authorization_command(request, use, **values, session_id=context.request.identity.session_id)
+            self.assertNotEqual(current.correlation_id, old.correlation_id)
+            grant = authorize_runtime_secret_command(authorizer, current)
+            self.assertEqual(grant.session_id, context.request.identity.session_id)
+            self.assertEqual(grant.correlation_id, current.correlation_id)
+
     def test_enumeration_preserves_consumer_probe_roles_and_excludes_reference_only_delivery(self):
         from control_plane_kit_operations import runtime_effects
         operational_type = getattr(runtime_effects, "OperationalSecretUse", None)

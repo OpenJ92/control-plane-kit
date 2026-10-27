@@ -17,6 +17,12 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.effect_permissions import ExecutionCommandReference
+from control_plane_kit_operations.execution_invocations import (
+    ExecutionInvocationRecord, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
+    ExecutionInvocationConflict, ExecutionInvocationKind, secret_invocation_target_fingerprint,
+    ExecutionInvocationCursor, ExecutionInvocationPage,
+)
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_cursor_timestamp,
@@ -281,6 +287,219 @@ class PostgresExecutionStore:
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"execution-admission:{workspace_id}:{idempotency_key}",),
         )
+
+    def add_command_invocation(self, record: ExecutionInvocationRecord) -> ExecutionInvocationRecord:
+        """Retain an owner-decided row; caller owns locks, decision and commit."""
+        from psycopg import IntegrityError
+        _invocation_record(record)
+        _require_invocation_owners(self, record, fresh=True)
+        try:
+            sql = ("INSERT INTO cpk_execution_command_invocations ("
+                + ", ".join(_INVOCATION_COLUMNS) + ") VALUES ("
+                + ", ".join("%s" for _ in _INVOCATION_COLUMNS) + ")")
+            from .configuration_evidence import _active_read
+            if (read := _active_read(self._connection)) is not None:
+                if read.query(sql + " RETURNING 1", _invocation_values(record),
+                        records=1, octets=1, cells=1) != [(1,)]:
+                    raise ExecutionInvocationConflict(record.invocation_id)
+            else:
+                self._connection.execute(sql, _invocation_values(record))
+        except IntegrityError:
+            raise ExecutionInvocationConflict(record.invocation_id) from None
+        return record
+
+    def command_invocation(self, command: ExecutionCommandReference, invocation_id: str, *, for_update=False):
+        _invocation_reference(command)
+        _invocation_id(invocation_id)
+        if type(for_update) is not bool:
+            raise ExecutionInvocationConflict()
+        where = "run_id=%s AND command_key=%s AND invocation_id=%s"
+        parameters = (command.run_id, command.idempotency_key, invocation_id)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            if for_update:
+                read.query("SELECT 1 FROM cpk_execution_command_invocations WHERE " + where + " FOR UPDATE",
+                    parameters, records=1, octets=1, cells=1)
+            columns = tuple((name, "json" if name == "descriptor" else "int" if name in ("version", "attempt")
+                else "time" if name in ("decision_at", "completed_at") else "text",
+                8192 if name == "descriptor" else 2048) for name in _INVOCATION_COLUMNS)
+            rows = read.bounded_rows("cpk_execution_command_invocations", columns, where, parameters)
+            row = rows[0] if rows else None
+        else:
+            row = self._connection.execute(_INVOCATION_SELECT + " WHERE " + where
+                + (" FOR UPDATE" if for_update else ""), parameters).fetchone()
+        if row is None:
+            return None
+        record = _invocation_row(row)
+        if record.command != command:
+            raise ExecutionInvocationConflict(invocation_id)
+        _require_invocation_owners(self, record)
+        return record
+
+    def command_invocation_for_slot(self, command: ExecutionCommandReference, *,
+            activity_id, kind, authorization_id=None, check_target=None):
+        """Non-locking exact unique-slot lookup; no new admission or repair."""
+        import re
+        _invocation_reference(command)
+        if (type(activity_id) is not str
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", activity_id) is None
+                or type(kind) is not ExecutionInvocationKind):
+            raise ExecutionInvocationConflict()
+        if check_target is not None and kind is not ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK:
+            raise ExecutionInvocationConflict()
+        if kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK:
+            _invocation_id(check_target)
+            if authorization_id is not None:
+                raise ExecutionInvocationConflict()
+            slot = check_target
+        elif kind is ExecutionInvocationKind.SECRET_RESOLUTION:
+            if (type(authorization_id) is not str
+                    or re.fullmatch(r"suse_[0-9a-f]{64}", authorization_id) is None):
+                raise ExecutionInvocationConflict()
+            slot = authorization_id
+        else:
+            if authorization_id is not None:
+                raise ExecutionInvocationConflict()
+            slot = "singleton"
+        parent = self.command_receipt_for_idempotency(command.run_id, command.idempotency_key)
+        if parent is None or parent.intent_fingerprint != command.intent_fingerprint:
+            raise ExecutionInvocationConflict()
+        row = self._connection.execute(_INVOCATION_SELECT
+            + " WHERE run_id=%s AND command_key=%s AND activity_id=%s AND kind=%s AND slot_key=%s",
+            (command.run_id, command.idempotency_key, activity_id, kind.value, slot)).fetchone()
+        if row is None:
+            return None
+        record = _invocation_row(row)
+        if record.command != command:
+            raise ExecutionInvocationConflict(record.invocation_id)
+        _require_invocation_owners(self, record)
+        return record
+
+    def original_final_invocation(self, identity, *, original_event_id, request_fingerprint, kind):
+        """Bounded original candidates; malformed history never becomes absence."""
+        from control_plane_kit_core.operations import EffectAttemptIdentity
+        if (type(identity) is not EffectAttemptIdentity or kind not in (
+                ExecutionInvocationKind.SIGNED_HEALTH_TRANSPORT, ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH,
+                ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                or type(kind) is not ExecutionInvocationKind):
+            raise ExecutionInvocationConflict()
+        try:
+            EffectAttemptIdentity(identity.run_id, identity.activity_id, identity.attempt)
+            _invocation_id(request_fingerprint)
+            if type(original_event_id) is not str or not original_event_id or len(original_event_id) > 512:
+                raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            raise ExecutionInvocationConflict() from None
+        rows = self._connection.execute(_INVOCATION_SELECT
+            + " WHERE run_id=%s AND activity_id=%s AND attempt=%s AND kind=%s LIMIT 2",
+            (identity.run_id.value, identity.activity_id, identity.attempt, kind.value)).fetchall()
+        if not rows:
+            return None
+        if len(rows) != 1:
+            raise ExecutionInvocationConflict()
+        record = _invocation_row(rows[0])
+        if (record.original_event_id != original_event_id
+                or record.request_fingerprint != request_fingerprint):
+            raise ExecutionInvocationConflict(record.invocation_id)
+        _require_invocation_owners(self, record)
+        return record
+
+    def ordinary_verification_invocations(self, marker, profile):
+        """Read only the original bounded family, including one overflow witness."""
+        from control_plane_kit_operations.ordinary_verification_invocations import OrdinaryVerificationInvocationProfile
+        from .configuration_evidence import _active_read
+        _invocation_record(marker)
+        if (marker.kind is not ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION
+                or type(profile) is not OrdinaryVerificationInvocationProfile
+                or profile.target_fingerprint != marker.target_fingerprint):
+            raise ExecutionInvocationConflict()
+        # This closed REALIZE/WaitForHealthy path has no configuration suffix.
+        # Refuse a configuration ledger rather than perform unaccounted reads.
+        if _active_read(self._connection) is not None:
+            raise ExecutionInvocationConflict()
+        _require_invocation_owners(self, marker)
+        rows = self._connection.execute(_INVOCATION_SELECT
+            + " WHERE run_id=%s AND command_key=%s AND activity_id=%s AND attempt=%s"
+            + " AND kind IN ('ordinary-verification-acquisition','ordinary-verification-check','secret-resolution')"
+            + ' ORDER BY invocation_id COLLATE "C" LIMIT %s',
+            (marker.command.run_id, marker.command.idempotency_key, marker.activity_id,
+                marker.attempt, profile.family_bound + 1)).fetchall()
+        if len(rows) > profile.family_bound:
+            raise ExecutionInvocationConflict()
+        records = tuple(_invocation_row(row) for row in rows)
+        for record in records:
+            if record.command != marker.command:
+                raise ExecutionInvocationConflict()
+            _require_invocation_owners(self, record)
+        return records
+
+    def replace_command_invocation(self, expected: ExecutionInvocationRecord,
+            replacement: ExecutionInvocationRecord) -> bool:
+        """CAS one planned decision or pending classification; never a permit."""
+        _invocation_record(expected)
+        _invocation_record(replacement)
+        try:
+            if expected.disposition is ExecutionInvocationDisposition.PLANNED:
+                valid = expected.decided(replacement.decision, replacement.decision_at)
+            elif expected.outcome is ExecutionInvocationOutcome.PENDING:
+                valid = expected.completed(replacement.outcome, replacement.completed_at,
+                    code=replacement.completion_code)
+            else:
+                valid = None
+        except (OperationsRecordError, ValueError, TypeError):
+            valid = None
+        if valid != replacement:
+            raise ExecutionInvocationConflict(expected.invocation_id)
+        current = self.command_invocation(expected.command, expected.invocation_id, for_update=True)
+        if current == replacement:
+            return False
+        if current != expected:
+            raise ExecutionInvocationConflict(expected.invocation_id)
+        _require_invocation_owners(self, replacement,
+            fresh=expected.disposition is ExecutionInvocationDisposition.PLANNED)
+        from psycopg.types.json import Jsonb
+        row = self._connection.execute("UPDATE cpk_execution_command_invocations SET "
+            "disposition=%s, decision_at=%s, outcome=%s, completed_at=%s, descriptor=%s "
+            "WHERE invocation_id=%s AND descriptor=%s RETURNING invocation_id",
+            (replacement.disposition.value, _encode_optional_timestamp(replacement.decision_at),
+                None if replacement.outcome is None else replacement.outcome.value,
+                _encode_optional_timestamp(replacement.completed_at), Jsonb(replacement.descriptor()),
+                expected.invocation_id, Jsonb(expected.descriptor()))).fetchone()
+        if row is not None:
+            if row != (replacement.invocation_id,):
+                raise ExecutionInvocationConflict(expected.invocation_id)
+            return True
+        if self.command_invocation(expected.command, expected.invocation_id) != replacement:
+            raise ExecutionInvocationConflict(expected.invocation_id)
+        return False
+
+    def command_invocations(self, command: ExecutionCommandReference, *, limit=100, cursor=None):
+        _invocation_reference(command)
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ExecutionInvocationConflict()
+        if cursor is not None:
+            if type(cursor) is not ExecutionInvocationCursor or cursor.command != command:
+                raise ExecutionInvocationConflict()
+            cursor.__post_init__()
+        parent = self.command_receipt_for_idempotency(command.run_id, command.idempotency_key)
+        if parent is None or parent.intent_fingerprint != command.intent_fingerprint or parent.managed_intent is None:
+            raise ExecutionInvocationConflict()
+        parameters = (command.run_id, command.idempotency_key)
+        condition = " WHERE run_id=%s AND command_key=%s"
+        if cursor is not None:
+            condition += ' AND invocation_id COLLATE "C">%s'
+            parameters += (cursor.after_invocation_id,)
+        rows = self._connection.execute(_INVOCATION_SELECT + condition
+            + ' ORDER BY invocation_id COLLATE "C" LIMIT %s', parameters + (limit + 1,)).fetchall()
+        records = tuple(_invocation_row(row) for row in rows)
+        for record in records:
+            if record.command != command:
+                raise ExecutionInvocationConflict(record.invocation_id)
+            _require_invocation_owners(self, record)
+        items = records[:limit]
+        next_cursor = (ExecutionInvocationCursor(command, items[-1].invocation_id)
+            if len(records) > limit else None)
+        return ExecutionInvocationPage(command, items, next_cursor)
 
     def lock_command_idempotency(
         self,
@@ -1509,3 +1728,227 @@ def _require_page_run_id(value: object) -> None:
     else:
         return
     raise ReadPageError("run page identity is malformed")
+
+
+_INVOCATION_COLUMNS = ("invocation_id", "version", "run_id", "command_key", "parent_fingerprint",
+    "workspace_id", "activity_id", "kind", "slot_key", "target_fingerprint", "attempt",
+    "original_event_id", "request_fingerprint", "authorization_id", "disposition", "decision_at",
+    "outcome", "completed_at", "descriptor")
+_INVOCATION_SELECT = "SELECT " + ", ".join(
+    name if name in ("version", "attempt", "decision_at", "completed_at") else
+    "CASE WHEN octet_length(descriptor::text)<=8192 THEN descriptor ELSE NULL END" if name == "descriptor" else
+    f"CASE WHEN octet_length({name})<=2048 THEN {name} ELSE NULL END" for name in _INVOCATION_COLUMNS
+) + " FROM cpk_execution_command_invocations"
+
+
+def _invocation_reference(command):
+    if type(command) is not ExecutionCommandReference:
+        raise ExecutionInvocationConflict()
+    try:
+        command.__post_init__()
+    except ValueError:
+        raise ExecutionInvocationConflict() from None
+
+
+def _invocation_id(value):
+    import re
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise ExecutionInvocationConflict()
+
+
+def _invocation_record(record):
+    if type(record) is not ExecutionInvocationRecord:
+        raise ExecutionInvocationConflict()
+    try:
+        record.__post_init__()
+    except (OperationsRecordError, ValueError, TypeError):
+        raise ExecutionInvocationConflict() from None
+
+
+def _invocation_values(record):
+    from psycopg.types.json import Jsonb
+    return (record.invocation_id, record.version, record.command.run_id, record.command.idempotency_key,
+        record.command.intent_fingerprint, record.workspace_id, record.activity_id, record.kind.value,
+        record.slot_key, record.target_fingerprint, record.attempt, record.original_event_id,
+        record.request_fingerprint, record.authorization_id, record.disposition.value,
+        _encode_optional_timestamp(record.decision_at), None if record.outcome is None else record.outcome.value,
+        _encode_optional_timestamp(record.completed_at), Jsonb(record.descriptor()))
+
+
+def _invocation_row(row):
+    try:
+        if type(row) is not tuple or len(row) != len(_INVOCATION_COLUMNS):
+            raise OperationsRecordError("invocation row is malformed")
+        record = ExecutionInvocationRecord.from_descriptor(row[-1])
+        if row[:-1] != _invocation_values(record)[:-1]:
+            raise OperationsRecordError("invocation row is incongruent")
+        return record
+    except (OperationsRecordError, ValueError, TypeError):
+        raise ExecutionInvocationConflict() from None
+
+
+def _require_invocation_owners(store, record, *, fresh=False):
+    """Check immutable joins; semantic permission remains with the admitting owner."""
+    from control_plane_kit_core.operations import EffectAttemptIdentity
+    from control_plane_kit_core.planning import ActivityId
+    from .activity_history import PostgresActivityHistoryStore
+    from .effect_attempt_intent_store import EffectAttemptIntentStore
+    from .effect_attempt_store import EffectAttemptStore
+    from .secret_provider_store import SecretUseAuthorizationStore
+    try:
+        from .ingress_invocation_store import require_ingress_invocation_owner
+        if require_ingress_invocation_owner(store._connection, record, fresh=fresh):
+            return
+        parent = store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+        if (parent is None or parent.intent_fingerprint != record.command.intent_fingerprint
+                or parent.managed_intent is None or parent.managed_intent.workspace_id != record.workspace_id
+                or (fresh and parent.status is not ExecutionCommandReceiptStatus.INCOMPLETE)):
+            raise ExecutionInvocationConflict(record.invocation_id)
+        run = store.get_run(record.command.run_id)
+        request = store.get_request(run.admission.request_id)
+        if (request.identity.workspace_id != record.workspace_id
+                or parent.initial_run.admission.request_id != request.identity.request_id
+                or parent.initial_run.plan_id != run.plan_id):
+            raise ExecutionInvocationConflict(record.invocation_id)
+        plan = PostgresActivityHistoryStore(store._connection).get_plan(run.plan_id)
+        plan.plan.activity(ActivityId(record.activity_id))
+        if record.attempt is not None:
+            identity = EffectAttemptIdentity(RunId(record.command.run_id), record.activity_id, record.attempt)
+            intent = EffectAttemptIntentStore(store._connection).get(identity)
+            attempt = EffectAttemptStore(store._connection).get(identity)
+            if (intent.original_start_event != attempt.original_start_event
+                    or intent.request_fingerprint != record.request_fingerprint
+                    or attempt.original_start_event.event_id != record.original_event_id
+                    or intent.intent.source.workspace_id != record.workspace_id
+                    or intent.intent.source.plan_id != run.plan_id):
+                raise ExecutionInvocationConflict(record.invocation_id)
+        if record.kind is ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH:
+            from .runtime_authority_store import RuntimeAuthorityStore
+            from control_plane_kit_operations.prepared_runtime_invocations import prepared_runtime_invocation_profile
+            runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                record.workspace_id, intent.intent.authority_ref, record.runtime_registration_id)
+            profile = prepared_runtime_invocation_profile(intent.intent,
+                original_event_id=record.original_event_id, runtime_authority=runtime)
+            if profile.target_fingerprint != record.target_fingerprint:
+                raise ExecutionInvocationConflict(record.invocation_id)
+        if record.kind in (ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
+                ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK):
+            from .runtime_authority_store import RuntimeAuthorityStore
+            from control_plane_kit_operations.ordinary_verification_invocations import ordinary_verification_invocation_profile
+            if record.kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION:
+                original = record
+                # The original attempt has one acquisition, even across commands.
+                rows = store._connection.execute(
+                    "SELECT invocation_id FROM cpk_execution_command_invocations "
+                    "WHERE run_id=%s AND activity_id=%s AND attempt=%s "
+                    "AND kind='ordinary-verification-acquisition' LIMIT 2",
+                    (record.command.run_id, record.activity_id, record.attempt)).fetchall()
+                if any(row != (record.invocation_id,) for row in rows):
+                    raise ExecutionInvocationConflict(record.invocation_id)
+            else:
+                original = store.original_final_invocation(identity,
+                    original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                    kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                if original is None or original.command != record.command:
+                    raise ExecutionInvocationConflict(record.invocation_id)
+            runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
+            profile = ordinary_verification_invocation_profile(intent.intent,
+                original_event_id=record.original_event_id, runtime_authority=runtime)
+            targets = ((profile.target_fingerprint,) if original is record else
+                tuple(check.target_fingerprint for check in profile.checks))
+            if record.target_fingerprint not in targets:
+                raise ExecutionInvocationConflict(record.invocation_id)
+        if record.kind is ExecutionInvocationKind.RECONCILIATION_OBSERVATION:
+            from .runtime_observation_source import original_observation_source
+            original, _, _, target = original_observation_source(store._connection, intent)
+            if original.command == record.command or record.target_fingerprint != target:
+                raise ExecutionInvocationConflict(record.invocation_id)
+
+        if record.kind is ExecutionInvocationKind.SECRET_RESOLUTION:
+            authorized = SecretUseAuthorizationStore(store._connection).get(record.workspace_id, record.authorization_id)
+            if record.attempt is not None:
+                from control_plane_kit_operations.ordinary_verification_invocations import (
+                    ordinary_verification_candidate, ordinary_verification_invocation_profile,
+                    ordinary_verification_authorization_command, require_ordinary_verification_authorization,
+                )
+                if ordinary_verification_candidate(intent.intent):
+                    from .runtime_authority_store import RuntimeAuthorityStore
+                    from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
+                    original = store.original_final_invocation(identity,
+                        original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                        kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                    if original is None or original.command != record.command:
+                        raise ExecutionInvocationConflict(record.invocation_id)
+                    runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                        record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
+                    profile = ordinary_verification_invocation_profile(intent.intent,
+                        original_event_id=record.original_event_id, runtime_authority=runtime)
+                    roles = tuple(role for role in profile.secret_roles
+                        if role[1].reference == authorized.reference and role[1].intent == authorized.intent
+                        and (None if role[0] is None else role[0].probe_id) == authorized.probe_id)
+                    if len(roles) != 1:
+                        raise ExecutionInvocationConflict(record.invocation_id)
+                    command = ordinary_verification_authorization_command(
+                        runtime_effect_request_for_intent(intent.intent,
+                            effect_id=record.original_event_id, secret_resolution_grants=()), roles[0],
+                        actor_subject=parent.managed_intent.actor.subject_id, session_id=request.identity.session_id,
+                        requested_at=authorized.requested_at, actor_scopes=())
+                    require_ordinary_verification_authorization(authorized, command)
+            if record.attempt is not None and authorized.effect_id == record.original_event_id:
+                original_marker = store.original_final_invocation(identity,
+                    original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+                origin = None
+                from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+                if original_marker is None and intent.intent.kind is RuntimeEffectKind.REALIZE_ACTIVITY:
+                    from .runtime_effect_origin_store import RuntimeEffectOriginStore
+                    origin = RuntimeEffectOriginStore(store._connection).get(identity)
+                original_command = original_marker.command if original_marker is not None else (
+                    None if origin is None else origin.command)
+                if original_command is not None and original_command != record.command:
+                    from .runtime_observation_source import original_observation_source
+                    from control_plane_kit_operations.runtime_secret_uses import OperationalSecretUse
+                    _, _, observation_profile, _ = original_observation_source(store._connection, intent)
+                    if (OperationalSecretUse(authorized.reference, authorized.intent) not in observation_profile.required_uses
+                            or authorized.probe_id is not None):
+                        raise ExecutionInvocationConflict(record.invocation_id)
+            linked = record.original_event_id is not None and authorized.effect_id == record.original_event_id
+            if not linked and authorized.effect_id is None and record.attempt is not None:
+                # Signed health uses its existing operation identity, not the
+                # generic runtime effect_id slot. Reuse its retained join.
+                from control_plane_kit_operations.health_effect_preparations import health_effect_attempt_wire_id
+                from .health_effect_preparation_store import HealthEffectPreparationStore
+                preparation = HealthEffectPreparationStore(store._connection).get(identity)
+                linked = (authorized.operation_id == health_effect_attempt_wire_id(identity)
+                    and authorized.authorization_id in (preparation.transit_authorization_id,
+                        preparation.workload_authorization_id)
+                    and preparation.original_event_id == record.original_event_id
+                    and preparation.request_fingerprint == record.request_fingerprint)
+            if (authorized.run_id != record.command.run_id or authorized.activity_id != record.activity_id
+                    or not linked or authorized.session_id != request.identity.session_id
+                    or authorized.actor_subject != parent.managed_intent.actor.subject_id
+                    or secret_invocation_target_fingerprint(authorized) != record.target_fingerprint):
+                raise ExecutionInvocationConflict(record.invocation_id)
+    except (KeyError, OperationsRecordError, ValueError, TypeError, AttributeError):
+        raise ExecutionInvocationConflict(record.invocation_id) from None
+
+
+def validate_execution_invocation_rows(connection):
+    """Bounded exact-data verification for the final schema, never repair."""
+    from .current_data_validation import CurrentRowDrift
+    store, after = PostgresExecutionStore(connection), None
+    try:
+        while True:
+            rows = connection.execute(_INVOCATION_SELECT
+                + ("" if after is None else " WHERE invocation_id>%s")
+                + ' ORDER BY invocation_id COLLATE "C" NULLS FIRST LIMIT 100',
+                () if after is None else (after,)).fetchall()
+            for row in rows:
+                record = _invocation_row(row)
+                _require_invocation_owners(store, record)
+                after = record.invocation_id
+            if len(rows) < 100:
+                return
+    except (ExecutionInvocationConflict, OperationsRecordError, ValueError, TypeError):
+        raise CurrentRowDrift from None

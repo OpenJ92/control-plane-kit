@@ -64,6 +64,9 @@ class DelegationKeyGenerationAttemptStore:
     def get(self, workspace_id: str, request_id: str) -> DelegationKeyGenerationAttempt:
         return self._get(workspace_id, request_id)
 
+    def get_for_update(self, workspace_id: str, request_id: str) -> DelegationKeyGenerationAttempt:
+        return self._get(workspace_id, request_id, lock=True)
+
     def _get(self, workspace_id: str, request_id: str, *, lock=False) -> DelegationKeyGenerationAttempt:
         _identifier(workspace_id)
         _identifier(request_id)

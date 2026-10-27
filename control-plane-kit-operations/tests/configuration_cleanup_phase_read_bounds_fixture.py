@@ -163,9 +163,9 @@ def ordinary_start_feasibility(case, label):
         active["stage"] = "suffix"
         return prepared
 
-    def execute(service, command, health):
+    def execute(service, command, health, command_context, managed_target):
         if command.intent.kind is not RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1:
-            return original_execute(service, command, health)
+            return original_execute(service, command, health, command_context, managed_target)
         case.assertFalse(active, "nested diagnostic start")
         accounting = _ACCOUNTING.get()
         active.update(stage="existing", accounting=accounting, points=set(), collections=set(),
@@ -178,7 +178,7 @@ def ordinary_start_feasibility(case, label):
             lambda: _PhaseConnection(psycopg.connect(case.database_url), observed))
         outcome = "refused"
         try:
-            result = original_execute(service, command, health)
+            result = original_execute(service, command, health, command_context, managed_target)
             outcome = type(result).__name__
             return result
         finally:
