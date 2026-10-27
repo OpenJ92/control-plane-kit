@@ -158,10 +158,13 @@ class HttpApiRouteContract:
         if self.safety is HttpOperationSafety.READ_ONLY:
             if self.method is not HttpMethod.GET:
                 raise InvalidHttpApiContract("read-only routes must use GET")
-            if self.service_role is not ControlPlaneServiceRole.READS:
-                raise InvalidHttpApiContract("read-only routes must use reads service")
-            if self.auth_scope is not HttpAuthScope.READ:
-                raise InvalidHttpApiContract("read-only routes require read scope")
+            if (self.service_role, self.auth_scope) not in {
+                (ControlPlaneServiceRole.READS, HttpAuthScope.READ),
+                (ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN),
+            }:
+                raise InvalidHttpApiContract(
+                    "read-only routes require reads/read or authorization/admin"
+                )
         elif self.safety is HttpOperationSafety.COMMAND:
             if self.method is HttpMethod.GET:
                 raise InvalidHttpApiContract("command routes must not use GET")

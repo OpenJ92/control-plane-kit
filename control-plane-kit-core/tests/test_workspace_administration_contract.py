@@ -5,7 +5,8 @@ from dataclasses import replace
 from control_plane_kit_core.operations import (
     ApplicationServiceBinding, ApprovalPolicy, ControlPlaneServiceRole,
     DeploymentProgramBoundary, ExternalEffectPolicy, HttpApiContract, HttpApiRouteContract,
-    HttpAuthScope, HttpMethod, HttpOperationSafety, InvalidAdapterParityContract, McpStreamableHttpContract,
+    HttpAuthScope, HttpMethod, HttpOperationSafety, InvalidAdapterParityContract,
+    InvalidHttpApiContract, McpStreamableHttpContract,
     ServiceTransactionBoundary, StoreParticipation, UnitOfWorkBoundary,
     operator_adapter_security_parity, operator_command_http_routes, operator_command_parity,
     operator_read_http_routes, operator_read_projection_parity,
@@ -108,11 +109,23 @@ class WorkspaceAdministrationContractTests(unittest.TestCase):
             ("/workspaces", "WorkspaceReadResponse"))
 
     def test_administration_projection_cannot_disagree_with_http_mutation_safety(self):
-        routes = tuple(replace(route, safety=HttpOperationSafety.COMMAND)
+        routes = tuple(replace(route, method=HttpMethod.POST, safety=HttpOperationSafety.COMMAND)
             if route.route_id == "read.workspace-permissions" else route
             for route in operator_read_http_routes())
         with self.assertRaises(InvalidAdapterParityContract):
             operator_read_projection_parity(HttpApiContract(routes), McpStreamableHttpContract())
+
+    def test_read_route_owner_and_scope_pairs_cannot_be_interchanged(self):
+        route = next(route for route in operator_read_http_routes()
+            if route.route_id == "read.workspace-permissions")
+        for role, scope in (
+            (ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.READ),
+            (ControlPlaneServiceRole.READS, HttpAuthScope.ADMIN),
+            (ControlPlaneServiceRole.PLANNING, HttpAuthScope.ADMIN),
+        ):
+            with self.subTest(role=role, scope=scope):
+                with self.assertRaises(InvalidHttpApiContract):
+                    replace(route, service_role=role, auth_scope=scope)
 
 
 if __name__ == "__main__":
