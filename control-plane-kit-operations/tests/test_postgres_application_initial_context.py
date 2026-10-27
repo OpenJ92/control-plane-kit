@@ -22,8 +22,8 @@ class Request:
 
 
 class CountingResolver(operations.WorkspaceContextResolver):
-    def __init__(self, factory):
-        super().__init__(factory, installation_id="installation-a")
+    def __init__(self, factory, *, installation="installation-a"):
+        super().__init__(factory, installation_id=installation)
         self.calls = []
 
     def resolve(self, principal, workspace_id):
