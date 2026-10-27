@@ -135,14 +135,8 @@ class _OperationsHistoryReadProjection:
             if getattr(identity, "workspace_id", None) != workspace_id:
                 raise ReadModelError("missing run in workspace")
 
-        def descriptor(event):
-            value = _event_descriptor(event)
-            if self._ingress_summary is not None:
-                summary = self._ingress_summary(workspace_id, event)
-                if summary is not None:
-                    value["ingress"] = summary
-            return value
-        return store.event_page(request).map(descriptor)
+        return store.event_page(request).map(lambda event: _event_descriptor(event,
+            ingress_summary=self._ingress_summary, workspace_id=workspace_id))
 
     def session_plans(
         self,
@@ -374,7 +368,7 @@ def _run_summary_descriptor(run: ActivityRunRecord) -> dict[str, object]:
     }
 
 
-def _event_descriptor(event: ActivityEventRecord) -> dict[str, object]:
+def _event_descriptor(event: ActivityEventRecord, *, ingress_summary=None, workspace_id=None) -> dict[str, object]:
     descriptor = {
         "event_id": event.event_id,
         "run_id": event.run_id,
@@ -387,6 +381,10 @@ def _event_descriptor(event: ActivityEventRecord) -> dict[str, object]:
     }
     if event.recovery is not None:
         descriptor["recovery"] = event.recovery.descriptor()
+    if ingress_summary is not None:
+        summary = ingress_summary(workspace_id, event)
+        if summary is not None:
+            descriptor["ingress"] = summary
     return descriptor
 
 
