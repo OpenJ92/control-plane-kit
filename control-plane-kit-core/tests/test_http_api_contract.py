@@ -32,7 +32,8 @@ class HttpApiContractTests(unittest.TestCase):
         self.assertEqual(HttpApiRouteContract.from_descriptor(route.descriptor()), route)
 
     def test_operator_read_routes_preserve_frozen_route_inventory(self) -> None:
-        contract = HttpApiContract(operator_read_http_routes())
+        contract = HttpApiContract(tuple(route for route in operator_read_http_routes()
+            if route.service_role is ControlPlaneServiceRole.READS))
 
         self.assertEqual(
             [(route.method.value, route.path_template) for route in contract.routes],

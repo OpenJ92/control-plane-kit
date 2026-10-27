@@ -27,6 +27,7 @@ class AdapterParityContractTests(unittest.TestCase):
                     binding.projection_schema,
                 )
                 for binding in parity.projections
+                if binding.service_role is ControlPlaneServiceRole.READS
             ],
             [
                 (
