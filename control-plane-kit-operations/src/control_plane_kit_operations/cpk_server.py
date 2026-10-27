@@ -490,10 +490,19 @@ class _AdmittedRouteRequest:
     route_id: str
     service_role: ControlPlaneServiceRole
     path_parameters: dict[str, str]
-    payload: dict[str, object] = field(repr=False)
+    _payload: dict[str, object] = field(repr=False)
     principal: AuthenticatedPrincipal
     context: TrustedCommandContext | None = field(repr=False)
     dynamic_admission: bool = True
+    confidential_source: CpkServerRouteRequest | None = field(default=None, repr=False)
+
+    @property
+    def payload(self) -> Mapping[str, object]:
+        # Only the existing provision adapter may request the confidential body,
+        # after its surface, authority and configured-service checks.
+        if self.confidential_source is not None:
+            return self.confidential_source.payload
+        return self._payload
 
 
 @dataclass(frozen=True)
@@ -551,15 +560,24 @@ class CpkServerOperationsApplication:
             raise CpkServerApplicationError(403, "authenticated principal is required")
         if request.route_id == "command.workspace.create":
             raise CpkServerApplicationError(403, "dynamic workspace creation requires administration")
-        if (request.surface not in {"http", "mcp"}
-                or not isinstance(request.path_parameters, Mapping)
-                or not isinstance(request.payload, Mapping)):
-            raise CpkServerApplicationError(400, "request arguments are malformed")
-        path, payload = deepcopy(dict(request.path_parameters)), deepcopy(dict(request.payload))
-        if "workspace_id" in path and "workspace_id" in payload and path["workspace_id"] != payload["workspace_id"]:
-            raise CpkServerApplicationError(400, "workspace target is ambiguous")
+        confidential = request.route_id == "command.secret-material.provision"
+        if confidential:
+            if request.surface != "http":
+                raise CpkServerApplicationError(400, "provision requires the confidential HTTP surface")
+            if type(request.path_parameters) is not dict or set(request.path_parameters) != {"workspace_id"}:
+                raise CpkServerApplicationError(400, "provision path is malformed")
+            path, payload = dict(request.path_parameters), {}
+        else:
+            if (request.surface not in {"http", "mcp"}
+                    or not isinstance(request.path_parameters, Mapping)
+                    or not isinstance(request.payload, Mapping)):
+                raise CpkServerApplicationError(400, "request arguments are malformed")
+            path, payload = deepcopy(dict(request.path_parameters)), deepcopy(dict(request.payload))
+            if "workspace_id" in path and "workspace_id" in payload and path["workspace_id"] != payload["workspace_id"]:
+                raise CpkServerApplicationError(400, "workspace target is ambiguous")
         snapshot = _AdmittedRouteRequest(request.surface, request.route_id, role,
-            path, payload, request.principal, None)
+            path, payload, request.principal, None,
+            confidential_source=request if confidential else None)
         # This bypass is limited to exact canonical route/role pairs above.
         # Their service must independently invoke WorkspaceAdministrationPolicy.
         if role is ControlPlaneServiceRole.AUTHORIZATION:
