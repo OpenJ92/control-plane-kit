@@ -258,5 +258,6 @@ shape. Schema, generic start results, invocation-service accessors, client
 custody and cancellation semantics are unchanged. Servers owns pure mapping of
 the handed-off capability to its installed acquisition configuration.
 
-The new real-owner dispatch targets are causal-red at checkpoint 4929bb82.
-Implementation source/evidence review and focused green remain pending.
+The real-owner dispatch targets were causal-red at checkpoint 4929bb82 and
+passed with the selected owner regressions at 75743cde (102 tests). Full gate
+evidence, limitations and acceptance disposition are recorded on #2055.

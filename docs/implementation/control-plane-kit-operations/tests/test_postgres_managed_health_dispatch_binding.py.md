@@ -10,7 +10,9 @@ event, request fingerprint, outcome and replay correlation remain asserted.
 
 This is owner handoff evidence, not Docker construction or physical acquisition
 proof. Servers owns mapping the handed-off selection to its installed catalog.
-Target-red and implementation validation are pending under #2055.
+The original three targets were causal-red at 4929bb82 and passed at 75743cde,
+including the successor assertions not reached in red. #2055 owns the complete
+validation record and acceptance disposition.
 
 Source review requested four bounded post-admission corruption checks: absent or
 nonselection metadata, a different registration, and an uninstalled capability.
