@@ -1935,6 +1935,41 @@
     },
     {
       "canonical_public_exports": [
+        "ProviderPolicyCoordinate",
+        "ProviderPolicyGrantCommand",
+        "ProviderPolicyRevokeCommand",
+        "ProviderPolicyReadRequest",
+        "ProviderPolicyListRequest",
+        "ProviderPolicyCommandResultRequest",
+        "ProviderPolicyCommandResult",
+        "ProviderPolicyFailure",
+        "ProviderPolicyPort",
+        "provider_policy_command_fingerprint"
+      ],
+      "destination": "control_plane_kit_core.provider_policy",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations.provider_policy_commands"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.provider_policy",
+      "motivation": "Pure cross-package provider-policy administration values and effect port; no installer authority, persistence, transport configuration or provider state ownership.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_provider_policy_administration.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "values",
+        "validation",
+        "protocol"
+      ],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/provider_policy.py"
+    },
+    {
+      "canonical_public_exports": [
         "ActivityDependency",
         "ActivityId",
         "ActivityImpact",
