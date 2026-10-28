@@ -231,16 +231,17 @@ class ReadPageContractTests(unittest.TestCase):
             ("RUNTIME_AUTHORITIES", "runtime-authorities", "read.runtime-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
             ("RUNTIME_AUTHORITY_DELIVERIES", "runtime-authority-deliveries", "read.runtime-authority-deliveries", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
             ("INGRESS_AUTHORITIES", "ingress-authorities", "read.ingress-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
+            ("REGISTERED_PRODUCTS", "registered-products", "read.products", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("descriptor_sha256",)),
             ("SECRET_PROVIDERS", "secret-providers", "read.secret-providers", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("provider_id",)),
             ("SECRET_REFERENCES", "secret-references", "read.secret-references", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("registration_id",)),
             ("DELEGATION_SIGNING_KEYS", "delegation-signing-keys", "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
             ("GATEWAY_PROBES", "gateway-probes", "read.gateway-probe-timeline", WorkspaceReadScope, EpochReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
         )
-        self.assertEqual(len(READ_COLLECTION_SPECS), 20)
-        self.assertEqual(len(ReadCollection), 20)
+        self.assertEqual(len(READ_COLLECTION_SPECS), 21)
+        self.assertEqual(len(ReadCollection), 21)
         self.assertEqual(
             len({spec.route_id for spec in READ_COLLECTION_SPECS}),
-            20,
+            21,
         )
         for name, wire, route, scope, cursor, order, position in rows:
             collection = getattr(ReadCollection, name)

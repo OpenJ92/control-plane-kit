@@ -491,6 +491,8 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
                 "RuntimeAuthorityDeliveryDetailReadResponse",
             ),
+            ("read.products", "/workspaces/{workspace_id}/products", "RegisteredProductsReadResponse"),
+            ("read.product-detail", "/workspaces/{workspace_id}/products/{descriptor_sha256}", "RegisteredProductDetailReadResponse"),
             (
                 "read.secret-providers",
                 "/workspaces/{workspace_id}/secret-providers",
@@ -952,6 +954,7 @@ def _read_route(
         if route_id == "read.receiver-authoring-context" else HttpSchemaRef("EmptyRequest", max_bytes=1024),
         response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
             "read.receiver-authoring-context",
+            "read.products", "read.product-detail",
             "read.desired-topology-draft-revision-preparations",
             "read.desired-topology-draft-revision-attempts",
         } else 65536),

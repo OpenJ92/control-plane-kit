@@ -53,6 +53,8 @@ class ReadProjectionKind(StrEnum):
     RUNTIME_AUTHORITY_DELIVERY_DETAIL = "runtime-authority-delivery-detail"
     INGRESS_AUTHORITIES = "ingress-authorities"
     INGRESS_AUTHORITY_DETAIL = "ingress-authority-detail"
+    REGISTERED_PRODUCTS = "registered-products"
+    REGISTERED_PRODUCT_DETAIL = "registered-product-detail"
     SECRET_PROVIDERS = "secret-providers"
     SECRET_PROVIDER_DETAIL = "secret-provider-detail"
     SECRET_REFERENCES = "secret-references"
@@ -69,6 +71,7 @@ class ReadProjectionKind(StrEnum):
 class ReadProjectionPolicy(StrEnum):
     """Closed projection redaction and evidence policy."""
 
+    REDACTED_PRODUCT_DIRECTORY = "redacted-product-directory"
     REDACTED_WORKSPACE = "redacted-workspace"
     AUTHORIZED_WORKSPACE_ADMINISTRATION = "authorized-workspace-administration"
     REDACTED_GRAPH_DESCRIPTOR = "redacted-graph-descriptor"
@@ -341,6 +344,8 @@ _CANONICAL_PROJECTIONS = (
         "read.delegation-key-generation", ReadProjectionKind.DELEGATION_KEY_GENERATION,
         "GeneratedDelegationKeyReceipt", ReadProjectionPolicy.AUTHORIZED_GENERATION_RECEIPT,
     ),
+    _ProjectionDefinition("read.products", ReadProjectionKind.REGISTERED_PRODUCTS, "RegisteredProductsReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, paged=True, max_page_size=100),
+    _ProjectionDefinition("read.product-detail", ReadProjectionKind.REGISTERED_PRODUCT_DETAIL, "RegisteredProductDetailReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY),
     _ProjectionDefinition(
         "read.receiver-authoring-context",
         ReadProjectionKind.RECEIVER_AUTHORING_CONTEXT,

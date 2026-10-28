@@ -1045,6 +1045,8 @@ _OPERATOR_READ_PROJECTIONS = (
         "get_runtime_authority_delivery_detail",
         "RuntimeAuthorityDeliveryDetailReadResponse",
     ),
+    ("read.products", "read.products", "list_registered_products", "RegisteredProductsReadResponse"),
+    ("read.product-detail", "read.product-detail", "get_registered_product", "RegisteredProductDetailReadResponse"),
     (
         "read.secret-providers",
         "read.secret-providers",
