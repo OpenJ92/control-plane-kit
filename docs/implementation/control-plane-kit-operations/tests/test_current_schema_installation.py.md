@@ -19,3 +19,9 @@ keyword, so report the actual focused red reach rather than claiming that deeper
 schema/concurrency assertions independently ran. Validation uses the established
 Operations Docker suite with -k selection; focused evidence is not full package
 acceptance. No Servers fixture or new schema state machine is introduced.
+
+The first focused red run revealed two cascading fixture collisions: a failed
+assertion skipped the trailing per-subcase reset. Reset now runs in finally for
+each owned occupied-namespace case, preserving all assertions and isolating the
+remaining cases even when the target is red. This is fixture correction, not
+production failure or deeper fresh-only behavior evidence.

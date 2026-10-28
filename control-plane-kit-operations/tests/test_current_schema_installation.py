@@ -790,15 +790,17 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
              "SELECT occupied()", [("retained",)]),
         ):
             with self.subTest(statement=statement):
-                self.connection.execute(statement)
-                before = self._object_identities()
-                recorder = _RecordingConnection(self.connection)
-                error = _captured_install_error(recorder, require_empty=True)
-                self._assert_install_error(error, "operations schema requires an empty namespace")
-                self._assert_calls_are_read_only(recorder.calls)
-                self.assertEqual(self._object_identities(), before)
-                self.assertEqual(self.connection.execute(read).fetchall(), expected)
-                self._reset_owned_schema()
+                try:
+                    self.connection.execute(statement)
+                    before = self._object_identities()
+                    recorder = _RecordingConnection(self.connection)
+                    error = _captured_install_error(recorder, require_empty=True)
+                    self._assert_install_error(error, "operations schema requires an empty namespace")
+                    self._assert_calls_are_read_only(recorder.calls)
+                    self.assertEqual(self._object_identities(), before)
+                    self.assertEqual(self.connection.execute(read).fetchall(), expected)
+                finally:
+                    self._reset_owned_schema()
 
     def test_fresh_only_contenders_wait_for_owner_commit_then_refuse_occupied(self):
         first = psycopg.connect(self.database_url, autocommit=False)
