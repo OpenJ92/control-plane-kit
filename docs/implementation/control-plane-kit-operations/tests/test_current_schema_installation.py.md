@@ -25,3 +25,8 @@ assertion skipped the trailing per-subcase reset. Reset now runs in finally for
 each owned occupied-namespace case, preserving all assertions and isolating the
 remaining cases even when the target is red. This is fixture correction, not
 production failure or deeper fresh-only behavior evidence.
+
+Corrected focused red at 7e7da80a ran seven methods in 3.260 seconds: twelve
+failure assertions and three direct errors, all attributable to the absent
+require_empty keyword. No duplicate-object cascade remained. This proves the
+missing entrance; the implementation must still reach all deeper assertions.

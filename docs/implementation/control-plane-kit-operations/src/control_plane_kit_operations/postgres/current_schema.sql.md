@@ -38,6 +38,11 @@ stores are refused intact, never reset, migrated or backfilled. The reset-requir
 diagnostic does not authorize a reset. No live database/provider mutation is part
 of this source slice.
 
+#2057 leaves this SQL unchanged. The schema installer's opt-in `require_empty=True`
+additionally refuses exact-current occupied state under the existing namespace
+lock. Default query-only current reentry remains supported; see
+[the installer contract](schema.py.md).
+
 Managed health execution adds NOT_READY attempt state and the
 `native-connection` outcome profile. This profile allows only SUCCEEDED or
 NOT_READY with zero endpoint-observation rows; its protected canonical preimage
