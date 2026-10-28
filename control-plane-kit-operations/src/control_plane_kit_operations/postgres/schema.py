@@ -35,6 +35,10 @@ class _ResetRequired(Exception):
     pass
 
 
+class _EmptyNamespaceRequired(Exception):
+    pass
+
+
 _CURRENT_SCHEMA_SQL = (
     files(__package__).joinpath("current_schema.sql").read_text(encoding="utf-8")
 )
@@ -51,8 +55,15 @@ _CURRENT_RELATION_LOCK_SQL = "\n".join(
 )
 
 
-def install_schema(connection: _SchemaConnection) -> None:
-    """Create an empty owned namespace or verify exact current truth."""
+def install_schema(connection: _SchemaConnection, *, require_empty: bool = False) -> None:
+    """Create or verify current truth; optionally require fresh namespace admission.
+
+    Fresh-only admission is checked under the existing namespace lock. Caller
+    transaction ownership is unchanged: a nested return is not a caller commit.
+    """
+
+    if type(require_empty) is not bool:
+        raise SchemaInstallationError("operations schema installation option is invalid")
 
     try:
         autocommit = connection.autocommit
@@ -66,7 +77,9 @@ def install_schema(connection: _SchemaConnection) -> None:
     failure: str | None = None
     try:
         with connection.transaction():
-            _install_under_transaction(connection)
+            _install_under_transaction(connection, require_empty=require_empty)
+    except _EmptyNamespaceRequired:
+        failure = "operations schema requires an empty namespace"
     except _ResetRequired:
         failure = "operations schema reset is required"
     except Exception:
@@ -75,7 +88,7 @@ def install_schema(connection: _SchemaConnection) -> None:
         raise SchemaInstallationError(failure) from None
 
 
-def _install_under_transaction(connection: _SchemaConnection) -> None:
+def _install_under_transaction(connection: _SchemaConnection, *, require_empty: bool) -> None:
     connection.execute(_ADVISORY_LOCK_SQL)
     if namespace_is_object_free(connection):
         connection.execute(_CURRENT_SCHEMA_SQL)
@@ -84,6 +97,8 @@ def _install_under_transaction(connection: _SchemaConnection) -> None:
             raise RuntimeError("fresh schema verification failed")
         return
 
+    if require_empty:
+        raise _EmptyNamespaceRequired
     if not expected_relations_are_present(connection):
         raise _ResetRequired
     connection.execute(_CURRENT_RELATION_LOCK_SQL)
