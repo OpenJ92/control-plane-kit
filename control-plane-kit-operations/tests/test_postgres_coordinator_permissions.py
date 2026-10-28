@@ -660,11 +660,23 @@ class _ControlledInvocationHealth:
         self.final_error = None
         self.classify_final = True
         self.transform_result = None
+        self.managed_dispatches = []
+        self.dispatch_active_transactions = []
+        self.before_native = None
 
     def __getattr__(self, name):
         return getattr(self.delegate, name)
 
-    async def observe_signed(self, realization, request, authority, *, invocations=None):
+    async def observe_connection(self, realization, request, authority, *, managed_target=None):
+        self.managed_dispatches.append((realization, request, authority, managed_target))
+        self.dispatch_active_transactions.append(self.test.tracker.active)
+        if self.before_native is not None:
+            self.before_native()
+        return await self.delegate.observe_connection(realization, request, authority)
+
+    async def observe_signed(self, realization, request, authority, *, invocations=None, managed_target=None):
+        self.managed_dispatches.append((realization, request, authority, managed_target))
+        self.dispatch_active_transactions.append(self.test.tracker.active)
         self.invocations = invocations
         if invocations is None:
             return None  # Target observes the missing carriage after actual start.

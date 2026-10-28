@@ -297,14 +297,21 @@ class ManagedHealthAdapterRegistration:
 
 
 class ManagedHealthEffectPort(Protocol):
-    """Pure complete selection followed by one awaited, authority-bound read."""
+    """Pure selection followed by a read under existing committed admission.
+
+    managed_target identifies the exact admitted installed capability; it is
+    correlation data, not a reusable permit. Dynamic adapters map this value
+    without selecting a different current assignment. Static calls omit it.
+    """
 
     def select(self, *, plan, current, desired, registered_products, runtime_authorities): ...
 
     async def observe_signed(self, realization, request, authority: HealthSigningAuthorityPair,
-            *, invocations: BoundExecutionInvocations | None = None) -> ReceiverHealthReadResult: ...
+            *, invocations: BoundExecutionInvocations | None = None,
+            managed_target: ManagedRuntimeSelection | None = None) -> ReceiverHealthReadResult: ...
 
-    async def observe_connection(self, realization, request, authority: RegisteredRuntimeAuthority) -> NativeConnectionObservation | NativeConnectionRefused: ...
+    async def observe_connection(self, realization, request, authority: RegisteredRuntimeAuthority,
+            *, managed_target: ManagedRuntimeSelection | None = None) -> NativeConnectionObservation | NativeConnectionRefused: ...
 
 
 @dataclass(frozen=True)
@@ -1185,7 +1192,8 @@ class ExecutionCoordinator:
             return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED)
         return None
 
-    async def _execute_health(self, command, work, *, admitted_attempt=None, command_context=None):
+    async def _execute_health(self, command, work, *, admitted_attempt=None, command_context=None,
+            managed_target=None):
         execution, context, activity = command.execution, work.context, work.activity
         native = is_native_connection_operation(activity.operation)
         required = (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE)
@@ -1212,8 +1220,9 @@ class ExecutionCoordinator:
                 intent, execution.authority, execution.fence)
             options = {}
             if self._permission_policy is not None:
+                managed_target = self._current_management_selection(context, intent)
                 options = dict(command_context=command_context,
-                    managed_target=self._current_management_selection(context, intent))
+                    managed_target=managed_target)
             try:
                 if native:
                     started = self._start_service.execute(start, **options)
@@ -1242,12 +1251,16 @@ class ExecutionCoordinator:
         selected_runtime = self._selected_managed_runtime(context, intent)
         if native:
             intent_record, runtime, realization = self._managed_dispatch_authority(
-                command, attempt, selected_runtime, realization=realization, expected_intent=intent)
+                command, attempt, selected_runtime, realization=realization, expected_intent=intent,
+                managed_target=managed_target)
             response = NativeConnectionReadFailure()
             cancelled = None
             try:
                 if realization is not None:
-                    observed = await self._managed_health.observe_connection(realization, request, runtime)
+                    observed = (await self._managed_health.observe_connection(realization, request, runtime)
+                        if self._permission_policy is None else
+                        await self._managed_health.observe_connection(realization, request, runtime,
+                            managed_target=managed_target))
                     if type(observed) in (NativeConnectionObservation, NativeConnectionRefused):
                         if type(observed) is NativeConnectionObservation:
                             observed.__post_init__()
@@ -1279,7 +1292,8 @@ class ExecutionCoordinator:
             raise ExecutionCoordinatorDenied("original health grant is not yet usable")
         if delay:
             await asyncio.sleep(delay)
-        intent_record, runtime, _ = self._managed_dispatch_authority(command, attempt, selected_runtime)
+        intent_record, runtime, _ = self._managed_dispatch_authority(command, attempt, selected_runtime,
+            expected_intent=intent, managed_target=managed_target)
         authority = self._health_signing_authority.execute(ReloadHealthSigningAuthority(
             context.request.identity.request_id, attempt.state.identity, command.context,
             execution.authority, execution.fence))
@@ -1290,7 +1304,7 @@ class ExecutionCoordinator:
                 observed = await self._managed_health.observe_signed(realization, request, authority)
             else:
                 observed = await self._managed_health.observe_signed(realization, request, authority,
-                    invocations=invocations)
+                    invocations=invocations, managed_target=managed_target)
             if type(observed) is ReceiverHealthReadResult:
                 observed.__post_init__()
                 if observed.request != authority.preparation.request:
@@ -1370,7 +1384,7 @@ class ExecutionCoordinator:
                 capability_policy=self._permission_policy.capability_policy)
 
     def _managed_dispatch_authority(self, command, attempt, selected_runtime, *,
-            realization=None, expected_intent=None):
+            realization=None, expected_intent=None, managed_target=None):
         with self._unit_of_work_factory() as uow:
             stores = uow.stores
             request, run = _locked_request_and_run(stores, command.execution)
@@ -1386,6 +1400,22 @@ class ExecutionCoordinator:
                 command.context.workspace_id, intent.intent.authority_ref)
             if authority != selected_runtime:
                 raise ExecutionCoordinatorDenied("managed read runtime authority changed")
+            if self._permission_policy is not None:
+                try:
+                    if type(managed_target) is not ManagedRuntimeSelection:
+                        raise ValueError
+                    managed_target.__post_init__()
+                    if (intent.intent != expected_intent
+                            or (managed_target.installation_id, managed_target.workspace_id,
+                                managed_target.runtime_id, managed_target.authority_ref,
+                                managed_target.registration_id) != (
+                                self._permission_policy.installation_id, command.context.workspace_id,
+                                intent.intent.operation.target.runtime_id, authority.authority_ref,
+                                authority.registration_id)):
+                        raise ValueError
+                    self._permission_policy.capability_policy.require(managed_target.capability_id)
+                except (ValueError, TypeError, AttributeError):
+                    raise ExecutionCoordinatorDenied("managed dispatch target is unavailable") from None
             observed = stores.execution.observe_request_lease_for_update(request.identity.request_id)
             if observed.request != request or observed.expired:
                 raise ExecutionCoordinatorDenied("managed read lease expired")
@@ -1499,7 +1529,7 @@ class ExecutionCoordinator:
         accounting.active = False
         try:
             folded = await self._execute_health(command, _HealthExecution(context, activity),
-                admitted_attempt=admitted)
+                admitted_attempt=admitted, managed_target=options.get("managed_target"))
         finally:
             accounting.active = active
         observed = self._classify_current(self._load_context(execution), 1)
