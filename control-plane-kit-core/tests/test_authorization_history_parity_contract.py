@@ -84,6 +84,12 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
         self.assertEqual({item.http_route_id for item in parity.operations},
             {route.route_id for route in operator_read_http_routes() + operator_command_http_routes()
              if route.route_id != "command.secret-material.provision"})
+        for operation_id in ("read.products", "read.product-detail"):
+            directory = parity.operation(operation_id)
+            self.assertEqual(directory.auth_scope, HttpAuthScope.READ)
+            self.assertEqual(directory.safety, HttpOperationSafety.READ_ONLY)
+            self.assertEqual(directory.activity_history, ActivityHistoryPolicy.NOT_RECORDED)
+            self.assertEqual(directory.error_disclosure, ErrorDisclosurePolicy.BOUNDED_REDACTED)
         authoring = parity.operation("read.receiver-authoring-context")
         self.assertEqual(authoring.auth_scope, HttpAuthScope.READ)
         self.assertEqual(authoring.safety, HttpOperationSafety.READ_ONLY)

@@ -380,6 +380,8 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.ingress-authority-detail": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INGRESS_AUTHORITY_READ,)
     ),
+    "read.products": _WORKSPACE_READ,
+    "read.product-detail": _WORKSPACE_READ,
     "read.secret-providers": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
     ),
@@ -645,6 +647,8 @@ class CpkServerReadService:
             except ReceiverAuthoringContextError as error:
                 failure = (error.status, str(error))
             raise CpkServerApplicationError(*failure)
+        if request.route_id in {"read.products", "read.product-detail"}:
+            _trusted_context(request)
         if request.route_id.startswith("read.desired-topology-draft"):
             _trusted_context(request)
         read_arguments = (
@@ -678,6 +682,12 @@ class CpkServerReadService:
             except (ReadModelError, ReadPageError) as error:
                 status = 400 if isinstance(error, ReadPageError) else _read_error_status(error)
                 raise CpkServerApplicationError(status, str(error)) from None
+        if request.route_id == "read.product-detail":
+            from control_plane_kit_core.products import ProductDescriptorDigest
+            try:
+                ProductDescriptorDigest(read_arguments["descriptor_sha256"])
+            except (ValueError, TypeError):
+                raise CpkServerApplicationError(400, "product digest is malformed") from None
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -706,6 +716,8 @@ class CpkServerReadService:
                 kwargs["generation_attempt_store"] = stores.delegation_key_generation_attempts
             if request.route_id == "read.secret-material-provision":
                 kwargs["provision_attempt_store"] = stores.secret_material_provision_attempts
+            if request.route_id in {"read.products", "read.product-detail"}:
+                kwargs["registered_product_store"] = stores.registered_products
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)
@@ -722,7 +734,8 @@ class CpkServerReadService:
                 failure = (status, str(error))
             if failure is not None:
                 raise CpkServerApplicationError(*failure)
-            unit_of_work.commit()
+            if request.route_id not in {"read.products", "read.product-detail"}:
+                unit_of_work.commit()
             return model.descriptor()
 
 
@@ -2145,6 +2158,10 @@ def _read_model(
                 _path_or_payload(args, "authority_ref", "authority_ref")
             ),
         )
+    if route_id == "read.products":
+        return service.products(_required_page_request(page_request, ReadCollection.REGISTERED_PRODUCTS))
+    if route_id == "read.product-detail":
+        return service.product_detail(_workspace_id(args), _text(args, "descriptor_sha256"))
     if route_id == "read.secret-providers":
         return service.secret_providers(
             _required_page_request(page_request, ReadCollection.SECRET_PROVIDERS)
@@ -2247,6 +2264,8 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 _CLOSED_READ_ARGUMENTS = {
     "read.delegation-key-generation": ("request_id", False),
     "read.secret-material-provision": ("request_id", False),
+    "read.products": (None, True),
+    "read.product-detail": ("descriptor_sha256", False),
     "read.receiver-authoring-context": (None, False),
     "read.workload-verifier-configuration": ("purposes", False),
     "read.desired-topology-drafts": (None, True),
@@ -2277,6 +2296,7 @@ _CLOSED_READ_ARGUMENTS = {
 }
 
 _PAGED_READ_COLLECTIONS = {
+    "read.products": ReadCollection.REGISTERED_PRODUCTS,
     "read.desired-topology-drafts": ReadCollection.DESIRED_TOPOLOGY_DRAFTS,
     "read.desired-topology-draft-revisions": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
     "read.desired-topology-draft-revision-preparations": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS,
@@ -2727,6 +2747,7 @@ def _read_error_status(error: ReadModelError) -> int:
     message = str(error)
     if message.startswith(
         (
+            "missing registered product",
             "missing workspace",
             "missing draft",
             "missing session",

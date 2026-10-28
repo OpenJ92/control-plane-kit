@@ -1,6 +1,14 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.product_store"
+selector = "RegisteredProductStore.directory_page"
+category = "public-paged"
+sql = "exact workspace and active status; exclusive descriptor_sha256 seek ordered ascending; LIMIT request.limit + 1 (maximum 101); SQL CASE-bounded summary fields only, no full descriptor bodies or registration metadata"
+consumer_kind = "production"
+consumer = "InstanceReadService.products through the private product_directory projection; shared HTTP/MCP workspace-admission inventory with a final serialized response ceiling"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.secret_material_provision_attempt_store"
 selector = "validate_current_rows"
 category = "exact-verifier"

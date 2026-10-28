@@ -738,6 +738,35 @@
       "motivation": "Caller-transaction generation attempt store with fenced explicit claims, immutable receipt retention and verified atomic admission."
     },
     {
+      "module": "control_plane_kit_operations.read_services.product_directory",
+      "destination": "control_plane_kit_operations.read_services.product_directory",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/product_directory.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "projections"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.products",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.read_services._redaction",
+        "control_plane_kit_operations.read_services.errors",
+        "control_plane_kit_operations.read_services.protocols"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.read_services.instance"
+      ],
+      "optional_external_dependencies": [],
+      "protecting_tests": [
+        "tests/test_product_directory.py"
+      ],
+      "motivation": "Workspace-scoped bounded product display; preserves canonical references without material disclosure or mutation authority."
+    },
+    {
       "module": "control_plane_kit_operations._workload_verifier_authority",
       "destination": "control_plane_kit_operations._workload_verifier_authority",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_workload_verifier_authority.py",
