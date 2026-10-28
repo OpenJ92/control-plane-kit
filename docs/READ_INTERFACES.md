@@ -38,6 +38,9 @@ matching protocols do not prove application compatibility. Pages seek immutable
 digest identities (limit 1–100), with live membership rather than a snapshot.
 Detail preserves the existing 262144-byte descriptor limit; serialized responses
 are capped at 1048576 bytes including the envelope and fail without truncation.
+Configuration entries are declared slots from both embedded artifacts and
+content-free requirements. Their origin is not labelled, so consumers must not
+infer that every slot lacks a supplied default or that any instance is ready.
 
 `InstanceReadService` is the public composition facade for these ordinary
 projections. Its methods make
