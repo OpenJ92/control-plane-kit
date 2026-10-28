@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Callable
 
-from control_plane_kit_core.products import ContainerServerProduct, ProductReferenceCodec
+from control_plane_kit_core.products import ContainerServerProduct, ProductReferenceCodec, product_configuration_slots
 from control_plane_kit_operations.products import (
     ProductRegistrationNotFound,
     RegisteredProductStatus,
@@ -102,7 +102,7 @@ def _contract(product: ContainerServerProduct) -> dict[str, object]:
             {
                 "artifact_id": artifact.artifact_id, "target_path": artifact.target_path,
                 "media_type": artifact.media_type.value, "file_mode": artifact.file_mode.value,
-            } for artifact in contract.configuration_artifacts
+            } for artifact in product_configuration_slots(contract)
         ],
         "material_requirements": [_material_shape(d) for d in contract.secret_deliveries],
         "retained_data_mounts": [
