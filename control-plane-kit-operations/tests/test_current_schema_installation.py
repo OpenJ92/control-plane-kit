@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import threading
+import time
 import unittest
 import uuid
 
@@ -362,15 +363,29 @@ class _AlwaysFailingConnection:
         )
 
 
-def _captured_install_error(connection) -> BaseException:
+def _captured_install_error(connection, **options) -> BaseException:
     try:
-        postgres.install_schema(connection)
+        postgres.install_schema(connection, **options)
     except BaseException as error:
         return error
     raise AssertionError("schema installation unexpectedly succeeded")
 
 
 class CurrentSchemaStaticLawTests(unittest.TestCase):
+    def test_fresh_only_option_requires_exact_bool_before_connection_access(self):
+        class UnusedConnection:
+            @property
+            def autocommit(self):
+                raise AssertionError("invalid option accessed the connection")
+
+        for value in (None, 0, 1, "true", [], {}):
+            with self.subTest(value=value):
+                error = _captured_install_error(UnusedConnection(), require_empty=value)
+                self.assertIs(type(error), postgres.SchemaInstallationError)
+                self.assertEqual(str(error), "operations schema installation option is invalid")
+                self.assertIsNone(error.__context__)
+                self.assertIsNone(error.__cause__)
+
     def test_health_contract_fingerprint_pins_exact_constraint_changes(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract, schema
 
@@ -742,6 +757,136 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             ).fetchone(),
             (True,),
         )
+
+    def test_fresh_only_creates_empty_and_refuses_populated_current_without_changes(self):
+        postgres.install_schema(self.connection, require_empty=True)
+        self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
+        self.connection.execute("INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+            "VALUES ('workspace-a', 'Workspace A', 'created')")
+        before = self._object_identities()
+        recorder = _RecordingConnection(self.connection)
+        error = _captured_install_error(recorder, require_empty=True)
+        self._assert_install_error(error, "operations schema requires an empty namespace")
+        self._assert_calls_are_read_only(recorder.calls)
+        self.assertEqual(self._object_identities(), before)
+        self.assertEqual(self.connection.execute(
+            "SELECT workspace_id, name, lifecycle FROM cpk_workspaces").fetchall(),
+            [("workspace-a", "Workspace A", "created")])
+        postgres.install_schema(self.connection, require_empty=False)
+        postgres.install_schema(self.connection)
+        self.assertEqual(self._object_identities(), before)
+        self._reset_owned_schema()
+        postgres.install_schema(self.connection, require_empty=False)
+        self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
+
+    def test_fresh_only_refuses_noncurrent_occupied_namespaces_without_mutation(self):
+        for statement, read, expected in (
+            ("CREATE TABLE occupied (value text); INSERT INTO occupied VALUES ('retained')",
+             "SELECT value FROM occupied", [("retained",)]),
+            ("CREATE SEQUENCE occupied START 17", "SELECT last_value FROM occupied", [(17,)]),
+            ("CREATE VIEW occupied AS SELECT 'retained'::text AS value",
+             "SELECT value FROM occupied", [("retained",)]),
+            ("CREATE FUNCTION occupied() RETURNS text LANGUAGE SQL AS $$ SELECT 'retained'::text $$",
+             "SELECT occupied()", [("retained",)]),
+        ):
+            with self.subTest(statement=statement):
+                self.connection.execute(statement)
+                before = self._object_identities()
+                recorder = _RecordingConnection(self.connection)
+                error = _captured_install_error(recorder, require_empty=True)
+                self._assert_install_error(error, "operations schema requires an empty namespace")
+                self._assert_calls_are_read_only(recorder.calls)
+                self.assertEqual(self._object_identities(), before)
+                self.assertEqual(self.connection.execute(read).fetchall(), expected)
+                self._reset_owned_schema()
+
+    def test_fresh_only_contenders_wait_for_owner_commit_then_refuse_occupied(self):
+        first = psycopg.connect(self.database_url, autocommit=False)
+        second = psycopg.connect(self.database_url, autocommit=True)
+        finished = threading.Event()
+        errors = []
+        thread = None
+        try:
+            first.execute(f'SET search_path TO "{self.schema}"')
+            second.execute(f'SET search_path TO "{self.schema}"')
+            second.execute("SET lock_timeout = '10s'")
+            second.execute("SET statement_timeout = '15s'")
+            # The first return is a savepoint release, not the caller's commit.
+            postgres.install_schema(first, require_empty=True)
+
+            def contend():
+                try:
+                    postgres.install_schema(second, require_empty=True)
+                except BaseException as error:
+                    errors.append(error)
+                finally:
+                    finished.set()
+
+            thread = threading.Thread(target=contend)
+            thread.start()
+            deadline = time.monotonic() + 5
+            while True:
+                blockers = self.connection.execute("SELECT pg_blocking_pids(%s)",
+                    (second.info.backend_pid,)).fetchone()[0]
+                if first.info.backend_pid in blockers:
+                    break
+                if finished.is_set() or time.monotonic() >= deadline:
+                    self.fail("fresh contender did not wait for the owner transaction")
+                finished.wait(0.01)
+            first.commit()
+            self.assertTrue(finished.wait(15), "fresh contender did not finish after commit")
+            thread.join(timeout=1)
+            self.assertEqual(len(errors), 1)
+            self._assert_install_error(errors[0], "operations schema requires an empty namespace")
+            self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
+        finally:
+            first.rollback()
+            first.close()
+            if thread is not None:
+                thread.join(timeout=15)
+                if thread.is_alive():
+                    second.cancel()
+                    thread.join(timeout=5)
+            second.close()
+            if thread is not None:
+                thread.join(timeout=1)
+                self.assertFalse(thread.is_alive(), "fresh contender survived cleanup")
+
+    def test_fresh_only_schema_program_failure_rolls_back_all_effects(self):
+        error = _captured_install_error(_FailingConnection(self.connection, fail_on=5), require_empty=True)
+        self._assert_install_error(error, "operations schema installation failed")
+        self.assertEqual(self._namespace_objects(), ())
+
+    def test_fresh_only_success_remains_owned_by_outer_transaction(self):
+        self.connection.autocommit = False
+        try:
+            self.connection.execute("SELECT 1")
+            postgres.install_schema(self.connection, require_empty=True)
+            self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
+            self.connection.rollback()
+        finally:
+            self.connection.rollback()
+            self.connection.autocommit = True
+        self.assertEqual(self._namespace_objects(), ())
+
+    def test_fresh_only_refusal_preserves_caller_savepoint_and_prior_work(self):
+        postgres.install_schema(self.connection)
+        before = self._object_identities()
+        self.connection.autocommit = False
+        try:
+            self.connection.execute("INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+                "VALUES ('workspace-a', 'Workspace A', 'created')")
+            error = _captured_install_error(self.connection, require_empty=True)
+            self._assert_install_error(error, "operations schema requires an empty namespace")
+            self.assertEqual(self.connection.info.transaction_status, psycopg.pq.TransactionStatus.INTRANS)
+            self.assertEqual(self.connection.execute("SELECT workspace_id FROM cpk_workspaces").fetchall(),
+                [("workspace-a",)])
+            self.connection.rollback()
+        finally:
+            self.connection.rollback()
+            self.connection.autocommit = True
+        self.assertEqual(self.connection.execute("SELECT workspace_id FROM cpk_workspaces").fetchall(), [])
+        self.assertEqual(self._object_identities(), before)
 
     def test_current_sql_revision_history_indexes_match_semantic_contract(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract
