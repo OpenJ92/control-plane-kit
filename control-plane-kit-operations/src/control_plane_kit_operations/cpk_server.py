@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+import json
 from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.identity import (
@@ -29,6 +30,18 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.provider_policy import (
+    ProviderPolicyCommandResult,
+    ProviderPolicyCoordinate,
+    ProviderPolicyErrorCode,
+    ProviderPolicyFailure,
+    ProviderPolicyGrantPage,
+    ProviderPolicyGrantRead,
+    ProviderPolicyGrantRecord,
+    ProviderPolicyIntentMode,
+    ProviderPolicyListRequest,
+    ProviderPolicyReadRequest,
+)
 from control_plane_kit_core.secret_selections import (
     SecretVersionSelection, secret_selections_from_descriptor,
 )
@@ -61,6 +74,24 @@ from control_plane_kit_operations.approvals import (
     ApprovalCommandService,
     DecideApproval,
     RequestApproval,
+)
+from control_plane_kit_operations.provider_policy_commands import (
+    GrantProviderPolicy,
+    ProviderPolicyAdministrationDenied,
+    ProviderPolicyAdministrationPolicy,
+    ProviderPolicyCommandConflict,
+    ProviderPolicyCommandError,
+    ProviderPolicyCommandNotFound,
+    ProviderPolicyCommandRecord,
+    ProviderPolicyCommandService,
+    ProviderPolicyCommandUnavailable,
+    ProviderPolicyInvocationContext,
+    ProviderPolicyOutcomeObservation,
+    ReconcileProviderPolicy,
+    RevokeProviderPolicy,
+)
+from control_plane_kit_operations.provider_policy_reads import (
+    ProviderPolicyCurrentReadService,
 )
 from control_plane_kit_operations.coordinator import (
     ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator, ReobserveConnectorConnection,
@@ -597,7 +628,8 @@ class CpkServerOperationsApplication:
             path, payload, request.principal, None,
             confidential_source=request if confidential else None)
         # This bypass is limited to exact canonical route/role pairs above.
-        # Their service must independently invoke WorkspaceAdministrationPolicy.
+        # The selected closed family service must independently apply its own
+        # workspace or provider-policy administration policy.
         if role is ControlPlaneServiceRole.AUTHORIZATION:
             return snapshot
         workspace_id = path.get("workspace_id", payload.get("workspace_id"))
@@ -1929,6 +1961,384 @@ class CpkServerWorkspaceAdministrationService:
         raise CpkServerApplicationError(*failure)
 
 
+_PROVIDER_POLICY_ROUTES = frozenset(
+    {
+        "command.provider-policy.grant",
+        "command.provider-policy.revoke",
+        "command.provider-policy.reconcile",
+        "read.provider-policy-command",
+        "read.provider-policy-grant",
+        "read.provider-policy-grants",
+    }
+)
+
+_PROVIDER_POLICY_PATH_FIELDS = {
+    "command.provider-policy.grant": {"logical_provider_id"},
+    "command.provider-policy.revoke": {"logical_provider_id", "grant_id"},
+    "command.provider-policy.reconcile": {"logical_provider_id", "command_id"},
+    "read.provider-policy-command": {"logical_provider_id", "command_id"},
+    "read.provider-policy-grant": {"logical_provider_id", "grant_id"},
+    "read.provider-policy-grants": {"logical_provider_id"},
+}
+_PROVIDER_POLICY_COMMAND_DESCRIPTOR_BYTES = 60 * 1024
+
+
+def _provider_policy_selector(request: CpkServerRouteRequest) -> str:
+    """Read only the bounded admission selector before decoding other MCP fields."""
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise ValueError("provider-policy argument mappings are malformed")
+    if request.surface == "http":
+        required = _PROVIDER_POLICY_PATH_FIELDS[request.route_id]
+        if set(request.path_parameters) != required:
+            raise ValueError("provider-policy path is malformed")
+        value = request.path_parameters.get("logical_provider_id")
+    elif request.surface == "mcp":
+        if request.path_parameters:
+            raise ValueError("provider-policy MCP path is malformed")
+        value = request.payload.get("logical_provider_id")
+    else:
+        raise ValueError("provider-policy surface is malformed")
+    if type(value) is not str:
+        raise ValueError("provider-policy selector is malformed")
+    return value
+
+
+def _provider_policy_arguments(
+    request: CpkServerRouteRequest,
+) -> tuple[dict[str, str], dict[str, object]]:
+    required = _PROVIDER_POLICY_PATH_FIELDS[request.route_id]
+    raw_path = request.path_parameters
+    raw_payload = request.payload
+    if request.surface == "http":
+        valid = set(raw_path) == required and not set(raw_path) & set(raw_payload)
+        path = dict(raw_path)
+        payload = deepcopy(dict(raw_payload))
+    elif request.surface == "mcp":
+        valid = not raw_path and required <= set(raw_payload)
+        path = {name: raw_payload[name] for name in required}
+        payload = deepcopy(
+            {name: value for name, value in raw_payload.items() if name not in required}
+        )
+    else:
+        valid = False
+        path, payload = {}, {}
+    if (
+        not valid
+        or any(type(value) is not str for value in path.values())
+        or path.get("logical_provider_id") is None
+    ):
+        raise ValueError("provider-policy arguments are malformed")
+    return path, payload
+
+
+def _provider_policy_coordinate(value: object) -> ProviderPolicyCoordinate:
+    if not isinstance(value, Mapping) or set(value) != {
+        "subject",
+        "workspace_id",
+        "action",
+        "intent",
+    }:
+        raise ValueError("provider-policy coordinate is malformed")
+    return ProviderPolicyCoordinate(
+        value["subject"], value["workspace_id"], value["action"], value["intent"]
+    )
+
+
+def _decode_provider_policy_request(
+    route: str,
+    payload: Mapping[str, object],
+    context: ProviderPolicyInvocationContext,
+    path: Mapping[str, str],
+):
+    if route in {"command.provider-policy.grant", "command.provider-policy.revoke"}:
+        if set(payload) != {"coordinate", "expected_revision", "idempotency_key"}:
+            raise ValueError("provider-policy mutation is malformed")
+        arguments = dict(
+            context=context,
+            coordinate=_provider_policy_coordinate(payload["coordinate"]),
+            expected_revision=payload["expected_revision"],
+            idempotency_key=IdempotencyKey(payload["idempotency_key"]),
+        )
+        if route == "command.provider-policy.grant":
+            return GrantProviderPolicy(**arguments)
+        ProviderPolicyReadRequest(
+            context.binding.logical_provider_id, path["grant_id"]
+        )
+        return RevokeProviderPolicy(**arguments, grant_id=path["grant_id"])
+    if route == "command.provider-policy.reconcile":
+        if payload:
+            raise ValueError("provider-policy reconcile request is malformed")
+        return ReconcileProviderPolicy(context, path["command_id"])
+    if route == "read.provider-policy-command":
+        if payload:
+            raise ValueError("provider-policy command read is malformed")
+        command_id = path["command_id"]
+        if (
+            len(command_id) != 64
+            or any(value not in "0123456789abcdef" for value in command_id)
+        ):
+            raise ValueError("provider-policy command_id is malformed")
+        return command_id
+    if route == "read.provider-policy-grant":
+        if payload:
+            raise ValueError("provider-policy grant read is malformed")
+        return ProviderPolicyReadRequest(
+            context.binding.logical_provider_id, path["grant_id"]
+        )
+    allowed = {
+        "subject",
+        "workspace_id",
+        "action",
+        "intent_mode",
+        "intent",
+        "limit",
+        "after_grant_id",
+    }
+    if not set(payload) <= allowed:
+        raise ValueError("provider-policy list request is malformed")
+    return ProviderPolicyListRequest(
+        logical_provider_id=context.binding.logical_provider_id,
+        subject=payload.get("subject"),
+        workspace_id=payload.get("workspace_id"),
+        action=payload.get("action"),
+        intent_mode=ProviderPolicyIntentMode(payload.get("intent_mode", "any")),
+        intent=payload.get("intent"),
+        limit=payload.get("limit", 100),
+        after_grant_id=payload.get("after_grant_id"),
+    )
+
+
+def _provider_policy_grant_descriptor(
+    grant: ProviderPolicyGrantRecord,
+) -> dict[str, object]:
+    if type(grant) is not ProviderPolicyGrantRecord:
+        raise ValueError("provider-policy grant result is malformed")
+    return {
+        "grant_id": grant.grant_id,
+        "coordinate": grant.coordinate.descriptor(),
+        "origin": grant.origin,
+        "granted_at": grant.granted_at,
+        "revoked_at": grant.revoked_at,
+    }
+
+
+def _provider_policy_result_descriptor(
+    result: ProviderPolicyCommandResult,
+) -> dict[str, object]:
+    return {
+        "operation": result.operation.value,
+        "coordinate": result.coordinate.descriptor(),
+        "expected_revision": result.expected_revision,
+        "outcome": result.outcome.value,
+        "code": result.code,
+        "grant_id": result.grant_id,
+        "resulting_revision": result.resulting_revision,
+        "occurred_at": result.occurred_at,
+    }
+
+
+def _provider_policy_observation_descriptor(
+    observation: ProviderPolicyOutcomeObservation,
+) -> dict[str, object]:
+    result = None
+    failure = None
+    if observation.canonical_result is not None:
+        result = _provider_policy_result_descriptor(observation.canonical_result)
+    else:
+        failure = {
+            "code": observation.failure.code.value,
+            "effect_may_have_occurred": observation.failure.effect_may_have_occurred,
+        }
+    return {
+        "source": observation.source.value,
+        "observed_at": observation.observed_at,
+        "matches_intent": observation.matches_intent,
+        "result": result,
+        "failure": failure,
+    }
+
+
+def _provider_policy_record_descriptor(
+    record: ProviderPolicyCommandRecord,
+) -> dict[str, object]:
+    if type(record) is not ProviderPolicyCommandRecord:
+        raise ValueError("provider-policy command result is malformed")
+    descriptor = {
+        "command_id": record.command_id,
+        "logical_provider_id": record.command.logical_provider_id,
+        "operation": record.command.operation.value,
+        "coordinate": record.command.coordinate.descriptor(),
+        "expected_revision": record.command.expected_revision,
+        "grant_id": getattr(record.command, "grant_id", None),
+        "state": record.state.value,
+        "created_at": record.created_at,
+        "dispatch_claimed_at": record.dispatch_claimed_at,
+        "observation_count": record.observation_count,
+        "evidence_integrity_conflict": record.evidence_integrity_conflict,
+        "has_matching_result": record.has_matching_result,
+        "has_definite_refusal": record.has_definite_refusal,
+        "observations": [],
+        "observations_omitted": record.observation_count,
+    }
+    if _provider_policy_json_bytes(descriptor) > _PROVIDER_POLICY_COMMAND_DESCRIPTOR_BYTES:
+        raise ValueError("provider-policy command summary exceeds its public budget")
+    for observation in record.observations:
+        projected = _provider_policy_observation_descriptor(observation)
+        candidate = {**descriptor, "observations": [*descriptor["observations"], projected]}
+        candidate["observations_omitted"] = record.observation_count - len(
+            candidate["observations"]
+        )
+        if _provider_policy_json_bytes(candidate) > _PROVIDER_POLICY_COMMAND_DESCRIPTOR_BYTES:
+            break
+        descriptor = candidate
+    return descriptor
+
+
+def _provider_policy_json_bytes(value: Mapping[str, object]) -> int:
+    return len(
+        json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    )
+
+
+def _provider_policy_response_descriptor(result) -> dict[str, object]:
+    if type(result) is ProviderPolicyCommandRecord:
+        return _provider_policy_record_descriptor(result)
+    if type(result) is ProviderPolicyGrantRead:
+        return {
+            "revision": result.revision,
+            "grant": _provider_policy_grant_descriptor(result.grant),
+        }
+    if type(result) is ProviderPolicyGrantPage:
+        return {
+            "revision": result.revision,
+            "grants": [
+                _provider_policy_grant_descriptor(grant) for grant in result.grants
+            ],
+            "next_after": result.next_after,
+        }
+    raise ValueError("provider-policy response is malformed")
+
+
+class CpkServerProviderPolicyAdministrationService:
+    """Closed public adapter over dedicated provider-policy Operations owners."""
+
+    def __init__(
+        self,
+        *,
+        administration_policy: ProviderPolicyAdministrationPolicy,
+        commands: ProviderPolicyCommandService,
+        current_reads: ProviderPolicyCurrentReadService,
+    ) -> None:
+        if type(administration_policy) is not ProviderPolicyAdministrationPolicy:
+            raise ValueError("provider-policy administration policy is required")
+        for owner, methods in (
+            (commands, ("grant", "revoke", "reconcile", "read")),
+            (current_reads, ("read", "list")),
+        ):
+            if any(not callable(getattr(owner, method, None)) for method in methods):
+                raise ValueError("provider-policy owner is malformed")
+        self._policy = administration_policy
+        self._commands = commands
+        self._current_reads = current_reads
+
+    def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if (
+            request.service_role is not ControlPlaneServiceRole.AUTHORIZATION
+            or request.route_id not in _PROVIDER_POLICY_ROUTES
+        ):
+            raise CpkServerApplicationError(404, "unknown provider-policy route")
+        try:
+            logical_provider_id = _provider_policy_selector(request)
+        except (ValueError, TypeError, KeyError):
+            raise CpkServerApplicationError(
+                400, "provider-policy arguments are malformed"
+            ) from None
+        try:
+            context = self._policy.authorize(request.principal, logical_provider_id)
+        except ProviderPolicyAdministrationDenied:
+            raise CpkServerApplicationError(
+                403, "provider-policy administration is denied"
+            ) from None
+        except ProviderPolicyCommandError:
+            raise CpkServerApplicationError(
+                400, "provider-policy arguments are malformed"
+            ) from None
+        try:
+            path, payload = _provider_policy_arguments(request)
+            prepared = _decode_provider_policy_request(
+                request.route_id, payload, context, path
+            )
+        except (ValueError, TypeError, KeyError, OverflowError, ProviderPolicyCommandError):
+            raise CpkServerApplicationError(
+                400, "provider-policy arguments are malformed"
+            ) from None
+        try:
+            route = request.route_id
+            if route == "command.provider-policy.grant":
+                result = self._commands.grant(prepared)
+            elif route == "command.provider-policy.revoke":
+                result = self._commands.revoke(prepared)
+            elif route == "command.provider-policy.reconcile":
+                result = self._commands.reconcile(prepared)
+            elif route == "read.provider-policy-command":
+                result = self._commands.read(context, prepared)
+            elif route == "read.provider-policy-grant":
+                result = self._current_reads.read(context, prepared)
+            else:
+                result = self._current_reads.list(context, prepared)
+            return _provider_policy_response_descriptor(result)
+        except ProviderPolicyAdministrationDenied:
+            failure = (403, "provider-policy administration is denied")
+        except ProviderPolicyCommandNotFound:
+            failure = (404, "provider-policy command was not found")
+        except ProviderPolicyCommandConflict:
+            failure = (409, "provider-policy command conflicts with retained truth")
+        except ProviderPolicyCommandUnavailable:
+            failure = (503, "provider-policy command outcome is unavailable")
+        except ProviderPolicyFailure as error:
+            status = {
+                ProviderPolicyErrorCode.DENIED: 403,
+                ProviderPolicyErrorCode.MISSING: 404,
+                ProviderPolicyErrorCode.CONFLICT: 409,
+            }.get(error.code, 503)
+            failure = (status, "provider-policy current state is unavailable")
+        except Exception:
+            failure = (503, "provider-policy outcome is unavailable")
+        raise CpkServerApplicationError(*failure)
+
+
+class CpkServerAuthorizationService:
+    """Closed route-family dispatch for independently authorized services."""
+
+    def __init__(
+        self,
+        *,
+        workspace_administration: CpkServerWorkspaceAdministrationService | None = None,
+        provider_policy_administration: CpkServerProviderPolicyAdministrationService
+        | None = None,
+    ) -> None:
+        self._workspace = workspace_administration
+        self._provider_policy = provider_policy_administration
+
+    def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.service_role is not ControlPlaneServiceRole.AUTHORIZATION:
+            raise CpkServerApplicationError(404, "unknown authorization route")
+        if request.route_id in _ADMINISTRATION_ARGUMENTS:
+            if self._workspace is None:
+                raise CpkServerApplicationError(404, "workspace administration is unavailable")
+            return self._workspace.handle(request)
+        if request.route_id in _PROVIDER_POLICY_ROUTES:
+            if self._provider_policy is None:
+                raise CpkServerApplicationError(404, "provider-policy administration is unavailable")
+            return self._provider_policy.handle(request)
+        raise CpkServerApplicationError(404, "unknown authorization route")
+
+
 class CpkServerUnsupportedService:
     """Explicit placeholder for service roles not extracted into operations yet."""
 
@@ -1967,6 +2377,8 @@ def cpk_server_services(
     gateway_probes: GatewayProbeCommandService | None = None,
     deployment_program: DeploymentProgram | None = None,
     workspace_administration: CpkServerWorkspaceAdministrationService | None = None,
+    provider_policy_administration: CpkServerProviderPolicyAdministrationService
+    | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -2029,7 +2441,12 @@ def cpk_server_services(
         **unsupported,
         ControlPlaneServiceRole.AUTHORIZATION: (
             unsupported[ControlPlaneServiceRole.AUTHORIZATION]
-            if workspace_administration is None else workspace_administration
+            if workspace_administration is None
+            and provider_policy_administration is None
+            else CpkServerAuthorizationService(
+                workspace_administration=workspace_administration,
+                provider_policy_administration=provider_policy_administration,
+            )
         ),
     }
 
