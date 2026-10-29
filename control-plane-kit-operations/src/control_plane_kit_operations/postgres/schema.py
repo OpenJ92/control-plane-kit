@@ -123,6 +123,8 @@ def _current_schema_is_exact(connection: PostgresConnection) -> bool:
         validate_runtime_effect_origin_rows(connection)
         from .ingress_invocation_store import validate_ingress_invocation_rows
         validate_ingress_invocation_rows(connection)
+        from .provider_policy_command_store import validate_provider_policy_command_rows
+        validate_provider_policy_command_rows(connection)
     except (CurrentRowDrift, WorkspacePermissionError):
         return False
     return True

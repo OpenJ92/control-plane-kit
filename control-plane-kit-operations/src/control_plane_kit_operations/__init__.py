@@ -1279,3 +1279,43 @@ __all__ = [
     "cpk_server_services",
     "product_references_in_graph",
 ]
+
+from control_plane_kit_operations.provider_policy_commands import (
+    GrantProviderPolicy,
+    ProviderPolicyAdmission,
+    ProviderPolicyAdministrationDenied,
+    ProviderPolicyAdministrationPolicy,
+    ProviderPolicyBinding,
+    ProviderPolicyCommandConflict,
+    ProviderPolicyCommandError,
+    ProviderPolicyCommandNotFound,
+    ProviderPolicyCommandRecord,
+    ProviderPolicyCommandService,
+    ProviderPolicyCommandState,
+    ProviderPolicyCommandUnavailable,
+    ProviderPolicyInvocationContext,
+    ProviderPolicyObservationSource,
+    ProviderPolicyOutcomeObservation,
+    ReconcileProviderPolicy,
+    RevokeProviderPolicy,
+)
+
+__all__ += [
+    "GrantProviderPolicy",
+    "ProviderPolicyAdmission",
+    "ProviderPolicyAdministrationDenied",
+    "ProviderPolicyAdministrationPolicy",
+    "ProviderPolicyBinding",
+    "ProviderPolicyCommandConflict",
+    "ProviderPolicyCommandError",
+    "ProviderPolicyCommandNotFound",
+    "ProviderPolicyCommandRecord",
+    "ProviderPolicyCommandService",
+    "ProviderPolicyCommandState",
+    "ProviderPolicyCommandUnavailable",
+    "ProviderPolicyInvocationContext",
+    "ProviderPolicyObservationSource",
+    "ProviderPolicyOutcomeObservation",
+    "ReconcileProviderPolicy",
+    "RevokeProviderPolicy",
+]

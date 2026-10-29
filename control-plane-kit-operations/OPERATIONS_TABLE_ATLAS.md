@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=7505500ae7c663a3cc1265a16fc19abc103c45284e38a2ab297a13cdf276e061 relations=68 columns=833 constraints=766 indexes=215 foreign-keys=196 -->
+<!-- current-schema-contract: sha256=7288fee837b51ffd6e470ed33395159aa143804665e7e9aac0f219cc57fb43de relations=70 columns=854 constraints=779 indexes=221 foreign-keys=197 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -559,6 +559,7 @@ cpk_operation_actions -->|cpk_action_advancement_revision_fk| cpk_activity_plans
 cpk_operation_actions -->|cpk_action_advancement_run_fk| cpk_activity_runs
 cpk_operation_actions -->|cpk_operation_actions_session_id_fkey| cpk_operation_sessions
 cpk_operation_sessions -->|cpk_operation_sessions_workspace_id_fkey| cpk_workspaces
+cpk_provider_policy_outcome_observations -->|cpk_provider_policy_observations_command_fk| cpk_provider_policy_commands
 cpk_realized_graph_projections -->|cpk_realized_graph_projection_source| cpk_graph_versions
 cpk_realized_graph_projections -->|cpk_realized_graph_projections_workspace_id_fkey| cpk_workspaces
 cpk_registered_products -->|cpk_registered_products_workspace_id_fkey| cpk_workspaces
@@ -766,6 +767,7 @@ order is semantically significant for every composite identity.
 | `cpk_action_advancement_run_fk` | `cpk_operation_actions` | `advancement_run_id, advancement_request_id` | `cpk_activity_runs` | `run_id, request_id` | The original advancement run belongs to the action's exact execution request. |
 | `cpk_operation_actions_session_id_fkey` | `cpk_operation_actions` | `session_id` | `cpk_operation_sessions` | `session_id` | Every recorded action belongs to an operation session. |
 | `cpk_operation_sessions_workspace_id_fkey` | `cpk_operation_sessions` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every operation session belongs to one workspace. |
+| `cpk_provider_policy_observations_command_fk` | `cpk_provider_policy_outcome_observations` | `command_id` | `cpk_provider_policy_commands` | `command_id` | Every append-only provider observation belongs to the exact immutable local command whose outcome it describes. |
 | `cpk_realized_graph_projection_source` | `cpk_realized_graph_projections` | `source_authored_graph_id, workspace_id` | `cpk_graph_versions` | `graph_id, workspace_id` | A projection's authored source belongs to the same workspace. |
 | `cpk_realized_graph_projections_workspace_id_fkey` | `cpk_realized_graph_projections` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every realized projection belongs to one workspace. |
 | `cpk_registered_products_workspace_id_fkey` | `cpk_registered_products` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Product descriptor registrations are workspace scoped. |
@@ -1499,6 +1501,32 @@ deleting its retained draft history.
 - **JSON boundary:** `metadata` is bounded session context and does not define action or plan semantics.
 - **Sensitive material:** Actor, title, and metadata are protected operational history and must not include credentials or secret values.
 - **Future impact:** #1555 must either attach node-control intent to a valid session or document a distinct durable aggregate; route handlers do not invent this truth.
+
+### `cpk_provider_policy_commands`
+- **Durable meaning and owner:** `ProviderPolicyCommandStore` owns one immutable local provider-policy mutation intent and its irreversible dispatch claim.
+- **Identity and cardinality:** `command_id` is primary; full installation/caller identity, logical provider and caller idempotency key are unique, while provider correlation is independently unique.
+- **Outgoing foreign keys:** None; the row deliberately binds credential-free provider identity rather than another local aggregate.
+- **Inbound dependents:** `cpk_provider_policy_outcome_observations` retains every bounded result or failure observation for the exact command.
+- **Writers and transactions:** `ProviderPolicyCommandService` reserves intent and commits one atomic claim before it acquires a provider port; no local transaction remains open across provider I/O.
+- **Readers and projections:** Authorized command reads and reconciliation project the immutable intent, historical binding, claim, ordered observations and derived truthful state.
+- **Mutation, locks, retries, and idempotency:** Exact replay returns existing truth, changed reuse conflicts, and only the prepared-to-claimed winner may dispatch; ambiguous effects are never redispatched.
+- **Lifecycle, retention, deletion, and restore:** Commands are retained operational history; restore commands before their observations and preserve correlation and claim timestamps exactly.
+- **JSON boundary:** `intent_descriptor` is a bounded strict command payload decoded against the immutable operation and binding columns.
+- **Sensitive material:** Stores provider and binding identities, caller identity and bounded intent, but no credential values, protected files, endpoint secrets or raw provider responses.
+- **Future impact:** Server composition may expose authorized command history, but must not become a second owner of claim, reconciliation or terminal-state semantics.
+
+### `cpk_provider_policy_outcome_observations`
+- **Durable meaning and owner:** `ProviderPolicyCommandStore` owns append-only bounded canonical-result or failure evidence observed after a claimed command.
+- **Identity and cardinality:** `observation_id` is primary and `(command_id, evidence_fingerprint)` makes identical evidence replay idempotent without replacing history.
+- **Outgoing foreign keys:** `cpk_provider_policy_observations_command_fk` requires the exact owning provider-policy command.
+- **Inbound dependents:** No current relation references outcome observations; command projections fold them in durable order.
+- **Writers and transactions:** Initial responses and exact command-result reads append in their own local unit of work after provider I/O has ended.
+- **Readers and projections:** Command readback derives resolved, refused or unresolved state without fabricating success from missing or mismatched evidence.
+- **Mutation, locks, retries, and idempotency:** Rows are append-only; evidence uniqueness handles replay, later transport failures do not erase a canonical resolution, contradictory canonical evidence reopens the projection only as an unresolved integrity conflict, and reconciliation performs read-only provider inspection without redispatch.
+- **Lifecycle, retention, deletion, and restore:** Restore commands before observations; restrictive ownership prevents orphaned evidence and preserves ambiguity for inspection.
+- **JSON boundary:** `descriptor` is a bounded discriminated canonical-result or failure document validated by the store codec.
+- **Sensitive material:** Evidence is bounded and redacted; it excludes credential values, protected file contents, unbounded logs and raw private provider payloads.
+- **Future impact:** Interpreters may supply canonical provider evidence, while later server projections must retain exact authorization and uncertainty semantics.
 
 ### `cpk_realized_graph_projections`
 - **Durable meaning and owner:** `PostgresRealizedGraphProjectionStore` owns immutable realized representations of authored workspace graphs.
