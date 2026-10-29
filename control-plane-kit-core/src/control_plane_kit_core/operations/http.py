@@ -531,6 +531,47 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
             ("read.managed-runtime-assignment", "/workspaces/{workspace_id}/runtime-management/inspect", "ManagedRuntimeAssignment"),
             ("read.managed-runtime-assignment-history", "/workspaces/{workspace_id}/runtime-management/history", "ManagedRuntimeAssignmentPage"),
         )
+    ) + tuple(
+        HttpApiRouteContract(
+            route_id=route_id,
+            method=HttpMethod.GET,
+            path_template=path,
+            service_role=ControlPlaneServiceRole.AUTHORIZATION,
+            auth_scope=HttpAuthScope.ADMIN,
+            safety=HttpOperationSafety.READ_ONLY,
+            request_schema=HttpSchemaRef(request_schema),
+            response_schema=HttpSchemaRef(
+                response_schema,
+                max_bytes=(
+                    1048576
+                    if response_schema == "ProviderPolicyGrantPageResponse"
+                    else 65536
+                ),
+            ),
+            errors=HttpErrorContract(
+                statuses=(400, 401, 403, 404, 409, 413, 503)
+            ),
+        )
+        for route_id, path, request_schema, response_schema in (
+            (
+                "read.provider-policy-command",
+                "/administration/provider-policies/{logical_provider_id}/commands/{command_id}",
+                "ProviderPolicyCommandReadRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
+            (
+                "read.provider-policy-grant",
+                "/administration/provider-policies/{logical_provider_id}/grants/{grant_id}",
+                "ProviderPolicyGrantReadRequest",
+                "ProviderPolicyGrantReadResponse",
+            ),
+            (
+                "read.provider-policy-grants",
+                "/administration/provider-policies/{logical_provider_id}/grants",
+                "ProviderPolicyGrantListRequest",
+                "ProviderPolicyGrantPageResponse",
+            ),
+        )
     )
 
 
@@ -571,6 +612,33 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
             ("command.managed-runtime-access.revoke", "/workspaces/{workspace_id}/runtime-management/revoke",
                 ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
                 "RevokeManagedRuntimeAccessRequest", "ManagedRuntimeAssignmentResult"),
+            (
+                "command.provider-policy.grant",
+                "/administration/provider-policies/{logical_provider_id}/grants",
+                ControlPlaneServiceRole.AUTHORIZATION,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "GrantProviderPolicyRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
+            (
+                "command.provider-policy.revoke",
+                "/administration/provider-policies/{logical_provider_id}/grants/{grant_id}/revoke",
+                ControlPlaneServiceRole.AUTHORIZATION,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RevokeProviderPolicyRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
+            (
+                "command.provider-policy.reconcile",
+                "/administration/provider-policies/{logical_provider_id}/commands/{command_id}/reconcile",
+                ControlPlaneServiceRole.AUTHORIZATION,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ReconcileProviderPolicyRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
             (
                 "command.delegation-key.register",
                 "/workspaces/{workspace_id}/delegation-keys",

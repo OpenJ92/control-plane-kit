@@ -131,7 +131,7 @@ class WorkspaceAdministrationContractTests(unittest.TestCase):
     def test_canonical_administration_projections_preserve_workspace_target_and_policy(self):
         projections = canonical_operator_read_projection_set()
         administrative = tuple(value for value in projections.projections
-            if value.service_role is ControlPlaneServiceRole.AUTHORIZATION)
+            if value.policy is ReadProjectionPolicy.AUTHORIZED_WORKSPACE_ADMINISTRATION)
         self.assertEqual({value.operation_id for value in administrative},
             {"read." + name for name, *_ in READS})
         for name, _, _, schema in READS:

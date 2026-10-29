@@ -821,6 +821,24 @@ def operator_command_parity(
 
 
 _OPERATOR_READ_PROJECTIONS = (
+    (
+        "read.provider-policy-command",
+        "read.provider-policy-command",
+        "get_provider_policy_command",
+        "ProviderPolicyCommandRecordResponse",
+    ),
+    (
+        "read.provider-policy-grant",
+        "read.provider-policy-grant",
+        "get_provider_policy_grant",
+        "ProviderPolicyGrantReadResponse",
+    ),
+    (
+        "read.provider-policy-grants",
+        "read.provider-policy-grants",
+        "list_provider_policy_grants",
+        "ProviderPolicyGrantPageResponse",
+    ),
     ("read.workspace-permissions", "read.workspace-permissions", "list_workspace_permissions", "WorkspacePermissionPage"),
     ("read.workspace-permission", "read.workspace-permission", "inspect_workspace_permission", "WorkspacePermissionRecord"),
     ("read.workspace-permission-history", "read.workspace-permission-history", "list_workspace_permission_history", "WorkspacePermissionPage"),
@@ -1075,6 +1093,33 @@ _OPERATOR_READ_PROJECTIONS = (
 
 
 _OPERATOR_COMMANDS = (
+    (
+        "provider-policy.grant",
+        "command.provider-policy.grant",
+        "grant_provider_policy",
+        ControlPlaneServiceRole.AUTHORIZATION,
+        "GrantProviderPolicyRequest",
+        "ProviderPolicyCommandRecordResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "provider-policy.revoke",
+        "command.provider-policy.revoke",
+        "revoke_provider_policy",
+        ControlPlaneServiceRole.AUTHORIZATION,
+        "RevokeProviderPolicyRequest",
+        "ProviderPolicyCommandRecordResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "provider-policy.reconcile",
+        "command.provider-policy.reconcile",
+        "reconcile_provider_policy",
+        ControlPlaneServiceRole.AUTHORIZATION,
+        "ReconcileProviderPolicyRequest",
+        "ProviderPolicyCommandRecordResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
     ("workspace-administration.create", "command.workspace-administration.create", "create_workspace_as_administrator",
         ControlPlaneServiceRole.AUTHORIZATION, "CreateWorkspaceAsAdministratorRequest", "WorkspaceAdministrationResult", ApprovalPolicy.NOT_REQUIRED),
     ("workspace-permission.grant", "command.workspace-permission.grant", "grant_workspace_permissions",

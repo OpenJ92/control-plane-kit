@@ -161,6 +161,9 @@ class HttpApiContractTests(unittest.TestCase):
         self.assertEqual(
             [route["path_template"] for route in descriptor["routes"]],
             [
+                "/administration/provider-policies/{logical_provider_id}/commands/{command_id}",
+                "/administration/provider-policies/{logical_provider_id}/grants",
+                "/administration/provider-policies/{logical_provider_id}/grants/{grant_id}",
                 "/workspaces/{workspace_id}",
                 "/workspaces/{workspace_id}/activity",
                 "/workspaces/{workspace_id}/approvals/pending",

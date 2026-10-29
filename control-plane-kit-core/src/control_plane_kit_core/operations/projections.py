@@ -18,6 +18,9 @@ class ReadProjectionKind(StrEnum):
     """Closed operator read projection identities."""
 
     WORKSPACE = "workspace"
+    PROVIDER_POLICY_COMMAND = "provider-policy-command"
+    PROVIDER_POLICY_GRANT = "provider-policy-grant"
+    PROVIDER_POLICY_GRANTS = "provider-policy-grants"
     WORKSPACE_PERMISSIONS = "workspace-permissions"
     WORKSPACE_PERMISSION = "workspace-permission"
     WORKSPACE_PERMISSION_HISTORY = "workspace-permission-history"
@@ -74,6 +77,9 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_PRODUCT_DIRECTORY = "redacted-product-directory"
     REDACTED_WORKSPACE = "redacted-workspace"
     AUTHORIZED_WORKSPACE_ADMINISTRATION = "authorized-workspace-administration"
+    AUTHORIZED_PROVIDER_POLICY_ADMINISTRATION = (
+        "authorized-provider-policy-administration"
+    )
     REDACTED_GRAPH_DESCRIPTOR = "redacted-graph-descriptor"
     REDACTED_OPERATOR_OVERVIEW = "redacted-operator-overview"
     REDACTED_CONTROL_SURFACE = "redacted-control-surface"
@@ -300,7 +306,7 @@ def canonical_operator_read_projection_set() -> ReadProjectionSet:
                 policy=definition.policy,
                 auth_scope=definition.auth_scope,
                 safety=HttpOperationSafety.READ_ONLY,
-                requires_workspace_scope=True,
+                requires_workspace_scope=definition.requires_workspace_scope,
                 paged=definition.paged,
                 max_page_size=definition.max_page_size,
             )
@@ -319,9 +325,40 @@ class _ProjectionDefinition:
     max_page_size: int | None = None
     service_role: ControlPlaneServiceRole = ControlPlaneServiceRole.READS
     auth_scope: HttpAuthScope = HttpAuthScope.READ
+    requires_workspace_scope: bool = True
 
 
 _CANONICAL_PROJECTIONS = (
+    *tuple(
+        _ProjectionDefinition(
+            "read." + kind.value,
+            kind,
+            schema,
+            ReadProjectionPolicy.AUTHORIZED_PROVIDER_POLICY_ADMINISTRATION,
+            paged=paged,
+            max_page_size=100 if paged else None,
+            service_role=ControlPlaneServiceRole.AUTHORIZATION,
+            auth_scope=HttpAuthScope.ADMIN,
+            requires_workspace_scope=False,
+        )
+        for kind, schema, paged in (
+            (
+                ReadProjectionKind.PROVIDER_POLICY_COMMAND,
+                "ProviderPolicyCommandRecordResponse",
+                False,
+            ),
+            (
+                ReadProjectionKind.PROVIDER_POLICY_GRANT,
+                "ProviderPolicyGrantReadResponse",
+                False,
+            ),
+            (
+                ReadProjectionKind.PROVIDER_POLICY_GRANTS,
+                "ProviderPolicyGrantPageResponse",
+                True,
+            ),
+        )
+    ),
     *tuple(_ProjectionDefinition(
         "read." + kind.value, kind, schema,
         ReadProjectionPolicy.AUTHORIZED_WORKSPACE_ADMINISTRATION,

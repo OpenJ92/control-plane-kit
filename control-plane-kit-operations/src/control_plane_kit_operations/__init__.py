@@ -198,11 +198,13 @@ from .cpk_server import (
     CpkServerApplicationError,
     CpkServerApplicationService,
     CpkServerApprovalService,
+    CpkServerAuthorizationService,
     CpkServerExecutionService,
     CpkServerGatewayProbeService,
     CpkServerLifecycleService,
     CpkServerOperationsApplication,
     CpkServerPlanningService,
+    CpkServerProviderPolicyAdministrationService,
     CpkServerReadService,
     CpkServerRouteRequest,
     CpkServerUnsupportedService,
@@ -1299,6 +1301,9 @@ from control_plane_kit_operations.provider_policy_commands import (
     ReconcileProviderPolicy,
     RevokeProviderPolicy,
 )
+from control_plane_kit_operations.provider_policy_reads import (
+    ProviderPolicyCurrentReadService,
+)
 
 __all__ += [
     "GrantProviderPolicy",
@@ -1313,9 +1318,12 @@ __all__ += [
     "ProviderPolicyCommandService",
     "ProviderPolicyCommandState",
     "ProviderPolicyCommandUnavailable",
+    "ProviderPolicyCurrentReadService",
     "ProviderPolicyInvocationContext",
     "ProviderPolicyObservationSource",
     "ProviderPolicyOutcomeObservation",
     "ReconcileProviderPolicy",
     "RevokeProviderPolicy",
+    "CpkServerAuthorizationService",
+    "CpkServerProviderPolicyAdministrationService",
 ]
