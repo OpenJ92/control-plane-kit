@@ -6,6 +6,12 @@ from .workspace_permission_upgrade import (
     WorkspacePermissionUpgradeUncertain, upgrade_workspace_permissions,
     inspect_workspace_permission_upgrade,
 )
+from .provider_policy_command_upgrade import (
+    ProviderPolicyCommandUpgradeError,
+    ProviderPolicyCommandUpgradeResult,
+    ProviderPolicyCommandUpgradeUncertain,
+    upgrade_provider_policy_commands,
+)
 from control_plane_kit_operations.postgres.schema import (
     PostgresConnection,
     SchemaInstallationError,
@@ -59,6 +65,7 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretUseAuthorizationStore,
 )
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
+from control_plane_kit_operations.postgres.provider_policy_command_store import ProviderPolicyCommandStore
 from control_plane_kit_operations.postgres.unit_of_work import (
     PostgresConnectionFactory,
     PostgresUnitOfWork,
@@ -71,11 +78,16 @@ __all__ = [
     "WorkspacePermissionUpgradeInspection", "WorkspacePermissionUpgradeError",
     "WorkspacePermissionUpgradeUncertain", "upgrade_workspace_permissions",
     "inspect_workspace_permission_upgrade",
+    "ProviderPolicyCommandUpgradeError",
+    "ProviderPolicyCommandUpgradeResult",
+    "ProviderPolicyCommandUpgradeUncertain",
+    "upgrade_provider_policy_commands",
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
     "FailedRunCompensationStore",
     "FailedRunCompensationAttemptStore",
     "DelegationSigningKeyStore",
+    "ProviderPolicyCommandStore",
     "PostgresGraphTopologyStore",
     "PostgresRealizedGraphProjectionStore",
     "RealizedGraphProjectionConflict",

@@ -78,6 +78,7 @@ from control_plane_kit_operations.postgres.ingress_invocation_store import Ingre
 from control_plane_kit_operations.postgres.workspace_permission_store import WorkspacePermissionStore
 from control_plane_kit_operations.postgres.managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
 from control_plane_kit_operations.postgres.runtime_effect_origin_store import RuntimeEffectOriginStore
+from control_plane_kit_operations.postgres.provider_policy_command_store import ProviderPolicyCommandStore
 
 
 @dataclass(frozen=True)
@@ -143,8 +144,10 @@ class PostgresStoreBundle:
     delegation_key_generation_attempts: DelegationKeyGenerationAttemptStore = field(init=False)
     secret_material_provision_attempts: SecretMaterialProvisionAttemptStore = field(init=False)
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
+    provider_policy_commands: ProviderPolicyCommandStore = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "provider_policy_commands", ProviderPolicyCommandStore(self.connection))
         object.__setattr__(self, "ingress_invocations", IngressInvocationStore(self.connection))
         object.__setattr__(self, "runtime_effect_origins", RuntimeEffectOriginStore(self.connection))
         object.__setattr__(self, "workspace_permissions", WorkspacePermissionStore(self.connection))

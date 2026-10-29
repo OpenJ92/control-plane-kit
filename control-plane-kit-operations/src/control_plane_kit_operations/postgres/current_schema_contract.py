@@ -1858,7 +1858,7 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
     indexes=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
-CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = '7505500ae7c663a3cc1265a16fc19abc103c45284e38a2ab297a13cdf276e061'
+CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = '7288fee837b51ffd6e470ed33395159aa143804665e7e9aac0f219cc57fb43de'
 
 MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT = CurrentSchemaContract(
     relations=(
@@ -2065,4 +2065,82 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
     columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + INGRESS_INVOCATION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
     constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + INGRESS_INVOCATION_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
     indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + INGRESS_INVOCATION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+)
+
+def _provider_text_column(relation: str, name: str) -> ColumnContract:
+    return ColumnContract(relation=relation, name=name, type_namespace="pg_catalog", formatted_type="text", not_null=True, identity="", generated="", collation_namespace="pg_catalog", collation_name="default", default_expression=None)
+
+
+def _provider_json_column(relation: str, name: str) -> ColumnContract:
+    return ColumnContract(relation=relation, name=name, type_namespace="pg_catalog", formatted_type="jsonb", not_null=True, identity="", generated="", collation_namespace=None, collation_name=None, default_expression=None)
+
+
+def _provider_time_column(relation: str, name: str, *, required: bool = True) -> ColumnContract:
+    return ColumnContract(relation=relation, name=name, type_namespace="pg_catalog", formatted_type="timestamp(6) with time zone", not_null=required, identity="", generated="", collation_namespace=None, collation_name=None, default_expression=None)
+
+
+def _provider_constraint(relation, name, kind, columns, *, expression=None, referenced=None, referenced_columns=None):
+    return ConstraintContract(relation=relation, name=name, kind=kind, validated=True, deferrable=False, deferred=False, no_inherit=kind in {"p", "u", "f"}, local_columns=columns, referenced_relation=referenced, referenced_columns=referenced_columns, update_action="a" if kind == "f" else None, delete_action="a" if kind == "f" else None, match_type="s" if kind == "f" else None, check_expression=expression)
+
+
+def _provider_index(relation, name, columns, *, unique, primary=False, constraint=True, time_columns=()):
+    opclasses = tuple("pg_catalog.timestamptz_ops" if value in time_columns else "pg_catalog.text_ops" for value in columns)
+    collations = tuple(None if value in time_columns else "pg_catalog.default" for value in columns)
+    return IndexContract(relation=relation, name=name, owning_constraint=name if constraint else None, access_method="btree", unique=unique, primary=primary, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=columns, include_entries=(), opclasses=opclasses, collations=collations, options=tuple(0 for _ in columns), predicate=None, expressions=None)
+
+
+_PROVIDER_COMMAND = "cpk_provider_policy_commands"
+_PROVIDER_OBSERVATION = "cpk_provider_policy_outcome_observations"
+
+PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=(
+        RelationContract(name=_PROVIDER_COMMAND, kind="r", persistence="p", access_method="heap", replica_identity="d", is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
+        RelationContract(name=_PROVIDER_OBSERVATION, kind="r", persistence="p", access_method="heap", replica_identity="d", is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
+    ),
+    columns=(
+        *(_provider_text_column(_PROVIDER_COMMAND, name) for name in (
+            "command_id", "installation_id", "caller_issuer", "caller_subject_id", "caller_kind",
+            "logical_provider_id", "binding_id", "provider_id", "idempotency_key",
+            "request_fingerprint", "provider_correlation", "operation",
+        )),
+        _provider_json_column(_PROVIDER_COMMAND, "intent_descriptor"),
+        _provider_time_column(_PROVIDER_COMMAND, "dispatch_claimed_at", required=False),
+        _provider_time_column(_PROVIDER_COMMAND, "created_at"),
+        *(_provider_text_column(_PROVIDER_OBSERVATION, name) for name in (
+            "observation_id", "command_id", "source", "evidence_fingerprint",
+        )),
+        _provider_json_column(_PROVIDER_OBSERVATION, "descriptor"),
+        _provider_time_column(_PROVIDER_OBSERVATION, "observed_at"),
+    ),
+    constraints=(
+        _provider_constraint(_PROVIDER_COMMAND, "cpk_provider_policy_commands_pkey", "p", ("command_id",)),
+        _provider_constraint(_PROVIDER_COMMAND, "cpk_provider_policy_commands_scope_key", "u", ("installation_id", "caller_issuer", "caller_subject_id", "caller_kind", "logical_provider_id", "idempotency_key")),
+        _provider_constraint(_PROVIDER_COMMAND, "cpk_provider_policy_commands_correlation_key", "u", ("provider_correlation",)),
+        _provider_constraint(_PROVIDER_COMMAND, "cpk_provider_policy_commands_identity_check", "c", ("command_id", "installation_id", "caller_issuer", "caller_subject_id", "caller_kind", "logical_provider_id", "binding_id", "provider_id", "idempotency_key", "request_fingerprint", "provider_correlation"), expression="(((command_id COLLATE \"C\") ~ '^[0-9a-f]{64}$'::text) AND ((octet_length(installation_id) >= 1) AND (octet_length(installation_id) <= 512)) AND ((octet_length(caller_issuer) >= 1) AND (octet_length(caller_issuer) <= 512)) AND ((octet_length(caller_subject_id) >= 1) AND (octet_length(caller_subject_id) <= 512)) AND (caller_kind = ANY (ARRAY['operator'::text, 'service'::text, 'worker'::text])) AND ((octet_length(logical_provider_id) >= 1) AND (octet_length(logical_provider_id) <= 128)) AND ((octet_length(binding_id) >= 1) AND (octet_length(binding_id) <= 200)) AND ((octet_length(provider_id) >= 1) AND (octet_length(provider_id) <= 512)) AND ((octet_length(idempotency_key) >= 1) AND (octet_length(idempotency_key) <= 200)) AND ((request_fingerprint COLLATE \"C\") ~ '^[0-9a-f]{64}$'::text) AND ((octet_length(provider_correlation) >= 1) AND (octet_length(provider_correlation) <= 128)))"),
+        _provider_constraint(_PROVIDER_COMMAND, "cpk_provider_policy_commands_operation_check", "c", ("operation",), expression="(operation = ANY (ARRAY['grant'::text, 'revoke'::text]))"),
+        _provider_constraint(_PROVIDER_COMMAND, "cpk_provider_policy_commands_intent_check", "c", ("intent_descriptor",), expression="((jsonb_typeof(intent_descriptor) = 'object'::text) AND (octet_length((intent_descriptor)::text) <= 8192))"),
+        _provider_constraint(_PROVIDER_COMMAND, "cpk_provider_policy_commands_time_check", "c", ("dispatch_claimed_at", "created_at"), expression="((dispatch_claimed_at IS NULL) OR (dispatch_claimed_at >= created_at))"),
+        _provider_constraint(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_pkey", "p", ("observation_id",)),
+        _provider_constraint(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_evidence_key", "u", ("command_id", "evidence_fingerprint")),
+        _provider_constraint(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_identity_check", "c", ("observation_id", "evidence_fingerprint"), expression="(((observation_id COLLATE \"C\") ~ '^[0-9a-f]{64}$'::text) AND ((evidence_fingerprint COLLATE \"C\") ~ '^[0-9a-f]{64}$'::text))"),
+        _provider_constraint(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_source_check", "c", ("source",), expression="(source = ANY (ARRAY['initial-response'::text, 'command-result-read'::text]))"),
+        _provider_constraint(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_descriptor_check", "c", ("descriptor",), expression="((jsonb_typeof(descriptor) = 'object'::text) AND (octet_length((descriptor)::text) <= 8192))"),
+        _provider_constraint(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_command_fk", "f", ("command_id",), referenced=_PROVIDER_COMMAND, referenced_columns=("command_id",)),
+    ),
+    indexes=(
+        _provider_index(_PROVIDER_COMMAND, "cpk_provider_policy_commands_pkey", ("command_id",), unique=True, primary=True),
+        _provider_index(_PROVIDER_COMMAND, "cpk_provider_policy_commands_scope_key", ("installation_id", "caller_issuer", "caller_subject_id", "caller_kind", "logical_provider_id", "idempotency_key"), unique=True),
+        _provider_index(_PROVIDER_COMMAND, "cpk_provider_policy_commands_correlation_key", ("provider_correlation",), unique=True),
+        _provider_index(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_pkey", ("observation_id",), unique=True, primary=True),
+        _provider_index(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_evidence_key", ("command_id", "evidence_fingerprint"), unique=True),
+        _provider_index(_PROVIDER_OBSERVATION, "cpk_provider_policy_observations_command_page", ("command_id", "observed_at", "observation_id"), unique=False, constraint=False, time_columns=("observed_at",)),
+    ),
+)
+
+PRE_PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT = CURRENT_POSTGRES_SCHEMA_CONTRACT
+CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
+    columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )

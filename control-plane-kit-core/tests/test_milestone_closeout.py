@@ -65,6 +65,7 @@ EXPECTED_MODULES = {
     "planning.saga",
     "policies",
     "probe_intents",
+    "provider_policy",
     "products",
     "public_ingress",
     "receiver_configuration",

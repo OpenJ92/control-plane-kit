@@ -964,6 +964,16 @@ from control_plane_kit_core.secret_installation import (
     SecretInstallationCorrelation, secret_installation_correlation_for_request,
     secret_installation_receipt_for_correlated_result, secret_installation_receipt_for_correlated_observation,
 )
+from control_plane_kit_core.provider_policy import (
+    ProviderPolicyCommandResult, ProviderPolicyCommandResultRequest,
+    ProviderPolicyContractError, ProviderPolicyCoordinate, ProviderPolicyErrorCode,
+    ProviderPolicyFailure,
+    ProviderPolicyGrantCommand, ProviderPolicyGrantPage, ProviderPolicyGrantRead,
+    ProviderPolicyGrantRecord, ProviderPolicyIntentMode, ProviderPolicyListRequest,
+    ProviderPolicyMutationCommand, ProviderPolicyOperation, ProviderPolicyOutcome,
+    ProviderPolicyPort, ProviderPolicyReadRequest, ProviderPolicyRevokeCommand,
+    provider_policy_command_fingerprint,
+)
 __all__ += [
     "SecretSelectionError", "UnselectedSecretUse", "SecretVersionSelection", "SecretSelection",
     "SecretVersionResolutionGrant", "SecretResolutionGrantCodec", "ResolutionGrant",
@@ -974,4 +984,12 @@ __all__ += [
     "secret_installation_receipt_for_observation",
     "SecretInstallationCorrelation", "secret_installation_correlation_for_request",
     "secret_installation_receipt_for_correlated_result", "secret_installation_receipt_for_correlated_observation",
+    "ProviderPolicyCommandResult", "ProviderPolicyCommandResultRequest",
+    "ProviderPolicyContractError", "ProviderPolicyCoordinate", "ProviderPolicyErrorCode",
+    "ProviderPolicyFailure",
+    "ProviderPolicyGrantCommand", "ProviderPolicyGrantPage", "ProviderPolicyGrantRead",
+    "ProviderPolicyGrantRecord", "ProviderPolicyIntentMode", "ProviderPolicyListRequest",
+    "ProviderPolicyMutationCommand", "ProviderPolicyOperation", "ProviderPolicyOutcome",
+    "ProviderPolicyPort", "ProviderPolicyReadRequest", "ProviderPolicyRevokeCommand",
+    "provider_policy_command_fingerprint",
 ]

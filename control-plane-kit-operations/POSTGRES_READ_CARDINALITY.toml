@@ -802,6 +802,30 @@ consumer = "validate_workspace_permission_rows checks current permissions, permi
 module = "control_plane_kit_operations.postgres.workspace_permission_upgrade"
 selector = "_recognized_contract"
 category = "exact-verifier"
-sql = "Current-namespace pg_class relation/kind enumeration excluding indexes; ordered relname; LIMIT final relation count+1 (69)"
+sql = "Current-namespace pg_class relation/kind enumeration excluding indexes; ordered relname; LIMIT final relation count+1 (71)"
 consumer_kind = "production"
 consumer = "Explicit retained upgrade or authorized inspection recognizes accepted predecessor/final table set before locked exact validation; preliminary recognition alone is not acceptance"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.provider_policy_command_store"
+selector = "ProviderPolicyCommandStore._with_observations"
+category = "exact-verifier"
+sql = "Exact command_id held by the owning command-row lock; observed_at/observation_id order; LIMIT 100 with increasing OFFSET until the final short page"
+consumer_kind = "production"
+consumer = "Provider-policy command reconstruction serializes owner appends, projects at most 100 observations and folds every retained canonical result or refusal into constant-space integrity state"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.provider_policy_command_store"
+selector = "validate_provider_policy_command_rows"
+category = "exact-verifier"
+sql = "Strict command_id keyset pages of 100; visits every retained provider-policy command and its complete bounded observation fold"
+consumer_kind = "production"
+consumer = "Current schema and retained upgrade validation reconstruct every provider-policy command without dispatch, repair or partial acceptance"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.provider_policy_command_upgrade"
+selector = "_recognized_contract"
+category = "exact-verifier"
+sql = "Current-namespace pg_class relation/kind enumeration excluding indexes; ordered relname; LIMIT final relation count+1 (71)"
+consumer_kind = "production"
+consumer = "Authorized provider-policy schema transition recognizes only the accepted predecessor or exact final relation set before locked verification"
