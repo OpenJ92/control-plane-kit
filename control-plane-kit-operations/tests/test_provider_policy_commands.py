@@ -384,6 +384,10 @@ class ProviderPolicyCommandTests(LifecycleLockFixture, unittest.TestCase):
             else repr(evidence)
         )
         fingerprint = sha256(payload.encode("utf-8")).hexdigest()
+        if type(evidence) is ProviderPolicyFailure:
+            fingerprint = sha256(
+                (source.value + "\x1f" + fingerprint).encode("utf-8")
+            ).hexdigest()
         observation_id = sha256((
             record.command_id + "\x1f" + source.value + "\x1f" + fingerprint
         ).encode()).hexdigest()
@@ -481,6 +485,96 @@ class ProviderPolicyCommandTests(LifecycleLockFixture, unittest.TestCase):
         with self.assertRaises(self.public("ProviderPolicyCommandError")):
             self.read(resolved.command_id)
 
+    def test_retained_command_identity_rejects_scope_and_embedded_drift(self):
+        resolved = self.service().grant(self.grant())
+        table = "cpk_provider_policy_commands"
+        cases = (
+            ("installation_id", "installation-b", "installation-a"),
+            ("caller_subject_id", "operator-b", "operator-a"),
+            ("provider_correlation", "cpk.other." + resolved.command_id,
+             resolved.provider_correlation),
+        )
+        for column, changed, original in cases:
+            with self.subTest(column=column):
+                self.connection.execute(
+                    f"UPDATE {table} SET {column}=%s WHERE command_id=%s",
+                    (changed, resolved.command_id),
+                )
+                with self.assertRaises(self.public("ProviderPolicyCommandError")):
+                    self.read(resolved.command_id)
+                self.connection.execute(
+                    f"UPDATE {table} SET {column}=%s WHERE command_id=%s",
+                    (original, resolved.command_id),
+                )
+        with self.assertRaises(self.public("ProviderPolicyCommandError")):
+            replace(
+                resolved,
+                command=replace(
+                    resolved.command,
+                    caller_idempotency_key="other-key",
+                ),
+            )
+        with self.assertRaises(self.public("ProviderPolicyCommandError")):
+            replace(
+                resolved,
+                command=replace(
+                    resolved.command,
+                    provider_correlation="cpk.other." + resolved.command_id,
+                ),
+            )
+
+    def test_source_distinct_failures_are_order_independent_and_conflict_with_match(self):
+        failure = ProviderPolicyFailure(
+            ProviderPolicyErrorCode.DENIED, "same definite denial"
+        )
+        self.behavior = lambda command: (_ for _ in ()).throw(failure)
+        initial_first = self.service().grant(self.grant(key="initial-first"))
+        read_failure = self.observation(
+            initial_first,
+            failure,
+            self.public("ProviderPolicyObservationSource").COMMAND_RESULT_READ,
+        )
+        initial_first = self.append(initial_first, read_failure)
+        self.assertEqual(initial_first.observation_count, 2)
+        self.assertEqual(initial_first.state.value, "refused")
+
+        entered, release = threading.Event(), threading.Event()
+
+        def delayed_denial(command):
+            entered.set()
+            if not release.wait(timeout=15):
+                raise AssertionError("initial denial was not released")
+            raise failure
+
+        self.behavior = delayed_denial
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(self.service().grant, self.grant(key="read-first"))
+            try:
+                self.assertTrue(entered.wait(timeout=10))
+                read_first = self.read(key="read-first")
+                read_first = self.append(
+                    read_first,
+                    self.observation(
+                        read_first,
+                        failure,
+                        self.public("ProviderPolicyObservationSource").COMMAND_RESULT_READ,
+                    ),
+                )
+            finally:
+                release.set()
+            read_first = pending.result(timeout=15)
+        self.assertEqual(read_first.observation_count, 2)
+        self.assertEqual(read_first.state.value, "refused")
+
+        matching = self.observation(
+            read_first,
+            self.success(read_first.command),
+            self.public("ProviderPolicyObservationSource").COMMAND_RESULT_READ,
+        )
+        conflicted = self.append(read_first, matching)
+        self.assertEqual(conflicted.observation_count, 3)
+        self.assertEqual(conflicted.state.value, "evidence-mismatch-unresolved")
+
     def test_wire_conflict_remains_unresolved_until_exact_readback(self):
         self.behavior = lambda command: (_ for _ in ()).throw(
             ProviderPolicyFailure(ProviderPolicyErrorCode.CONFLICT, "wire conflict")
@@ -568,6 +662,84 @@ class ProviderPolicyCommandTests(LifecycleLockFixture, unittest.TestCase):
         self.assertEqual(record.observation_count, 107)
         self.assertEqual(len(record.observations), 100)
         self.assertEqual(record.state.value, "evidence-mismatch-unresolved")
+
+    def test_complete_fold_serializes_append_between_pages(self):
+        record = self.service().grant(self.grant(key="stable-fold"))
+        source = self.public("ProviderPolicyObservationSource").COMMAND_RESULT_READ
+        for index in range(99):
+            failure = ProviderPolicyFailure(
+                ProviderPolicyErrorCode.UNAVAILABLE, f"read unavailable {index}"
+            )
+            record = self.append(record, self.observation(record, failure, source))
+        self.assertEqual(record.observation_count, 100)
+        contradictory = replace(
+            self.observation(
+                record,
+                replace(
+                    self.success(record.command),
+                    coordinate=replace(record.command.coordinate, subject="other-subject"),
+                ),
+                source,
+            ),
+            observed_at="2026-10-28T17:00:00Z",
+        )
+        first_page, release = threading.Event(), threading.Event()
+        append_attempted, append_finished = threading.Event(), threading.Event()
+
+        class PausedConnection:
+            def __init__(inner, connection, *, pause_read=False, notice_append=False):
+                inner.connection = connection
+                inner.pause_read = pause_read
+                inner.notice_append = notice_append
+
+            def __getattr__(inner, name):
+                return getattr(inner.connection, name)
+
+            def execute(inner, query, params=None):
+                sql = str(query)
+                if inner.notice_append and "WHERE command_id=%s FOR UPDATE" in sql:
+                    append_attempted.set()
+                result = inner.connection.execute(query, params)
+                if (
+                    inner.pause_read
+                    and "FROM cpk_provider_policy_outcome_observations" in sql
+                    and params[-1] == 0
+                ):
+                    first_page.set()
+                    if not release.wait(timeout=15):
+                        raise AssertionError("paged fold was not released")
+                return result
+
+        def stable_read():
+            factory = lambda: PausedConnection(self.connect(), pause_read=True)
+            with PostgresUnitOfWork(factory) as uow:
+                return uow.stores.provider_policy_commands.get(record.command_id)
+
+        def concurrent_append():
+            factory = lambda: PausedConnection(self.connect(), notice_append=True)
+            try:
+                with PostgresUnitOfWork(factory) as uow:
+                    result = uow.stores.provider_policy_commands.append_observation(
+                        record.command_id, contradictory
+                    )
+                    uow.commit()
+                    return result
+            finally:
+                append_finished.set()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            reading = pool.submit(stable_read)
+            self.assertTrue(first_page.wait(timeout=10))
+            appending = pool.submit(concurrent_append)
+            self.assertTrue(append_attempted.wait(timeout=10))
+            self.assertFalse(append_finished.wait(timeout=0.2))
+            release.set()
+            before = reading.result(timeout=15)
+            after = appending.result(timeout=15)
+        self.assertEqual(before.observation_count, 100)
+        self.assertEqual(before.state.value, "resolved")
+        self.assertEqual(after.observation_count, 101)
+        self.assertEqual(after.state.value, "evidence-mismatch-unresolved")
 
     def prior_sql(self):
         package = files("control_plane_kit_operations.postgres")

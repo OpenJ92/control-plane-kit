@@ -810,9 +810,9 @@ consumer = "Explicit retained upgrade or authorized inspection recognizes accept
 module = "control_plane_kit_operations.postgres.provider_policy_command_store"
 selector = "ProviderPolicyCommandStore._with_observations"
 category = "exact-verifier"
-sql = "Exact command_id; observed_at/observation_id order; LIMIT 100 with increasing OFFSET until the final short page"
+sql = "Exact command_id held by the owning command-row lock; observed_at/observation_id order; LIMIT 100 with increasing OFFSET until the final short page"
 consumer_kind = "production"
-consumer = "Provider-policy command reconstruction projects at most 100 observations while folding every retained canonical result or refusal into bounded integrity state"
+consumer = "Provider-policy command reconstruction serializes owner appends, projects at most 100 observations and folds every retained canonical result or refusal into constant-space integrity state"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.provider_policy_command_store"

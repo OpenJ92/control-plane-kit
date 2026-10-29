@@ -221,7 +221,7 @@ class ProviderPolicyOutcomeObservation:
         if self.failure is not None and self.matches_intent:
             raise ProviderPolicyCommandError("provider-policy failure cannot match intent")
         evidence = self.canonical_result if self.canonical_result is not None else self.failure
-        if self.evidence_fingerprint != _evidence_fingerprint(evidence):
+        if self.evidence_fingerprint != _evidence_fingerprint(evidence, self.source):
             raise ProviderPolicyCommandError("provider-policy evidence fingerprint is malformed")
 
 
@@ -256,6 +256,19 @@ class ProviderPolicyCommandRecord:
             raise ProviderPolicyCommandError("provider-policy command is malformed")
         if self.command.logical_provider_id != self.binding.logical_provider_id or self.command.provider_id != self.binding.provider_id:
             raise ProviderPolicyCommandError("provider-policy command binding is malformed")
+        expected_command_id, expected_correlation = _command_identity(
+            self.installation_id,
+            self.actor,
+            self.binding.logical_provider_id,
+            self.idempotency_key,
+        )
+        if (
+            self.command_id != expected_command_id
+            or self.provider_correlation != expected_correlation
+            or self.command.caller_idempotency_key != self.idempotency_key.value
+            or self.command.provider_correlation != self.provider_correlation
+        ):
+            raise ProviderPolicyCommandError("provider-policy command identity is malformed")
         if provider_policy_command_fingerprint(self.command) != self.request_fingerprint:
             raise ProviderPolicyCommandError("provider-policy command fingerprint is malformed")
         validate_canonical_utc_timestamp(self.created_at)
@@ -494,21 +507,12 @@ def _command(context, coordinate, revision, key) -> None:
 
 def _record_for(request, operation, created_at) -> ProviderPolicyCommandRecord:
     context = request.context
-    identity_key = json.dumps(
-        [
-            context.installation_id,
-            context.identity.issuer,
-            context.identity.subject_id,
-            context.identity.kind.value,
-            context.binding.logical_provider_id,
-            request.idempotency_key.value,
-        ],
-        ensure_ascii=True,
-        separators=(",", ":"),
+    command_id, correlation = _command_identity(
+        context.installation_id,
+        context.identity,
+        context.binding.logical_provider_id,
+        request.idempotency_key,
     )
-    command_id = sha256(identity_key.encode("utf-8")).hexdigest()
-    installation_digest = sha256(context.installation_id.encode("utf-8")).hexdigest()[:24]
-    correlation = f"cpk.{installation_digest}.{command_id}"
     common = dict(
         logical_provider_id=context.binding.logical_provider_id,
         provider_id=context.binding.provider_id,
@@ -535,6 +539,29 @@ def _record_for(request, operation, created_at) -> ProviderPolicyCommandRecord:
     )
 
 
+def _command_identity(
+    installation_id: str,
+    actor: PrincipalIdentity,
+    logical_provider_id: str,
+    idempotency_key: IdempotencyKey,
+) -> tuple[str, str]:
+    identity_key = json.dumps(
+        [
+            installation_id,
+            actor.issuer,
+            actor.subject_id,
+            actor.kind.value,
+            logical_provider_id,
+            idempotency_key.value,
+        ],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    command_id = sha256(identity_key.encode("utf-8")).hexdigest()
+    installation_digest = sha256(installation_id.encode("utf-8")).hexdigest()[:24]
+    return command_id, f"cpk.{installation_digest}.{command_id}"
+
+
 def _result_observation(record, result, source, observed_at):
     if type(result) is not ProviderPolicyCommandResult:
         failure = ProviderPolicyFailure(
@@ -543,7 +570,7 @@ def _result_observation(record, result, source, observed_at):
             effect_may_have_occurred=True,
         )
         return _failure_observation(record, failure, source, observed_at)
-    evidence = _evidence_fingerprint(result)
+    evidence = _evidence_fingerprint(result, source)
     return ProviderPolicyOutcomeObservation(
         sha256((record.command_id + "\x1f" + source.value + "\x1f" + evidence).encode()).hexdigest(),
         source,
@@ -555,7 +582,7 @@ def _result_observation(record, result, source, observed_at):
 
 
 def _failure_observation(record, failure, source, observed_at):
-    evidence = _evidence_fingerprint(failure)
+    evidence = _evidence_fingerprint(failure, source)
     return ProviderPolicyOutcomeObservation(
         sha256((record.command_id + "\x1f" + source.value + "\x1f" + evidence).encode()).hexdigest(),
         source,
@@ -570,9 +597,12 @@ def _digest(value: object, name: str) -> None:
         raise ProviderPolicyCommandError(f"{name} is malformed")
 
 
-def _evidence_fingerprint(value) -> str:
+def _evidence_fingerprint(value, source: ProviderPolicyObservationSource) -> str:
     payload = repr(value.descriptor()) if type(value) is ProviderPolicyFailure else repr(value)
-    return sha256(payload.encode("utf-8")).hexdigest()
+    fingerprint = sha256(payload.encode("utf-8")).hexdigest()
+    if type(value) is ProviderPolicyFailure:
+        return sha256((source.value + "\x1f" + fingerprint).encode("utf-8")).hexdigest()
+    return fingerprint
 
 
 __all__ = [

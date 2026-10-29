@@ -118,7 +118,8 @@ class ProviderPolicyCommandStore:
 
     def get(self, command_id: str) -> ProviderPolicyCommandRecord:
         row = self.connection.execute(
-            "SELECT " + _COMMAND_COLUMNS + " FROM cpk_provider_policy_commands WHERE command_id=%s",
+            "SELECT " + _COMMAND_COLUMNS + " FROM cpk_provider_policy_commands "
+            "WHERE command_id=%s FOR UPDATE",
             (command_id,),
         ).fetchone()
         if row is None:
@@ -135,7 +136,8 @@ class ProviderPolicyCommandStore:
         row = self.connection.execute(
             "SELECT " + _COMMAND_COLUMNS + " FROM cpk_provider_policy_commands "
             "WHERE installation_id=%s AND caller_issuer=%s AND caller_subject_id=%s "
-            "AND caller_kind=%s AND logical_provider_id=%s AND idempotency_key=%s",
+            "AND caller_kind=%s AND logical_provider_id=%s AND idempotency_key=%s "
+            "FOR UPDATE",
             (
                 installation_id,
                 actor.issuer,
@@ -178,7 +180,7 @@ class ProviderPolicyCommandStore:
 
     def _with_observations(self, record):
         projected = []
-        canonical = set()
+        canonical = None
         count = 0
         has_match = False
         has_refusal = False
@@ -197,13 +199,16 @@ class ProviderPolicyCommandStore:
                     projected.append(observation)
                 count += 1
                 if observation.canonical_result is not None:
-                    canonical.add(observation.evidence_fingerprint)
+                    if canonical is None:
+                        canonical = observation.evidence_fingerprint
+                    else:
+                        conflict |= canonical != observation.evidence_fingerprint
                     conflict |= not matches
                 has_match |= matches
                 has_refusal |= refusal
             if len(rows) < _OBSERVATION_PAGE_SIZE:
                 break
-        conflict |= len(canonical) > 1 or (has_match and has_refusal)
+        conflict |= has_match and has_refusal
         return replace(
             record,
             observations=tuple(projected),
