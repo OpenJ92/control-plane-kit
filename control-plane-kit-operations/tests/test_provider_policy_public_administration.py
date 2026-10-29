@@ -134,6 +134,15 @@ class Resolver(operations.WorkspaceContextResolver):
         raise AssertionError("provider administration must not resolve workspace context")
 
 
+class FailingUnitOfWorkFactory:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self):
+        self.calls.append(True)
+        raise AssertionError("disabled authorization must not open a unit of work")
+
+
 class ProviderPolicyPublicAdministrationTests(unittest.TestCase):
     def setUp(self):
         self.identity = PrincipalIdentity("issuer-a", "operator-a", PrincipalKind.OPERATOR)
@@ -298,6 +307,56 @@ class ProviderPolicyPublicAdministrationTests(unittest.TestCase):
         provider_absent = self.dispatcher_type(workspace_administration=workspace)
         self.denied(lambda: provider_absent.handle(provider_request), 404)
         self.assertEqual(len(workspace.calls), 1)
+
+    def test_registry_keeps_disabled_authorization_families_on_closed_dispatcher(self):
+        unit_of_work_factory = FailingUnitOfWorkFactory()
+        services = operations.cpk_server_services(
+            unit_of_work_factory=unit_of_work_factory,
+            planning=None,
+            approval=None,
+            admission=None,
+            lifecycle=None,
+            execution=None,
+        )
+        family_requests = (
+            (
+                "read.workspace-permissions",
+                {"workspace_id": "workspace-a"},
+                "workspace administration is unavailable",
+            ),
+            (
+                "read.provider-policy-grant",
+                {"logical_provider_id": "secrets-a", "grant_id": "grant-a"},
+                "provider-policy administration is unavailable",
+            ),
+        )
+        for authority_mode in ("static", "dynamic"):
+            resolver = Resolver() if authority_mode == "dynamic" else None
+            app = operations.CpkServerOperationsApplication(
+                services,
+                authority_mode=authority_mode,
+                workspace_context_resolver=resolver,
+            )
+            for surface in ("http", "mcp"):
+                for route_id, arguments, expected_message in family_requests:
+                    with self.subTest(
+                        authority_mode=authority_mode,
+                        surface=surface,
+                        route_id=route_id,
+                    ):
+                        request = Request(
+                            surface,
+                            route_id,
+                            ControlPlaneServiceRole.AUTHORIZATION,
+                            arguments if surface == "http" else {},
+                            {} if surface == "http" else arguments,
+                            self.principal,
+                        )
+                        error = self.denied(lambda: app.handle(request), 404)
+                        self.assertEqual(error.message, expected_message)
+            if resolver is not None:
+                self.assertEqual(resolver.calls, [])
+        self.assertEqual(unit_of_work_factory.calls, [])
 
     def test_adapter_authorizes_selector_before_decode_and_projects_current_truth(self):
         current = CurrentOwner(
