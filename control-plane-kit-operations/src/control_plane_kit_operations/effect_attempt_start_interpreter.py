@@ -67,7 +67,7 @@ from control_plane_kit_operations.ordinary_verification_invocations import (
     ordinary_verification_candidate, ordinary_verification_invocation_profile,
 )
 from control_plane_kit_operations.prepared_runtime_invocations import (
-    runtime_preparation_candidate, prepared_runtime_invocation_profile, workload_preparation_candidate,
+    runtime_preparation_candidate, prepared_runtime_invocation_profile, prepared_runtime_dispatch_supported,
 )
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority, RemoteDockerTlsAuthority, RuntimeAuthorityNotFound
 from control_plane_kit_operations.health_effect_attempt_start import (
@@ -362,9 +362,9 @@ class EffectAttemptStartService:
                     if configuration_preparation is None:
                         raise
                     raise EffectAttemptStartConflict("configuration runtime preparation is unavailable") from None
-                if (type(runtime.authority) is RemoteDockerTlsAuthority
-                        or (type(runtime.authority) is LocalDockerSocketAuthority
-                            and (workload_preparation_candidate(command.intent) or ordinary_verification))):
+                if (prepared_runtime_dispatch_supported(command.intent, runtime)
+                        or (ordinary_verification and type(runtime.authority) in (
+                            LocalDockerSocketAuthority, RemoteDockerTlsAuthority))):
                     prepared_runtime = runtime
                 else:
                     from .runtime_effect_origins import unprepared_runtime_origin_supported
