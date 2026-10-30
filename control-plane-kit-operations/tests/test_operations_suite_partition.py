@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import textwrap
 import unittest
@@ -188,3 +189,28 @@ class OperationsSuitePartitionTests(unittest.TestCase):
         self.assertFalse(report["successful"])
         with self.assertRaises(ValueError):
             self.aggregate([report], 1)
+
+    def test_command_line_report_and_aggregate_use_real_terminal_results(self):
+        self.write(self.names(1)[0], """
+            import unittest
+            class Example(unittest.TestCase):
+                def test_value(self): self.assertEqual(3, 3)
+        """)
+        report_path = self.root / "shard-0.json"
+        helper = self.helper.__file__
+        coordinates = ["--source", "a" * 40, "--architecture", "b" * 40]
+        ran = subprocess.run([sys.executable, helper, "run", "--root", str(self.root),
+            "--index", "0", "--count", "1", "--report", str(report_path),
+            "--input", str(self.root), *coordinates], capture_output=True, text=True)
+        self.assertEqual(ran.returncode, 0, ran.stderr)
+        report = json.loads(report_path.read_text())
+        self.assertEqual(report["results"][0]["status"], "passed")
+        command = [sys.executable, helper, "aggregate", "--reports", str(self.root),
+                   "--count", "1", *coordinates]
+        accepted = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertEqual(json.loads(accepted.stdout)["tests"], 1)
+        report["results"] = []
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        refused = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(refused.returncode, 0)
