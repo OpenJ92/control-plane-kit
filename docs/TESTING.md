@@ -47,7 +47,51 @@ Quote patterns containing shell metacharacters. Filters are forwarded as literal
 arguments without evaluation. The gate retains integrity checks, Docker/Postgres,
 the pinned sibling, installation, cleanup, and its normal compile/import phases
 and failure exit. A selected run is focused evidence, never full package
-acceptance; no arguments retain full discovery and existing CI behavior.
+acceptance; no arguments retain full serial discovery.
+
+### Complete Operations CI shards
+
+Operations CI runs four isolated hosted workers and retains the required
+`control-plane-kit-operations` result as their aggregate. Each worker invokes
+the same complete Docker lifecycle, including integrity, exact clean
+architecture-testing dependency, installation, PostgreSQL, compile and clean
+import checks. A local serial invocation and focused `-k` invocation remain
+available. Test durations are reported in the normal run; no separate profiling
+gate is required.
+
+The explicit worker entrance is:
+
+```bash
+./control-plane-kit-operations/test.sh --shard 0 4 /tmp/operations-shard-reports
+```
+
+Use a fresh report directory. Shard mode cannot be combined with `-k`.
+Concurrent local invocations require separate Docker/PostgreSQL resources;
+the default network/container names must not be shared. CI uses a separate
+hosted machine for each worker. Never parallelize tests within a worker or use
+one database for multiple workers: some fixtures truncate shared tables.
+
+Every worker discovers the full suite inside its installed-source container.
+Whole collection-origin module suites are assigned using SHA-256 of the UTF-8
+Operations-package-relative POSIX path (for example `tests/test_example.py`),
+the first four digest bytes interpreted as an unsigned big-endian integer,
+modulo the worker count. Relative suite order and imported/inherited cases are
+preserved. No permanent manual module map or defining-class filter is used.
+
+Bounded reports identify each occurrence by origin, ordinal and unittest ID,
+and distinguish actual terminal results, including approved skips, from planned
+selection. All jobs must pass every harness phase. The aggregate also requires
+identical source/dependency/input coordinates and full discovery, with exact
+exhaustive occurrence coverage. Missing, cancelled, empty, inconsistent or
+failed workers cannot earn acceptance. A single shard is partial evidence.
+Standard fixture adjacency can change when modules are filtered; failures must
+be understood rather than hidden by weakening fixture or concurrency laws.
+
+Four workers are an initial scheduling choice, not a promised speedup. Evaluate
+slowest-worker elapsed time separately from total runner usage before changing
+the count or optimizing fixtures. The historical Current Backend lock and its
+package report remain unchanged; its pinned Operations suite is not acceptance
+of the current PR source.
 
 For the repository-owned composed backend gate, use its documented command:
 
