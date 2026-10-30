@@ -32,3 +32,10 @@ expected/pending-draft values and MCP-shaped complete arguments share the same
 query/service/descriptor. Database and decode failures map to bounded fresh
 application errors. This mapping does not implement Server query decoding or
 authorize dependency adoption; those remain Servers #238.
+
+Authorization remains on its closed route-family interpreter even when neither
+workspace nor provider-policy administration is configured. The interpreter
+returns the existing fixed family-unavailable 404 before any workspace context,
+unit of work or family owner is acquired. Generic unsupported-role handling is
+therefore limited to roles that do not already have a closed interpreter;
+configured authorization families and dynamic principal admission are unchanged.

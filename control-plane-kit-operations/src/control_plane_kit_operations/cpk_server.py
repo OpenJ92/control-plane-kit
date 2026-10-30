@@ -2387,7 +2387,6 @@ def cpk_server_services(
         role: CpkServerUnsupportedService(role)
         for role in (
             ControlPlaneServiceRole.RECOVERY,
-            ControlPlaneServiceRole.AUTHORIZATION,
         )
     }
     if (
@@ -2439,14 +2438,9 @@ def cpk_server_services(
             else CpkServerGatewayProbeService(gateway_probes)
         ),
         **unsupported,
-        ControlPlaneServiceRole.AUTHORIZATION: (
-            unsupported[ControlPlaneServiceRole.AUTHORIZATION]
-            if workspace_administration is None
-            and provider_policy_administration is None
-            else CpkServerAuthorizationService(
-                workspace_administration=workspace_administration,
-                provider_policy_administration=provider_policy_administration,
-            )
+        ControlPlaneServiceRole.AUTHORIZATION: CpkServerAuthorizationService(
+            workspace_administration=workspace_administration,
+            provider_policy_administration=provider_policy_administration,
         ),
     }
 
