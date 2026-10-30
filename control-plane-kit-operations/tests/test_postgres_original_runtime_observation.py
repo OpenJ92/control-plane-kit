@@ -16,7 +16,7 @@ from control_plane_kit_operations.runtime_effect_origins import RuntimeEffectOri
 from tests.postgres_effect_attempt_reconciliation_fixture import UnitOfWorkLedger
 from tests.test_managed_application_chain import now
 from tests.test_postgres_runtime_reconciliation_invocations import _ControlledReconciliationObserver
-from tests.test_postgres_workload_invocations import _WorkloadEligibilityFixture, PostgresWorkloadVersionInvocationTests
+from tests.test_postgres_workload_invocations import _WorkloadEligibilityFixture
 
 
 class _OriginalRuntimeObservationFixture(_WorkloadEligibilityFixture):
@@ -29,6 +29,7 @@ class _OriginalRuntimeObservationFixture(_WorkloadEligibilityFixture):
         self.observer = _ControlledReconciliationObserver(self)
 
     def start_current(self):
+        from tests.test_postgres_workload_invocations import PostgresWorkloadVersionInvocationTests
         self.bound, self.start, self.started = PostgresWorkloadVersionInvocationTests.original_start(self)
 
     def historical_origin(self):

@@ -434,7 +434,7 @@ class PostgresRuntimeInvocationCarriageTests(_PreparedRuntimeCarriageFixture, un
         self.assertEqual(calls, [])
         self.assertEqual(self.assert_unfolded(command).disposition.value, "planned")
 
-    def test_unprepared_local_path_omits_the_keyword_and_needs_no_profile_or_service(self):
+    def test_registered_local_path_refuses_unqualified_legacy_adapter_before_start(self):
         from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
         self.change_runtime(LocalDockerSocketAuthority())
         calls = []
@@ -445,8 +445,10 @@ class PostgresRuntimeInvocationCarriageTests(_PreparedRuntimeCarriageFixture, un
         self.adapter.execute_with_authority = legacy
         owner, command = self.composition(profile=False, service=False)
         result = asyncio.run(owner.execute_managed(command))
-        self.assertEqual((result.status.value, result.effects_attempted), ("failed", 1))
-        self.assertEqual(len(calls), 1)
+        self.assertEqual((result.status.value, result.effects_attempted), ("unsupported", 0))
+        self.assertEqual(calls, [])
+        self.assertEqual(self.observer.calls, [])
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], 0)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_secret_use_authorizations").fetchone()[0], 0)
 
@@ -472,14 +474,35 @@ class PostgresRuntimeInvocationCarriageTests(_PreparedRuntimeCarriageFixture, un
 
     def test_remote_to_local_between_context_and_start_refuses_without_marker_repair(self):
         from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
-        self.assert_selection_change_refuses(lambda: self.change_runtime(LocalDockerSocketAuthority()))
-        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
+        selected = []
+        self.assert_selection_change_refuses(lambda: selected.append(self.change_runtime(LocalDockerSocketAuthority())))
+        self.assert_planned_registration(selected[0])
 
-    def test_local_to_remote_unexpected_marker_refuses_even_without_invocation_service(self):
+    def test_local_to_remote_between_context_and_start_refuses_without_marker_repair(self):
         from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
         self.change_runtime(LocalDockerSocketAuthority())
-        self.assert_selection_change_refuses(lambda: self.change_runtime(
-            replace(self.runtime.authority, endpoint="tcp://new-remote.example.test:2376")), service=False, profile=False)
+        selected = []
+        self.assert_selection_change_refuses(lambda: selected.append(self.change_runtime(
+            replace(self.runtime.authority, endpoint="tcp://new-remote.example.test:2376"))))
+        self.assert_planned_registration(selected[0])
+
+    def assert_planned_registration(self, registration):
+        from control_plane_kit_operations.prepared_runtime_invocations import prepared_runtime_invocation_profile
+        with self.unit_of_work() as uow:
+            identity = self.identity(activity_id="start-runtime")
+            original = uow.stores.effect_attempt_intents.get(identity)
+            marker = uow.stores.execution.original_final_invocation(identity,
+                original_event_id=original.original_start_event.event_id,
+                request_fingerprint=original.request_fingerprint,
+                kind=operations.ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+            self.assertIsNone(uow.stores.runtime_effect_origins.get(identity))
+        expected = prepared_runtime_invocation_profile(original.intent,
+            original_event_id=original.original_start_event.event_id, runtime_authority=registration)
+        self.assertEqual(marker.runtime_registration_id, registration.registration_id)
+        self.assertEqual(marker.target_fingerprint, expected.target_fingerprint)
+        self.assertEqual(marker.disposition.value, "planned")
+        self.assertIsNone(marker.decision)
+        self.assertIsNone(marker.outcome)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 1)
 
     def test_missing_expected_marker_after_start_refuses_without_backfill(self):
@@ -535,12 +558,24 @@ class PostgresRuntimeInvocationCarriageTests(_PreparedRuntimeCarriageFixture, un
         self.assert_existing_stop(operations.ExecutionInvocationConflict)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
 
-    def test_ambiguous_local_original_refuses_until_fresh_reconciliation_is_qualified(self):
+    def test_ambiguous_local_original_refuses_unqualified_reconciliation(self):
         from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
         self.change_runtime(LocalDockerSocketAuthority())
-        self.seed_start()
+        bound, start, started = self.seed_start()
+        self.assert_existing_stop(operations.ExecutionInvocationPlanned, key="local-planned")
+        service = operations.ExecutionInvocationService(self.ledger, permission_policy=self.policy(), clock=now)
+        port = service.bind_runtime(command_context=bound, start=start, started=started)
+        permit = port.admit("prepared-runtime-dispatch")
+        port.record_outcome(permit, "unknown")
+        with self.unit_of_work() as uow:
+            original = uow.stores.execution.command_invocation(bound.receipt, permit.record.invocation_id)
         self.assert_existing_stop(operations.ExecutionInvocationConflict)
-        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
+        with self.unit_of_work() as uow:
+            retained = uow.stores.execution.command_invocation(bound.receipt, permit.record.invocation_id)
+            self.assertIsNone(uow.stores.runtime_effect_origins.get(started.attempt.state.identity))
+        self.assertEqual(retained, original)
+        self.assertEqual((retained.disposition.value, retained.outcome.value), ("admitted", "unknown"))
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 1)
 
     def test_completed_command_receipt_replay_remains_read_only(self):
         owner, command = self.composition()
