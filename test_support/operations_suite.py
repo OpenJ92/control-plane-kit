@@ -109,6 +109,19 @@ class _OccurrenceResult(unittest.TextTestResult):
         self.position = 0
         self.active = None
 
+    def _progress(self):
+        self.stream.writeln(
+            f"Operations progress: completed={len(self.actual)} selected={len(self.planned)}")
+        self.stream.flush()
+
+    def startTestRun(self):
+        super().startTestRun()
+        self._progress()
+
+    def stopTestRun(self):
+        self._progress()
+        super().stopTestRun()
+
     def startTest(self, test):
         if self.position >= len(self.planned) or self.planned[self.position][0] is not test:
             raise ValueError("executed occurrence differs from selected discovery")
@@ -122,6 +135,8 @@ class _OccurrenceResult(unittest.TextTestResult):
         self.actual.append(self.active)
         self.active = None
         super().stopTest(test)
+        if len(self.actual) % 100 == 0:
+            self._progress()
 
     def _status(self, value):
         if self.active is not None:

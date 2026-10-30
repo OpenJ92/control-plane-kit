@@ -59,6 +59,12 @@ import checks. A local serial invocation and focused `-k` invocation remain
 available. Test durations are reported in the normal run; no separate profiling
 gate is required.
 
+Each worker flushes a numeric `completed`/`selected` progress line at startup,
+every 100 completed tests and termination. Completed counts include failed and
+skipped tests; they do not mean passed tests or estimate time remaining. Class
+setup failures do not count tests that never started. These log lines do not
+guarantee live access to GitHub logs through its API or mobile clients.
+
 The explicit worker entrance is:
 
 ```bash
