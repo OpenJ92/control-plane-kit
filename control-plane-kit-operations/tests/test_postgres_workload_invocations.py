@@ -304,8 +304,13 @@ class _UnpreparedWorkloadRuntime:
         self.requests.append(request)
         return RuntimeEffectResult.failed(request.effect_id, RuntimeEffectFailure("fixture.stopped", "Stopped."))
 
-    def execute_with_authority(self, request, authority):
-        return self.execute(request)
+    def execute_with_authority(self, request, authority, *, invocations=None):
+        if invocations is None:
+            return self.execute(request)
+        permit = invocations.admit("prepared-runtime-dispatch")
+        result = self.execute(request)
+        invocations.record_outcome(permit, "returned")
+        return result
 
 
 class _WorkloadEligibilityFixture(_WorkloadInvocationFixture):
@@ -347,14 +352,20 @@ class PostgresAuthoritylessWorkloadTests(_WorkloadEligibilityFixture, unittest.T
 class PostgresUnpreparedWorkloadTests(_WorkloadEligibilityFixture, unittest.TestCase):
     workload_preparation = False
 
-    def test_fresh_local_no_preparation_retains_prior_execution_owner(self):
+    def test_fresh_local_no_secrets_uses_admitted_dispatch(self):
         import asyncio
         owner, command = self.composition()
         result = asyncio.run(owner.execute_managed(command))
         self.assertEqual((result.status.value, result.effects_attempted), ("failed", 1))
         self.assertEqual(len(self.adapter.requests), 1)
         self.assertEqual(self.adapter.requests[0].secret_resolution_grants, ())
-        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
+        with self.unit_of_work() as uow:
+            attempt = uow.stores.effect_attempts.get(self.identity(activity_id=self.activity_id))
+            marker = uow.stores.execution.original_final_invocation(attempt.state.identity,
+                original_event_id=attempt.original_start_event.event_id,
+                request_fingerprint=attempt.state.request_fingerprint,
+                kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+        self.assertEqual((marker.disposition.value, marker.outcome.value), ("admitted", "returned"))
         replay = asyncio.run(owner.execute_managed(command))
         self.assertEqual(replay, result)
         self.assertEqual(len(self.adapter.requests), 1)
@@ -399,5 +410,14 @@ class PostgresRemoteWorkloadHistoryTests(_WorkloadEligibilityFixture, unittest.T
 class PostgresAuthoritylessUnpreparedWorkloadTests(_WorkloadEligibilityFixture, unittest.TestCase):
     workload_authority = False
     workload_preparation = False
-    test_fresh_authorityless_no_preparation_retains_prior_execution_owner = (
-        PostgresUnpreparedWorkloadTests.test_fresh_local_no_preparation_retains_prior_execution_owner)
+
+    def test_fresh_authorityless_no_preparation_retains_prior_execution_owner(self):
+        import asyncio
+        owner, command = self.composition()
+        result = asyncio.run(owner.execute_managed(command))
+        self.assertEqual((result.status.value, result.effects_attempted), ("failed", 1))
+        self.assertEqual(len(self.adapter.requests), 1)
+        self.assertEqual(self.adapter.requests[0].secret_resolution_grants, ())
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
+        self.assertEqual(asyncio.run(owner.execute_managed(command)), result)
+        self.assertEqual(len(self.adapter.requests), 1)
