@@ -65,7 +65,9 @@ for focused evidence. For example:
 
 This retains the owning Docker setup and existing phases. Quote shell
 metacharacters in patterns. Selected runs do not establish full package
-acceptance; no arguments preserve the full owning gate and CI.
+acceptance; no arguments preserve the full serial owning gate. CI uses the
+four isolated exhaustive workers and required aggregate documented in
+`docs/TESTING.md`; each worker retains the complete Docker gate lifecycle.
 
 Operations tests prove durable records, transaction boundaries, policy,
 planning/execution, idempotency, history, and projections. They should not
