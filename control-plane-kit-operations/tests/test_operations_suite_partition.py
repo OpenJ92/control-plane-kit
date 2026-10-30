@@ -191,17 +191,21 @@ class OperationsSuitePartitionTests(unittest.TestCase):
             self.aggregate([report], 1)
 
     def test_command_line_report_and_aggregate_use_real_terminal_results(self):
+        (self.root / "tests/__init__.py").write_text("", encoding="utf-8")
+        (self.root / "tests/fixture_value.py").write_text("VALUE = 3\n", encoding="utf-8")
         self.write(self.names(1)[0], """
             import unittest
+            from tests.fixture_value import VALUE
             class Example(unittest.TestCase):
-                def test_value(self): self.assertEqual(3, 3)
+                def test_value(self): self.assertEqual(VALUE, 3)
         """)
         report_path = self.root / "shard-0.json"
         helper = self.helper.__file__
         coordinates = ["--source", "a" * 40, "--architecture", "b" * 40]
         ran = subprocess.run([sys.executable, helper, "run", "--root", str(self.root),
             "--index", "0", "--count", "1", "--report", str(report_path),
-            "--input", str(self.root), *coordinates], capture_output=True, text=True)
+            "--input", str(self.root), *coordinates], cwd=self.root,
+            capture_output=True, text=True)
         self.assertEqual(ran.returncode, 0, ran.stderr)
         report = json.loads(report_path.read_text())
         self.assertEqual(report["results"][0]["status"], "passed")

@@ -292,6 +292,9 @@ def main():
         command.add_argument("--architecture", required=True)
     args = parser.parse_args()
     if args.command == "run":
+        # Match the package-root import context of python -m unittest while
+        # retaining discover(-s tests) module names and occurrence identities.
+        sys.path.insert(0, str(args.root.resolve()))
         coordinates = {"source": args.source, "architecture": args.architecture,
                        "inputs": input_fingerprint(args.input), "python": platform.python_version()}
         _coordinates(coordinates, args.source, args.architecture)
