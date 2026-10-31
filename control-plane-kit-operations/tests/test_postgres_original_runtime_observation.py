@@ -12,7 +12,7 @@ from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectA
 from control_plane_kit_operations.effect_attempt_reconciliation import ReconcileEffectAttempt
 from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
 from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
-from control_plane_kit_operations.runtime_effect_origins import runtime_effect_origin_fingerprint
+from control_plane_kit_operations.runtime_effect_origins import RuntimeEffectOriginRecord, runtime_effect_origin_fingerprint
 from tests.postgres_effect_attempt_reconciliation_fixture import UnitOfWorkLedger
 from tests.test_managed_application_chain import now
 from tests.test_postgres_runtime_reconciliation_invocations import _ControlledReconciliationObserver
@@ -28,11 +28,40 @@ class _OriginalRuntimeObservationFixture(_WorkloadEligibilityFixture):
         self.service = operations.ExecutionInvocationService(self.ledger, permission_policy=self.policy(), clock=now)
         self.observer = _ControlledReconciliationObserver(self)
 
-    def seed(self):
+    def start_current(self):
         from tests.test_postgres_workload_invocations import PostgresWorkloadVersionInvocationTests
         self.bound, self.start, self.started = PostgresWorkloadVersionInvocationTests.original_start(self)
+
+    def historical_origin(self):
+        attempt = self.started.attempt
+        return RuntimeEffectOriginRecord(command=self.bound.receipt, workspace_id="workspace-a",
+            identity=attempt.state.identity, original_event_id=attempt.original_start_event.event_id,
+            request_fingerprint=attempt.state.request_fingerprint,
+            runtime_registration_id=self.runtime.registration_id,
+            recorded_at=attempt.original_start_event.occurred_at)
+
+    def seed(self):
+        # Explicit historical arrangement in this isolated test schema. Current
+        # starts use invocation markers; this models an older origin-only attempt.
+        self.start_current()
+        origin = self.historical_origin()
         with self.unit_of_work() as uow:
-            self.origin = uow.stores.runtime_effect_origins.get(self.started.attempt.state.identity)
+            marker = uow.stores.execution.command_invocation_for_slot(self.bound.receipt,
+                activity_id=self.activity_id, kind=operations.ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+            self.assertEqual(marker.disposition.value, "planned")
+            self.assertIsNone(marker.decision)
+            self.assertIsNone(marker.outcome)
+            self.assertEqual(self.observer.requests, [])
+            self.assertEqual(uow.stores.effect_attempts.get(origin.identity), self.started.attempt)
+            self.assertEqual(uow.stores.connection.execute(
+                "DELETE FROM cpk_execution_command_invocations WHERE invocation_id=%s RETURNING invocation_id",
+                (marker.invocation_id,)).fetchall(), [(marker.invocation_id,)])
+            uow.stores.runtime_effect_origins.insert_absent(origin)
+            uow.commit()
+        with self.unit_of_work() as uow:
+            self.origin = uow.stores.runtime_effect_origins.get(origin.identity)
+            self.assertEqual(self.origin, origin)
+            self.assertEqual(uow.stores.execution.command_invocations(self.bound.receipt, limit=10).items, ())
             self.intent_record = uow.stores.effect_attempt_intents.get(self.started.attempt.state.identity)
         return self.origin
 
@@ -108,48 +137,61 @@ class PostgresOriginalRuntimeObservationTests(_OriginalRuntimeObservationFixture
         self.assertEqual(self.observer.requests, [])
         self.assertEqual(self.connection.execute("SELECT descriptor FROM cpk_runtime_effect_origins").fetchone()[0], descriptor)
 
-    def test_origin_write_failure_rolls_back_real_start(self):
-        from control_plane_kit_operations.postgres.runtime_effect_origin_store import RuntimeEffectOriginStore
-        original = RuntimeEffectOriginStore.insert_absent
+    def test_origin_store_rejects_mixed_invocation_and_origin_sources(self):
+        self.start_current()
+        with self.unit_of_work() as uow, self.assertRaisesRegex(ValueError, "mixed sources"):
+            uow.stores.runtime_effect_origins.insert_absent(self.historical_origin())
+
+    def test_local_marker_write_failure_rolls_back_real_start(self):
+        from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+        original = PostgresExecutionStore.add_command_invocation
         before = self.attempt_snapshot()
         def write_then_fail(store, record):
             original(store, record)
-            raise RuntimeError("origin write interrupted")
-        with mock.patch.object(RuntimeEffectOriginStore, "insert_absent", write_then_fail):
-            with self.assertRaisesRegex(RuntimeError, "origin write interrupted"):
-                self.seed()
+            raise RuntimeError("marker write interrupted")
+        with mock.patch.object(PostgresExecutionStore, "add_command_invocation", write_then_fail):
+            with self.assertRaisesRegex(RuntimeError, "marker write interrupted"):
+                self.start_current()
         self.assertEqual(self.attempt_snapshot(), before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_runtime_effect_origins").fetchone()[0], 0)
 
-    def test_lost_original_commit_ack_retains_selection_without_new_dispatch(self):
+    def test_lost_local_commit_ack_retains_marker_without_new_dispatch(self):
         from control_plane_kit_operations.postgres import PostgresUnitOfWork
         from tests.test_postgres_health_effect_start_rollback import _CommitThenRaiseConnection
         real_factory = self.unit_of_work
         connections = []
         def factory():
             def connect():
-                connection = _CommitThenRaiseConnection(self.connect(), RuntimeError("origin ack lost"))
+                connection = _CommitThenRaiseConnection(self.connect(), RuntimeError("marker ack lost"))
                 connections.append(connection)
                 return connection
             return PostgresUnitOfWork(connect)
         original_start = self.fresh_start
         with mock.patch.object(self, "fresh_start", lambda: original_start(factory)):
-            with self.assertRaisesRegex(RuntimeError, "origin ack lost"):
-                self.seed()
+            with self.assertRaisesRegex(RuntimeError, "marker ack lost"):
+                self.start_current()
         self.assertEqual([connection.commits for connection in connections], [1])
         with real_factory() as uow:
             identity = self.identity(activity_id=self.activity_id)
-            origin = uow.stores.runtime_effect_origins.get(identity)
-            self.assertIsNotNone(origin)
+            self.assertIsNone(uow.stores.runtime_effect_origins.get(identity))
             retained = uow.stores.effect_attempt_intents.get(identity)
+            marker = uow.stores.execution.original_final_invocation(identity,
+                original_event_id=retained.original_start_event.event_id,
+                request_fingerprint=retained.request_fingerprint,
+                kind=operations.ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+            self.assertEqual(marker.disposition.value, "planned")
+            self.assertIsNone(marker.decision)
+            self.assertIsNone(marker.outcome)
         transition = self.transition(identity=identity, intent=retained.intent)
         start = self.start_command(intent=retained.intent, transition=transition, fence=self.runtime_fence)
-        context = operations.EffectCommandContext(self.original, origin.command)
+        context = operations.EffectCommandContext(self.original, marker.command)
         replay = self.fresh_start().execute(start, command_context=context)
         self.assertIs(type(replay), ExistingAttempt)
-        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_runtime_effect_origins").fetchone()[0], 1)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 1)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_runtime_effect_origins").fetchone()[0], 0)
 
-    def test_failed_commit_request_rolls_back_original_selection_and_start(self):
+    def test_failed_commit_request_rolls_back_local_marker_and_start(self):
         before = self.attempt_snapshot()
         def factory():
             uow = self.unit_of_work()
@@ -158,8 +200,9 @@ class PostgresOriginalRuntimeObservationTests(_OriginalRuntimeObservationFixture
         original_start = self.fresh_start
         with mock.patch.object(self, "fresh_start", lambda: original_start(factory)):
             with self.assertRaisesRegex(RuntimeError, "commit request refused"):
-                self.seed()
+                self.start_current()
         self.assertEqual(self.attempt_snapshot(), before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_execution_command_invocations").fetchone()[0], 0)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_runtime_effect_origins").fetchone()[0], 0)
 
     def test_dynamic_origin_cannot_fall_through_legacy_observation(self):
@@ -221,7 +264,7 @@ class PostgresOriginalRuntimeObservationTests(_OriginalRuntimeObservationFixture
         self.assertTrue(all(authority.registration_id == original.runtime_registration_id
             for _, authority in self.observer.requests))
 
-    def test_original_local_selection_requires_matching_loaded_dispatch_context(self):
+    def test_fresh_local_dispatch_requires_matching_loaded_runtime_context(self):
         owner, command = self.composition()
         load = owner._load_context
         def missing_authority(execution):
@@ -230,13 +273,21 @@ class PostgresOriginalRuntimeObservationTests(_OriginalRuntimeObservationFixture
             with self.assertRaises(operations.ExecutionInvocationConflict):
                 asyncio.run(owner.execute_managed(command))
         with self.unit_of_work() as uow:
-            origin = uow.stores.runtime_effect_origins.get(self.identity(activity_id=self.activity_id))
-        self.assertIsNotNone(origin)
-        self.assertEqual(origin.runtime_registration_id, self.runtime.registration_id)
+            identity = self.identity(activity_id=self.activity_id)
+            self.assertIsNone(uow.stores.runtime_effect_origins.get(identity))
+            attempt = uow.stores.effect_attempts.get(identity)
+            marker = uow.stores.execution.original_final_invocation(identity,
+                original_event_id=attempt.original_start_event.event_id,
+                request_fingerprint=attempt.state.request_fingerprint,
+                kind=operations.ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+        self.assertEqual(marker.disposition.value, "planned")
+        self.assertEqual(marker.runtime_registration_id, self.runtime.registration_id)
+        self.assertIsNone(marker.decision)
+        self.assertIsNone(marker.outcome)
         self.assertEqual(self.adapter.requests, [])
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempt_outcomes").fetchone()[0], 0)
 
-    def test_coordinator_routes_new_local_origin_to_fresh_observation(self):
+    def test_coordinator_routes_historical_local_origin_to_fresh_observation(self):
         from tests.test_postgres_runtime_reconciliation_invocations import _PreparedRuntimeReconciliationFixture
         self.seed()
         self.adapter = mock.Mock()

@@ -107,6 +107,27 @@ class OperationsSuitePartitionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.aggregate([report], 1)
 
+    def test_progress_counts_actual_completions_including_failure(self):
+        self.write(self.names(1)[0], """
+            import unittest
+            class Example(unittest.TestCase):
+                def test_failure(self): self.assertEqual(1, 2)
+            def successful(self): self.assertEqual(2, 2)
+            for number in range(100):
+                setattr(Example, 'test_value_' + str(number), successful)
+        """)
+        stream = io.StringIO()
+        report = self.helper.run_shard(self.root, 0, 1, self.coordinates, stream=stream)
+        progress = [line for line in stream.getvalue().splitlines()
+                    if line.startswith("Operations progress:")]
+        self.assertEqual(progress, [
+            "Operations progress: completed=0 selected=101",
+            "Operations progress: completed=100 selected=101",
+            "Operations progress: completed=101 selected=101",
+        ])
+        self.assertFalse(report["successful"])
+        self.assertEqual(sum(row["status"] == "passed" for row in report["results"]), 100)
+
     def test_class_setup_error_never_counts_planned_tests_as_executed(self):
         self.write(self.names(1)[0], """
             import unittest
@@ -115,9 +136,11 @@ class OperationsSuitePartitionTests(unittest.TestCase):
                 def setUpClass(cls): raise RuntimeError('synthetic setup failure')
                 def test_value(self): self.assertTrue(True)
         """)
-        report = self.run_shard()
+        stream = io.StringIO()
+        report = self.helper.run_shard(self.root, 0, 1, self.coordinates, stream=stream)
         self.assertFalse(report["successful"])
         self.assertEqual(report["results"], [])
+        self.assertIn("Operations progress: completed=0 selected=1", stream.getvalue())
         with self.assertRaises(ValueError):
             self.aggregate([report], 1)
 

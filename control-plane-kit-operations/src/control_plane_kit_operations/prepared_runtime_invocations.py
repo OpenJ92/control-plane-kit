@@ -64,12 +64,15 @@ def prepared_runtime_observation_supported(intent):
             StopNode, RemoveNodeResource))
 
 
+def prepared_runtime_dispatch_supported(intent, runtime_authority):
+    """Registered local dispatch needs admission even with no secret preparation."""
+    return (runtime_preparation_candidate(intent)
+        and type(runtime_authority) is RegisteredRuntimeAuthority
+        and type(runtime_authority.authority) in (LocalDockerSocketAuthority, RemoteDockerTlsAuthority))
+
+
 def prepared_runtime_invocation_profile(intent, *, original_event_id, runtime_authority):
-    if (not runtime_preparation_candidate(intent)
-            or type(runtime_authority) is not RegisteredRuntimeAuthority
-            or not (type(runtime_authority.authority) is RemoteDockerTlsAuthority
-                or (type(runtime_authority.authority) is LocalDockerSocketAuthority
-                    and workload_preparation_candidate(intent)))
+    if (not prepared_runtime_dispatch_supported(intent, runtime_authority)
             or runtime_authority.workspace_id != intent.source.workspace_id
             or runtime_authority.authority_ref != intent.authority_ref
             or runtime_authority.runtime_kind is not intent.runtime_kind):
@@ -97,7 +100,7 @@ def prepared_runtime_invocation_profile(intent, *, original_event_id, runtime_au
     request = runtime_effect_request_for_intent(intent,
         effect_id=original_event_id, secret_resolution_grants=())
     uses = required_prepared_runtime_secret_uses(request, runtime_authority)
-    if not uses:
+    if not uses and type(runtime_authority.authority) is not LocalDockerSocketAuthority:
         raise ValueError("prepared runtime target has no preparation")
     target = dict(domain="cpk.prepared-runtime-final-target.v1", kind="prepared-runtime-dispatch",
         request_fingerprint=runtime_effect_intent_fingerprint(intent), workspace_id=intent.source.workspace_id,

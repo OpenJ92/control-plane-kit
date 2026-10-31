@@ -151,7 +151,7 @@ from control_plane_kit_operations.ordinary_verification_invocations import (
 )
 from control_plane_kit_operations.prepared_runtime_invocations import (
     runtime_preparation_candidate, prepared_runtime_invocation_profile,
-    prepared_runtime_observation_supported, workload_preparation_candidate,
+    prepared_runtime_observation_supported, prepared_runtime_dispatch_supported,
 )
 from control_plane_kit_operations.runtime_secret_uses import required_prepared_runtime_secret_uses
 from control_plane_kit_operations.health_signing_authority import (
@@ -1868,9 +1868,9 @@ class ExecutionCoordinator:
                     selected = tuple(value for value in context.runtime_authorities
                         if value.workspace_id == intent.source.workspace_id
                             and value.authority_ref == intent.authority_ref and value.runtime_kind is intent.runtime_kind)
-                    if len(selected) == 1 and (type(selected[0].authority) is RemoteDockerTlsAuthority
-                            or (type(selected[0].authority) is LocalDockerSocketAuthority
-                                and (workload_preparation_candidate(intent) or ordinary_verification))):
+                    if len(selected) == 1 and (prepared_runtime_dispatch_supported(intent, selected[0])
+                            or (ordinary_verification and type(selected[0].authority) in (
+                                LocalDockerSocketAuthority, RemoteDockerTlsAuthority))):
                         prepared_runtime = selected[0]
                         if current.status is not CoordinatorStatus.IN_FLIGHT and not self._runtime_profile_ready(intent):
                             return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED,
