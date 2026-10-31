@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
+import json
 from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal,
     IdentityContractError,
+    PrincipalIdentity,
     PrincipalKind,
     TrustedCommandContext,
 )
@@ -22,9 +25,26 @@ from control_plane_kit_core.delegation_keys import (
     DelegationPublicKey,
 )
 from control_plane_kit_core.runtime_effects import GatewayTargetId
-from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.operations import (
+    ControlPlaneServiceRole, operator_command_http_routes, operator_read_http_routes,
+)
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.provider_policy import (
+    ProviderPolicyCommandResult,
+    ProviderPolicyCoordinate,
+    ProviderPolicyErrorCode,
+    ProviderPolicyFailure,
+    ProviderPolicyGrantPage,
+    ProviderPolicyGrantRead,
+    ProviderPolicyGrantRecord,
+    ProviderPolicyIntentMode,
+    ProviderPolicyListRequest,
+    ProviderPolicyReadRequest,
+)
+from control_plane_kit_core.secret_selections import (
+    SecretVersionSelection, secret_selections_from_descriptor,
+)
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDeliveryCodec,
@@ -55,7 +75,42 @@ from control_plane_kit_operations.approvals import (
     DecideApproval,
     RequestApproval,
 )
-from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
+from control_plane_kit_operations.provider_policy_commands import (
+    GrantProviderPolicy,
+    ProviderPolicyAdministrationDenied,
+    ProviderPolicyAdministrationPolicy,
+    ProviderPolicyCommandConflict,
+    ProviderPolicyCommandError,
+    ProviderPolicyCommandNotFound,
+    ProviderPolicyCommandRecord,
+    ProviderPolicyCommandService,
+    ProviderPolicyCommandUnavailable,
+    ProviderPolicyInvocationContext,
+    ProviderPolicyOutcomeObservation,
+    ReconcileProviderPolicy,
+    RevokeProviderPolicy,
+)
+from control_plane_kit_operations.provider_policy_reads import (
+    ProviderPolicyCurrentReadService,
+)
+from control_plane_kit_operations.coordinator import (
+    ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator, ReobserveConnectorConnection,
+)
+from control_plane_kit_operations.secret_material_provision_commands import (
+    SecretMaterialProvisionCommandService, ProvisionCommandUnavailable, ProvisionRequestConflict,
+)
+from control_plane_kit_operations.secret_material_provision_attempts import (
+    ProvisionAttemptAuthorizationDenied, ProvisionAttemptConflict, ProvisionAttemptError,
+)
+from control_plane_kit_operations.delegation_key_generation_commands import (
+    DelegationKeyGenerationCommandService, GenerateDelegationKeyCommand,
+    ReconcileDelegationKeyGenerationCommand, GenerationCommandUnavailable,
+)
+from control_plane_kit_operations.delegation_key_generation_attempts import (
+    GenerationAttemptAuthorizationDenied, GenerationAttemptConflict,
+    GenerationAttemptError, GenerationAttemptNotFound,
+)
+from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
@@ -123,6 +178,9 @@ from control_plane_kit_operations.products import (
     RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
+from control_plane_kit_operations.read_services.receiver_authoring_context import (
+    ReceiverAuthoringContextError, ReceiverAuthoringContextQuery, ReceiverAuthoringContextReadService,
+)
 from control_plane_kit_operations.desired_topology_drafts import (
     CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft, DesiredTopologyDraftCommandService,
     DesiredTopologyDraftError, DesiredTopologyDraftConflict,
@@ -143,6 +201,7 @@ from control_plane_kit_operations.read_pages import (
     read_cursor_from_mapping,
 )
 from control_plane_kit_operations.records import (
+    WorkspaceRecord,
     ApprovalDecisionKind,
     GraphProjectionLineage,
 )
@@ -180,7 +239,22 @@ from control_plane_kit_operations.workflows import (
     RecordOperationAction,
     StartOperationSession,
 )
-from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
+from control_plane_kit_operations.workspaces import (
+    CreateWorkspace, WorkspaceCommandService, _prepare_administration_command,
+)
+from control_plane_kit_operations.workspace_permissions import (
+    WorkspaceContextResolver, WorkspaceAdministrationPolicy, GrantWorkspacePermissions,
+    RevokeWorkspacePermissions, WorkspacePermissionCommandService, WorkspacePermissionReadService,
+    WorkspacePermissionListCursor, WorkspacePermissionHistoryCursor,
+    WorkspacePermissionDenied, WorkspacePermissionConflict, WorkspacePermissionNotFound,
+    _text as _permission_text, _identity as _permission_identity,
+)
+from control_plane_kit_operations.managed_runtime_assignments import (
+    GrantManagedRuntimeAccess, RevokeManagedRuntimeAccess, ManagedRuntimeAssignmentCommandService,
+    ManagedRuntimeAssignmentReadService, ManagedRuntimeAssignmentListCursor,
+    ManagedRuntimeAssignmentHistoryCursor, ManagedRuntimeAssignmentNotFound,
+    ManagedRuntimeAssignmentConflict, _reference as _management_reference,
+)
 
 
 class CpkServerRouteRequest(Protocol):
@@ -220,6 +294,23 @@ class CpkServerApplicationError(RuntimeError):
                 "message": self.message,
             }
         }
+
+
+class CpkServerProvisionConflict(CpkServerApplicationError):
+    """Safe navigation only, never the prior attempt or confidential request."""
+
+    def __init__(self, workspace_id, request_id):
+        super().__init__(409, "provision request already exists")
+        self.workspace_id = workspace_id
+        self.request_id = request_id
+
+    def descriptor(self):
+        result = super().descriptor()
+        result["error"]["status_reference"] = {
+            "route_id": "read.secret-material-provision",
+            "workspace_id": self.workspace_id, "request_id": self.request_id,
+        }
+        return result
 
 
 @dataclass(frozen=True)
@@ -263,6 +354,18 @@ _WORKER_OPERATION = RouteAuthorizationPolicy(
 )
 
 _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
+    "command.secret-material.provision": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_MATERIAL_PROVISION, PolicyScope.SECRET_PROVIDER_REGISTER)),
+    "read.secret-material-provision": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.SECRET_PROVIDER_READ)),
+    "command.delegation-key.generate": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_GENERATE, PolicyScope.DELEGATION_KEY_REGISTER)),
+    "command.delegation-key-generation.reconcile": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_GENERATE, PolicyScope.DELEGATION_KEY_REGISTER)),
+    "read.delegation-key-generation": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),
+    "read.receiver-authoring-context": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),
     "read.desired-topology-drafts": _WORKSPACE_READ,
     "read.desired-topology-draft-revisions": _WORKSPACE_READ,
     "read.desired-topology-draft-revision": _WORKSPACE_READ,
@@ -308,6 +411,8 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.ingress-authority-detail": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INGRESS_AUTHORITY_READ,)
     ),
+    "read.products": _WORKSPACE_READ,
+    "read.product-detail": _WORKSPACE_READ,
     "read.secret-providers": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
     ),
@@ -326,6 +431,9 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
         required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
     ),
     "read.gateway-verifier-configuration": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
+    "read.workload-verifier-configuration": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
     ),
     "command.workspace.create": RouteAuthorizationPolicy(
@@ -411,9 +519,39 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "command.run.claim": _WORKER_OPERATION,
     "command.run.start": _WORKER_OPERATION,
     "command.deployment.execute": _WORKER_OPERATION,
+    "command.deployment.reobserve-connector": _WORKER_OPERATION,
     "command.graph.advance-current": _WORKER_OPERATION,
     "command.recovery.decide": _WORKER_OPERATION,
 }
+
+
+_APPLICATION_ROUTE_ROLES = {
+    route.route_id: route.service_role
+    for route in (*operator_read_http_routes(), *operator_command_http_routes())
+}
+
+
+@dataclass(frozen=True)
+class _AdmittedRouteRequest:
+    """One invocation's snapshot; never a public reusable admission token."""
+
+    surface: str
+    route_id: str
+    service_role: ControlPlaneServiceRole
+    path_parameters: dict[str, str]
+    _payload: dict[str, object] = field(repr=False)
+    principal: AuthenticatedPrincipal
+    context: TrustedCommandContext | None = field(repr=False)
+    dynamic_admission: bool = True
+    confidential_source: CpkServerRouteRequest | None = field(default=None, repr=False)
+
+    @property
+    def payload(self) -> Mapping[str, object]:
+        # Only the existing provision adapter may request the confidential body,
+        # after its surface, authority and configured-service checks.
+        if self.confidential_source is not None:
+            return self.confidential_source.payload
+        return self._payload
 
 
 @dataclass(frozen=True)
@@ -421,14 +559,26 @@ class CpkServerOperationsApplication:
     """Service map consumed by cpk-server's shared HTTP/MCP boundary."""
 
     services: Mapping[ControlPlaneServiceRole, CpkServerApplicationService]
+    authority_mode: str = "static"
+    workspace_context_resolver: WorkspaceContextResolver | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         missing = tuple(role for role in ControlPlaneServiceRole if role not in self.services)
         if missing:
             names = ", ".join(role.value for role in missing)
             raise ValueError(f"missing cpk-server services: {names}")
+        if type(self.authority_mode) is not str or self.authority_mode not in {"static", "dynamic"}:
+            raise ValueError("authority_mode must be static or dynamic")
+        if self.authority_mode == "dynamic":
+            if not isinstance(self.workspace_context_resolver, WorkspaceContextResolver):
+                raise ValueError("dynamic authority requires WorkspaceContextResolver")
+        elif self.workspace_context_resolver is not None:
+            raise ValueError("static authority must not configure a workspace resolver")
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        return self._dispatch(self._prepare(request))
+
+    def _dispatch(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         try:
             service = self.services[request.service_role]
         except KeyError as error:
@@ -437,6 +587,72 @@ class CpkServerOperationsApplication:
                 f"unknown service role {request.service_role.value!r}",
             ) from error
         return service.handle(request)
+
+    async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        request = self._prepare(request)
+        if request.service_role is ControlPlaneServiceRole.EXECUTION:
+            service = self.services[request.service_role]
+            if isinstance(service, CpkServerExecutionService):
+                return await service.handle_async(request)
+        return self._dispatch(request)
+
+    def _prepare(self, request: CpkServerRouteRequest) -> CpkServerRouteRequest:
+        if self.authority_mode == "static":
+            # A carrier resubmitted through any public entrance cannot retain
+            # authority from a previous invocation or another application.
+            return (replace(request, context=None, dynamic_admission=False)
+                if type(request) is _AdmittedRouteRequest else request)
+        role = _APPLICATION_ROUTE_ROLES.get(request.route_id)
+        if role is None or request.service_role is not role:
+            raise CpkServerApplicationError(404, "unknown application route")
+        if type(request.principal) is not AuthenticatedPrincipal:
+            raise CpkServerApplicationError(403, "authenticated principal is required")
+        if request.route_id == "command.workspace.create":
+            raise CpkServerApplicationError(403, "dynamic workspace creation requires administration")
+        confidential = request.route_id == "command.secret-material.provision"
+        if confidential:
+            if request.surface != "http":
+                raise CpkServerApplicationError(400, "provision requires the confidential HTTP surface")
+            if type(request.path_parameters) is not dict or set(request.path_parameters) != {"workspace_id"}:
+                raise CpkServerApplicationError(400, "provision path is malformed")
+            path, payload = dict(request.path_parameters), {}
+        else:
+            if (request.surface not in {"http", "mcp"}
+                    or not isinstance(request.path_parameters, Mapping)
+                    or not isinstance(request.payload, Mapping)):
+                raise CpkServerApplicationError(400, "request arguments are malformed")
+            path, payload = deepcopy(dict(request.path_parameters)), deepcopy(dict(request.payload))
+            if "workspace_id" in path and "workspace_id" in payload and path["workspace_id"] != payload["workspace_id"]:
+                raise CpkServerApplicationError(400, "workspace target is ambiguous")
+        snapshot = _AdmittedRouteRequest(request.surface, request.route_id, role,
+            path, payload, request.principal, None,
+            confidential_source=request if confidential else None)
+        # This bypass is limited to exact canonical route/role pairs above.
+        # The selected closed family service must independently apply its own
+        # workspace or provider-policy administration policy.
+        if role is ControlPlaneServiceRole.AUTHORIZATION:
+            return snapshot
+        workspace_id = path.get("workspace_id", payload.get("workspace_id"))
+        try:
+            valid = (type(workspace_id) is str and bool(workspace_id.strip())
+                and len(workspace_id.encode("utf-8")) <= 512)
+        except UnicodeError:
+            valid = False
+        if not valid:
+            raise CpkServerApplicationError(400, "workspace target is malformed")
+        failure = None
+        try:
+            context = self.workspace_context_resolver.resolve(request.principal, workspace_id)
+        except IdentityContractError:
+            failure = (403, "workspace access is denied")
+        except Exception:
+            failure = (503, "workspace authority is unavailable")
+        if failure is not None:
+            raise CpkServerApplicationError(*failure)
+        if (type(context) is not TrustedCommandContext or context.workspace_id != workspace_id
+                or context.principal.identity != request.principal.identity):
+            raise CpkServerApplicationError(503, "workspace authority is unavailable")
+        return replace(snapshot, context=context)
 
 
 class CpkServerReadService:
@@ -452,6 +668,19 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id == "read.receiver-authoring-context":
+            context = _trusted_context(request)
+            arguments = _closed_read_arguments(request)
+            failure = None
+            try:
+                query = ReceiverAuthoringContextQuery.from_mapping(arguments)
+                return ReceiverAuthoringContextReadService(self._unit_of_work_factory).read(
+                    query, context=context).descriptor()
+            except ReceiverAuthoringContextError as error:
+                failure = (error.status, str(error))
+            raise CpkServerApplicationError(*failure)
+        if request.route_id in {"read.products", "read.product-detail"}:
+            _trusted_context(request)
         if request.route_id.startswith("read.desired-topology-draft"):
             _trusted_context(request)
         read_arguments = (
@@ -478,6 +707,19 @@ class CpkServerReadService:
             except ReadPageError:
                 raise CpkServerApplicationError(400, "draft read identity is malformed") from None
             _draft_revision(read_arguments)
+        if request.route_id == "read.run-events":
+            try:
+                with self._unit_of_work_factory().run_events_snapshot() as snapshot:
+                    return snapshot.run_events(page_request).descriptor()
+            except (ReadModelError, ReadPageError) as error:
+                status = 400 if isinstance(error, ReadPageError) else _read_error_status(error)
+                raise CpkServerApplicationError(status, str(error)) from None
+        if request.route_id == "read.product-detail":
+            from control_plane_kit_core.products import ProductDescriptorDigest
+            try:
+                ProductDescriptorDigest(read_arguments["descriptor_sha256"])
+            except (ValueError, TypeError):
+                raise CpkServerApplicationError(400, "product digest is malformed") from None
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -502,6 +744,12 @@ class CpkServerReadService:
                 kwargs["revision_history_store"] = stores.revision_history
             if request.route_id == "read.operator-overview":
                 kwargs["saved_preparation_source_store"] = stores.saved_preparation_sources
+            if request.route_id == "read.delegation-key-generation":
+                kwargs["generation_attempt_store"] = stores.delegation_key_generation_attempts
+            if request.route_id == "read.secret-material-provision":
+                kwargs["provision_attempt_store"] = stores.secret_material_provision_attempts
+            if request.route_id in {"read.products", "read.product-detail"}:
+                kwargs["registered_product_store"] = stores.registered_products
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)
@@ -518,7 +766,8 @@ class CpkServerReadService:
                 failure = (status, str(error))
             if failure is not None:
                 raise CpkServerApplicationError(*failure)
-            unit_of_work.commit()
+            if request.route_id not in {"read.products", "read.product-detail"}:
+                unit_of_work.commit()
             return model.descriptor()
 
 
@@ -565,7 +814,8 @@ class CpkServerPlanningService:
                 command = SelectDesiredTopologyDraft(**arguments, revision=_draft_revision(values),
                     expected_desired_graph_id=_optional_text(values, "expected_desired_graph_id"),
                     expected_desired_realized_projection_id=_optional_text(values, "expected_desired_realized_projection_id"),
-                    expected_desired_graph_revision=_nonnegative_integer(values, "expected_desired_graph_revision"))
+                    expected_desired_graph_revision=_nonnegative_integer(values, "expected_desired_graph_revision"),
+                    receiver_lifecycle=_receiver_expectation(values))
             else:
                 command = DeleteDesiredTopologyDraft(**arguments,
                     expected_head_revision=_positive_int(values, "expected_head_revision", default=0))
@@ -584,7 +834,8 @@ class CpkServerPlanningService:
             except (ValueError, TypeError, KeyError):
                 raise CpkServerApplicationError(400, "draft graph is malformed") from None
             arguments = dict(context=context, session_id=_text(values, "session_id"), graph=graph,
-                             idempotency_key=_draft_idempotency_key(values))
+                             idempotency_key=_draft_idempotency_key(values),
+                             receiver_lifecycle=_receiver_expectation(values))
             if request.route_id.endswith(".create"):
                 command = CreateDesiredTopologyDraft(**arguments, title=values.get("title"))
             else:
@@ -831,6 +1082,10 @@ class CpkServerPlanningService:
                     workspace_id=_workspace_id(payload),
                     actor_id=context.actor_id,
                     graph=graph,
+                    actor_scopes=tuple(sorted(context.granted_scopes, key=lambda scope: scope.value)),
+                    explicit_secret_choices=_explicit_secret_choices(payload, graph),
+                    proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
+                    receiver_lifecycle=_receiver_expectation(payload),
                     expected_desired_graph_id=_optional_text(
                         payload,
                         "expected_desired_graph_id",
@@ -909,6 +1164,7 @@ def _prepare_deployment(
                     _text(payload, "idempotency_key")
                 ),
                 approval_comment=_optional_text(payload, "approval_comment"),
+                proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
             )
         )
     except DeploymentProgramAuthorizationDenied:
@@ -1344,11 +1600,40 @@ class CpkServerExecutionService:
         service: ExecutionCoordinator,
         *,
         lifecycle: RunLifecycleCommandService | None = None,
+        delegation_key_generation: DelegationKeyGenerationCommandService | None = None,
+        secret_material_provision: SecretMaterialProvisionCommandService | None = None,
     ) -> None:
         self._service = service
         self._lifecycle = lifecycle
+        self._delegation_key_generation = delegation_key_generation
+        self._secret_material_provision = secret_material_provision
+
+    async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id not in ("command.deployment.execute", "command.deployment.reobserve-connector"):
+            return self.handle(request)
+        context = _trusted_context(request)
+        payload = _arguments(request)
+        command = ExecuteActivityRun(
+            run_id=_path_or_payload(payload, "run_id", "run_id"),
+            authority=_worker_authority(context),
+            fence=ExecutionLeaseFence(context.actor_id, _claim_generation(payload)),
+            idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+            max_effects=(1 if request.route_id == "command.deployment.reobserve-connector"
+                else _positive_int(payload, "max_effects", default=1)),
+        )
+        if request.route_id == "command.deployment.reobserve-connector":
+            predecessor = EffectAttemptIdentity(RunId(command.run_id), _text(payload, "activity_id"),
+                _positive_int(payload, "prior_attempt", default=0))
+            result = await self._service.reobserve(ReobserveConnectorConnection(command, context, predecessor))
+        else:
+            result = await self._service.execute_managed(ExecuteManagedActivityRun(command, context))
+        return result.descriptor()
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id in ("command.delegation-key.generate", "command.delegation-key-generation.reconcile"):
+            return self._generation_command(request)
+        if request.route_id == "command.secret-material.provision":
+            return self._provision_command(request)
         context = _trusted_context(request)
         if request.route_id == "command.run.start":
             if self._lifecycle is None:
@@ -1382,6 +1667,64 @@ class CpkServerExecutionService:
             )
         )
         return result.descriptor()
+
+    def _provision_command(self, request):
+        # No payload access/copy is permitted before these surface/service checks.
+        if request.surface != "http":
+            raise CpkServerApplicationError(400, "provision requires the confidential HTTP surface")
+        if type(request.path_parameters) is not dict or set(request.path_parameters) != {"workspace_id"}:
+            raise CpkServerApplicationError(400, "provision path is malformed")
+        context = _trusted_context(request, values=request.path_parameters)
+        if self._secret_material_provision is None:
+            raise _service_not_configured(request)
+        navigation = None
+        try:
+            return self._secret_material_provision.provision_encoded(context, request.payload).descriptor()
+        except ProvisionAttemptAuthorizationDenied:
+            failure = (403, "current provision authority is unavailable or denied")
+        except ProvisionRequestConflict as error:
+            navigation = (error.workspace_id, error.request_id)
+            failure = (409, "provision request already exists")
+        except ProvisionAttemptConflict:
+            failure = (409, "provision conflicts with current or recorded truth")
+        except ProvisionCommandUnavailable:
+            failure = (503, "provision outcome could not be durably completed")
+        except ProvisionAttemptError:
+            failure = (400, "provision request is malformed")
+        if navigation is not None:
+            raise CpkServerProvisionConflict(*navigation)
+        raise CpkServerApplicationError(*failure)
+
+    def _generation_command(self, request):
+        payload = _closed_generation_arguments(request)
+        context = _trusted_context(request, values=payload)
+        if self._delegation_key_generation is None:
+            raise _service_not_configured(request)
+        try:
+            if request.route_id == "command.delegation-key.generate":
+                result = self._delegation_key_generation.generate(GenerateDelegationKeyCommand(
+                    context=context, request_id=_text(payload, "request_id"),
+                    provider_registration_id=_text(payload, "provider_registration_id"),
+                    secret_reference=SecretReference(_text(payload, "secret_reference")),
+                    purpose=DelegationKeyPurpose(_text(payload, "purpose")),
+                    issuer=_text(payload, "issuer"),
+                ))
+            else:
+                result = self._delegation_key_generation.reconcile(ReconcileDelegationKeyGenerationCommand(
+                    context=context, request_id=_text(payload, "request_id"),
+                ))
+            return result.descriptor()
+        except GenerationAttemptAuthorizationDenied:
+            failure = (403, "current generation authority is unavailable or denied")
+        except GenerationAttemptNotFound:
+            failure = (404, "generation request is unavailable")
+        except GenerationAttemptConflict:
+            failure = (409, "generation request conflicts with current or recorded truth")
+        except GenerationCommandUnavailable:
+            failure = (503, "generation outcome could not be durably completed")
+        except (GenerationAttemptError, ValueError, TypeError):
+            failure = (400, "generation request is malformed")
+        raise CpkServerApplicationError(*failure)
 
 
 class CpkServerGatewayProbeService:
@@ -1433,6 +1776,569 @@ class CpkServerGatewayProbeService:
         return result.descriptor()
 
 
+_ADMINISTRATION_ARGUMENTS = {
+    "command.workspace-administration.create": ({"name", "idempotency_key"}, {"metadata"}),
+    "command.workspace-permission.grant": ({"target", "scopes", "expected_revision", "idempotency_key"}, set()),
+    "command.workspace-permission.revoke": ({"target", "scopes", "expected_revision", "idempotency_key"}, set()),
+    "command.managed-runtime-access.grant": (
+        {"runtime_id", "authority_ref", "registration_id", "capability_id", "expected_revision", "idempotency_key"}, set()),
+    "command.managed-runtime-access.revoke": (
+        {"runtime_id", "authority_ref", "expected_revision", "idempotency_key"}, set()),
+    "read.workspace-permissions": (set(), {"limit", "after"}),
+    "read.workspace-permission": ({"target"}, set()),
+    "read.workspace-permission-history": ({"target"}, {"limit", "after"}),
+    "read.managed-runtime-assignments": (set(), {"limit", "after"}),
+    "read.managed-runtime-assignment": ({"runtime_id", "authority_ref"}, set()),
+    "read.managed-runtime-assignment-history": ({"runtime_id", "authority_ref"}, {"limit", "after"}),
+}
+
+
+def _administration_identity(value):
+    if type(value) is not dict or set(value) != {"issuer", "subject_id", "kind"}:
+        raise ValueError("identity shape")
+    return _permission_identity(PrincipalIdentity(value["issuer"], value["subject_id"], PrincipalKind(value["kind"])))
+
+
+def _administration_cursor(route_id, value, context, workspace_id, target=None, runtime=None, authority=None):
+    if type(value) is not dict:
+        raise ValueError("cursor shape")
+    if route_id == "read.workspace-permissions":
+        if set(value) != {"kind", "installation_id", "workspace_id", "after"} or value["kind"] != "workspace-permissions":
+            raise ValueError("cursor shape")
+        cursor = WorkspacePermissionListCursor(value["installation_id"], value["workspace_id"],
+            _administration_identity(value["after"]))
+    elif route_id == "read.workspace-permission-history":
+        if (set(value) != {"kind", "installation_id", "workspace_id", "target", "after_revision"}
+                or value["kind"] != "workspace-permission-history"):
+            raise ValueError("cursor shape")
+        cursor = WorkspacePermissionHistoryCursor(value["installation_id"], value["workspace_id"],
+            _administration_identity(value["target"]), value["after_revision"])
+        if cursor.target != target:
+            raise ValueError("cursor target")
+    elif route_id == "read.managed-runtime-assignments":
+        if set(value) != {"installation_id", "workspace_id", "after_runtime_id", "after_authority_ref"}:
+            raise ValueError("cursor shape")
+        cursor = ManagedRuntimeAssignmentListCursor(value["installation_id"], value["workspace_id"],
+            value["after_runtime_id"], RuntimeAuthorityReference(value["after_authority_ref"]))
+    elif route_id == "read.managed-runtime-assignment-history":
+        if set(value) != {"installation_id", "workspace_id", "runtime_id", "authority_ref", "after_revision"}:
+            raise ValueError("cursor shape")
+        cursor = ManagedRuntimeAssignmentHistoryCursor(value["installation_id"], value["workspace_id"],
+            value["runtime_id"], RuntimeAuthorityReference(value["authority_ref"]), value["after_revision"])
+        if (cursor.runtime_id, cursor.authority_ref) != (runtime, authority):
+            raise ValueError("cursor target")
+    else:
+        raise ValueError("cursor route")
+    if (cursor.installation_id, cursor.workspace_id) != (context.installation_id, workspace_id):
+        raise ValueError("cursor scope")
+    return cursor
+
+
+def _decode_administration_request(request, context):
+    """Pure closed argument preparation; owner calls never occur in this function."""
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise ValueError("argument mappings")
+    required, optional = _ADMINISTRATION_ARGUMENTS[request.route_id]
+    path, payload = request.path_parameters, request.payload
+    create = request.route_id == "command.workspace-administration.create"
+    if request.surface == "http" and not create:
+        valid = set(path) == {"workspace_id"} and required <= set(payload) <= required | optional
+    elif request.surface == "mcp" or (request.surface == "http" and create):
+        fields = required | {"workspace_id"}
+        valid = not path and fields <= set(payload) <= fields | optional
+    else:
+        valid = False
+    if not valid or set(path) & set(payload):
+        raise ValueError("argument fields")
+    values = {**path, **payload}
+    workspace = _permission_text(values["workspace_id"])
+    if create:
+        if "metadata" in values and type(values["metadata"]) is not dict:
+            raise ValueError("metadata shape")
+        command, _ = _prepare_administration_command(context, workspace_id=workspace,
+            name=values["name"], idempotency_key=IdempotencyKey(values["idempotency_key"]),
+            metadata=values.get("metadata"))
+        WorkspaceRecord(command.workspace_id, command.name, metadata=command.metadata)
+        return dict(workspace_id=command.workspace_id, name=command.name,
+            idempotency_key=command.idempotency_key, metadata=command.metadata)
+    args = {"workspace_id": workspace}
+    if "target" in required:
+        args["target"] = _administration_identity(values["target"])
+    if "runtime_id" in required:
+        args["runtime_id"] = _permission_text(values["runtime_id"])
+        args["authority_ref"] = _management_reference(RuntimeAuthorityReference(values["authority_ref"]))
+    if request.route_id.startswith("command."):
+        args.update(context=context, expected_revision=values["expected_revision"],
+            idempotency_key=IdempotencyKey(values["idempotency_key"]))
+        if "scopes" in required:
+            if type(values["scopes"]) is not list or not 1 <= len(values["scopes"]) <= len(PolicyScope):
+                raise ValueError("scopes shape")
+            args["scopes"] = tuple(PolicyScope(value) for value in values["scopes"])
+            constructor = (GrantWorkspacePermissions if request.route_id == "command.workspace-permission.grant"
+                else RevokeWorkspacePermissions)
+        elif request.route_id == "command.managed-runtime-access.grant":
+            args.update(registration_id=values["registration_id"], capability_id=values["capability_id"])
+            constructor = GrantManagedRuntimeAccess
+        else:
+            constructor = RevokeManagedRuntimeAccess
+        return constructor(**args)
+    if "limit" in optional:
+        limit = values.get("limit", 10)
+        if type(limit) is not int or not 1 <= limit <= 10:
+            raise ValueError("page limit")
+        args["limit"] = limit
+        args["cursor"] = (_administration_cursor(request.route_id, values["after"], context, workspace,
+            args.get("target"), args.get("runtime_id"), args.get("authority_ref")) if "after" in values else None)
+    return args
+
+
+class CpkServerWorkspaceAdministrationService:
+    """Closed public projection of existing installation-administration owners."""
+
+    def __init__(self, *, administration_policy: WorkspaceAdministrationPolicy,
+            workspaces: WorkspaceCommandService, permission_commands: WorkspacePermissionCommandService,
+            permission_reads: WorkspacePermissionReadService,
+            management_commands: ManagedRuntimeAssignmentCommandService,
+            management_reads: ManagedRuntimeAssignmentReadService):
+        if type(administration_policy) is not WorkspaceAdministrationPolicy:
+            raise ValueError("workspace administration policy is required")
+        self._policy = administration_policy
+        self._workspaces = workspaces
+        self._permission_commands, self._permission_reads = permission_commands, permission_reads
+        self._management_commands, self._management_reads = management_commands, management_reads
+
+    def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if (request.service_role is not ControlPlaneServiceRole.AUTHORIZATION
+                or request.route_id not in _ADMINISTRATION_ARGUMENTS):
+            raise CpkServerApplicationError(404, "unknown administration route")
+        denied = False
+        try:
+            context = self._policy.authorize(request.principal)
+        except WorkspacePermissionDenied:
+            denied = True
+        if denied:
+            raise CpkServerApplicationError(403, "workspace administration is denied")
+        malformed = False
+        try:
+            prepared = _decode_administration_request(request, context)
+        except (ValueError, TypeError, KeyError, OverflowError, InvalidOperationCommand):
+            malformed = True
+        if malformed:
+            raise CpkServerApplicationError(400, "administration arguments are malformed")
+        try:
+            route = request.route_id
+            if route == "command.workspace-administration.create":
+                result = self._workspaces.create_as_administrator(context, **prepared)
+            elif route == "command.workspace-permission.grant":
+                result = self._permission_commands.grant(prepared)
+            elif route == "command.workspace-permission.revoke":
+                result = self._permission_commands.revoke(prepared)
+            elif route == "command.managed-runtime-access.grant":
+                result = self._management_commands.grant(prepared)
+            elif route == "command.managed-runtime-access.revoke":
+                result = self._management_commands.revoke(prepared)
+            elif route == "read.workspace-permissions":
+                result = self._permission_reads.list(context, **prepared)
+            elif route == "read.workspace-permission":
+                result = self._permission_reads.inspect(context, **prepared)
+            elif route == "read.workspace-permission-history":
+                result = self._permission_reads.history(context, **prepared)
+            elif route == "read.managed-runtime-assignments":
+                result = self._management_reads.list(context, **prepared)
+            elif route == "read.managed-runtime-assignment":
+                result = self._management_reads.inspect(context, **prepared)
+            else:
+                result = self._management_reads.history(context, **prepared)
+            return result.descriptor()
+        except WorkspacePermissionDenied:
+            failure = (403, "workspace administration is denied")
+        except (WorkspacePermissionNotFound, ManagedRuntimeAssignmentNotFound):
+            failure = (404, "requested administration resource was not found")
+        except (WorkspacePermissionConflict, ManagedRuntimeAssignmentConflict):
+            failure = (409, "administration command conflicts with retained truth")
+        except Exception:
+            failure = (503, "administration outcome is unavailable")
+        raise CpkServerApplicationError(*failure)
+
+
+_PROVIDER_POLICY_ROUTES = frozenset(
+    {
+        "command.provider-policy.grant",
+        "command.provider-policy.revoke",
+        "command.provider-policy.reconcile",
+        "read.provider-policy-command",
+        "read.provider-policy-grant",
+        "read.provider-policy-grants",
+    }
+)
+
+_PROVIDER_POLICY_PATH_FIELDS = {
+    "command.provider-policy.grant": {"logical_provider_id"},
+    "command.provider-policy.revoke": {"logical_provider_id", "grant_id"},
+    "command.provider-policy.reconcile": {"logical_provider_id", "command_id"},
+    "read.provider-policy-command": {"logical_provider_id", "command_id"},
+    "read.provider-policy-grant": {"logical_provider_id", "grant_id"},
+    "read.provider-policy-grants": {"logical_provider_id"},
+}
+_PROVIDER_POLICY_COMMAND_DESCRIPTOR_BYTES = 60 * 1024
+
+
+def _provider_policy_selector(request: CpkServerRouteRequest) -> str:
+    """Read only the bounded admission selector before decoding other MCP fields."""
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise ValueError("provider-policy argument mappings are malformed")
+    if request.surface == "http":
+        required = _PROVIDER_POLICY_PATH_FIELDS[request.route_id]
+        if set(request.path_parameters) != required:
+            raise ValueError("provider-policy path is malformed")
+        value = request.path_parameters.get("logical_provider_id")
+    elif request.surface == "mcp":
+        if request.path_parameters:
+            raise ValueError("provider-policy MCP path is malformed")
+        value = request.payload.get("logical_provider_id")
+    else:
+        raise ValueError("provider-policy surface is malformed")
+    if type(value) is not str:
+        raise ValueError("provider-policy selector is malformed")
+    return value
+
+
+def _provider_policy_arguments(
+    request: CpkServerRouteRequest,
+) -> tuple[dict[str, str], dict[str, object]]:
+    required = _PROVIDER_POLICY_PATH_FIELDS[request.route_id]
+    raw_path = request.path_parameters
+    raw_payload = request.payload
+    if request.surface == "http":
+        valid = set(raw_path) == required and not set(raw_path) & set(raw_payload)
+        path = dict(raw_path)
+        payload = deepcopy(dict(raw_payload))
+    elif request.surface == "mcp":
+        valid = not raw_path and required <= set(raw_payload)
+        path = {name: raw_payload[name] for name in required}
+        payload = deepcopy(
+            {name: value for name, value in raw_payload.items() if name not in required}
+        )
+    else:
+        valid = False
+        path, payload = {}, {}
+    if (
+        not valid
+        or any(type(value) is not str for value in path.values())
+        or path.get("logical_provider_id") is None
+    ):
+        raise ValueError("provider-policy arguments are malformed")
+    return path, payload
+
+
+def _provider_policy_coordinate(value: object) -> ProviderPolicyCoordinate:
+    if not isinstance(value, Mapping) or set(value) != {
+        "subject",
+        "workspace_id",
+        "action",
+        "intent",
+    }:
+        raise ValueError("provider-policy coordinate is malformed")
+    return ProviderPolicyCoordinate(
+        value["subject"], value["workspace_id"], value["action"], value["intent"]
+    )
+
+
+def _decode_provider_policy_request(
+    route: str,
+    payload: Mapping[str, object],
+    context: ProviderPolicyInvocationContext,
+    path: Mapping[str, str],
+):
+    if route in {"command.provider-policy.grant", "command.provider-policy.revoke"}:
+        if set(payload) != {"coordinate", "expected_revision", "idempotency_key"}:
+            raise ValueError("provider-policy mutation is malformed")
+        arguments = dict(
+            context=context,
+            coordinate=_provider_policy_coordinate(payload["coordinate"]),
+            expected_revision=payload["expected_revision"],
+            idempotency_key=IdempotencyKey(payload["idempotency_key"]),
+        )
+        if route == "command.provider-policy.grant":
+            return GrantProviderPolicy(**arguments)
+        ProviderPolicyReadRequest(
+            context.binding.logical_provider_id, path["grant_id"]
+        )
+        return RevokeProviderPolicy(**arguments, grant_id=path["grant_id"])
+    if route == "command.provider-policy.reconcile":
+        if payload:
+            raise ValueError("provider-policy reconcile request is malformed")
+        return ReconcileProviderPolicy(context, path["command_id"])
+    if route == "read.provider-policy-command":
+        if payload:
+            raise ValueError("provider-policy command read is malformed")
+        command_id = path["command_id"]
+        if (
+            len(command_id) != 64
+            or any(value not in "0123456789abcdef" for value in command_id)
+        ):
+            raise ValueError("provider-policy command_id is malformed")
+        return command_id
+    if route == "read.provider-policy-grant":
+        if payload:
+            raise ValueError("provider-policy grant read is malformed")
+        return ProviderPolicyReadRequest(
+            context.binding.logical_provider_id, path["grant_id"]
+        )
+    allowed = {
+        "subject",
+        "workspace_id",
+        "action",
+        "intent_mode",
+        "intent",
+        "limit",
+        "after_grant_id",
+    }
+    if not set(payload) <= allowed:
+        raise ValueError("provider-policy list request is malformed")
+    return ProviderPolicyListRequest(
+        logical_provider_id=context.binding.logical_provider_id,
+        subject=payload.get("subject"),
+        workspace_id=payload.get("workspace_id"),
+        action=payload.get("action"),
+        intent_mode=ProviderPolicyIntentMode(payload.get("intent_mode", "any")),
+        intent=payload.get("intent"),
+        limit=payload.get("limit", 100),
+        after_grant_id=payload.get("after_grant_id"),
+    )
+
+
+def _provider_policy_grant_descriptor(
+    grant: ProviderPolicyGrantRecord,
+) -> dict[str, object]:
+    if type(grant) is not ProviderPolicyGrantRecord:
+        raise ValueError("provider-policy grant result is malformed")
+    return {
+        "grant_id": grant.grant_id,
+        "coordinate": grant.coordinate.descriptor(),
+        "origin": grant.origin,
+        "granted_at": grant.granted_at,
+        "revoked_at": grant.revoked_at,
+    }
+
+
+def _provider_policy_result_descriptor(
+    result: ProviderPolicyCommandResult,
+) -> dict[str, object]:
+    return {
+        "operation": result.operation.value,
+        "coordinate": result.coordinate.descriptor(),
+        "expected_revision": result.expected_revision,
+        "outcome": result.outcome.value,
+        "code": result.code,
+        "grant_id": result.grant_id,
+        "resulting_revision": result.resulting_revision,
+        "occurred_at": result.occurred_at,
+    }
+
+
+def _provider_policy_observation_descriptor(
+    observation: ProviderPolicyOutcomeObservation,
+) -> dict[str, object]:
+    result = None
+    failure = None
+    if observation.canonical_result is not None:
+        result = _provider_policy_result_descriptor(observation.canonical_result)
+    else:
+        failure = {
+            "code": observation.failure.code.value,
+            "effect_may_have_occurred": observation.failure.effect_may_have_occurred,
+        }
+    return {
+        "source": observation.source.value,
+        "observed_at": observation.observed_at,
+        "matches_intent": observation.matches_intent,
+        "result": result,
+        "failure": failure,
+    }
+
+
+def _provider_policy_record_descriptor(
+    record: ProviderPolicyCommandRecord,
+) -> dict[str, object]:
+    if type(record) is not ProviderPolicyCommandRecord:
+        raise ValueError("provider-policy command result is malformed")
+    descriptor = {
+        "command_id": record.command_id,
+        "logical_provider_id": record.command.logical_provider_id,
+        "operation": record.command.operation.value,
+        "coordinate": record.command.coordinate.descriptor(),
+        "expected_revision": record.command.expected_revision,
+        "grant_id": getattr(record.command, "grant_id", None),
+        "state": record.state.value,
+        "created_at": record.created_at,
+        "dispatch_claimed_at": record.dispatch_claimed_at,
+        "observation_count": record.observation_count,
+        "evidence_integrity_conflict": record.evidence_integrity_conflict,
+        "has_matching_result": record.has_matching_result,
+        "has_definite_refusal": record.has_definite_refusal,
+        "observations": [],
+        "observations_omitted": record.observation_count,
+    }
+    if _provider_policy_json_bytes(descriptor) > _PROVIDER_POLICY_COMMAND_DESCRIPTOR_BYTES:
+        raise ValueError("provider-policy command summary exceeds its public budget")
+    for observation in record.observations:
+        projected = _provider_policy_observation_descriptor(observation)
+        candidate = {**descriptor, "observations": [*descriptor["observations"], projected]}
+        candidate["observations_omitted"] = record.observation_count - len(
+            candidate["observations"]
+        )
+        if _provider_policy_json_bytes(candidate) > _PROVIDER_POLICY_COMMAND_DESCRIPTOR_BYTES:
+            break
+        descriptor = candidate
+    return descriptor
+
+
+def _provider_policy_json_bytes(value: Mapping[str, object]) -> int:
+    return len(
+        json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    )
+
+
+def _provider_policy_response_descriptor(result) -> dict[str, object]:
+    if type(result) is ProviderPolicyCommandRecord:
+        return _provider_policy_record_descriptor(result)
+    if type(result) is ProviderPolicyGrantRead:
+        return {
+            "revision": result.revision,
+            "grant": _provider_policy_grant_descriptor(result.grant),
+        }
+    if type(result) is ProviderPolicyGrantPage:
+        return {
+            "revision": result.revision,
+            "grants": [
+                _provider_policy_grant_descriptor(grant) for grant in result.grants
+            ],
+            "next_after": result.next_after,
+        }
+    raise ValueError("provider-policy response is malformed")
+
+
+class CpkServerProviderPolicyAdministrationService:
+    """Closed public adapter over dedicated provider-policy Operations owners."""
+
+    def __init__(
+        self,
+        *,
+        administration_policy: ProviderPolicyAdministrationPolicy,
+        commands: ProviderPolicyCommandService,
+        current_reads: ProviderPolicyCurrentReadService,
+    ) -> None:
+        if type(administration_policy) is not ProviderPolicyAdministrationPolicy:
+            raise ValueError("provider-policy administration policy is required")
+        for owner, methods in (
+            (commands, ("grant", "revoke", "reconcile", "read")),
+            (current_reads, ("read", "list")),
+        ):
+            if any(not callable(getattr(owner, method, None)) for method in methods):
+                raise ValueError("provider-policy owner is malformed")
+        self._policy = administration_policy
+        self._commands = commands
+        self._current_reads = current_reads
+
+    def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if (
+            request.service_role is not ControlPlaneServiceRole.AUTHORIZATION
+            or request.route_id not in _PROVIDER_POLICY_ROUTES
+        ):
+            raise CpkServerApplicationError(404, "unknown provider-policy route")
+        try:
+            logical_provider_id = _provider_policy_selector(request)
+        except (ValueError, TypeError, KeyError):
+            raise CpkServerApplicationError(
+                400, "provider-policy arguments are malformed"
+            ) from None
+        try:
+            context = self._policy.authorize(request.principal, logical_provider_id)
+        except ProviderPolicyAdministrationDenied:
+            raise CpkServerApplicationError(
+                403, "provider-policy administration is denied"
+            ) from None
+        except ProviderPolicyCommandError:
+            raise CpkServerApplicationError(
+                400, "provider-policy arguments are malformed"
+            ) from None
+        try:
+            path, payload = _provider_policy_arguments(request)
+            prepared = _decode_provider_policy_request(
+                request.route_id, payload, context, path
+            )
+        except (ValueError, TypeError, KeyError, OverflowError, ProviderPolicyCommandError):
+            raise CpkServerApplicationError(
+                400, "provider-policy arguments are malformed"
+            ) from None
+        try:
+            route = request.route_id
+            if route == "command.provider-policy.grant":
+                result = self._commands.grant(prepared)
+            elif route == "command.provider-policy.revoke":
+                result = self._commands.revoke(prepared)
+            elif route == "command.provider-policy.reconcile":
+                result = self._commands.reconcile(prepared)
+            elif route == "read.provider-policy-command":
+                result = self._commands.read(context, prepared)
+            elif route == "read.provider-policy-grant":
+                result = self._current_reads.read(context, prepared)
+            else:
+                result = self._current_reads.list(context, prepared)
+            return _provider_policy_response_descriptor(result)
+        except ProviderPolicyAdministrationDenied:
+            failure = (403, "provider-policy administration is denied")
+        except ProviderPolicyCommandNotFound:
+            failure = (404, "provider-policy command was not found")
+        except ProviderPolicyCommandConflict:
+            failure = (409, "provider-policy command conflicts with retained truth")
+        except ProviderPolicyCommandUnavailable:
+            failure = (503, "provider-policy command outcome is unavailable")
+        except ProviderPolicyFailure as error:
+            status = {
+                ProviderPolicyErrorCode.DENIED: 403,
+                ProviderPolicyErrorCode.MISSING: 404,
+                ProviderPolicyErrorCode.CONFLICT: 409,
+            }.get(error.code, 503)
+            failure = (status, "provider-policy current state is unavailable")
+        except Exception:
+            failure = (503, "provider-policy outcome is unavailable")
+        raise CpkServerApplicationError(*failure)
+
+
+class CpkServerAuthorizationService:
+    """Closed route-family dispatch for independently authorized services."""
+
+    def __init__(
+        self,
+        *,
+        workspace_administration: CpkServerWorkspaceAdministrationService | None = None,
+        provider_policy_administration: CpkServerProviderPolicyAdministrationService
+        | None = None,
+    ) -> None:
+        self._workspace = workspace_administration
+        self._provider_policy = provider_policy_administration
+
+    def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.service_role is not ControlPlaneServiceRole.AUTHORIZATION:
+            raise CpkServerApplicationError(404, "unknown authorization route")
+        if request.route_id in _ADMINISTRATION_ARGUMENTS:
+            if self._workspace is None:
+                raise CpkServerApplicationError(404, "workspace administration is unavailable")
+            return self._workspace.handle(request)
+        if request.route_id in _PROVIDER_POLICY_ROUTES:
+            if self._provider_policy is None:
+                raise CpkServerApplicationError(404, "provider-policy administration is unavailable")
+            return self._provider_policy.handle(request)
+        raise CpkServerApplicationError(404, "unknown authorization route")
+
+
 class CpkServerUnsupportedService:
     """Explicit placeholder for service roles not extracted into operations yet."""
 
@@ -1462,12 +2368,17 @@ def cpk_server_services(
     ingress_authorities: IngressAuthorityRegistrationService | None = None,
     secret_providers: SecretProviderRegistrationService | None = None,
     delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
+    delegation_key_generation: DelegationKeyGenerationCommandService | None = None,
+    secret_material_provision: SecretMaterialProvisionCommandService | None = None,
     desired_topology_drafts: DesiredTopologyDraftCommandService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
     gateway_probes: GatewayProbeCommandService | None = None,
     deployment_program: DeploymentProgram | None = None,
+    workspace_administration: CpkServerWorkspaceAdministrationService | None = None,
+    provider_policy_administration: CpkServerProviderPolicyAdministrationService
+    | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -1476,7 +2387,6 @@ def cpk_server_services(
         role: CpkServerUnsupportedService(role)
         for role in (
             ControlPlaneServiceRole.RECOVERY,
-            ControlPlaneServiceRole.AUTHORIZATION,
         )
     }
     if (
@@ -1515,6 +2425,8 @@ def cpk_server_services(
         ControlPlaneServiceRole.EXECUTION: CpkServerExecutionService(
             execution,
             lifecycle=lifecycle,
+            delegation_key_generation=delegation_key_generation,
+            secret_material_provision=secret_material_provision,
         ),
         ControlPlaneServiceRole.READS: CpkServerReadService(
             unit_of_work_factory,
@@ -1526,6 +2438,10 @@ def cpk_server_services(
             else CpkServerGatewayProbeService(gateway_probes)
         ),
         **unsupported,
+        ControlPlaneServiceRole.AUTHORIZATION: CpkServerAuthorizationService(
+            workspace_administration=workspace_administration,
+            provider_policy_administration=provider_policy_administration,
+        ),
     }
 
 
@@ -1653,6 +2569,10 @@ def _read_model(
                 _path_or_payload(args, "authority_ref", "authority_ref")
             ),
         )
+    if route_id == "read.products":
+        return service.products(_required_page_request(page_request, ReadCollection.REGISTERED_PRODUCTS))
+    if route_id == "read.product-detail":
+        return service.product_detail(_workspace_id(args), _text(args, "descriptor_sha256"))
     if route_id == "read.secret-providers":
         return service.secret_providers(
             _required_page_request(page_request, ReadCollection.SECRET_PROVIDERS)
@@ -1693,12 +2613,56 @@ def _read_model(
                 ReadCollection.DELEGATION_SIGNING_KEYS,
             )
         )
+    if route_id == "read.delegation-key-generation":
+        return service.delegation_key_generation(_workspace_id(args), _text(args, "request_id"))
+    if route_id == "read.secret-material-provision":
+        return service.secret_material_provision(_workspace_id(args), _text(args, "request_id"))
     if route_id == "read.gateway-verifier-configuration":
         return service.gateway_verifier_configuration(
             _workspace_id(args),
             _path_or_payload(args, "gateway_node_id", "gateway_node_id"),
         )
+    if route_id == "read.workload-verifier-configuration":
+        return service.workload_verifier_configuration(
+            _workspace_id(args), _workload_verifier_purposes(args),
+        )
     raise _unsupported_route(request)
+
+
+def _workload_verifier_purposes(
+    values: Mapping[str, object],
+) -> tuple[DelegationKeyPurpose, ...]:
+    selector = values.get("purposes")
+    if type(selector) is not str or not 1 <= len(selector) <= 192:
+        raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+    tokens = selector.split(",")
+    if not 1 <= len(tokens) <= 3:
+        raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+    try:
+        return tuple(DelegationKeyPurpose(token) for token in tokens)
+    except ValueError:
+        pass
+    raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+
+
+def _explicit_secret_choices(payload, graph):
+    """Decode existing selected values; authority comes only from trusted context."""
+    try:
+        document = payload.get("explicit_secret_choices", {})
+        if not isinstance(document, Mapping) or len(document) > 1024:
+            raise ValueError
+        choices = {}
+        for node_id, descriptors in document.items():
+            if type(node_id) is not str or node_id not in graph.nodes:
+                raise ValueError
+            values = secret_selections_from_descriptor(descriptors)
+            if (not values or any(type(value) is not SecretVersionSelection for value in values)
+                    or len({(value.reference, value.intent) for value in values}) != len(values)):
+                raise ValueError
+            choices[node_id] = values
+        return choices
+    except (ValueError, TypeError, AttributeError):
+        raise CpkServerApplicationError(400, "explicit secret choices are malformed") from None
 
 
 def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
@@ -1709,6 +2673,12 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 
 _CLOSED_READ_ARGUMENTS = {
+    "read.delegation-key-generation": ("request_id", False),
+    "read.secret-material-provision": ("request_id", False),
+    "read.products": (None, True),
+    "read.product-detail": ("descriptor_sha256", False),
+    "read.receiver-authoring-context": (None, False),
+    "read.workload-verifier-configuration": ("purposes", False),
     "read.desired-topology-drafts": (None, True),
     "read.desired-topology-draft-revisions": ("draft_id", True),
     "read.desired-topology-draft-revision": (("draft_id", "revision"), False),
@@ -1737,6 +2707,7 @@ _CLOSED_READ_ARGUMENTS = {
 }
 
 _PAGED_READ_COLLECTIONS = {
+    "read.products": ReadCollection.REGISTERED_PRODUCTS,
     "read.desired-topology-drafts": ReadCollection.DESIRED_TOPOLOGY_DRAFTS,
     "read.desired-topology-draft-revisions": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
     "read.desired-topology-draft-revision-preparations": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS,
@@ -1766,6 +2737,8 @@ def _closed_read_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     parent, paged = _CLOSED_READ_ARGUMENTS[request.route_id]
     required = {"workspace_id"} | (set() if parent is None else set(parent) if isinstance(parent, tuple) else {parent})
     optional = {"limit", "after"} if paged else set()
+    if request.route_id == "read.receiver-authoring-context":
+        optional = {"expected", "pending_draft"}
     path = dict(request.path_parameters)
     payload = dict(request.payload)
     if request.surface == "http":
@@ -1833,6 +2806,26 @@ def _required_page_request(
     return request
 
 
+def _closed_generation_arguments(request):
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise CpkServerApplicationError(400, "generation arguments are malformed")
+    path, payload = request.path_parameters, request.payload
+    if request.route_id == "command.delegation-key.generate":
+        path_fields = {"workspace_id"}
+        body_fields = {"request_id", "provider_registration_id", "secret_reference", "purpose", "issuer"}
+    else:
+        path_fields = {"workspace_id", "request_id"}
+        body_fields = set()
+    valid = (
+        request.surface == "http" and set(path) == path_fields and set(payload) == body_fields
+    ) or (
+        request.surface == "mcp" and not path and set(payload) == path_fields | body_fields
+    )
+    if not valid:
+        raise CpkServerApplicationError(400, "generation arguments are malformed")
+    return {**path, **payload}
+
+
 def _trusted_context(
     request: CpkServerRouteRequest,
     *,
@@ -1845,7 +2838,13 @@ def _trusted_context(
         raise CpkServerApplicationError(403, "authenticated principal is required")
     workspace_denied = False
     try:
-        context = principal.command_context(workspace_id)
+        if type(request) is _AdmittedRouteRequest and request.dynamic_admission:
+            context = request.context
+            if (type(context) is not TrustedCommandContext or context.workspace_id != workspace_id
+                    or context.principal.identity != principal.identity):
+                raise IdentityContractError("admitted request context is incongruent")
+        else:
+            context = principal.command_context(workspace_id)
     except IdentityContractError:
         workspace_denied = True
     if workspace_denied:
@@ -1982,6 +2981,20 @@ def _text_tuple(
             f"{name} must be a nonempty bounded list of text",
         )
     return tuple(value)
+
+
+def _receiver_expectation(values):
+    from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
+    if "receiver_lifecycle" not in values:
+        return None
+    value = values["receiver_lifecycle"]
+    if type(value) is not dict or set(value) != {"current_graph_id", "current_realized_projection_id",
+            "desired_graph_id", "desired_realized_projection_id", "desired_graph_revision"}:
+        raise CpkServerApplicationError(400, "receiver expectation is malformed")
+    try:
+        return ReceiverLifecycleExpectation(**value)
+    except (TypeError, ValueError):
+        raise CpkServerApplicationError(400, "receiver expectation is malformed") from None
 
 
 def _draft_idempotency_key(values: Mapping[str, object]) -> IdempotencyKey:
@@ -2145,6 +3158,7 @@ def _read_error_status(error: ReadModelError) -> int:
     message = str(error)
     if message.startswith(
         (
+            "missing registered product",
             "missing workspace",
             "missing draft",
             "missing session",
@@ -2155,6 +3169,8 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing ingress authority",
             "missing secret provider",
             "missing secret reference",
+            "missing generation request",
+            "missing provision request",
         )
     ):
         return 404

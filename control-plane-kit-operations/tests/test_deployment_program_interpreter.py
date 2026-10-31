@@ -547,6 +547,7 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
         source = source_path.read_text(encoding="utf-8")
         allowed_imports = {
             "__future__",
+            "dataclasses",
             "hashlib",
             "json",
             "control_plane_kit_core.policies",
@@ -556,6 +557,7 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
             "control_plane_kit_operations.deployment_program_projections",
             "control_plane_kit_operations.deployment_transitions",
             "control_plane_kit_operations.planning",
+            "control_plane_kit_operations.receiver_lifecycle",
             "control_plane_kit_operations.workflows",
             "control_plane_kit_operations.saved_deployment_preparation",
         }

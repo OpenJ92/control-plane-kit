@@ -83,6 +83,7 @@ class WorkloadNodeControlSurfaceDeclarationProfile(StrEnum):
     """Versioned identity domains for static node-control surfaces."""
 
     V1 = "workload-node-control-surface-declaration.v1"
+    V2 = "workload-node-control-surface-declaration.v2"
 
 
 @dataclass(frozen=True, order=True)
@@ -115,6 +116,12 @@ class WorkloadNodeControlSurfaceDeclaration:
         ):
             raise NodeControlSurfaceReadContractError(
                 "surface declaration profile is unknown"
+            )
+        if bool(self.surface.health_reads) != (
+            self.profile is WorkloadNodeControlSurfaceDeclarationProfile.V2
+        ):
+            raise NodeControlSurfaceReadContractError(
+                "surface declaration profile and health reads must agree"
             )
         _bounded_canonical_bytes(
             self.descriptor(),

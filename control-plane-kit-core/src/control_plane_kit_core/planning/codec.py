@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from control_plane_kit_core.configuration_instances import ConfigurationInstanceRefCodec
 
 from control_plane_kit_core.planning.activity_plan import (
     ActivityDependency,
@@ -13,6 +14,7 @@ from control_plane_kit_core.planning.activity_plan import (
     AllocatePublicIngress,
     AddSocketConnection,
     ChangeTarget,
+    CleanupConfigurationInstances,
     Compensate,
     CompensationMaterialSource,
     CompensationSpec,
@@ -43,6 +45,10 @@ from control_plane_kit_core.planning.activity_plan import (
     WaitForHealthy,
 )
 from control_plane_kit_core.topology.changes import DiffSubject, FieldSubject, StructuralField
+from control_plane_kit_core.planning.management_observations import (
+    ManagementObservationError, ObserveManagementBootstrap, ObserveNodeHealth,
+    _observation_from_descriptor,
+)
 from control_plane_kit_core.topology.validation import (
     EdgeSubject,
     GraphSubject,
@@ -116,7 +122,7 @@ class ActivityPlanDescriptorCodec:
                     "activity plan descriptor does not round-trip through the typed codec"
                 )
             return plan
-        except ActivityPlanDescriptorError:
+        except (ActivityPlanDescriptorError, ManagementObservationError):
             raise
         except (TypeError, ValueError) as error:
             raise MalformedActivityPlanDescriptor(
@@ -219,6 +225,13 @@ class ActivityPlanDescriptorCodec:
                 )
 
     def _encode_operation(self, operation: object) -> dict[str, object]:
+        if type(operation) is CleanupConfigurationInstances:
+            operation.__post_init__()
+            return {"kind": "cleanup-configuration-instances", "profile": "configuration-cleanup.v1",
+                "instances": [ConfigurationInstanceRefCodec().encode(ref) for ref in operation.instances]}
+        if type(operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+            operation.__post_init__()
+            return operation.descriptor()
         match operation:
             case StartNode(target=target):
                 return _targeted("start-node", target)
@@ -260,6 +273,25 @@ class ActivityPlanDescriptorCodec:
                 raise MalformedActivityPlanDescriptor("unknown typed activity operation")
 
     def _decode_operation(self, descriptor: Mapping[str, object]) -> object:
+        if descriptor.get("kind") == "cleanup-configuration-instances":
+            if (set(descriptor) != {"kind", "profile", "instances"}
+                    or type(descriptor["kind"]) is not str
+                    or type(descriptor["profile"]) is not str
+                    or descriptor["profile"] != "configuration-cleanup.v1"
+                    or type(descriptor["instances"]) is not list
+                    or not 1 <= len(descriptor["instances"]) <= 32):
+                raise MalformedActivityPlanDescriptor("configuration cleanup descriptor is malformed")
+            operation = None
+            try:
+                operation = CleanupConfigurationInstances(tuple(
+                    ConfigurationInstanceRefCodec().decode(ref) for ref in descriptor["instances"]))
+            except (TypeError, ValueError):
+                pass
+            if operation is None:
+                raise MalformedActivityPlanDescriptor("configuration cleanup descriptor is malformed")
+            return operation
+        if descriptor.get("kind") in ("observe-management-bootstrap", "observe-node-health"):
+            return _observation_from_descriptor(descriptor)
         kind = _text(descriptor, "kind")
         target = _mapping(descriptor.get("target"), "operation.target")
         match kind:

@@ -14,7 +14,11 @@ from control_plane_kit_core.delegation_keys import (
     DelegationPublicKey,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.secrets import SecretReference, SecretUseIntent
+from control_plane_kit_core.secrets import (
+    SecretReference,
+    SecretUseIntent,
+    health_signing_intent_for,
+)
 from control_plane_kit_operations.secret_providers import SecretProviderNotFound
 
 
@@ -229,7 +233,7 @@ class DelegationSigningKeyRegistrationService:
                 raise DelegationSigningKeyConflict(
                     "private key reference is not actively admitted"
                 ) from error
-            if SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY not in reference.allowed_intents:
+            if _registration_intent_for(candidate.purpose) not in reference.allowed_intents:
                 raise DelegationSigningKeyConflict(
                     "private key reference is not admitted for delegation signing"
                 )
@@ -261,7 +265,7 @@ class DelegationSigningKeyRegistrationService:
                 raise DelegationSigningKeyConflict(
                     "private key reference is not actively admitted"
                 ) from error
-            if SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY not in reference.allowed_intents:
+            if _registration_intent_for(candidate.purpose) not in reference.allowed_intents:
                 raise DelegationSigningKeyConflict(
                     "private key reference is not admitted for delegation signing"
                 )
@@ -311,6 +315,24 @@ class DelegationSigningKeyRegistrationService:
             )
             unit_of_work.commit()
             return revoked
+
+
+def _registration_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
+    if type(purpose) is DelegationKeyPurpose:
+        if purpose in (
+            DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT,
+        ):
+            return health_signing_intent_for(purpose)
+        # Preserve the existing admission policy for these legacy purposes.
+        if purpose in (
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+        ):
+            return SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY
+    raise DelegationSigningKeyError("delegation key purpose is unsupported")
 
 
 def delegation_signing_key_registration_id_for(

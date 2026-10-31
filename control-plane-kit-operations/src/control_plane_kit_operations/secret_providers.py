@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import StrEnum
 from hashlib import sha256
 import json
@@ -23,6 +23,8 @@ from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
     SecretUseIntent,
 )
+from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant, validate_resolution_grant
 from control_plane_kit_operations._temporal import (
     validate_canonical_utc_timestamp,
 )
@@ -86,6 +88,10 @@ class SecretUseResolutionAuthorizer(Protocol):
         self,
         command: "AuthorizeSecretUse",
     ) -> SecretResolutionGrant: ...
+
+    def authorize_version_resolution(
+        self, command: "AuthorizeSecretVersionUse",
+    ) -> SecretVersionResolutionGrant: ...
 
 
 class SecretProviderKind(StrEnum):
@@ -533,6 +539,153 @@ class AuthorizedSecretUse:
         }
 
 
+@dataclass(frozen=True)
+class AuthorizeSecretVersionUse:
+    """One consumer version for one original effect; not operational authority."""
+
+    workspace_id: str
+    selection: SecretVersionSelection
+    actor_subject: str
+    correlation_id: str
+    requested_at: str
+    actor_scopes: tuple[PolicyScope, ...]
+    operation_id: str
+    run_id: str
+    activity_id: str
+    effect_id: str
+    request_fingerprint: str
+    selection_fingerprint: str
+    session_id: str | None = None
+
+    def __post_init__(self):
+        _version_use_semantics(self.workspace_id, self.selection, self.actor_subject,
+            self.operation_id, self.run_id, self.activity_id, self.effect_id,
+            self.request_fingerprint, self.selection_fingerprint, self.session_id)
+        _require_correlation_identifier(self.correlation_id, "correlation_id")
+        _require_bounded_text(self.requested_at, "requested_at", maximum=128)
+        object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
+
+
+@dataclass(frozen=True)
+class AuthorizedSecretVersionUse:
+    """Immutable consumer authorization; the version is not evidence of installation."""
+
+    authorization_id: str
+    workspace_id: str
+    reference_registration_id: str
+    provider_registration_id: str
+    selection: SecretVersionSelection
+    actor_subject: str
+    correlation_id: str
+    requested_at: str
+    intent_fingerprint: str
+    operation_id: str
+    run_id: str
+    activity_id: str
+    effect_id: str
+    request_fingerprint: str
+    selection_fingerprint: str
+    session_id: str | None = None
+
+    def __post_init__(self):
+        for name in ("authorization_id", "reference_registration_id", "provider_registration_id"):
+            _require_identifier(getattr(self, name), name)
+        _version_use_semantics(self.workspace_id, self.selection, self.actor_subject,
+            self.operation_id, self.run_id, self.activity_id, self.effect_id,
+            self.request_fingerprint, self.selection_fingerprint, self.session_id)
+        _require_correlation_identifier(self.correlation_id, "correlation_id")
+        _require_bounded_text(self.requested_at, "requested_at", maximum=128)
+        if type(self.intent_fingerprint) is not str or not re.fullmatch(r"[0-9a-f]{64}", self.intent_fingerprint):
+            raise SecretProviderRegistrationError("secret version authorization fingerprint is malformed")
+
+    def descriptor(self):
+        AuthorizedSecretVersionUse.__post_init__(self)
+        return {"authorization_kind": "consumer-version", **{
+            item.name: self.selection.descriptor() if item.name == "selection" else getattr(self, item.name)
+            for item in fields(self)}}
+
+
+def _version_use_semantics(workspace_id, selection, actor_subject, operation_id,
+        run_id, activity_id, effect_id, request_fingerprint, selection_fingerprint, session_id=None):
+    _require_identifier(workspace_id, "workspace_id")
+    _require_identifier(actor_subject, "actor_subject")
+    if type(selection) is not SecretVersionSelection:
+        raise SecretProviderRegistrationError("secret version selection is malformed")
+    SecretVersionSelection.__post_init__(selection)
+    for value, label in ((operation_id, "operation_id"), (effect_id, "effect_id"),
+                         (run_id, "run_id"), (activity_id, "activity_id")):
+        _require_correlation_identifier(value, label)
+    _require_optional_run_id(run_id)
+    _require_optional_activity_id(activity_id)
+    _require_optional_correlation_identifier(session_id, "session_id")
+    for value in (request_fingerprint, selection_fingerprint):
+        if type(value) is not str or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise SecretProviderRegistrationError("secret version commitment is malformed")
+    return dict(authorization_kind="consumer-version", workspace_id=workspace_id,
+        selection=selection.descriptor(), actor_subject=actor_subject, operation_id=operation_id,
+        session_id=session_id, run_id=run_id, activity_id=activity_id, effect_id=effect_id,
+        request_fingerprint=request_fingerprint, selection_fingerprint=selection_fingerprint)
+
+
+def secret_version_use_correlation_for(*, workspace_id, selection, actor_subject,
+        operation_id, run_id, activity_id, effect_id, request_fingerprint,
+        selection_fingerprint, session_id=None):
+    semantics = _version_use_semantics(workspace_id, selection, actor_subject, operation_id,
+        run_id, activity_id, effect_id, request_fingerprint, selection_fingerprint, session_id)
+    return "secret-version-use:" + _digest(semantics)
+
+
+def _version_authorization_fingerprint(value, reference_registration_id, provider_registration_id):
+    semantics = _version_use_semantics(value.workspace_id, value.selection, value.actor_subject,
+        value.operation_id, value.run_id, value.activity_id, value.effect_id,
+        value.request_fingerprint, value.selection_fingerprint, value.session_id)
+    return _digest({**semantics, "correlation_id": value.correlation_id,
+        "reference_registration_id": reference_registration_id,
+        "provider_registration_id": provider_registration_id})
+
+
+def validate_authorized_secret_use(value):
+    """Validate the exact stored role and its original authorization identity recipe."""
+    if type(value) not in (AuthorizedSecretUse, AuthorizedSecretVersionUse):
+        raise SecretProviderRegistrationError("authorized secret use role is malformed")
+    type(value).__post_init__(value)
+    if type(value) is AuthorizedSecretVersionUse:
+        expected = _version_authorization_fingerprint(value,
+            value.reference_registration_id, value.provider_registration_id)
+    else:
+        names = ("workspace_id", "reference_registration_id", "provider_registration_id", "reference", "intent",
+            "actor_subject", "correlation_id", "operation_id", "session_id", "run_id", "activity_id", "effect_id", "probe_id")
+        expected = _secret_use_fingerprint_for(**{name: getattr(value, name) for name in names})
+    if value.intent_fingerprint != expected or value.authorization_id != "suse_" + expected:
+        raise SecretProviderRegistrationError("authorized secret use identity is inconsistent")
+
+
+def authorize_runtime_secret_command(authorizer, command):
+    """Invoke the exact role and admit every original coordinate in the returned grant."""
+    consumer = type(command) is AuthorizeSecretVersionUse
+    if not consumer and type(command) is not AuthorizeSecretUse:
+        raise SecretProviderRegistrationError("runtime secret authorization command is malformed")
+    method = getattr(authorizer, "authorize_version_resolution" if consumer else "authorize_resolution", None)
+    if not callable(method):
+        raise SecretProviderRegistrationError("runtime secret authorization role is unsupported")
+    grant = method(command)
+    valid = False
+    try:
+        expected_type = SecretVersionResolutionGrant if consumer else SecretResolutionGrant
+        if type(grant) is not expected_type:
+            raise ValueError
+        validate_resolution_grant(grant)
+        names = ("workspace_id", "actor_subject", "correlation_id", "operation_id",
+            "session_id", "run_id", "activity_id", "effect_id")
+        names += ("selection", "request_fingerprint", "selection_fingerprint") if consumer else ("reference", "intent", "probe_id")
+        valid = all(getattr(grant, name) == getattr(command, name) for name in names)
+    except (ValueError, TypeError, AttributeError):
+        valid = False
+    if not valid:
+        raise SecretProviderRegistrationError("runtime secret authorization grant is incongruent")
+    return grant
+
+
 class SecretProviderRegistrationService:
     """Own provider/reference admission transaction boundaries."""
 
@@ -608,6 +761,20 @@ class SecretUseAuthorizationService:
     def __init__(self, unit_of_work_factory: Any) -> None:
         self._unit_of_work_factory = unit_of_work_factory
 
+    def authorize_version_resolution(self, command: AuthorizeSecretVersionUse) -> SecretVersionResolutionGrant:
+        if type(command) is not AuthorizeSecretVersionUse:
+            raise SecretProviderRegistrationError("version authorization requires exact command")
+        AuthorizeSecretVersionUse.__post_init__(command)
+        _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+        validate_canonical_utc_timestamp(command.requested_at)
+        with self._unit_of_work_factory() as unit:
+            authorized, provider = authorize_secret_version_use_in_unit_of_work(unit, command)
+            grant = SecretVersionResolutionGrant(endpoint_reference=provider.endpoint_reference,
+                credential_reference=provider.credential_reference,
+                **{item.name: getattr(authorized, item.name) for item in fields(authorized) if item.name != "requested_at"})
+            unit.commit()
+            return grant
+
     def authorize(self, command: AuthorizeSecretUse) -> AuthorizedSecretUse:
         _require_command(command, AuthorizeSecretUse)
         _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
@@ -640,6 +807,39 @@ class SecretUseAuthorizationService:
             )
             unit_of_work.commit()
             return grant
+
+
+def authorize_secret_version_use_in_unit_of_work(
+    unit: Any, command: AuthorizeSecretVersionUse,
+) -> tuple[AuthorizedSecretVersionUse, RegisteredSecretProvider]:
+    """Authorize the exact selected version in the caller's transaction."""
+    if type(command) is not AuthorizeSecretVersionUse:
+        raise SecretProviderRegistrationError("version authorization requires exact command")
+    AuthorizeSecretVersionUse.__post_init__(command)
+    _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+    validate_canonical_utc_timestamp(command.requested_at)
+    store = unit.stores.secret_use_authorizations
+    store.lock_correlation(command.workspace_id, command.correlation_id)
+    reference = unit.stores.secret_references.get_active_for_update(command.workspace_id, command.selection.reference)
+    provider = unit.stores.secret_providers.require_active_registration_for_update(
+        command.workspace_id, reference.provider_registration_id)
+    _validate_reference_admission(reference, provider)
+    if command.selection.intent not in reference.allowed_intents:
+        raise SecretProviderRegistrationError("secret use intent is outside reference admission")
+    fingerprint = _version_authorization_fingerprint(command, reference.registration_id, provider.registration_id)
+    candidate = AuthorizedSecretVersionUse(
+        authorization_id="suse_" + fingerprint, reference_registration_id=reference.registration_id,
+        provider_registration_id=provider.registration_id, intent_fingerprint=fingerprint,
+        **{item.name: getattr(command, item.name) for item in fields(command) if item.name != "actor_scopes"})
+    existing = store.for_correlation(command.workspace_id, command.correlation_id)
+    if existing is not None:
+        if type(existing) is not AuthorizedSecretVersionUse or existing.intent_fingerprint != fingerprint:
+            raise SecretUseAuthorizationConflict("secret use correlation was reused with different intent")
+        authorized = existing
+    else:
+        store.add(candidate)
+        authorized = candidate
+    return authorized, provider
 
 
 def authorize_secret_use_in_unit_of_work(
@@ -682,7 +882,7 @@ def authorize_secret_use_in_unit_of_work(
         command.correlation_id,
     )
     if existing is not None:
-        if existing.intent_fingerprint != candidate.intent_fingerprint:
+        if type(existing) is not AuthorizedSecretUse or existing.intent_fingerprint != candidate.intent_fingerprint:
             raise SecretUseAuthorizationConflict(
                 "secret use correlation was reused with different intent"
             )
@@ -701,22 +901,16 @@ def authorized_secret_use_for(
     """Build deterministic evidence from current admitted operational truth."""
 
     _require_command(command, AuthorizeSecretUse)
-    semantics = {
-        "workspace_id": command.workspace_id,
-        "reference_registration_id": reference.registration_id,
-        "provider_registration_id": provider.registration_id,
-        "reference_id": command.reference.reference_id,
-        "intent": command.intent.value,
-        "actor_subject": command.actor_subject,
-        "correlation_id": command.correlation_id,
-        "operation_id": command.operation_id,
-        "session_id": command.session_id,
-        "run_id": command.run_id,
-        "activity_id": command.activity_id,
-        "effect_id": command.effect_id,
-        "probe_id": command.probe_id,
-    }
-    fingerprint = _digest(semantics)
+    fingerprint = _secret_use_fingerprint_for(
+        workspace_id=command.workspace_id,
+        reference_registration_id=reference.registration_id,
+        provider_registration_id=provider.registration_id,
+        reference=command.reference, intent=command.intent,
+        actor_subject=command.actor_subject, correlation_id=command.correlation_id,
+        operation_id=command.operation_id, session_id=command.session_id,
+        run_id=command.run_id, activity_id=command.activity_id,
+        effect_id=command.effect_id, probe_id=command.probe_id,
+    )
     return AuthorizedSecretUse(
         authorization_id=f"suse_{fingerprint}",
         workspace_id=command.workspace_id,
@@ -735,6 +929,40 @@ def authorized_secret_use_for(
         effect_id=command.effect_id,
         probe_id=command.probe_id,
     )
+
+
+def _secret_use_fingerprint_for(
+    *,
+    workspace_id: str,
+    reference_registration_id: str,
+    provider_registration_id: str,
+    reference: SecretReference,
+    intent: SecretUseIntent,
+    actor_subject: str,
+    correlation_id: str,
+    operation_id: str | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
+    activity_id: str | None = None,
+    effect_id: str | None = None,
+    probe_id: str | None = None,
+) -> str:
+    """The existing identity recipe, shared only by validated pure callers."""
+    return _digest({
+        "workspace_id": workspace_id,
+        "reference_registration_id": reference_registration_id,
+        "provider_registration_id": provider_registration_id,
+        "reference_id": reference.reference_id,
+        "intent": intent.value,
+        "actor_subject": actor_subject,
+        "correlation_id": correlation_id,
+        "operation_id": operation_id,
+        "session_id": session_id,
+        "run_id": run_id,
+        "activity_id": activity_id,
+        "effect_id": effect_id,
+        "probe_id": probe_id,
+    })
 
 
 def secret_resolution_grant_for(

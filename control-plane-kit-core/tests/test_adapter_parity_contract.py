@@ -27,6 +27,7 @@ class AdapterParityContractTests(unittest.TestCase):
                     binding.projection_schema,
                 )
                 for binding in parity.projections
+                if binding.service_role is ControlPlaneServiceRole.READS
             ],
             [
                 (
@@ -52,6 +53,10 @@ class AdapterParityContractTests(unittest.TestCase):
                     "read.current-graph",
                     "get_current_graph",
                     "GraphReadResponse",
+                ),
+                (
+                    "read.delegation-key-generation", "read.delegation-key-generation",
+                    "get_delegation_key_generation", "GeneratedDelegationKeyReceipt",
                 ),
                 (
                     "read.delegation-keys",
@@ -167,6 +172,14 @@ class AdapterParityContractTests(unittest.TestCase):
                     "list_plan_runs",
                     "PlanRunsReadResponse",
                 ),
+                ("read.product-detail", "read.product-detail", "get_registered_product", "RegisteredProductDetailReadResponse"),
+                ("read.products", "read.products", "list_registered_products", "RegisteredProductsReadResponse"),
+                (
+                    "read.receiver-authoring-context",
+                    "read.receiver-authoring-context",
+                    "get_receiver_authoring_context",
+                    "ReceiverAuthoringContextReadResponse",
+                ),
                 (
                     "read.run-events",
                     "read.run-events",
@@ -196,6 +209,10 @@ class AdapterParityContractTests(unittest.TestCase):
                     "read.runtime-authority-detail",
                     "get_runtime_authority_detail",
                     "RuntimeAuthorityDetailReadResponse",
+                ),
+                (
+                    "read.secret-material-provision", "read.secret-material-provision",
+                    "get_secret_material_provision", "ProvisionedSecretMaterialReceipt",
                 ),
                 (
                     "read.secret-provider-detail",
@@ -246,6 +263,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "SessionPlansReadResponse",
                 ),
                 (
+                    "read.workload-verifier-configuration",
+                    "read.workload-verifier-configuration",
+                    "get_workload_verifier_configuration",
+                    "WorkloadVerifierConfigurationReadResponse",
+                ),
+                (
                     "read.workspace",
                     "read.workspace",
                     "get_workspace",
@@ -255,7 +278,7 @@ class AdapterParityContractTests(unittest.TestCase):
         )
         self.assertEqual(
             {binding.service_role for binding in parity.projections},
-            {ControlPlaneServiceRole.READS},
+            {ControlPlaneServiceRole.READS, ControlPlaneServiceRole.AUTHORIZATION},
         )
 
     def test_parity_descriptor_is_closed_and_round_trips(self) -> None:

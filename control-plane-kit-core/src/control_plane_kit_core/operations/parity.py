@@ -24,6 +24,9 @@ class InvalidAdapterParityContract(ValueError):
     """Raised when adapter parity is incoherent."""
 
 
+HTTP_ONLY_COMMAND_ROUTE_IDS = frozenset(("command.secret-material.provision",))
+
+
 class CommandIdempotencyPolicy(StrEnum):
     """Closed command retry and duplicate-request policy."""
 
@@ -321,10 +324,7 @@ class AdapterParityContract:
                 raise InvalidAdapterParityContract(
                     f"{binding.operation_id!r} projection schema does not match HTTP route"
                 )
-            if (
-                binding.service_role is ControlPlaneServiceRole.READS
-                and route.safety is not HttpOperationSafety.READ_ONLY
-            ):
+            if route.safety is not HttpOperationSafety.READ_ONLY:
                 raise InvalidAdapterParityContract(
                     f"{binding.operation_id!r} read projection must use read-only route"
                 )
@@ -412,6 +412,8 @@ class AdapterCommandParityContract:
         object.__setattr__(self, "commands", ordered)
 
     def _validate_binding(self, binding: AdapterCommandBinding) -> None:
+        if binding.http_route_id in HTTP_ONLY_COMMAND_ROUTE_IDS:
+            raise InvalidAdapterParityContract("confidential HTTP-only command cannot be paired with MCP")
         route = self.http_api.route(binding.http_route_id)
         if route.service_role is not binding.service_role:
             raise InvalidAdapterParityContract(
@@ -598,9 +600,11 @@ class AdapterOperationSecurityParityContract:
             raise InvalidAdapterParityContract(
                 f"{operation.operation_id!r} projection auth scope mismatch"
             )
-        if operation.auth_scope is not HttpAuthScope.READ:
+        expected_scope = (HttpAuthScope.ADMIN if binding.service_role is ControlPlaneServiceRole.AUTHORIZATION
+            else HttpAuthScope.READ)
+        if operation.auth_scope is not expected_scope:
             raise InvalidAdapterParityContract(
-                f"{operation.operation_id!r} read projection requires read auth"
+                f"{operation.operation_id!r} read projection requires its owner's auth scope"
             )
         if operation.safety is not HttpOperationSafety.READ_ONLY:
             raise InvalidAdapterParityContract(
@@ -720,7 +724,7 @@ def operator_read_projection_parity(
         projections=tuple(
             AdapterProjectionBinding(
                 operation_id=operation_id,
-                service_role=ControlPlaneServiceRole.READS,
+                service_role=http_api.route(http_route_id).service_role,
                 projection_schema=projection_schema,
                 http_route_id=http_route_id,
                 mcp_tool_name=mcp_tool_name,
@@ -786,7 +790,7 @@ def operator_command_parity(
     mcp: McpStreamableHttpContract,
     unit_of_work: UnitOfWorkBoundary,
 ) -> AdapterCommandParityContract:
-    """Bind operator command routes to MCP tools and service policy."""
+    """Bind paired commands; confidential HTTP-only intake is explicitly excluded."""
 
     return AdapterCommandParityContract(
         http_api=http_api,
@@ -818,6 +822,44 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.provider-policy-command",
+        "read.provider-policy-command",
+        "get_provider_policy_command",
+        "ProviderPolicyCommandRecordResponse",
+    ),
+    (
+        "read.provider-policy-grant",
+        "read.provider-policy-grant",
+        "get_provider_policy_grant",
+        "ProviderPolicyGrantReadResponse",
+    ),
+    (
+        "read.provider-policy-grants",
+        "read.provider-policy-grants",
+        "list_provider_policy_grants",
+        "ProviderPolicyGrantPageResponse",
+    ),
+    ("read.workspace-permissions", "read.workspace-permissions", "list_workspace_permissions", "WorkspacePermissionPage"),
+    ("read.workspace-permission", "read.workspace-permission", "inspect_workspace_permission", "WorkspacePermissionRecord"),
+    ("read.workspace-permission-history", "read.workspace-permission-history", "list_workspace_permission_history", "WorkspacePermissionPage"),
+    ("read.managed-runtime-assignments", "read.managed-runtime-assignments", "list_managed_runtime_assignments", "ManagedRuntimeAssignmentPage"),
+    ("read.managed-runtime-assignment", "read.managed-runtime-assignment", "inspect_managed_runtime_assignment", "ManagedRuntimeAssignment"),
+    ("read.managed-runtime-assignment-history", "read.managed-runtime-assignment-history", "list_managed_runtime_assignment_history", "ManagedRuntimeAssignmentPage"),
+    (
+        "read.secret-material-provision", "read.secret-material-provision",
+        "get_secret_material_provision", "ProvisionedSecretMaterialReceipt",
+    ),
+    (
+        "read.delegation-key-generation", "read.delegation-key-generation",
+        "get_delegation_key_generation", "GeneratedDelegationKeyReceipt",
+    ),
+    (
+        "read.receiver-authoring-context",
+        "read.receiver-authoring-context",
+        "get_receiver_authoring_context",
+        "ReceiverAuthoringContextReadResponse",
+    ),
+    (
         "read.delegation-keys",
         "read.delegation-keys",
         "list_delegation_keys",
@@ -828,6 +870,12 @@ _OPERATOR_READ_PROJECTIONS = (
         "read.gateway-verifier-configuration",
         "get_gateway_verifier_configuration",
         "GatewayVerifierConfigurationReadResponse",
+    ),
+    (
+        "read.workload-verifier-configuration",
+        "read.workload-verifier-configuration",
+        "get_workload_verifier_configuration",
+        "WorkloadVerifierConfigurationReadResponse",
     ),
     (
         "read.gateway-probe-detail",
@@ -1015,6 +1063,8 @@ _OPERATOR_READ_PROJECTIONS = (
         "get_runtime_authority_delivery_detail",
         "RuntimeAuthorityDeliveryDetailReadResponse",
     ),
+    ("read.products", "read.products", "list_registered_products", "RegisteredProductsReadResponse"),
+    ("read.product-detail", "read.product-detail", "get_registered_product", "RegisteredProductDetailReadResponse"),
     (
         "read.secret-providers",
         "read.secret-providers",
@@ -1043,6 +1093,53 @@ _OPERATOR_READ_PROJECTIONS = (
 
 
 _OPERATOR_COMMANDS = (
+    (
+        "provider-policy.grant",
+        "command.provider-policy.grant",
+        "grant_provider_policy",
+        ControlPlaneServiceRole.AUTHORIZATION,
+        "GrantProviderPolicyRequest",
+        "ProviderPolicyCommandRecordResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "provider-policy.revoke",
+        "command.provider-policy.revoke",
+        "revoke_provider_policy",
+        ControlPlaneServiceRole.AUTHORIZATION,
+        "RevokeProviderPolicyRequest",
+        "ProviderPolicyCommandRecordResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "provider-policy.reconcile",
+        "command.provider-policy.reconcile",
+        "reconcile_provider_policy",
+        ControlPlaneServiceRole.AUTHORIZATION,
+        "ReconcileProviderPolicyRequest",
+        "ProviderPolicyCommandRecordResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    ("workspace-administration.create", "command.workspace-administration.create", "create_workspace_as_administrator",
+        ControlPlaneServiceRole.AUTHORIZATION, "CreateWorkspaceAsAdministratorRequest", "WorkspaceAdministrationResult", ApprovalPolicy.NOT_REQUIRED),
+    ("workspace-permission.grant", "command.workspace-permission.grant", "grant_workspace_permissions",
+        ControlPlaneServiceRole.AUTHORIZATION, "GrantWorkspacePermissionsRequest", "WorkspacePermissionResult", ApprovalPolicy.NOT_REQUIRED),
+    ("workspace-permission.revoke", "command.workspace-permission.revoke", "revoke_workspace_permissions",
+        ControlPlaneServiceRole.AUTHORIZATION, "RevokeWorkspacePermissionsRequest", "WorkspacePermissionResult", ApprovalPolicy.NOT_REQUIRED),
+    ("managed-runtime-access.grant", "command.managed-runtime-access.grant", "grant_managed_runtime_access",
+        ControlPlaneServiceRole.AUTHORIZATION, "GrantManagedRuntimeAccessRequest", "ManagedRuntimeAssignmentResult", ApprovalPolicy.NOT_REQUIRED),
+    ("managed-runtime-access.revoke", "command.managed-runtime-access.revoke", "revoke_managed_runtime_access",
+        ControlPlaneServiceRole.AUTHORIZATION, "RevokeManagedRuntimeAccessRequest", "ManagedRuntimeAssignmentResult", ApprovalPolicy.NOT_REQUIRED),
+    (
+        "delegation-key.generate", "command.delegation-key.generate", "generate_delegation_key",
+        ControlPlaneServiceRole.EXECUTION, "GenerateDelegationKeyRequest",
+        "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "delegation-key-generation.reconcile", "command.delegation-key-generation.reconcile",
+        "reconcile_delegation_key_generation", ControlPlaneServiceRole.EXECUTION,
+        "ReconcileDelegationKeyGenerationRequest", "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+    ),
     (
         "delegation-key.register",
         "command.delegation-key.register",
@@ -1355,6 +1452,15 @@ _OPERATOR_COMMANDS = (
         "execute_deployment",
         ControlPlaneServiceRole.EXECUTION,
         "ExecuteDeploymentRequest",
+        "ExecutionRunResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+    ),
+    (
+        "deployment.reobserve-connector",
+        "command.deployment.reobserve-connector",
+        "reobserve_connector_connection",
+        ControlPlaneServiceRole.EXECUTION,
+        "ReobserveConnectorConnectionRequest",
         "ExecutionRunResponse",
         ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
     ),

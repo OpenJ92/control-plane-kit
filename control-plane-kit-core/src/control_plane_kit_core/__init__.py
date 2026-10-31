@@ -2,6 +2,8 @@
 
 __version__ = "0.1.0"
 
+from control_plane_kit_core.configuration import ConfigurationArtifactRequirement
+
 from control_plane_kit_core.operations import (
     ActivityHistoryPolicy,
     ActivityEventContract,
@@ -201,6 +203,7 @@ from control_plane_kit_core.node_control import (
     NodeControlFailed,
     NodeControlGraphReference,
     NodeControlGraphReferenceRole,
+    NodeHealthReadKind,
     NodeControlOperation,
     NodeControlPayload,
     NodeControlReadStateSucceeded,
@@ -246,6 +249,7 @@ from control_plane_kit_core.node_control_surface_reads import (
 from control_plane_kit_core.node_control_surface_read_results import (
     MAX_NODE_CONTROL_SURFACE_CAPABILITIES_RESULT_BYTES,
     MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES,
+    MAX_NODE_CONTROL_SURFACE_STATUS_V2_RESULT_BYTES,
     NodeControlSurfaceCapabilitiesResult,
     NodeControlSurfaceReadResult,
     NodeControlSurfaceReadResultCodec,
@@ -302,6 +306,7 @@ from control_plane_kit_core.products import (
     UnknownProductIdentity,
     instantiate_catalog_product,
     instantiate_product,
+    product_configuration_slots,
     require_unique_product_identities,
 )
 from control_plane_kit_core.public_ingress import (
@@ -368,7 +373,26 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_result_fingerprint,
 )
 
+from control_plane_kit_core.runtime_management import (
+    GatewayTransitDeclaration,
+    GatewayTransitDeclarationCodec,
+    GatewayTransitProtocol,
+    RuntimeManagement,
+    RuntimeManagementCodec,
+    RuntimeManagementError,
+)
+from control_plane_kit_core.topology.validation import management_ingress_for_health_read
+from control_plane_kit_core.topology.changes import RuntimeManagementValue
+
 __all__ = [
+    "GatewayTransitDeclaration",
+    "GatewayTransitDeclarationCodec",
+    "GatewayTransitProtocol",
+    "RuntimeManagement",
+    "RuntimeManagementCodec",
+    "RuntimeManagementError",
+    "RuntimeManagementValue",
+    "management_ingress_for_health_read",
     "ActivityPlanApprovalSubject",
     "ActivityHistoryPolicy",
     "ActivityEventContract",
@@ -512,6 +536,7 @@ __all__ = [
     "MAX_NODE_CONTROL_SURFACE_DECLARATION_BYTES",
     "MAX_NODE_CONTROL_SURFACE_READ_REQUEST_BYTES",
     "MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES",
+    "MAX_NODE_CONTROL_SURFACE_STATUS_V2_RESULT_BYTES",
     "MAX_WORKLOAD_NODE_CONTROL_SURFACE_READ_GRANT_LIFETIME_SECONDS",
     "NodeControlCanonicalization",
     "NodeControlCommandRequest",
@@ -522,6 +547,7 @@ __all__ = [
     "NodeControlFailed",
     "NodeControlGraphReference",
     "NodeControlGraphReferenceRole",
+    "NodeHealthReadKind",
     "NodeControlOperation",
     "NodeControlPayload",
     "NodeControlReadStateSucceeded",
@@ -703,4 +729,267 @@ __all__ = [
     "GatewayNodeControlTransitGrantVerificationCode",
     "GatewayNodeControlTransitGrantVerificationResult",
     "verify_gateway_node_control_transit_grant",
+]
+
+from control_plane_kit_core.node_health_reads import (
+    MAX_NODE_HEALTH_READ_REQUEST_BYTES,
+    MAX_DELEGATED_WORKLOAD_NODE_HEALTH_READ_GRANT_BYTES,
+    MAX_WORKLOAD_NODE_HEALTH_READ_GRANT_LIFETIME_SECONDS,
+    NodeHealthReadContractError,
+    NodeHealthReadRequestProfile,
+    NodeHealthReadRequestDigest,
+    NodeHealthReadRequest,
+    NodeHealthReadRequestCodec,
+    DelegatedWorkloadNodeHealthReadGrantProfile,
+    DelegatedWorkloadNodeHealthReadGrant,
+    DelegatedWorkloadNodeHealthReadGrantCodec,
+    WorkloadNodeHealthReadGrantVerificationCode,
+    WorkloadNodeHealthReadGrantVerificationResult,
+    verify_workload_node_health_read_grant,
+)
+from control_plane_kit_core.node_health_read_results import (
+    MAX_NODE_HEALTH_READ_RESULT_BYTES,
+    NodeHealthReadResultProfile,
+    NodeHealthReadOutcome,
+    NodeHealthReadResult,
+    NodeHealthReadResultCodec,
+)
+
+__all__ += [
+    "MAX_NODE_HEALTH_READ_REQUEST_BYTES",
+    "MAX_DELEGATED_WORKLOAD_NODE_HEALTH_READ_GRANT_BYTES",
+    "MAX_WORKLOAD_NODE_HEALTH_READ_GRANT_LIFETIME_SECONDS",
+    "NodeHealthReadContractError",
+    "NodeHealthReadRequestProfile",
+    "NodeHealthReadRequestDigest",
+    "NodeHealthReadRequest",
+    "NodeHealthReadRequestCodec",
+    "DelegatedWorkloadNodeHealthReadGrantProfile",
+    "DelegatedWorkloadNodeHealthReadGrant",
+    "DelegatedWorkloadNodeHealthReadGrantCodec",
+    "WorkloadNodeHealthReadGrantVerificationCode",
+    "WorkloadNodeHealthReadGrantVerificationResult",
+    "verify_workload_node_health_read_grant",
+    "MAX_NODE_HEALTH_READ_RESULT_BYTES",
+    "NodeHealthReadResultProfile",
+    "NodeHealthReadOutcome",
+    "NodeHealthReadResult",
+    "NodeHealthReadResultCodec",
+]
+
+from control_plane_kit_core.node_health_transit import (
+    MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_AUDIENCE_BYTES,
+    MAX_DELEGATED_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_BYTES,
+    MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_LIFETIME_SECONDS,
+    GatewayNodeHealthReadTransitContractError,
+    DelegatedGatewayNodeHealthReadTransitGrantProfile,
+    GatewayNodeHealthReadTransitGrantDigest,
+    DelegatedGatewayNodeHealthReadTransitGrant,
+    DelegatedGatewayNodeHealthReadTransitGrantCodec,
+    GatewayNodeHealthReadTransitGrantVerificationCode,
+    GatewayNodeHealthReadTransitGrantVerificationResult,
+    verify_gateway_node_health_read_transit_grant,
+)
+
+__all__ += [
+    "MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_AUDIENCE_BYTES",
+    "MAX_DELEGATED_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_BYTES",
+    "MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_LIFETIME_SECONDS",
+    "GatewayNodeHealthReadTransitContractError",
+    "DelegatedGatewayNodeHealthReadTransitGrantProfile",
+    "GatewayNodeHealthReadTransitGrantDigest",
+    "DelegatedGatewayNodeHealthReadTransitGrant",
+    "DelegatedGatewayNodeHealthReadTransitGrantCodec",
+    "GatewayNodeHealthReadTransitGrantVerificationCode",
+    "GatewayNodeHealthReadTransitGrantVerificationResult",
+    "verify_gateway_node_health_read_transit_grant",
+]
+
+from control_plane_kit_core.planning.management_observations import (
+    ManagementBootstrapStage, ManagementObservationError, ManagementObservationTarget,
+    NodeHealthObservationTransport, ObserveManagementBootstrap, ObserveNodeHealth,
+    PlanGraphSide,
+)
+from control_plane_kit_core.planning.management_compiler import (
+    ResolvedManagementBootstrap, ResolvedNodeHealth, compile_graph_activity_plan,
+    compile_managed_update_activity_plan, compile_retained_image_ingress_activity_plan,
+    resolve_management_observation,
+)
+
+__all__ += [
+    "ManagementBootstrapStage", "ManagementObservationError", "ManagementObservationTarget",
+    "NodeHealthObservationTransport", "ObserveManagementBootstrap", "ObserveNodeHealth",
+    "PlanGraphSide", "ResolvedManagementBootstrap", "ResolvedNodeHealth",
+    "compile_graph_activity_plan", "compile_managed_update_activity_plan",
+    "compile_retained_image_ingress_activity_plan",
+    "resolve_management_observation",
+]
+
+from control_plane_kit_core.receiver_identity import (
+    MAX_NODE_CONTROL_RECEIVER_TARGET_BYTES, MAX_NODE_CONTROL_AUTHORITY_CONTEXT_BYTES,
+    ReceiverIdentityError, NodeControlReceiverTarget, NodeControlAuthorityContext,
+    NodeControlReceiverTargetCodec, NodeControlAuthorityContextCodec,
+    receiver_node_control_audience,
+)
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfiguration, ReceiverNodeControlConfigurationCodec,
+    select_receiver_node_control_configuration_slot,
+    select_receiver_node_control_configuration_artifact,
+)
+from control_plane_kit_core.configuration_installation import (
+    ConfigurationInstallationDisposition, ConfigurationInstallationReceipt,
+    ConfigurationInstallationReceiptCodec, configuration_installation_receipt_for_result,
+    configuration_installation_receipt_for_observation,
+)
+__all__ += [
+    "ConfigurationArtifactRequirement", "product_configuration_slots",
+    "ConfigurationInstallationDisposition", "ConfigurationInstallationReceipt",
+    "ConfigurationInstallationReceiptCodec", "configuration_installation_receipt_for_result",
+    "configuration_installation_receipt_for_observation",
+]
+
+from control_plane_kit_core.receiver_management_routes import (
+    ReceiverManagementRouteBinding, ReceiverManagementRoutes,
+    ReceiverManagementRoutesCodec, ReceiverManagementRoutesError,
+)
+
+__all__ += [
+    "MAX_NODE_CONTROL_RECEIVER_TARGET_BYTES", "MAX_NODE_CONTROL_AUTHORITY_CONTEXT_BYTES",
+    "ReceiverIdentityError", "NodeControlReceiverTarget", "NodeControlAuthorityContext",
+    "NodeControlReceiverTargetCodec", "NodeControlAuthorityContextCodec",
+    "receiver_node_control_audience", "ReceiverNodeControlConfiguration",
+    "ReceiverNodeControlConfigurationCodec", "select_receiver_node_control_configuration_artifact",
+    "select_receiver_node_control_configuration_slot",
+    "ReceiverManagementRouteBinding", "ReceiverManagementRoutes",
+    "ReceiverManagementRoutesCodec", "ReceiverManagementRoutesError",
+]
+
+from control_plane_kit_core.receiver_health_reads import (
+    ReceiverHealthReadContractError, ReceiverHealthReadRequestProfile, ReceiverHealthReadRequestDigest,
+    ReceiverHealthReadRequest, ReceiverHealthReadRequestCodec, DelegatedWorkloadReceiverHealthReadGrantProfile,
+    DelegatedWorkloadReceiverHealthReadGrant, DelegatedWorkloadReceiverHealthReadGrantCodec,
+    WorkloadReceiverHealthReadGrantVerificationCode, WorkloadReceiverHealthReadGrantVerificationResult,
+    verify_workload_receiver_health_read_grant,
+)
+from control_plane_kit_core.receiver_health_transit import (
+    GatewayReceiverHealthReadTransitContractError, DelegatedGatewayReceiverHealthReadTransitGrantProfile,
+    GatewayReceiverHealthReadTransitGrantDigest, DelegatedGatewayReceiverHealthReadTransitGrant,
+    DelegatedGatewayReceiverHealthReadTransitGrantCodec, GatewayReceiverHealthReadTransitGrantVerificationCode,
+    GatewayReceiverHealthReadTransitGrantVerificationResult, verify_gateway_receiver_health_read_transit_grant,
+)
+from control_plane_kit_core.receiver_health_read_results import (
+    ReceiverHealthReadResultProfile, ReceiverHealthReadResult, ReceiverHealthReadResultCodec,
+)
+
+__all__ += [
+    "ReceiverHealthReadContractError", "ReceiverHealthReadRequestProfile", "ReceiverHealthReadRequestDigest",
+    "ReceiverHealthReadRequest", "ReceiverHealthReadRequestCodec", "DelegatedWorkloadReceiverHealthReadGrantProfile",
+    "DelegatedWorkloadReceiverHealthReadGrant", "DelegatedWorkloadReceiverHealthReadGrantCodec",
+    "WorkloadReceiverHealthReadGrantVerificationCode", "WorkloadReceiverHealthReadGrantVerificationResult",
+    "verify_workload_receiver_health_read_grant",
+    "GatewayReceiverHealthReadTransitContractError", "DelegatedGatewayReceiverHealthReadTransitGrantProfile",
+    "GatewayReceiverHealthReadTransitGrantDigest", "DelegatedGatewayReceiverHealthReadTransitGrant",
+    "DelegatedGatewayReceiverHealthReadTransitGrantCodec", "GatewayReceiverHealthReadTransitGrantVerificationCode",
+    "GatewayReceiverHealthReadTransitGrantVerificationResult", "verify_gateway_receiver_health_read_transit_grant",
+    "ReceiverHealthReadResultProfile", "ReceiverHealthReadResult", "ReceiverHealthReadResultCodec",
+]
+
+from control_plane_kit_core.receiver_control_surface_reads import (
+    ReceiverControlSurfaceReadContractError, ReceiverControlSurfaceReadRequestProfile,
+    ReceiverControlSurfaceReadRequestDigest, ReceiverControlSurfaceReadRequest,
+    ReceiverControlSurfaceReadRequestCodec, DelegatedWorkloadReceiverControlSurfaceReadGrantProfile,
+    DelegatedWorkloadReceiverControlSurfaceReadGrant, DelegatedWorkloadReceiverControlSurfaceReadGrantCodec,
+    WorkloadReceiverControlSurfaceReadGrantVerificationCode, WorkloadReceiverControlSurfaceReadGrantVerificationResult,
+    verify_workload_receiver_control_surface_read_grant,
+)
+from control_plane_kit_core.receiver_control_surface_read_results import (
+    ReceiverControlSurfaceReadResultProfile, ReceiverControlSurfaceCapabilitiesResult,
+    ReceiverControlSurfaceStatusResult, ReceiverControlSurfaceReadResult, ReceiverControlSurfaceReadResultCodec,
+)
+
+__all__ += [
+    "ReceiverControlSurfaceReadContractError", "ReceiverControlSurfaceReadRequestProfile",
+    "ReceiverControlSurfaceReadRequestDigest", "ReceiverControlSurfaceReadRequest",
+    "ReceiverControlSurfaceReadRequestCodec", "DelegatedWorkloadReceiverControlSurfaceReadGrantProfile",
+    "DelegatedWorkloadReceiverControlSurfaceReadGrant", "DelegatedWorkloadReceiverControlSurfaceReadGrantCodec",
+    "WorkloadReceiverControlSurfaceReadGrantVerificationCode", "WorkloadReceiverControlSurfaceReadGrantVerificationResult",
+    "verify_workload_receiver_control_surface_read_grant", "ReceiverControlSurfaceReadResultProfile",
+    "ReceiverControlSurfaceCapabilitiesResult", "ReceiverControlSurfaceStatusResult",
+    "ReceiverControlSurfaceReadResult", "ReceiverControlSurfaceReadResultCodec",
+]
+
+from control_plane_kit_core.receiver_node_control import (
+    ReceiverNodeControlContractError, ReceiverNodeControlRequestProfile, ReceiverNodeControlRequestDigest,
+    ReceiverNodeControlRequest, ReceiverNodeControlRequestCodec, DelegatedWorkloadReceiverNodeControlGrantProfile,
+    WorkloadReceiverNodeControlGrantDigest, DelegatedWorkloadReceiverNodeControlGrant, DelegatedWorkloadReceiverNodeControlGrantCodec,
+    WorkloadReceiverNodeControlGrantVerificationCode, WorkloadReceiverNodeControlGrantVerificationResult,
+    verify_workload_receiver_node_control_grant,
+)
+from control_plane_kit_core.receiver_node_control_transit import (
+    GatewayReceiverNodeControlTransitContractError, DelegatedGatewayReceiverNodeControlTransitGrantProfile,
+    GatewayReceiverNodeControlTransitGrantDigest, DelegatedGatewayReceiverNodeControlTransitGrant,
+    DelegatedGatewayReceiverNodeControlTransitGrantCodec, GatewayReceiverNodeControlTransitGrantVerificationCode,
+    GatewayReceiverNodeControlTransitGrantVerificationResult, verify_gateway_receiver_node_control_transit_grant,
+)
+from control_plane_kit_core.receiver_node_control_results import (
+    ReceiverNodeControlResultProfile, ReceiverNodeControlResult, ReceiverNodeControlResultCodec,
+)
+
+__all__ += [
+    "ReceiverNodeControlContractError", "ReceiverNodeControlRequestProfile", "ReceiverNodeControlRequestDigest",
+    "ReceiverNodeControlRequest", "ReceiverNodeControlRequestCodec", "DelegatedWorkloadReceiverNodeControlGrantProfile",
+    "WorkloadReceiverNodeControlGrantDigest", "DelegatedWorkloadReceiverNodeControlGrant", "DelegatedWorkloadReceiverNodeControlGrantCodec",
+    "WorkloadReceiverNodeControlGrantVerificationCode", "WorkloadReceiverNodeControlGrantVerificationResult",
+    "verify_workload_receiver_node_control_grant",
+    "GatewayReceiverNodeControlTransitContractError", "DelegatedGatewayReceiverNodeControlTransitGrantProfile",
+    "GatewayReceiverNodeControlTransitGrantDigest", "DelegatedGatewayReceiverNodeControlTransitGrant",
+    "DelegatedGatewayReceiverNodeControlTransitGrantCodec", "GatewayReceiverNodeControlTransitGrantVerificationCode",
+    "GatewayReceiverNodeControlTransitGrantVerificationResult", "verify_gateway_receiver_node_control_transit_grant",
+    "ReceiverNodeControlResultProfile", "ReceiverNodeControlResult", "ReceiverNodeControlResultCodec",
+]
+
+from control_plane_kit_core.secret_selections import (
+    SecretSelectionError, UnselectedSecretUse, SecretVersionSelection, SecretSelection,
+    secret_selection_from_descriptor,
+)
+from control_plane_kit_core.topology.secret_selection import carry_forward_secret_selections
+from control_plane_kit_core.secret_version_grants import (
+    SecretVersionResolutionGrant, SecretResolutionGrantCodec, ResolutionGrant,
+)
+from control_plane_kit_core.secret_installation import (
+    SecretResolutionReceipt, SecretResolutionReceiptCodec, SecretInstallationReceipt,
+    SecretInstallationReceiptCodec, SecretInstallationDisposition,
+    secret_material_selection_fingerprint, secret_installation_receipt_for_result,
+    secret_installation_receipt_for_observation,
+    SecretInstallationCorrelation, secret_installation_correlation_for_request,
+    secret_installation_receipt_for_correlated_result, secret_installation_receipt_for_correlated_observation,
+)
+from control_plane_kit_core.provider_policy import (
+    ProviderPolicyCommandResult, ProviderPolicyCommandResultRequest,
+    ProviderPolicyContractError, ProviderPolicyCoordinate, ProviderPolicyErrorCode,
+    ProviderPolicyFailure,
+    ProviderPolicyGrantCommand, ProviderPolicyGrantPage, ProviderPolicyGrantRead,
+    ProviderPolicyGrantRecord, ProviderPolicyIntentMode, ProviderPolicyListRequest,
+    ProviderPolicyMutationCommand, ProviderPolicyOperation, ProviderPolicyOutcome,
+    ProviderPolicyPort, ProviderPolicyReadRequest, ProviderPolicyRevokeCommand,
+    provider_policy_command_fingerprint,
+)
+__all__ += [
+    "SecretSelectionError", "UnselectedSecretUse", "SecretVersionSelection", "SecretSelection",
+    "SecretVersionResolutionGrant", "SecretResolutionGrantCodec", "ResolutionGrant",
+    "secret_selection_from_descriptor", "carry_forward_secret_selections",
+    "SecretResolutionReceipt", "SecretResolutionReceiptCodec", "SecretInstallationReceipt",
+    "SecretInstallationReceiptCodec", "SecretInstallationDisposition",
+    "secret_material_selection_fingerprint", "secret_installation_receipt_for_result",
+    "secret_installation_receipt_for_observation",
+    "SecretInstallationCorrelation", "secret_installation_correlation_for_request",
+    "secret_installation_receipt_for_correlated_result", "secret_installation_receipt_for_correlated_observation",
+    "ProviderPolicyCommandResult", "ProviderPolicyCommandResultRequest",
+    "ProviderPolicyContractError", "ProviderPolicyCoordinate", "ProviderPolicyErrorCode",
+    "ProviderPolicyFailure",
+    "ProviderPolicyGrantCommand", "ProviderPolicyGrantPage", "ProviderPolicyGrantRead",
+    "ProviderPolicyGrantRecord", "ProviderPolicyIntentMode", "ProviderPolicyListRequest",
+    "ProviderPolicyMutationCommand", "ProviderPolicyOperation", "ProviderPolicyOutcome",
+    "ProviderPolicyPort", "ProviderPolicyReadRequest", "ProviderPolicyRevokeCommand",
+    "provider_policy_command_fingerprint",
 ]

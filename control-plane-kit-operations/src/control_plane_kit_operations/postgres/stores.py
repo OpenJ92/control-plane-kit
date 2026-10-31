@@ -10,6 +10,7 @@ from control_plane_kit_operations.postgres.activity_history import (
 from control_plane_kit_operations.postgres.desired_topology_draft_store import PostgresDesiredTopologyDraftStore
 from control_plane_kit_operations.postgres.saved_preparation_source_store import PostgresSavedPreparationSourceStore
 from control_plane_kit_operations.postgres.revision_history_store import PostgresRevisionHistoryStore
+from control_plane_kit_operations.postgres.health_effect_preparation_store import HealthEffectPreparationStore
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 from control_plane_kit_operations.postgres.effect_attempt_store import (
     EffectAttemptStore,
@@ -17,6 +18,9 @@ from control_plane_kit_operations.postgres.effect_attempt_store import (
 from control_plane_kit_operations.postgres.effect_attempt_intent_store import (
     EffectAttemptIntentStore,
 )
+from control_plane_kit_operations.postgres.configuration_preparation_store import ConfigurationPreparationStore
+from control_plane_kit_operations.postgres.configuration_completion_store import ConfigurationCompletionStore
+from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
 from control_plane_kit_operations.postgres.effect_outcome_store import (
     EffectAttemptOutcomeStore,
 )
@@ -29,6 +33,10 @@ from control_plane_kit_operations.postgres.failed_run_compensation_attempt_store
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
 )
+from control_plane_kit_operations.postgres.delegation_key_generation_attempt_store import (
+    DelegationKeyGenerationAttemptStore,
+)
+from control_plane_kit_operations.postgres.secret_material_provision_attempt_store import SecretMaterialProvisionAttemptStore
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresRealizedGraphProjectionStore,
@@ -66,6 +74,11 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretUseAuthorizationStore,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.ingress_invocation_store import IngressInvocationStore
+from control_plane_kit_operations.postgres.workspace_permission_store import WorkspacePermissionStore
+from control_plane_kit_operations.postgres.managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
+from control_plane_kit_operations.postgres.runtime_effect_origin_store import RuntimeEffectOriginStore
+from control_plane_kit_operations.postgres.provider_policy_command_store import ProviderPolicyCommandStore
 
 
 @dataclass(frozen=True)
@@ -77,10 +90,22 @@ class PostgresStoreBundle:
     connection and cannot commit independently through the bundle.
     """
 
+    @property
+    def configuration_cleanup(self):
+        from .configuration_cleanup_store import ConfigurationCleanupStore
+        return ConfigurationCleanupStore(self)
+
+    @property
+    def configuration_cleanup_ownership(self):
+        from .configuration_cleanup_ownership_store import ConfigurationCleanupOwnershipStore
+        return ConfigurationCleanupOwnershipStore(self)
+
     desired_topology_drafts: PostgresDesiredTopologyDraftStore = field(init=False)
     saved_preparation_sources: PostgresSavedPreparationSourceStore = field(init=False)
     revision_history: PostgresRevisionHistoryStore = field(init=False)
     connection: PostgresConnection
+    workspace_permissions: WorkspacePermissionStore = field(init=False)
+    managed_runtime_assignments: ManagedRuntimeAssignmentStore = field(init=False)
     workspaces: PostgresWorkspaceStore = field(init=False)
     graphs: PostgresGraphTopologyStore = field(init=False)
     realized_graphs: PostgresRealizedGraphProjectionStore = field(init=False)
@@ -88,6 +113,7 @@ class PostgresStoreBundle:
     image_pull_authorities: ImagePullAuthorityStore = field(init=False)
     ingress_authorities: IngressAuthorityStore = field(init=False)
     ingress_resources: IngressResourceStore = field(init=False)
+    ingress_invocations: IngressInvocationStore = field(init=False)
     generated_ingress_secrets: GeneratedIngressSecretReferenceStore = field(init=False)
     runtime_authorities: RuntimeAuthorityStore = field(init=False)
     runtime_authority_deliveries: RuntimeAuthorityDeliveryStore = field(init=False)
@@ -97,6 +123,11 @@ class PostgresStoreBundle:
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
     effect_attempt_intents: EffectAttemptIntentStore = field(init=False)
+    runtime_effect_origins: RuntimeEffectOriginStore = field(init=False)
+    configuration_preparation: ConfigurationPreparationStore = field(init=False)
+    configuration_completions: ConfigurationCompletionStore = field(init=False)
+    configuration_acceptance: ConfigurationAcceptanceStore = field(init=False)
+    health_effect_preparations: HealthEffectPreparationStore = field(init=False)
     effect_attempts: EffectAttemptStore = field(init=False)
     effect_outcomes: EffectAttemptOutcomeStore = field(init=False)
     failed_run_compensations: FailedRunCompensationStore = field(init=False)
@@ -110,9 +141,23 @@ class PostgresStoreBundle:
         init=False
     )
     delegation_signing_keys: DelegationSigningKeyStore = field(init=False)
+    delegation_key_generation_attempts: DelegationKeyGenerationAttemptStore = field(init=False)
+    secret_material_provision_attempts: SecretMaterialProvisionAttemptStore = field(init=False)
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
+    provider_policy_commands: ProviderPolicyCommandStore = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "provider_policy_commands", ProviderPolicyCommandStore(self.connection))
+        object.__setattr__(self, "ingress_invocations", IngressInvocationStore(self.connection))
+        object.__setattr__(self, "runtime_effect_origins", RuntimeEffectOriginStore(self.connection))
+        object.__setattr__(self, "workspace_permissions", WorkspacePermissionStore(self.connection))
+        object.__setattr__(self, "managed_runtime_assignments", ManagedRuntimeAssignmentStore(self.connection))
+        object.__setattr__(self, "secret_material_provision_attempts", SecretMaterialProvisionAttemptStore(self.connection))
+        object.__setattr__(self, "delegation_key_generation_attempts", DelegationKeyGenerationAttemptStore(self.connection))
+        object.__setattr__(self, "configuration_preparation", ConfigurationPreparationStore(self.connection))
+        object.__setattr__(self, "configuration_completions", ConfigurationCompletionStore(self.connection))
+        object.__setattr__(self, "configuration_acceptance", ConfigurationAcceptanceStore(self.connection))
+        object.__setattr__(self, "health_effect_preparations", HealthEffectPreparationStore(self.connection))
         object.__setattr__(self, "desired_topology_drafts", PostgresDesiredTopologyDraftStore(self.connection))
         object.__setattr__(self, "saved_preparation_sources", PostgresSavedPreparationSourceStore(self.connection))
         object.__setattr__(self, "revision_history", PostgresRevisionHistoryStore(self.connection))

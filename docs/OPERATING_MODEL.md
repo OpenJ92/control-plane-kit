@@ -25,6 +25,20 @@ The issue controls scope. A source dry run should establish what already exists,
 the exact missing behavior, the owner, the source ceiling, and the validation
 boundary before implementation grows.
 
+Follow the source-reading requirement in `AGENTS.md`: after governing-test
+inspection, trace the selected entrypoint and imports through values,
+transformations, authority/effects, and result/history before designing a change.
+Record a few source anchors and dependency versions in the existing issue or PR.
+Keep current and proposed paths separate, identify the smallest missing connection,
+and distinguish selected code from merged, published, or live evidence. This is
+the existing dry run, not an additional gate or permission to run effects.
+
+Apply the source-traversal cadence in `AGENTS.md`: trace at parent-to-child
+issue design, reuse and confirm the relevant trace at child implementation
+planning, and reread affected paths when code or evidence changes. An unchanged
+trace is not repeated for routine updates or handoffs. Independent review still
+checks changed code and relevant boundaries without duplicating the whole tour.
+
 Use focused target-red evidence when the issue requires migration/parity proof
 or when it is necessary to distinguish genuinely missing behavior from broken
 collection or apparatus. It is not mandatory ceremony for every change.
@@ -60,6 +74,20 @@ branch and the roadmap PR targets `develop`. Do not infer this topology from a
 roadmap label or create a draft roadmap PR automatically.
 
 ## Proportional Tests And Review
+
+Adjacent Core/Operations issues normally share one feature branch and PR, with
+separate ordered commits. Record batch membership, dependency order, integration
+target and acceptance boundary. Keep each issue's source/test design and independent
+review; dependent work may use preceding reviewed commits before an intermediate
+merge. Split at meaningful architecture, ownership, review or mandatory milestone
+boundaries. Cross-repository work retains separate owning PRs and gates.
+
+Run local tests throughout implementation at the useful scope, including broader
+checks when warranted. Consolidate slow full GitHub Operations CI into one final
+batch run rather than one per issue. Preserve other required package, integration,
+parity and live gates at their owning boundaries. Failures, material changes or
+unresolved findings justify remote reruns. Link every issue and close it only after
+its criteria and the combined acceptance/merge pass; focused evidence is not full acceptance.
 
 Start with existing ownership-local behavioral tests. Add the smallest test
 that would catch the concrete regression or expose the missing public behavior.

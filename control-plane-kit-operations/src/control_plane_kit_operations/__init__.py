@@ -4,6 +4,43 @@ from __future__ import annotations
 
 from control_plane_kit_core import DeploymentProgramStage
 
+from .effect_permissions import (
+    CurrentEffectDecision, CurrentWorkspaceEffectPolicy, EffectCommandContext,
+    EffectPermissionDenied, ExecutionCommandReference,
+)
+from .runtime_effect_origins import RuntimeEffectOriginRecord
+from .execution_invocations import (
+    ExecutionInvocationRecord, ExecutionInvocationKind, ExecutionInvocationDisposition,
+    ExecutionInvocationOutcome, ExecutionInvocationDecision, ExecutionInvocationControlError,
+    ExecutionInvocationDenied, ExecutionInvocationExisting, ExecutionInvocationPlanned,
+    ExecutionInvocationConflict, ExecutionInvocationCursor, ExecutionInvocationPage,
+)
+from .execution_invocation_service import ExecutionInvocationService, BoundExecutionInvocations
+from .ingress_invocation_service import IngressInvocationService
+
+from .managed_runtime_assignments import (
+    ManagedRuntimeCapability, ManagedRuntimeCapabilityPolicy, GrantManagedRuntimeAccess,
+    RevokeManagedRuntimeAccess, ManagedRuntimeAssignment, ManagedRuntimeAssignmentStatus,
+    ManagedRuntimeAssignmentReceipt, ManagedRuntimeAssignmentResult, ManagedRuntimeAssignmentError,
+    ManagedRuntimeAssignmentNotFound, ManagedRuntimeAssignmentConflict,
+    ManagedRuntimeAssignmentCommandService, ManagedRuntimeAssignmentReadService,
+    ManagedRuntimeAssignmentPage, ManagedRuntimeAssignmentListCursor, ManagedRuntimeAssignmentHistoryCursor,
+    ManagedRuntimeSelection, ManagedRuntimeSelectionService, select_managed_runtime_assignment,
+)
+from .workspace_permissions import (
+    WorkspaceAdministrationContext, WorkspaceAdministrationPolicy,
+    WorkspaceAdministrationReceipt, WorkspaceAdministrationResult,
+    GrantWorkspacePermissions, RevokeWorkspacePermissions,
+    WorkspacePermissionRecord, WorkspacePermissionReceipt, WorkspacePermissionResult,
+    WorkspacePermissionInitializationReceipt, WorkspacePermissionInitializationResult,
+    WorkspacePermissionUpgradeReceipt,
+    WorkspacePermissionCommandService, WorkspaceContextResolver, DurablePrincipalAuthorizer,
+    WorkspacePermissionReadService, WorkspacePermissionPage,
+    WorkspacePermissionListCursor, WorkspacePermissionHistoryCursor,
+    WorkspacePermissionError, WorkspacePermissionDenied, WorkspacePermissionConflict,
+    WorkspacePermissionNotFound,
+)
+
 from .approvals import (
     ApprovalAuthorizationDenied,
     ApprovalCommandService,
@@ -47,6 +84,10 @@ from .coordinator import (
     ActivityRealizationContext,
     CoordinatorStatus,
     ExecuteActivityRun,
+    ExecuteManagedActivityRun,
+    ReobserveConnectorConnection,
+    ManagedHealthEffectPort,
+    ManagedHealthAdapterRegistration,
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
@@ -157,14 +198,17 @@ from .cpk_server import (
     CpkServerApplicationError,
     CpkServerApplicationService,
     CpkServerApprovalService,
+    CpkServerAuthorizationService,
     CpkServerExecutionService,
     CpkServerGatewayProbeService,
     CpkServerLifecycleService,
     CpkServerOperationsApplication,
     CpkServerPlanningService,
+    CpkServerProviderPolicyAdministrationService,
     CpkServerReadService,
     CpkServerRouteRequest,
     CpkServerUnsupportedService,
+    CpkServerWorkspaceAdministrationService,
     cpk_server_services,
 )
 from .gateway_probes import (
@@ -355,6 +399,7 @@ from .ingress_realization import (
     IngressAllocationResult,
     IngressProviderInterpreter,
     IngressRealizationAdapter,
+    IngressProviderRegistration,
 )
 from .graph_authoring import (
     GraphAuthoringError,
@@ -443,10 +488,14 @@ from .runtime_dispatcher_bootstrap import (
     RuntimeDispatcherBootstrapConfiguration,
     RuntimeDispatcherBootstrapError,
 )
-from .runtime_effects import runtime_effect_request_for_context
+from .runtime_effects import runtime_effect_request_for_context, OperationalSecretUse
+from .runtime_adapter_registration import RuntimeAdapterRegistration
 from .secret_providers import (
     AuthorizeSecretUse,
     AuthorizedSecretUse,
+    AuthorizeSecretVersionUse,
+    AuthorizedSecretVersionUse,
+    secret_version_use_correlation_for,
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
     RegisteredSecretProvider,
@@ -511,6 +560,11 @@ from .effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     EffectOutcomeProfile,
     ExecutionEffectOutcome,
+    NativeConnectionEffectOutcome,
+    NativeConnectionObservation,
+    NativeConnectionRefused,
+    NativeConnectionReadFailure,
+    NativeConnectionOutcome,
     ObservedEffectOutcome,
     effect_outcome_failure,
     effect_outcome_observation_records,
@@ -528,6 +582,28 @@ from .effect_attempt_start import (
     StartEffectAttempt,
 )
 from .effect_attempt_start_interpreter import EffectAttemptStartService
+from .health_effect_attempt_start import (
+    HealthEffectAttemptStartResult,
+    StartHealthEffectAttempt,
+)
+from .health_signing_authority import (
+    GatewayNodeHealthReadTransitSigningAuthority,
+    HealthSigningAuthorityError,
+    HealthSigningAuthorityPair,
+    HealthSigningAuthorityReloadService,
+    HealthSigningAuthorityUnavailable,
+    ReloadHealthSigningAuthority,
+    WorkloadNodeHealthReadSigningAuthority,
+)
+from .health_receiver_trust import (
+    GatewayHealthReceiverTrust,
+    HealthReceiverDecoder,
+    HealthReceiverDecoderBinding,
+    HealthReceiverDecoders,
+    HealthReceiverSelection,
+    HealthReceiverTrustError,
+    WorkloadHealthReceiverTrust,
+)
 from .effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -536,7 +612,9 @@ from .effect_attempt_fold import (
     EffectAttemptFoldResult,
     ExistingFold,
     FoldEffectAttempt,
+    FoldNativeConnectionObservation,
     GuardedObservedEffectFold,
+    GuardedHealthEffectFold,
     NewlyFolded,
 )
 from .effect_attempt_fold_interpreter import EffectAttemptFoldService
@@ -593,6 +671,14 @@ from .read_pages import (
     read_cursor_from_mapping,
 )
 from .read_services import (
+    ActivityRecoveryQuery,
+    ActivityRecoveryProposal,
+    ActivityRecoveryError,
+    ActivityRecoveryReadService,
+    ReceiverAuthoringContext,
+    ReceiverAuthoringContextError,
+    ReceiverAuthoringContextQuery,
+    ReceiverAuthoringContextReadService,
     ControlSurfaceReadModel,
     FocusedDetailReadModel,
     GraphPointerReadModel,
@@ -629,6 +715,33 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "RuntimeEffectOriginRecord",
+    "ExecutionInvocationService", "BoundExecutionInvocations",
+    "IngressInvocationService",
+    "ExecutionInvocationRecord", "ExecutionInvocationKind", "ExecutionInvocationDisposition",
+    "ExecutionInvocationOutcome", "ExecutionInvocationDecision", "ExecutionInvocationControlError",
+    "ExecutionInvocationDenied", "ExecutionInvocationExisting", "ExecutionInvocationPlanned",
+    "ExecutionInvocationConflict", "ExecutionInvocationCursor", "ExecutionInvocationPage",
+    "CurrentEffectDecision", "CurrentWorkspaceEffectPolicy", "EffectCommandContext",
+    "EffectPermissionDenied", "ExecutionCommandReference",
+    "ManagedRuntimeCapability", "ManagedRuntimeCapabilityPolicy", "GrantManagedRuntimeAccess",
+    "RevokeManagedRuntimeAccess", "ManagedRuntimeAssignment", "ManagedRuntimeAssignmentStatus",
+    "ManagedRuntimeAssignmentReceipt", "ManagedRuntimeAssignmentResult", "ManagedRuntimeAssignmentError",
+    "ManagedRuntimeAssignmentNotFound", "ManagedRuntimeAssignmentConflict",
+    "ManagedRuntimeAssignmentCommandService", "ManagedRuntimeAssignmentReadService",
+    "ManagedRuntimeAssignmentPage", "ManagedRuntimeAssignmentListCursor", "ManagedRuntimeAssignmentHistoryCursor",
+    "ManagedRuntimeSelection", "ManagedRuntimeSelectionService", "select_managed_runtime_assignment",
+    "WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy",
+    "WorkspaceAdministrationReceipt", "WorkspaceAdministrationResult",
+    "GrantWorkspacePermissions", "RevokeWorkspacePermissions",
+    "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult",
+    "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult",
+    "WorkspacePermissionUpgradeReceipt",
+    "WorkspacePermissionCommandService", "WorkspaceContextResolver", "DurablePrincipalAuthorizer",
+    "WorkspacePermissionReadService", "WorkspacePermissionPage",
+    "WorkspacePermissionListCursor", "WorkspacePermissionHistoryCursor",
+    "WorkspacePermissionError", "WorkspacePermissionDenied", "WorkspacePermissionConflict",
+    "WorkspacePermissionNotFound",
     "BeginFailedRunCompensation",
     "FailedRunCompensationCommandService",
     "FailedRunCompensationConflict",
@@ -763,6 +876,11 @@ __all__ = [
     "ExistingAttempt",
     "ExistingFold",
     "ExecutionEffectOutcome",
+    "NativeConnectionEffectOutcome",
+    "NativeConnectionObservation",
+    "NativeConnectionRefused",
+    "NativeConnectionReadFailure",
+    "NativeConnectionOutcome",
     "ExecutionLeaseFence",
     "ExecutionLeaseRecoveryCommand",
     "ExecutionLeaseRecoveryCommandService",
@@ -889,7 +1007,12 @@ __all__ = [
     "CpkServerReadService",
     "CpkServerRouteRequest",
     "CpkServerUnsupportedService",
+    "CpkServerWorkspaceAdministrationService",
     "ExecuteActivityRun",
+    "ExecuteManagedActivityRun",
+    "ReobserveConnectorConnection",
+    "ManagedHealthEffectPort",
+    "ManagedHealthAdapterRegistration",
     "ExecutionCoordinator",
     "ExecutionCoordinatorConflict",
     "ExecutionCoordinatorDenied",
@@ -976,6 +1099,7 @@ __all__ = [
     "IngressAllocationResult",
     "IngressProviderInterpreter",
     "IngressRealizationAdapter",
+    "IngressProviderRegistration",
     "InvalidExecutionLeaseFence",
     "ImportProductDescriptorCommand",
     "InlineDescriptorSource",
@@ -1039,6 +1163,14 @@ __all__ = [
     "RuntimeAuthorityAuthorizationDenied",
     "RecordOperationAction",
     "ReadModelError",
+    "ActivityRecoveryQuery",
+    "ActivityRecoveryProposal",
+    "ActivityRecoveryError",
+    "ActivityRecoveryReadService",
+    "ReceiverAuthoringContext",
+    "ReceiverAuthoringContextError",
+    "ReceiverAuthoringContextQuery",
+    "ReceiverAuthoringContextReadService",
     "RetryIdentity",
     "RetryFailedActivityRun",
     "RequestApproval",
@@ -1065,6 +1197,11 @@ __all__ = [
     "RuntimeDispatcherBootstrapConfiguration",
     "RuntimeDispatcherBootstrapError",
     "AuthorizeSecretUse",
+    "AuthorizeSecretVersionUse",
+    "AuthorizedSecretVersionUse",
+    "secret_version_use_correlation_for",
+    "OperationalSecretUse",
+    "RuntimeAdapterRegistration",
     "AuthorizedSecretUse",
     "RegisterSecretProviderCommand",
     "RegisterSecretReferenceCommand",
@@ -1107,8 +1244,26 @@ __all__ = [
     "StartOperationSession",
     "StartActivityRun",
     "StartEffectAttempt",
+    "StartHealthEffectAttempt",
+    "HealthEffectAttemptStartResult",
+    "GatewayNodeHealthReadTransitSigningAuthority",
+    "HealthSigningAuthorityError",
+    "HealthSigningAuthorityPair",
+    "HealthSigningAuthorityReloadService",
+    "HealthSigningAuthorityUnavailable",
+    "ReloadHealthSigningAuthority",
+    "WorkloadNodeHealthReadSigningAuthority",
+    "GatewayHealthReceiverTrust",
+    "HealthReceiverDecoder",
+    "HealthReceiverDecoderBinding",
+    "HealthReceiverDecoders",
+    "HealthReceiverSelection",
+    "HealthReceiverTrustError",
+    "WorkloadHealthReceiverTrust",
     "FoldEffectAttempt",
+    "FoldNativeConnectionObservation",
     "GuardedObservedEffectFold",
+    "GuardedHealthEffectFold",
     "TakeOverExpiredExecutionClaim",
     "StaleDesiredGraph",
     "WorkspaceRecord",
@@ -1125,4 +1280,50 @@ __all__ = [
     "project_observation",
     "cpk_server_services",
     "product_references_in_graph",
+]
+
+from control_plane_kit_operations.provider_policy_commands import (
+    GrantProviderPolicy,
+    ProviderPolicyAdmission,
+    ProviderPolicyAdministrationDenied,
+    ProviderPolicyAdministrationPolicy,
+    ProviderPolicyBinding,
+    ProviderPolicyCommandConflict,
+    ProviderPolicyCommandError,
+    ProviderPolicyCommandNotFound,
+    ProviderPolicyCommandRecord,
+    ProviderPolicyCommandService,
+    ProviderPolicyCommandState,
+    ProviderPolicyCommandUnavailable,
+    ProviderPolicyInvocationContext,
+    ProviderPolicyObservationSource,
+    ProviderPolicyOutcomeObservation,
+    ReconcileProviderPolicy,
+    RevokeProviderPolicy,
+)
+from control_plane_kit_operations.provider_policy_reads import (
+    ProviderPolicyCurrentReadService,
+)
+
+__all__ += [
+    "GrantProviderPolicy",
+    "ProviderPolicyAdmission",
+    "ProviderPolicyAdministrationDenied",
+    "ProviderPolicyAdministrationPolicy",
+    "ProviderPolicyBinding",
+    "ProviderPolicyCommandConflict",
+    "ProviderPolicyCommandError",
+    "ProviderPolicyCommandNotFound",
+    "ProviderPolicyCommandRecord",
+    "ProviderPolicyCommandService",
+    "ProviderPolicyCommandState",
+    "ProviderPolicyCommandUnavailable",
+    "ProviderPolicyCurrentReadService",
+    "ProviderPolicyInvocationContext",
+    "ProviderPolicyObservationSource",
+    "ProviderPolicyOutcomeObservation",
+    "ReconcileProviderPolicy",
+    "RevokeProviderPolicy",
+    "CpkServerAuthorizationService",
+    "CpkServerProviderPolicyAdministrationService",
 ]

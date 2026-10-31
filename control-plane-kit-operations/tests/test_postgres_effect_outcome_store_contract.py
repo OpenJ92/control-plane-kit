@@ -356,11 +356,15 @@ class PostgresEffectOutcomeStoreContractTests(
                 "tests/test_postgres_effect_outcome_store_contract.py",
                 "tests/test_postgres_effect_outcome_store.py",
                 "tests/test_postgres_effect_outcome_schema.py",
+                "tests/test_postgres_native_connection_fold.py",
+                "tests/test_postgres_configuration_acceptance_membership.py",
+                "tests/test_postgres_secret_installation_admission.py",
             ),
         )
         self.assertEqual(
             tuple(row["internal_dependencies"]),
             (
+                "control_plane_kit_operations.postgres.activity_history",
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.probe_intents",
                 "control_plane_kit_core.runtime_effect_observation",
@@ -372,6 +376,8 @@ class PostgresEffectOutcomeStoreContractTests(
                 "control_plane_kit_operations.postgres.observed_state",
                 "control_plane_kit_operations.postgres.schema",
                 "control_plane_kit_operations.records",
+                "control_plane_kit_operations.runtime_management_targets",
+                "control_plane_kit_operations.postgres.configuration_evidence",
             ),
         )
         self.assertNotIn("dependencies", row)

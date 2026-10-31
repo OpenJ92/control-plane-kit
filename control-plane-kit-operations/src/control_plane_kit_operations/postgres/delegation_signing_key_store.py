@@ -238,7 +238,15 @@ class DelegationSigningKeyStore:
         workspace_id: str,
         purpose: DelegationKeyPurpose,
         issuer: str,
+        *,
+        limit: int | None = None,
     ) -> tuple[RegisteredDelegationSigningKey, ...]:
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 100):
+            raise ValueError("verification limit must be between 1 and 100")
+        limit_clause = "" if limit is None else "LIMIT %s"
+        parameters = (workspace_id, purpose.value, issuer)
+        if limit is not None:
+            parameters += (limit,)
         rows = self._connection.execute(
             f"""
             {_SELECT}
@@ -247,8 +255,9 @@ class DelegationSigningKeyStore:
               AND issuer = %s
               AND status IN ('active', 'verify-only')
             ORDER BY key_id
+            {limit_clause}
             """,
-            (workspace_id, purpose.value, issuer),
+            parameters,
         ).fetchall()
         return tuple(_row(row) for row in rows)
 

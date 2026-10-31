@@ -204,6 +204,15 @@ EXACT_START_DEPENDENCIES = {
 }
 
 EXACT_INTERPRETER_DEPENDENCIES = {
+    "control_plane_kit_operations.execution_invocations",
+    "control_plane_kit_operations.prepared_runtime_invocations",
+    "control_plane_kit_operations.runtime_authorities",
+    "control_plane_kit_operations.effect_run_prefix",
+    "control_plane_kit_operations.managed_effect_plan",
+    "control_plane_kit_operations.managed_runtime_assignments",
+    "control_plane_kit_operations.effect_permissions",
+    "control_plane_kit_operations._configuration_preparation",
+    "control_plane_kit_core.runtime_effects",
     "control_plane_kit_core.operations",
     "control_plane_kit_core.operations.lifecycle",
     "control_plane_kit_core.planning",
@@ -214,6 +223,10 @@ EXACT_INTERPRETER_DEPENDENCIES = {
     "control_plane_kit_operations.effect_attempts",
     "control_plane_kit_operations.records",
     "control_plane_kit_operations.workflows",
+    "control_plane_kit_operations.health_effect_attempt_start",
+    "control_plane_kit_operations._health_effect_attempt_start",
+    "control_plane_kit_operations.health_receiver_trust",
+    "control_plane_kit_operations.runtime_management_targets",
 }
 
 
@@ -255,11 +268,11 @@ class EffectAttemptStartInterpreterContractTests(
         signature = inspect.signature(EffectAttemptStartService)
         self.assertEqual(
             tuple(signature.parameters),
-            ("unit_of_work_factory", "id_factory"),
+            ("unit_of_work_factory", "id_factory", "health_receiver_decoders", "permission_policy"),
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptStartService.execute).parameters),
-            ("self", "command"),
+            ("self", "command", "command_context", "managed_target"),
         )
 
     def test_scope_rejection_is_categorical_and_precedes_unit_of_work(self) -> None:

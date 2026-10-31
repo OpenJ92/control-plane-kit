@@ -366,7 +366,7 @@ class EffectAttemptReconciliationContractTests(
         self.assertIs(RuntimeEffectObserver._is_protocol, True)
         self.assertEqual(
             tuple(inspect.signature(RuntimeEffectObserver.observe).parameters),
-            ("self", "request", "authority"),
+            ("self", "request", "authority", "invocations"),
         )
         hints = typing.get_type_hints(RuntimeEffectObserver.observe)
         self.assertIs(hints["request"], RuntimeEffectObservationRequest)
@@ -375,6 +375,7 @@ class EffectAttemptReconciliationContractTests(
             RegisteredRuntimeAuthority | None,
         )
         self.assertEqual(hints["return"], RuntimeEffectObservationResult)
+        self.assertEqual(hints["invocations"], object | None)
 
         self.assertIs(
             getattr(operations_root, "EffectAttemptReconciliationService", None),
@@ -386,7 +387,7 @@ class EffectAttemptReconciliationContractTests(
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptReconciliationService).parameters),
-            ("unit_of_work_factory", "observer", "fold_service"),
+            ("unit_of_work_factory", "observer", "fold_service", "permission_policy", "invocation_service"),
         )
         self.assertEqual(
             tuple(
@@ -394,8 +395,15 @@ class EffectAttemptReconciliationContractTests(
                     EffectAttemptReconciliationService.execute
                 ).parameters
             ),
-            ("self", "command"),
+            ("self", "command", "command_context"),
         )
+        for callable_, names in ((RuntimeEffectObserver.observe, ("invocations",)),
+                (EffectAttemptReconciliationService, ("permission_policy", "invocation_service")),
+                (EffectAttemptReconciliationService.execute, ("command_context",))):
+            for name in names:
+                parameter = inspect.signature(callable_).parameters[name]
+                self.assertIs(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+                self.assertIsNone(parameter.default)
         service_hints = typing.get_type_hints(
             EffectAttemptReconciliationService.execute
         )
@@ -540,8 +548,8 @@ class EffectAttemptReconciliationContractTests(
         self.assertEqual(
             {str(error) for error in errors},
             {
-                "realization intent must be step_started or "
-                "step_compensation_started"
+                "realization intent must start an effect, compensation, "
+                "or native connection reobservation"
             },
         )
         for error in errors:
@@ -571,8 +579,8 @@ class EffectAttemptReconciliationContractTests(
                     dataclasses.replace(base, intent_event=event)
                 self.assertEqual(
                     str(caught.exception),
-                    "realization intent must be step_started or "
-                    "step_compensation_started",
+                    "realization intent must start an effect, compensation, "
+                    "or native connection reobservation",
                 )
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
@@ -619,6 +627,7 @@ class EffectAttemptReconciliationContractTests(
             set(language["internal_dependencies"]),
             {
                 "control_plane_kit_core.operations",
+                "control_plane_kit_core.operations.lifecycle",
                 "control_plane_kit_core.policies",
                 "control_plane_kit_core.runtime_effect_observation",
                 "control_plane_kit_operations.execution_leases",
@@ -631,26 +640,34 @@ class EffectAttemptReconciliationContractTests(
             set(interpreter["internal_dependencies"]),
             {
                 "control_plane_kit_core.operations",
-                "control_plane_kit_core.operations.lifecycle",
                 "control_plane_kit_core.policies",
                 "control_plane_kit_core.runtime_authority",
                 "control_plane_kit_core.runtime_effect_observation",
-                "control_plane_kit_core.secrets",
+                "control_plane_kit_core.secret_version_grants",
+                "control_plane_kit_core.secret_installation",
+                "control_plane_kit_operations._configuration_preparation",
                 "control_plane_kit_operations.effect_attempt_fold",
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 LANGUAGE_MODULE,
                 "control_plane_kit_operations.effect_attempts",
+                "control_plane_kit_operations.effect_permissions",
+                "control_plane_kit_operations.execution_invocation_service",
+                "control_plane_kit_operations.execution_invocations",
+                "control_plane_kit_operations.prepared_runtime_invocations",
                 "control_plane_kit_operations.effect_outcome_evidence",
+                "control_plane_kit_operations.postgres.configuration_evidence",
                 "control_plane_kit_operations.records",
                 "control_plane_kit_operations.runtime_authorities",
                 "control_plane_kit_operations.runtime_effects",
+                "control_plane_kit_operations.runtime_adapter_registration",
                 "control_plane_kit_operations.secret_providers",
                 "control_plane_kit_operations.workflows",
             },
         )
         self.assertEqual(
             set(language["protecting_tests"]),
-            {"tests/test_effect_attempt_reconciliation_contract.py"},
+            {"tests/test_effect_attempt_reconciliation_contract.py",
+                "tests/test_postgres_runtime_reconciliation_invocations.py"},
         )
         self.assertEqual(
             set(interpreter["protecting_tests"]),
@@ -661,6 +678,8 @@ class EffectAttemptReconciliationContractTests(
                 "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
                 "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
                 "tests/test_postgres_effect_attempt_reconciliation_rollback.py",
+                "tests/test_postgres_secret_installation_admission.py",
+                "tests/test_postgres_runtime_reconciliation_invocations.py",
             },
         )
         self.assertEqual(

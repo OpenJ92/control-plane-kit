@@ -30,9 +30,13 @@ jobs:
         run: ./control-plane-kit-core/test.sh
 
   operations:
-    name: control-plane-kit-operations
+    name: Operations shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
 
     steps:
       - name: Check out repository
@@ -49,4 +53,42 @@ jobs:
       - name: Run authoritative package gate
         env:
           CPK_ARCHITECTURE_TESTING_ROOT: ${{ github.workspace }}/architecture-testing
-        run: ./control-plane-kit-operations/test.sh
+        run: ./control-plane-kit-operations/test.sh --shard ${{ matrix.shard }} 4 "${{ github.workspace }}/operations-test-reports"
+
+      - name: Upload shard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operations-shard-${{ matrix.shard }}
+          path: operations-test-reports/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+
+  operations-complete:
+    name: control-plane-kit-operations
+    if: ${{ always() }}
+    needs: operations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download all shard evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: operations-shard-*
+          path: operations-test-reports
+          merge-multiple: true
+
+      - name: Require successful gates and exhaustive coverage
+        env:
+          OPERATIONS_JOBS_RESULT: ${{ needs.operations.result }}
+        run: |
+          test "$OPERATIONS_JOBS_RESULT" = success
+          docker run --rm \
+            -v "$PWD/test_support:/test-support:ro" \
+            -v "$PWD/operations-test-reports:/reports:ro" \
+            python:3.14-slim \
+            python /test-support/operations_suite.py aggregate \
+              --reports /reports --count 4 --source "$(git rev-parse HEAD)" \
+              --architecture 7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef

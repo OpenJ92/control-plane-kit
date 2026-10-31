@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
 import json
 import re
 from typing import TypeAlias
+
+import rfc8785
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 
@@ -28,9 +30,15 @@ class ActivityPlanApprovalSubject:
     """Approval authority over one immutable persisted activity plan."""
 
     plan_id: str
+    proposal_fingerprint: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _identifier(self.plan_id, "plan_id")
+        if self.proposal_fingerprint is not None and (
+            type(self.proposal_fingerprint) is not str
+            or not _DIGEST.fullmatch(self.proposal_fingerprint)
+        ):
+            raise ValueError("activity-plan approval subject is malformed")
 
     @property
     def kind(self) -> ApprovalSubjectKind:
@@ -42,9 +50,17 @@ class ActivityPlanApprovalSubject:
 
     @property
     def review_digest(self) -> str:
+        self.__post_init__()
+        if self.proposal_fingerprint is not None:
+            return sha256(b"control-plane-kit.configuration-cleanup-approval.v1\x00"
+                          + rfc8785.dumps(self.descriptor())).hexdigest()
         return sha256(f"activity-plan:{self.plan_id}".encode("utf-8")).hexdigest()
 
     def descriptor(self) -> dict[str, object]:
+        self.__post_init__()
+        if self.proposal_fingerprint is not None:
+            return {"kind": self.kind.value, "profile": "configuration-cleanup-approval.v1",
+                    "plan_id": self.plan_id, "proposal_fingerprint": self.proposal_fingerprint}
         return {"kind": self.kind.value, "plan_id": self.plan_id}
 
 
@@ -126,6 +142,12 @@ def approval_subject_from_descriptor(value: object) -> ApprovalSubject:
         raise ValueError("approval subject descriptor must be an object")
     kind = value.get("kind")
     if kind == ApprovalSubjectKind.ACTIVITY_PLAN.value:
+        if set(value) == {"kind", "profile", "plan_id", "proposal_fingerprint"}:
+            if (type(value["profile"]) is not str or value["profile"] != "configuration-cleanup-approval.v1"
+                    or type(value["proposal_fingerprint"]) is not str):
+                raise ValueError("activity-plan approval subject is malformed")
+            return ActivityPlanApprovalSubject(_text(value, "plan_id"),
+                                               proposal_fingerprint=value["proposal_fingerprint"])
         if set(value) != {"kind", "plan_id"}:
             raise ValueError("activity-plan approval subject is malformed")
         return ActivityPlanApprovalSubject(_text(value, "plan_id"))

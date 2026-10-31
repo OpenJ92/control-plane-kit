@@ -52,12 +52,16 @@ class _OperationsHistoryReadProjection:
         execution_store: ExecutionStore | None = None,
         *,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+        run_event_scope=None,
+        ingress_summary=None,
     ) -> None:
         self._require_workspace = require_workspace
         self._graph_topology_store = graph_topology_store
         self._activity_history_store = activity_history_store
         self._execution_store = execution_store
         self._graph_codec = graph_codec
+        self._run_event_scope = run_event_scope
+        self._ingress_summary = ingress_summary
 
     def activity_sessions(
         self,
@@ -119,15 +123,20 @@ class _OperationsHistoryReadProjection:
         workspace_id = request.scope.workspace_id
         self._require_workspace(workspace_id)
         store = self._execution()
-        try:
-            run = store.get_run(request.scope.run_id)
-            execution_request = store.get_request(run.admission.request_id)
-        except KeyError:
-            raise ReadModelError("missing run in workspace") from None
-        identity = getattr(execution_request, "identity", None)
-        if getattr(identity, "workspace_id", None) != workspace_id:
-            raise ReadModelError("missing run in workspace")
-        return store.event_page(request).map(_event_descriptor)
+        if self._run_event_scope is not None:
+            self._run_event_scope(workspace_id, request.scope.run_id)
+        else:
+            try:
+                run = store.get_run(request.scope.run_id)
+                execution_request = store.get_request(run.admission.request_id)
+            except KeyError:
+                raise ReadModelError("missing run in workspace") from None
+            identity = getattr(execution_request, "identity", None)
+            if getattr(identity, "workspace_id", None) != workspace_id:
+                raise ReadModelError("missing run in workspace")
+
+        return store.event_page(request).map(lambda event: _event_descriptor(event,
+            ingress_summary=self._ingress_summary, workspace_id=workspace_id))
 
     def session_plans(
         self,
@@ -327,7 +336,7 @@ def _approval_descriptor(
 
 
 def _plan_summary_descriptor(plan: ActivityPlanRecord) -> dict[str, object]:
-    return {
+    descriptor = {
         "plan_id": plan.plan_id,
         "session_id": plan.session_id,
         "base_graph_id": plan.base_graph_id,
@@ -339,6 +348,9 @@ def _plan_summary_descriptor(plan: ActivityPlanRecord) -> dict[str, object]:
         "created_at": plan.created_at,
         "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),
     }
+    if plan.derivation_profile is not None:
+        descriptor["derivation_profile"] = plan.derivation_profile.value
+    return descriptor
 
 
 def _run_summary_descriptor(run: ActivityRunRecord) -> dict[str, object]:
@@ -356,7 +368,7 @@ def _run_summary_descriptor(run: ActivityRunRecord) -> dict[str, object]:
     }
 
 
-def _event_descriptor(event: ActivityEventRecord) -> dict[str, object]:
+def _event_descriptor(event: ActivityEventRecord, *, ingress_summary=None, workspace_id=None) -> dict[str, object]:
     descriptor = {
         "event_id": event.event_id,
         "run_id": event.run_id,
@@ -369,6 +381,10 @@ def _event_descriptor(event: ActivityEventRecord) -> dict[str, object]:
     }
     if event.recovery is not None:
         descriptor["recovery"] = event.recovery.descriptor()
+    if ingress_summary is not None:
+        summary = ingress_summary(workspace_id, event)
+        if summary is not None:
+            descriptor["ingress"] = summary
     return descriptor
 
 

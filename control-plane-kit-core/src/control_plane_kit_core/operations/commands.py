@@ -52,8 +52,11 @@ class OperatorCommandKind(StrEnum):
     REGISTER_SECRET_PROVIDER = "register-secret-provider"
     REVOKE_SECRET_PROVIDER = "revoke-secret-provider"
     REGISTER_SECRET_REFERENCE = "register-secret-reference"
+    PROVISION_SECRET_MATERIAL = "provision-secret-material"
     REVOKE_SECRET_REFERENCE = "revoke-secret-reference"
     REGISTER_DELEGATION_KEY = "register-delegation-key"
+    GENERATE_DELEGATION_KEY = "generate-delegation-key"
+    RECONCILE_DELEGATION_KEY_GENERATION = "reconcile-delegation-key-generation"
     ACTIVATE_DELEGATION_KEY = "activate-delegation-key"
     RETIRE_DELEGATION_KEY = "retire-delegation-key"
     REVOKE_DELEGATION_KEY = "revoke-delegation-key"
@@ -88,11 +91,15 @@ class CommandPayloadPolicy(StrEnum):
     INGRESS_AUTHORITY_REFERENCE = "ingress-authority-reference"
     SECRET_PROVIDER_REFERENCE = "secret-provider-reference"
     SECRET_REFERENCE = "secret-reference"
+    CONFIDENTIAL_EPHEMERAL = "confidential-ephemeral"
     DELEGATION_KEY_REFERENCE = "delegation-key-reference"
     GATEWAY_PROBE_REFERENCE = "gateway-probe-reference"
 
 
 _KIND_FAMILY = {
+    OperatorCommandKind.PROVISION_SECRET_MATERIAL: OperatorCommandFamily.SECRET_PROVIDER,
+    OperatorCommandKind.GENERATE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
+    OperatorCommandKind.RECONCILE_DELEGATION_KEY_GENERATION: OperatorCommandFamily.DELEGATION_KEY,
     OperatorCommandKind.CREATE_WORKSPACE: OperatorCommandFamily.WORKSPACE,
     OperatorCommandKind.IMPORT_PRODUCT_DESCRIPTOR: (
         OperatorCommandFamily.PRODUCT_REGISTRATION
@@ -433,6 +440,27 @@ class _CommandDefinition:
 
 
 _CANONICAL_COMMANDS = (
+    _CommandDefinition(
+        "secret-material.provision", OperatorCommandKind.PROVISION_SECRET_MATERIAL,
+        OperatorCommandFamily.SECRET_PROVIDER, DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.EXECUTION, "ProvisionSecretMaterialRequest",
+        "ProvisionedSecretMaterialReceipt", ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.CONFIDENTIAL_EPHEMERAL, requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "delegation-key.generate", OperatorCommandKind.GENERATE_DELEGATION_KEY,
+        OperatorCommandFamily.DELEGATION_KEY, DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.EXECUTION, "GenerateDelegationKeyRequest",
+        "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE, requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "delegation-key-generation.reconcile", OperatorCommandKind.RECONCILE_DELEGATION_KEY_GENERATION,
+        OperatorCommandFamily.DELEGATION_KEY, DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.EXECUTION, "ReconcileDelegationKeyGenerationRequest",
+        "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE, requires_open_session=False,
+    ),
     _CommandDefinition(
         "delegation-key.register",
         OperatorCommandKind.REGISTER_DELEGATION_KEY,

@@ -10,6 +10,7 @@ import control_plane_kit_operations.read_services as read_services
 
 
 _EXPECTED_MODULES = {
+    "activity_recovery",
     "__init__",
     "_redaction",
     "authority_secrets",
@@ -21,12 +22,22 @@ _EXPECTED_MODULES = {
     "observations",
     "operations_history",
     "operator_overview",
+    "product_directory",
     "protocols",
+    "receiver_authoring_context",
     "revision_history",
     "workspace_graph",
 }
 
 _PUBLIC_OWNERS = {
+    "ActivityRecoveryQuery": "activity_recovery",
+    "ActivityRecoveryProposal": "activity_recovery",
+    "ActivityRecoveryError": "activity_recovery",
+    "ActivityRecoveryReadService": "activity_recovery",
+    "ReceiverAuthoringContext": "receiver_authoring_context",
+    "ReceiverAuthoringContextError": "receiver_authoring_context",
+    "ReceiverAuthoringContextQuery": "receiver_authoring_context",
+    "ReceiverAuthoringContextReadService": "receiver_authoring_context",
     "ControlSurfaceReadModel": "workspace_graph",
     "FocusedDetailReadModel": "models",
     "GraphPointerReadModel": "workspace_graph",
@@ -40,6 +51,9 @@ _PUBLIC_OWNERS = {
 }
 
 _INTERNAL_PROTOCOLS = {
+    "ProvisionAttemptStore",
+    "GenerationAttemptStore",
+    "RegisteredProductStore",
     "ActivityHistoryStore",
     "DelegationSigningKeyStore",
     "ExecutionStore",
@@ -68,9 +82,12 @@ _EXPECTED_FOUNDATION_IMPORTS = {
         "control_plane_kit_core.runtime_authority",
         "control_plane_kit_core.secrets",
         "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.delegation_key_generation_attempts",
         "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.products",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.secret_providers",
+        "control_plane_kit_operations.secret_material_provision_attempts",
     },
 }
 
@@ -133,11 +150,13 @@ class ReadServicesPackageTests(unittest.TestCase):
                     f"control_plane_kit_operations.read_services.{name}"
                 )
                 for name in {
+                    "activity_recovery",
                     "errors",
                     "instance",
                     "models",
                     "observations",
                     "protocols",
+                    "receiver_authoring_context",
                     "workspace_graph",
                 }
             }

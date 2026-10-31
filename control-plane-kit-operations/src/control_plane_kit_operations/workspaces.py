@@ -3,15 +3,73 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from hashlib import sha256
+import json
 from typing import Any, Callable, Mapping
+
+import rfc8785
 
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
 from control_plane_kit_operations.workflows import IdempotencyKey
+from control_plane_kit_operations.workspace_permissions import (
+    WorkspaceAdministrationPolicy, WorkspaceAdministrationReceipt, WorkspaceAdministrationResult,
+    WorkspacePermissionDenied, WorkspacePermissionError, _key, _text,
+)
 
 
 class WorkspaceCommandError(RuntimeError):
     """Raised when workspace command data or state is invalid."""
+
+
+@dataclass(frozen=True, repr=False)
+class _WorkspaceInitialization:
+    workspace_id: str
+    profile: str
+    initial_graph_id: str
+    initial_projection_id: str
+    graph_descriptor_sha256: str
+    projection_digest: str
+    configuration_slot_count: int
+    created_by: str
+    creation_idempotency_key: str
+
+
+@dataclass(frozen=True, repr=False)
+class _PreparedWorkspaceCreation:
+    stores: object
+    lifecycle_guard: object
+    command: object
+    graph: GraphVersionRecord
+
+    def require(self, connection, workspace_id):
+        if (self.stores.connection is not connection
+                or type(self.command) is not CreateWorkspace
+                or type(self.graph) is not GraphVersionRecord
+                or self.command.workspace_id != workspace_id
+                or self.graph.workspace_id != workspace_id):
+            raise WorkspaceCommandError("workspace initialization requires original owner")
+        self.stores.graphs._require_receiver_lifecycle(self.lifecycle_guard, workspace_id)
+        expected = GraphVersionRecord.from_graph(graph_id=self.graph.graph_id,
+            workspace_id=workspace_id, version=1, graph=DeploymentGraph("empty"),
+            created_by=self.command.actor_id, created_at=self.graph.created_at,
+            metadata={"bootstrap": "empty-current-graph",
+                "idempotency_key": self.command.idempotency_key.value})
+        if self.graph != expected:
+            raise WorkspaceCommandError("workspace initialization graph is invalid")
+
+    def receipt(self, projection):
+        return _WorkspaceInitialization(self.command.workspace_id,
+            "workspace-initialization.v1", self.graph.graph_id, projection.projection_id,
+            sha256(rfc8785.dumps(self.graph.graph_descriptor)).hexdigest(),
+            projection.projection_digest, 0, self.command.actor_id,
+            self.command.idempotency_key.value)
+
+
+def _require_prepared_creation(prepared, connection, workspace_id):
+    if type(prepared) is not _PreparedWorkspaceCreation:
+        raise WorkspaceCommandError("workspace initialization requires original owner")
+    prepared.require(connection, workspace_id)
 
 
 @dataclass(frozen=True)
@@ -67,6 +125,28 @@ class CreateWorkspaceResult:
         }
 
 
+def _prepare_administration_command(context, *, workspace_id, name, idempotency_key, metadata=None):
+    """Pure existing intent preparation, shared with the application decoder."""
+    _text(workspace_id)
+    _text(name)
+    _key(idempotency_key)
+    metadata = {} if metadata is None else metadata
+    try:
+        intent = dict(installation_id=context.installation_id, actor=context.identity.descriptor(),
+                      workspace_id=workspace_id, name=name, idempotency_key=idempotency_key.value,
+                      metadata=dict(metadata))
+        encoded = rfc8785.dumps(intent)
+        if len(encoded) > 16384:
+            raise ValueError
+        fingerprint = sha256(encoded).hexdigest()
+        # Detach the initializer inputs from caller-retained mutable mappings.
+        intent = json.loads(encoded)
+    except (TypeError, ValueError, OverflowError):
+        raise WorkspacePermissionError("administrative workspace command is malformed") from None
+    return (CreateWorkspace(workspace_id, name, context.identity.subject_id, idempotency_key,
+                            intent["metadata"]), fingerprint)
+
+
 class WorkspaceCommandService:
     """Application service owning workspace creation transaction boundaries."""
 
@@ -76,57 +156,96 @@ class WorkspaceCommandService:
         *,
         clock: Callable[[], str],
         id_factory: Callable[[], str],
+        administration_policy: WorkspaceAdministrationPolicy | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
         self._id_factory = id_factory
+        self._administration_policy = administration_policy
+
+    def create_as_administrator(self, context, *, workspace_id, name, idempotency_key, metadata=None):
+        """Reuse initialization and retain full actor attribution in its transaction."""
+        if self._administration_policy is None:
+            raise WorkspacePermissionDenied("workspace administration is not configured")
+        self._administration_policy.require(context)
+        command, fingerprint = _prepare_administration_command(context, workspace_id=workspace_id,
+            name=name, idempotency_key=idempotency_key, metadata=metadata)
+        with self._unit_of_work_factory() as unit_of_work:
+            store = unit_of_work.stores.workspace_permissions
+            prior = store.lock_administration_command(context, idempotency_key, fingerprint)
+            if prior is not None:
+                unit_of_work.commit()
+                return WorkspaceAdministrationResult(prior, replayed=True)
+            with unit_of_work.stores.workspaces._initialization_evidence(workspace_id):
+                result = self._create(command, unit_of_work)
+                receipt = WorkspaceAdministrationReceipt(context.installation_id, context.identity,
+                    workspace_id, idempotency_key.value, not result.replayed,
+                    result.current_graph.graph_id, self._clock())
+                store.save_administration_receipt(receipt, fingerprint)
+                # _create requested the one deferred commit. Any later receipt
+                # failure still leaves this context by exception and rolls it back.
+                return WorkspaceAdministrationResult(receipt)
 
     def create(self, command: CreateWorkspace) -> CreateWorkspaceResult:
         if not isinstance(command, CreateWorkspace):
             raise WorkspaceCommandError("create requires CreateWorkspace")
         with self._unit_of_work_factory() as unit_of_work:
+            with unit_of_work.stores.workspaces._initialization_evidence(command.workspace_id):
+                return self._create(command, unit_of_work)
+
+    def _create(self, command: CreateWorkspace, unit_of_work: Any) -> CreateWorkspaceResult:
+        try:
+            existing = unit_of_work.stores.workspaces.get(command.workspace_id)
+        except KeyError:
+            existing = None
+        guard = None
+        if existing is None:
+            guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(command.workspace_id)
+            # A concurrent creator may have committed while L was held.
             try:
                 existing = unit_of_work.stores.workspaces.get(command.workspace_id)
             except KeyError:
                 existing = None
-            if existing is not None:
-                if existing.name != command.name:
-                    raise WorkspaceCommandError(
-                        "workspace id already exists with different name"
-                    )
-                if existing.current_graph_id is None:
-                    raise WorkspaceCommandError(
-                        "workspace exists without initial current graph"
-                    )
-                graph = unit_of_work.stores.graphs.get(existing.current_graph_id)
-                unit_of_work.commit()
-                return CreateWorkspaceResult(existing, graph, replayed=True)
-
-            current_graph = GraphVersionRecord.from_graph(
-                graph_id=self._id_factory(),
-                workspace_id=command.workspace_id,
-                version=1,
-                graph=DeploymentGraph("empty"),
-                created_by=command.actor_id,
-                created_at=self._clock(),
-                metadata={
-                    "bootstrap": "empty-current-graph",
-                    "idempotency_key": command.idempotency_key.value,
-                },
-            )
-            workspace = WorkspaceRecord(
-                workspace_id=command.workspace_id,
-                name=command.name,
-                metadata=command.metadata,
-            )
-            unit_of_work.stores.workspaces.create(workspace)
-            unit_of_work.stores.graphs.save(current_graph)
-            workspace = unit_of_work.stores.workspaces.set_current_graph(
-                command.workspace_id,
-                current_graph.graph_id,
-            )
+        if existing is not None:
+            if existing.name != command.name:
+                raise WorkspaceCommandError(
+                    "workspace id already exists with different name"
+                )
+            if existing.current_graph_id is None:
+                raise WorkspaceCommandError(
+                    "workspace exists without initial current graph"
+                )
+            unit_of_work.stores.workspaces._require_workspace_initialization(command.workspace_id)
+            graph = unit_of_work.stores.graphs.get(existing.current_graph_id)
             unit_of_work.commit()
-            return CreateWorkspaceResult(workspace, current_graph)
+            return CreateWorkspaceResult(existing, graph, replayed=True)
+
+        current_graph = GraphVersionRecord.from_graph(
+            graph_id=self._id_factory(),
+            workspace_id=command.workspace_id,
+            version=1,
+            graph=DeploymentGraph("empty"),
+            created_by=command.actor_id,
+            created_at=self._clock(),
+            metadata={
+                "bootstrap": "empty-current-graph",
+                "idempotency_key": command.idempotency_key.value,
+            },
+        )
+        workspace = WorkspaceRecord(
+            workspace_id=command.workspace_id,
+            name=command.name,
+            metadata=command.metadata,
+        )
+        prepared = _PreparedWorkspaceCreation(unit_of_work.stores, guard, command, current_graph)
+        unit_of_work.stores.workspaces._create_for_initialization(workspace, prepared)
+        unit_of_work.stores.graphs._save_workspace_initialization(current_graph, prepared)
+        workspace = unit_of_work.stores.workspaces._set_initial_current_graph(prepared)
+        projection = unit_of_work.stores.realized_graphs.get(workspace.current_realized_projection_id)
+        unit_of_work.stores.workspaces._insert_workspace_initialization(
+            prepared.receipt(projection), prepared)
+        unit_of_work.commit()
+        return CreateWorkspaceResult(workspace, current_graph)
 
 
 def _required_text(value: object, field: str) -> None:

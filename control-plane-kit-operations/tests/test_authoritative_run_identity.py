@@ -211,7 +211,7 @@ class _Trace:
         self.ids = list(ids)
         self.factory_error = factory_error
         self.factory_calls = 0
-        self.stores = SimpleNamespace(execution=self, activity_history=self)
+        self.stores = SimpleNamespace(execution=self, activity_history=self, graphs=self, workspaces=self)
 
     def __enter__(self):
         self.log.append("uow_enter")
@@ -253,15 +253,52 @@ class _Trace:
         self.log.append("get_session_for_update")
         return SimpleNamespace(session_id=session_id, status=OperationSessionStatus.OPEN)
 
+    # Fixed empty material supports only this identity/factory ordering double.
+    # It provides no receiver authorization or persistence evidence.
+    def lock_receiver_lifecycle(self, workspace_id):
+        self.log.append("lock_receiver_lifecycle")
+        return self
+
+    def get_session(self, session_id):
+        return SimpleNamespace(session_id=session_id, workspace_id="workspace-a",
+            status=OperationSessionStatus.OPEN)
+
+    def receiver_bindings(self, workspace_id, graph_id, projection_id):
+        return ()
+
+    def get_for_update(self, workspace_id):
+        return SimpleNamespace(workspace_id=workspace_id, current_graph_id="base",
+            current_realized_projection_id="base-projection", desired_graph_id="desired",
+            desired_realized_projection_id="desired-projection", desired_graph_revision=1)
+
+    def _receiver_execution_material(self, identity, guard):
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
+        plan = SimpleNamespace(base_graph_id="base", desired_graph_id="desired", desired_graph_revision=1)
+        projections = tuple(SimpleNamespace(source_authored_graph_id=key, projection_id=key + "-projection",
+            graph_descriptor=DEFAULT_GRAPH_CODEC.encode(DeploymentGraph(key))) for key in ("base", "desired"))
+        return (plan, *projections), SimpleNamespace(scopes=())
+
+    def get_approval_request(self, request_id):
+        from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
+        return SimpleNamespace(request_id=request_id, session_id="session-a",
+            required_scope=PolicyScope.EXECUTION_OPERATE, subject=ActivityPlanApprovalSubject("plan-a"))
+
+    def approval_decision_for_request(self, request_id):
+        from control_plane_kit_operations.records import ApprovalDecisionKind
+        return SimpleNamespace(request_id=request_id, decision_id="approval-decision-a",
+            decision=ApprovalDecisionKind.APPROVED, scope=PolicyScope.EXECUTION_OPERATE)
+
     def runs_for_request(self, request_id):
         self.log.append("runs_for_request")
         return self.runs
 
-    def claim_request(self, *args):
+    def _claim_request(self, *args):
         self.log.append("claim_request")
-        return _request(ExecutionRequestStatus.CLAIMED)
+        claimed = _request(ExecutionRequestStatus.CLAIMED)
+        self.requests[1] = claimed
+        return claimed
 
-    def add_run(self, record):
+    def _add_run(self, record):
         self.log.append("add_run")
         return record
 
@@ -466,7 +503,7 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
                     *canaries,
                 )
                 self.assertEqual(trace.factory_calls, 1)
-                self.assertEqual(trace.log[6:8], ["runs_for_request", "id_factory:1"])
+                self.assertEqual(trace.log[8:11], ["runs_for_request", "get_request", "id_factory:1"])
                 for mutation in (
                     "claim_request",
                     "add_run",
@@ -502,9 +539,12 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
                 "get_request",
                 "lock_action_idempotency",
                 "action_for_idempotency",
-                "get_session_for_update",
+                "lock_receiver_lifecycle",
+                "get_request_for_update",
                 "get_request",
+                "get_session_for_update",
                 "runs_for_request",
+                "get_request",
                 "id_factory:1",
                 "claim_request",
                 "add_run",
@@ -514,6 +554,7 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
                 "id_factory:3",
                 "next_action_ordinal",
                 "add_action",
+                "get_request",
                 "commit",
                 "uow_exit",
             ],

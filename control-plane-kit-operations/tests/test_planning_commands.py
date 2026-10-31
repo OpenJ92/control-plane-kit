@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import concurrent.futures
+from dataclasses import replace
+import hashlib
+import json
 import os
 import threading
 import unittest
@@ -24,6 +27,7 @@ from control_plane_kit_core.products import (
     instantiate_product,
 )
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from tests.test_runtime_effect_translation import _admitted_node_delivery
@@ -33,6 +37,7 @@ from control_plane_kit_operations.planning import (
     ActivityPlanningIdempotencyConflict,
     ActivityPlanningSessionConflict,
     DesiredGraphCommandService,
+    DesiredGraphCommandError,
     DesiredGraphIdempotencyConflict,
     DesiredGraphSessionConflict,
     RequestActivityPlan,
@@ -55,6 +60,7 @@ from control_plane_kit_operations.workflows import (
     CancelOperationSession,
     CloseOperationSession,
     IdempotencyKey,
+    InvalidOperationCommand,
     OperationCommandService,
     OperationSessionStateConflict,
     StartOperationSession,
@@ -272,6 +278,179 @@ class PlanningCommandTests(unittest.TestCase):
                 ),
                 ("start-operation-session", "set-desired-graph"),
             )
+
+    def proposed_command(self, identity="client-revision", **changes):
+        return SetDesiredGraph(**{
+            "session_id": "session-a", "workspace_id": "workspace-a",
+            "actor_id": "operator-a", "graph": self.product_graph(),
+            "expected_desired_graph_id": None,
+            "idempotency_key": IdempotencyKey("proposed"),
+            "proposed_graph_id": identity, **changes,
+        })
+
+    def graph_truth(self):
+        # Compare all durable owner rows, not just a count that could hide replacement.
+        return tuple(self.connection.execute(
+            f"SELECT to_jsonb(value) FROM {table} AS value ORDER BY {key}"
+        ).fetchall() for table, key in (
+            ("cpk_graph_versions", "graph_id"),
+            ("cpk_realized_graph_projections", "projection_id"),
+            ("cpk_workspaces", "workspace_id"),
+            ("cpk_operation_actions", "action_id"),
+        ))
+
+    def test_proposed_identity_preserves_complete_graph_and_replays_without_allocation(self):
+        command = self.proposed_command()
+        first = self.desired_service("action-proposed").execute(command)
+        self.assertEqual(first.graph_version_id, "client-revision")
+        self.assertEqual(first.action.action_id, "action-proposed")
+        with self.unit_of_work() as uow:
+            stored = uow.stores.graphs.get(first.graph_version_id)
+            self.assertEqual(stored.graph_descriptor, DEFAULT_GRAPH_CODEC.encode(command.graph))
+        before = self.graph_truth()
+        replay = self.desired_service().execute(command)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.action, first.action)
+        self.assertEqual(replay.graph_version_id, first.graph_version_id)
+        self.assertEqual(self.graph_truth(), before)
+        for changed in (
+            replace(command, proposed_graph_id="another-revision"),
+            replace(command, graph=self.empty_graph("different")),
+        ):
+            with self.assertRaises(DesiredGraphIdempotencyConflict):
+                self.desired_service().execute(changed)
+            self.assertEqual(self.graph_truth(), before)
+
+    def test_omitted_proposal_preserves_historical_graph_intent_fingerprint(self):
+        graph = self.product_graph()
+        historical = {
+            "command": "set-desired-graph", "session_id": "session-a",
+            "workspace_id": "workspace-a", "actor_id": "operator-a",
+            "expected_desired_graph_id": None,
+            "expected_desired_realized_projection_id": None,
+            "expected_desired_graph_revision": 0,
+            "graph": DEFAULT_GRAPH_CODEC.encode(graph),
+        }
+        expected = hashlib.sha256(json.dumps(historical, sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()
+        first = self.set_desired(graph=graph)
+        self.assertEqual(first.action.intent_fingerprint, expected)
+        self.assertEqual(self.set_desired(self.desired_service(), graph=graph).action, first.action)
+
+    def test_new_action_cannot_reuse_proposed_identity_even_for_equal_graph(self):
+        command = self.proposed_command()
+        first = self.desired_service("action-proposed").execute(command)
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+        repeated = replace(command, idempotency_key=IdempotencyKey("different-action"),
+            expected_desired_graph_id=first.graph_version_id,
+            expected_desired_realized_projection_id=workspace.desired_realized_projection_id,
+            expected_desired_graph_revision=workspace.desired_graph_revision)
+        before = self.graph_truth()
+        with self.assertRaises(DesiredGraphCommandError) as caught:
+            self.desired_service("unused-action").execute(repeated)
+        self.assertEqual(str(caught.exception), "graph identity is unavailable")
+        self.assertEqual(self.graph_truth(), before)
+
+    def test_proposed_collision_with_foreign_graph_is_bounded_and_rolls_back(self):
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.create(WorkspaceRecord("foreign-workspace", "foreign"))
+            uow.stores.graphs.save(GraphVersionRecord.from_graph(
+                graph_id="foreign-private-name", workspace_id="foreign-workspace", version=1,
+                graph=self.empty_graph("FOREIGN-CONTENT-CANARY"), created_by="foreign-actor",
+                created_at="2026-07-22T10:00:00Z"))
+            uow.commit()
+        command = self.proposed_command("foreign-private-name")
+        before = self.graph_truth()
+        with self.assertRaises(DesiredGraphCommandError) as caught:
+            self.desired_service("unused-action").execute(command)
+        self.assertEqual(str(caught.exception), "graph identity is unavailable")
+        self.assertEqual(self.graph_truth(), before)
+        error = caught.exception
+        while error is not None:
+            self.assertNotIn("foreign", str(error).lower())
+            self.assertNotIn("CANARY", str(error))
+            self.assertFalse(type(error).__module__.startswith("psycopg"))
+            error = error.__cause__ or error.__context__
+
+    def test_proposed_identity_late_action_failure_is_not_misclassified(self):
+        command = self.proposed_command()
+        before = self.graph_truth()
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            self.desired_service("action-start").execute(command)
+        self.assertEqual(self.graph_truth(), before)
+
+    def test_invalid_proposed_identity_refuses_before_durable_mutation(self):
+        before = self.graph_truth()
+        self.assertEqual(self.proposed_command("x" * 128).proposed_graph_id, "x" * 128)
+        for identity in ("", "bad\nidentity", "x" * 129, "x" * 201,
+                         "bad/identity", "bad:identity", "sk-synthetic-canary", 1, True):
+            with self.subTest(identity=identity), self.assertRaises(InvalidOperationCommand):
+                self.proposed_command(identity)
+        self.assertEqual(self.graph_truth(), before)
+
+    def test_concurrent_proposed_identity_collision_has_one_atomic_winner(self):
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.create(WorkspaceRecord("workspace-b", "Workspace B"))
+            uow.stores.registered_products.register(
+                workspace_id="workspace-b", descriptor_document=self.document,
+                source=InlineDescriptorSource(), imported_by="operator-a",
+                imported_at="2026-07-22T10:00:00Z")
+            uow.commit()
+        self.operation_service("session-b", "action-start-b").execute(
+            StartOperationSession("workspace-b", "operator-a", "Competing graph",
+                                  IdempotencyKey("start-b")))
+        commands = (self.proposed_command("contested-revision"),
+            self.proposed_command("contested-revision", workspace_id="workspace-b",
+                                  session_id="session-b"))
+        before = self.graph_truth()
+        insert_barrier = threading.Barrier(2)
+
+        class InsertObservedConnection:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def __getattr__(self, name):
+                return getattr(self.connection, name)
+
+            def execute(self, query, params=()):
+                if " ".join(str(query).upper().split()).startswith("INSERT INTO CPK_GRAPH_VERSIONS "):
+                    insert_barrier.wait(timeout=15)
+                return self.connection.execute(query, params)
+
+        def execute(command):
+            def uow():
+                return PostgresUnitOfWork(lambda: InsertObservedConnection(
+                    psycopg.connect(os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"])))
+            service = DesiredGraphCommandService(uow,
+                clock=lambda: "2026-07-22T10:02:00Z",
+                id_factory=Sequence("action-" + command.workspace_id))
+            try:
+                return command.workspace_id, service.execute(command)
+            except DesiredGraphCommandError as error:
+                return command.workspace_id, error
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(execute, command) for command in commands]
+            outcomes = [future.result(timeout=30) for future in futures]
+        winners = [(workspace, result) for workspace, result in outcomes
+                   if not isinstance(result, Exception)]
+        losers = [(workspace, result) for workspace, result in outcomes
+                  if isinstance(result, Exception)]
+        self.assertEqual(len(winners), 1)
+        self.assertEqual(len(losers), 1)
+        self.assertEqual(str(losers[0][1]), "graph identity is unavailable")
+        self.assertEqual(winners[0][1].graph_version_id, "contested-revision")
+        after = self.graph_truth()
+        self.assertEqual(tuple(len(rows) for rows in after),
+                         (len(before[0]) + 1, len(before[1]) + 1,
+                          len(before[2]), len(before[3]) + 1))
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.graphs.get("contested-revision").workspace_id, winners[0][0])
+            loser = uow.stores.workspaces.get(losers[0][0])
+            self.assertIsNone(loser.desired_graph_id)
+            self.assertIsNone(loser.desired_realized_projection_id)
+            self.assertEqual(loser.desired_graph_revision, 0)
 
     def test_desired_graph_replay_and_changed_intent_conflict(self) -> None:
         first = self.set_desired()
@@ -870,7 +1049,9 @@ class PlanningCommandTests(unittest.TestCase):
 
     def test_malformed_durable_graph_cannot_become_desired_truth(self) -> None:
         with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.graphs.save(
+            # Explicit corrupt retained-state premise. Public graph save now
+            # refuses unclassifiable material before it can reach a pointer.
+            unit_of_work.stores.graphs._save(
                 GraphVersionRecord(
                     graph_id="graph-invalid",
                     workspace_id="workspace-a",

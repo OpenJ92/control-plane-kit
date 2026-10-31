@@ -114,6 +114,39 @@ boundaries, or independently useful merge order.
 
 ## Assigned Roles And Handoffs
 
+### Adjacent Issue Batching
+
+Jacob's standing preference is to group adjacent Core/Operations issues in one
+feature branch and PR, with separate ordered commits. This is the default and
+does not require a fresh permission request for each batch. Record the included
+issues, dependency order, integration target and acceptance boundary at planning.
+Adjacent work belongs to one coherent dependency sequence in the same repository;
+issue-number proximity alone does not justify combining unrelated work.
+
+Keep each issue's requirements, applicable law cards, source dry run, focused
+target-red/green evidence, independent review and decision log. A dependent issue
+may consume earlier reviewed commits on the same branch without an intermediate
+merge. Review each part before advancing and the combined boundary before acceptance.
+Do not describe focused-tested commits as fully accepted work.
+
+Run local tests throughout implementation at the useful scope, including broader
+local checks when warranted. Consolidate slow full GitHub CI at the completed batch,
+including one combined Operations CI run, plus other required affected checks and
+integration/parity/live evidence at their owning boundaries. Issue or commit
+boundaries alone do not require another full remote CI cycle. Failures, material
+changes after validation or unresolved review concerns may require justified reruns.
+Batching must not delay local feedback, waive required gates or accept failed tests.
+
+Split at a meaningful architecture, release, review or ownership boundary, an
+unresolved decision, or a mandatory milestone gate; explain the split in the issue
+record. Cross-repository work retains its owning PRs and validation. Preserve
+consequential-action authorization and actual supported/deployed states, without
+inventing compatibility with intermediate unshipped batch states. Link every issue
+from the PR and Project; close them only after their criteria and the combined
+reviewed merge pass. Issue decomposition alone does not require separate PRs.
+
+### Role Boundaries
+
 When roles are assigned:
 
 - **North / coordinator** owns issue topology, releases, shared/live/destructive
@@ -135,6 +168,48 @@ work, acknowledges receipt, and routes the next boundary; agents do not infer a
 release from an idle task.
 
 ## Proportional Implementation And Review
+
+Before proposing an interface, implementation, or issue split, read the source
+actually selected by the consuming application: its entrypoint, relevant imports,
+dependency coordinates, and architecture companions. After inspecting governing
+tests (and law cards where required), trace a representative computation through
+input, validation and transformations, authority decisions, effects, and returned
+results or durable history. Cite a few concrete file/function locations and the
+source versions they describe. For pure code, describe values and transformations;
+do not invent effect boundaries that are not present.
+
+Show existing behavior separately from proposed behavior. Distinguish selected
+code, newer merged but unselected code, and independently verified published or
+live behavior; a merge, pin, or fixture is not runtime-adoption evidence. Identify
+the last working boundary, the smallest missing connection, and any precise
+unknown before adding abstractions or dependencies. Reuse existing owners and
+preserve governing laws. Summarize this trace plainly in the existing issue or PR
+dry run so the user can follow it. Keep it proportional: this is source reading
+within the existing design step, not a new gate, document hierarchy, or permission
+to execute effects. Refresh affected parts when selected versions change.
+
+### Source Traversal Cadence
+
+Do substantial source traversal at decision points, not on every turn:
+
+- At parent-to-child issue design, trace the relevant computation to establish
+  ownership, missing connections, and child boundaries. Record source anchors,
+  selected dependency versions, and remaining unknowns in the existing issue.
+- At child implementation planning, reuse that recorded trace, confirm the
+  selected source and dependencies, and inspect the child's affected path.
+  Do not repeat an unchanged full traversal. If no usable trace exists, create
+  the relevant trace within this planning step.
+- During implementation and review, reread affected paths when source or selected
+  dependencies change, a failure contradicts the trace, or a review finding
+  exposes an unknown. Expand the traversal only as far as needed to resolve it,
+  and update the existing record with the changed understanding.
+
+Routine status updates, commits, CI notifications, handoffs, and documentation
+edits do not independently require a full traversal. Reviewers still inspect
+changed code and relevant boundaries independently; they need not repeat the
+implementer's entire trace. This cadence does not waive required tests, security
+review, or approval boundaries. Reuse evidence, not unverified assumptions; do
+not add a separate report, gate, or approval round for the traversal itself.
 
 Start from the current public contract, relevant source, and the smallest
 ownership-local behavioral proof. Use law cards, frozen parity translation, and

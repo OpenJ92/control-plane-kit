@@ -27,6 +27,7 @@ class EffectAttemptStatus(StrEnum):
 
     STARTED = "started"
     SUCCEEDED = "succeeded"
+    NOT_READY = "not_ready"
     FAILED = "failed"
     UNSUPPORTED = "unsupported"
     UNCERTAIN = "uncertain"
@@ -38,6 +39,7 @@ class EffectAttemptTransitionKind(StrEnum):
 
     STARTED = "started"
     SUCCEEDED = "succeeded"
+    NOT_READY = "not_ready"
     FAILED = "failed"
     UNSUPPORTED = "unsupported"
     UNCERTAIN = "uncertain"
@@ -523,6 +525,7 @@ def fold_effect_attempt(
 _DIRECT_RESULT_TRANSITIONS = frozenset(
     {
         EffectAttemptTransitionKind.SUCCEEDED,
+        EffectAttemptTransitionKind.NOT_READY,
         EffectAttemptTransitionKind.FAILED,
         EffectAttemptTransitionKind.UNSUPPORTED,
         EffectAttemptTransitionKind.UNCERTAIN,
@@ -536,6 +539,7 @@ _RECOVERY_TRANSITIONS = frozenset(
 )
 _STATUS_BY_DIRECT_TRANSITION = {
     EffectAttemptTransitionKind.SUCCEEDED: EffectAttemptStatus.SUCCEEDED,
+    EffectAttemptTransitionKind.NOT_READY: EffectAttemptStatus.NOT_READY,
     EffectAttemptTransitionKind.FAILED: EffectAttemptStatus.FAILED,
     EffectAttemptTransitionKind.UNSUPPORTED: EffectAttemptStatus.UNSUPPORTED,
     EffectAttemptTransitionKind.UNCERTAIN: EffectAttemptStatus.UNCERTAIN,

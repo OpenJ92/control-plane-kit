@@ -70,7 +70,21 @@ T1RIRVI=
 """
 
 
-class GatewayKeyRotationOverlapProjectionTests(unittest.TestCase):
+from tests.lifecycle_lock_fixture import LifecycleLockFixture, LIFECYCLE_LOCK, SESSION_LOCK, WORKSPACE_LOCK
+
+
+class GatewayKeyRotationOverlapProjectionTests(LifecycleLockFixture, unittest.TestCase):
+    def test_outer_overlap_preparation_takes_lifecycle_before_session(self):
+        def execute(uow):
+            return GatewayKeyRotationOverlapProjectionService(uow,
+                clock=lambda: "2026-08-02T02:00:00Z",
+                action_id_factory=lambda: "guarded-overlap").execute(self.command())
+        with self.blocked_command(LIFECYCLE_LOCK, ("receiver-lifecycle:workspace-a",), execute) as future:
+            self.assert_row_lockable(SESSION_LOCK, ("session-a",))
+            self.assert_row_lockable(WORKSPACE_LOCK, ("workspace-a",))
+            self.assert_advisory_available("operation-action:session-a:publish-overlap", available=False)
+        self.assertEqual(future.result(timeout=1).publication.desired_graph_revision, 2)
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:

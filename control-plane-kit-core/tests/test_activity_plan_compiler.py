@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 from control_plane_kit_core.algebra import (
@@ -32,6 +33,7 @@ from control_plane_kit_core.planning import (
     WaitForHealthy,
     compile_activity_plan,
 )
+from control_plane_kit_core.lifecycle import ResourceLifecycle
 from control_plane_kit_core.topology import (
     AddedChange,
     AmbiguityReason,
@@ -174,6 +176,56 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             allocation.activity_id,
             {dependency.predecessor for dependency in connector_start.dependencies},
         )
+
+    def test_suppressed_node_starts_preserve_remaining_ingress_dependencies(self) -> None:
+        for node_id in ("gateway", "cloudflared-gateway"):
+            for lifecycle in (ResourceLifecycle.external(), ResourceLifecycle.attached()):
+                for runtime_owned in (True, False):
+                    with self.subTest(node=node_id, lifecycle=lifecycle, runtime_owned=runtime_owned):
+                        graph = public_ingress_graph()
+                        node = graph.nodes[node_id]
+                        runtime = graph.runtimes[node.runtime_id]
+                        graph = replace(graph, nodes={
+                            **graph.nodes, node_id: replace(node, lifecycle=lifecycle),
+                        }, runtimes={
+                            **graph.runtimes, runtime.runtime_id: replace(runtime, lifecycle=(
+                                ResourceLifecycle.owned_ephemeral() if runtime_owned
+                                else ResourceLifecycle.external()
+                            )),
+                        })
+                        desired = validate_graph(graph)
+                        self.assertTrue(desired.valid, desired.descriptor())
+                        current = validate_graph(DeploymentGraph(graph.name))
+
+                        plan = compile_activity_plan(diff_graphs(current, desired))
+
+                        starts = {value.operation.target.node_id: value for value in plan.activities
+                                  if isinstance(value.operation, StartNode)}
+                        health = {value.operation.target.node_id: value for value in plan.activities
+                                  if isinstance(value.operation, WaitForHealthy)}
+                        remaining = set(graph.nodes) - {node_id}
+                        self.assertEqual(set(starts), remaining)
+                        self.assertEqual(set(health), remaining)
+                        runtime_starts = {value.operation.target.runtime_id: value for value in plan.activities
+                                          if isinstance(value.operation, StartRuntime)}
+                        self.assertEqual(runtime.runtime_id in runtime_starts, runtime_owned)
+                        for remaining_id in remaining:
+                            self.assertIn(starts[remaining_id].activity_id,
+                                          {item.predecessor for item in health[remaining_id].dependencies})
+                            if runtime_owned:
+                                self.assertIn(runtime_starts[runtime.runtime_id].activity_id,
+                                              {item.predecessor for item in starts[remaining_id].dependencies})
+                        allocations = [value for value in plan.activities
+                                       if isinstance(value.operation, AllocatePublicIngress)]
+                        self.assertEqual(len(allocations), 1)
+                        allocation = allocations[0]
+                        self.assertEqual(allocation.operation.target.ingress_id, "gateway-public")
+                        if node_id == "cloudflared-gateway":
+                            self.assertIn(health["gateway"].activity_id,
+                                          {item.predecessor for item in allocation.dependencies})
+                        else:
+                            self.assertIn(allocation.activity_id,
+                                          {item.predecessor for item in starts["cloudflared-gateway"].dependencies})
 
     def test_public_ingress_teardown_stops_connector_before_removal(self) -> None:
         populated = validate_graph(public_ingress_graph())

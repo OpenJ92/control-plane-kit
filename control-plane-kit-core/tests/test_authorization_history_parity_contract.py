@@ -41,8 +41,6 @@ def _program() -> DeploymentProgramBoundary:
 def _transaction_rule(role: ControlPlaneServiceRole) -> ServiceTransactionBoundary:
     if role is ControlPlaneServiceRole.READS:
         return ServiceTransactionBoundary(role, StoreParticipation.READ_ONLY)
-    if role is ControlPlaneServiceRole.AUTHORIZATION:
-        return ServiceTransactionBoundary(role, StoreParticipation.NONE)
     if role is ControlPlaneServiceRole.EXECUTION:
         return ServiceTransactionBoundary(
             role,
@@ -83,7 +81,20 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
     def test_security_parity_covers_read_and_command_operations(self) -> None:
         parity = _security_parity()
 
-        self.assertEqual(len(parity.operations), 74)
+        self.assertEqual({item.http_route_id for item in parity.operations},
+            {route.route_id for route in operator_read_http_routes() + operator_command_http_routes()
+             if route.route_id != "command.secret-material.provision"})
+        for operation_id in ("read.products", "read.product-detail"):
+            directory = parity.operation(operation_id)
+            self.assertEqual(directory.auth_scope, HttpAuthScope.READ)
+            self.assertEqual(directory.safety, HttpOperationSafety.READ_ONLY)
+            self.assertEqual(directory.activity_history, ActivityHistoryPolicy.NOT_RECORDED)
+            self.assertEqual(directory.error_disclosure, ErrorDisclosurePolicy.BOUNDED_REDACTED)
+        authoring = parity.operation("read.receiver-authoring-context")
+        self.assertEqual(authoring.auth_scope, HttpAuthScope.READ)
+        self.assertEqual(authoring.safety, HttpOperationSafety.READ_ONLY)
+        self.assertEqual(authoring.activity_history, ActivityHistoryPolicy.NOT_RECORDED)
+        self.assertEqual(authoring.error_disclosure, ErrorDisclosurePolicy.BOUNDED_REDACTED)
         command = parity.operation("deployment.execute")
         self.assertEqual(command.auth_scope, HttpAuthScope.EXECUTION_RUN)
         self.assertEqual(command.safety, HttpOperationSafety.DESTRUCTIVE)
@@ -92,6 +103,15 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
             ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
         )
         self.assertEqual(command.error_disclosure, ErrorDisclosurePolicy.BOUNDED_REDACTED)
+
+        reobserve = parity.operation("deployment.reobserve-connector")
+        self.assertEqual(reobserve.auth_scope, HttpAuthScope.EXECUTION_RUN)
+        self.assertEqual(reobserve.safety, HttpOperationSafety.COMMAND)
+        self.assertEqual(
+            reobserve.activity_history,
+            ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+        )
+        self.assertEqual(reobserve.error_disclosure, ErrorDisclosurePolicy.BOUNDED_REDACTED)
 
         read = parity.operation("read.workspace")
         self.assertEqual(read.auth_scope, HttpAuthScope.READ)

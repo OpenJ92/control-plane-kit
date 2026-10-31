@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import SecretProviderId
@@ -17,6 +18,7 @@ from control_plane_kit_operations.read_pages import (
     ReadPageRequest,
 )
 
+from .product_directory import _ProductDirectoryReadProjection
 from .authority_secrets import _AuthoritySecretReadProjection
 from .gateway_security import _GatewaySecurityReadProjection
 from .models import FocusedDetailReadModel, OperatorOverviewReadModel
@@ -27,13 +29,16 @@ from .observations import (
 )
 from .operations_history import _OperationsHistoryReadProjection
 from .protocols import (
+    ProvisionAttemptStore,
     ActivityHistoryStore,
     DelegationSigningKeyStore,
     ExecutionStore,
     GatewayProbeStore,
+    GenerationAttemptStore,
     GraphTopologyStore,
     IngressAuthorityStore,
     ObservedStateStore,
+    RegisteredProductStore,
     RuntimeAuthorityDeliveryStore,
     RuntimeAuthorityStore,
     SecretProviderStore,
@@ -70,10 +75,13 @@ class InstanceReadService:
         runtime_authority_store: RuntimeAuthorityStore | None = None,
         runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
         ingress_authority_store: IngressAuthorityStore | None = None,
+        registered_product_store: RegisteredProductStore | None = None,
         secret_provider_store: SecretProviderStore | None = None,
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
         delegation_signing_key_store: DelegationSigningKeyStore | None = None,
+        generation_attempt_store: GenerationAttemptStore | None = None,
+        provision_attempt_store: ProvisionAttemptStore | None = None,
         desired_topology_draft_store: DesiredTopologyDraftStore | None = None,
         saved_preparation_source_store: SavedPreparationSourceStore | None = None,
         revision_history_store: RevisionHistoryStore | None = None,
@@ -108,6 +116,7 @@ class InstanceReadService:
             clock=clock,
             freshness=observation_freshness,
         )
+        self._product_directory = _ProductDirectoryReadProjection(self._workspace_graph.require_workspace, registered_product_store)
         self._authority_secrets = _AuthoritySecretReadProjection(
             self._workspace_graph.require_workspace,
             runtime_authority_store=runtime_authority_store,
@@ -115,11 +124,13 @@ class InstanceReadService:
             ingress_authority_store=ingress_authority_store,
             secret_provider_store=secret_provider_store,
             secret_reference_store=secret_reference_store,
+            provision_attempt_store=provision_attempt_store,
         )
         self._gateway_security = _GatewaySecurityReadProjection(
             self._workspace_graph.require_workspace,
             gateway_probe_store=gateway_probe_store,
             delegation_signing_key_store=delegation_signing_key_store,
+            generation_attempt_store=generation_attempt_store,
         )
 
     def desired_topology_drafts(self, request: ReadPageRequest):
@@ -130,6 +141,12 @@ class InstanceReadService:
 
     def desired_topology_draft_revision_history(self, request: ReadPageRequest):
         return self._revision_history.page(request)
+
+    def products(self, request):
+        return self._product_directory.page(request)
+
+    def product_detail(self, workspace_id, digest):
+        return self._product_directory.detail(workspace_id, digest)
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)
@@ -341,6 +358,21 @@ class InstanceReadService:
         return self._gateway_security.gateway_verifier_configuration(
             workspace_id,
             gateway_node_id,
+        )
+
+    def secret_material_provision(self, workspace_id: str, request_id: str):
+        return self._authority_secrets.secret_material_provision(workspace_id, request_id)
+
+    def delegation_key_generation(self, workspace_id: str, request_id: str):
+        return self._gateway_security.delegation_key_generation(workspace_id, request_id)
+
+    def workload_verifier_configuration(
+        self,
+        workspace_id: str,
+        purposes: tuple[DelegationKeyPurpose, ...],
+    ) -> FocusedDetailReadModel:
+        return self._gateway_security.workload_verifier_configuration(
+            workspace_id, purposes,
         )
 
     def control_surface(

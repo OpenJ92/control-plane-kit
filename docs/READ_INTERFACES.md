@@ -12,6 +12,7 @@ Postgres stores
     - observations
     - authority_secrets
     - gateway_security
+    - product_directory
   -> InstanceReadService (explicit composition only)
     -> CpkServerReadService
       -> shared CpkServerOperationsApplication
@@ -19,7 +20,7 @@ Postgres stores
         -> MCP resources/tools
 ```
 
-The five private families own projection behavior according to the durable
+The private families own projection behavior according to the durable
 truth they read. `workspace_graph` owns workspace, graph, operator, and control
 surface views. `operations_history` owns sessions, actions, plans, approvals,
 runs, events, risk, and recovery views. `observations` owns freshness
@@ -28,7 +29,21 @@ runtime authority, delivery, ingress authority, secret-provider, and
 secret-reference metadata. `gateway_security` owns gateway probes, delegation
 signing-key inventory, and verifier configuration.
 
-`InstanceReadService` is the single public composition facade. Its methods make
+`product_directory` owns workspace-scoped active product summaries and exact
+descriptor-digest detail, including revoked registrations. It exposes the original
+ProductReference separately from a noncanonical display projection. It omits
+configuration contents, actual environment values, concrete secret handles, and
+registration metadata. Names and descriptions are untrusted prose, not authority;
+matching protocols do not prove application compatibility. Pages seek immutable
+digest identities (limit 1–100), with live membership rather than a snapshot.
+Detail preserves the existing 262144-byte descriptor limit; serialized responses
+are capped at 1048576 bytes including the envelope and fail without truncation.
+Configuration entries are declared slots from both embedded artifacts and
+content-free requirements. Their origin is not labelled, so consumers must not
+infer that every slot lacks a supplied default or that any instance is ready.
+
+`InstanceReadService` is the public composition facade for these ordinary
+projections. Its methods make
 explicit one-hop calls to those owners; it does not implement projection
 behavior, dispatch through reflection, or provide an alternate read API.
 
@@ -39,6 +54,65 @@ The law is:
 ```text
 interfaces expose the model; they do not define the model
 ```
+
+## Workspace Administration And Current Request Authority
+
+The Core HTTP/MCP contract also declares six workspace-local administration
+reads: permission list, exact permission, permission history, managed-runtime
+assignment list, exact assignment, and assignment history. They use the
+AUTHORIZATION service role and ADMIN transport metadata. The canonical read
+projection policy is `authorized-workspace-administration`; read-only safety
+still applies. `requires_workspace_scope=True` constrains the target workspace,
+not ordinary membership. The explicit `WorkspaceAdministrationPolicy` decides
+administrator authority from the verified full principal identity.
+
+`CpkServerWorkspaceAdministrationService` composes the existing workspace,
+permission and managed-runtime command/read owners. Supply it as
+`workspace_administration` to `cpk_server_services`. It serves those six reads
+and the five corresponding commands: administrator workspace creation,
+permission grant/revoke and managed-runtime access grant/revoke. It does not
+initialize an installation, seed policy, register a runtime or configure a
+transport. Those prerequisites remain separate owner actions.
+
+Arguments are closed and acting identity never comes from payload. The adapter
+validates public input before owner invocation, passes page limits 1..10
+(default 10) to the owner and returns its descriptors/cursors unchanged. Cursors
+remain bound to installation, workspace and their exact target. A page is an
+independent owner read, not a cross-request snapshot. Creation returns its
+historical administration receipt on replay. Ordinary legacy workspace creation
+retains its separate response in static mode.
+
+Malformed input is 400, administrative denial 403, typed missing requested
+resource 404 and typed revision/idempotent-intent conflict 409. Unclassified
+owner/store failure is a fixed, redacted 503. An inconsistent persisted receipt
+is not a caller conflict, and an unavailable outcome does not promise rollback,
+transience or safe retry. The Core route budgets are 64 KiB for input and single
+results, and 1 MiB for pages. Existing owner value domains still apply: workspace
+record identifiers/names and graph actor subjects reject control characters;
+permission identity fields have their own bounds.
+
+To use durable current permissions, construct `CpkServerOperationsApplication`
+with `authority_mode="dynamic"` and an installation-bound
+`workspace_context_resolver=WorkspaceContextResolver(...)`. The shared public
+sync/async entrance resolves each ordinary request once from its verified
+principal and bounded workspace target. It retains that admitted context during
+internal dispatch; later owner authorization may narrow it. A new public request
+resolves again, even if a previous internal request carrier is resubmitted.
+Grant changes cannot expand a request already admitted. Resolver failure has no
+startup-grant fallback.
+
+Exact administration routes instead invoke their separate administrator policy;
+dynamic mode refuses the legacy workspace-create entrance. Confidential material
+provisioning keeps its existing HTTP-only, authority and service checks before
+body access. Its material is deferred to that existing owner, never copied by
+generic request preparation or written into history.
+
+The default authority mode remains static for existing compositions. Dynamic
+mode requires a resolver; static mode rejects an accidentally supplied resolver.
+Server composition must preserve the configured application, rather than
+reconstructing one from only `.services`. These Core/Operations contracts do not
+by themselves prove Servers adoption, credential verification, raw query parsing,
+deployment or provider behavior; those are separate composition and live gates.
 
 ## Read Models
 
@@ -53,11 +127,50 @@ bounded models for:
 - runtime and ingress authorities;
 - runtime authority deliveries;
 - secret-provider and secret-reference metadata;
+- exact protected-material provision status, including uncertainty or pending admission;
 - gateway probe history and verifier configuration;
 - delegation signing-key metadata.
 
 Read models contain no raw secret values. Authority and secret-provider reads
 expose bounded metadata and references only.
+
+For dynamically admitted public ingress, `read.run-events` enriches the original
+step-start event with its bounded `ingress` history. The route materializes the
+event page, immutable ingress selection, at most three unit decisions, at most
+two provider/custody results, and allocation-owner state in one fresh read-only
+repeatable-read transaction. It reuses the operations-history event projection;
+the stored event payload and ordinal are unchanged. Malformed or oversized
+retained facts produce a bounded read error rather than disappearing from the
+page. Secret references, credentials, endpoint references and custody receipts
+are excluded from this public summary.
+
+The history distinguishes provider facts, custody outcomes and the final
+allocation record. A stored result does not prove its acknowledgement reached
+the caller, and a pending admitted unit is an unknown outcome. If provider
+creation succeeds but custody or the final allocation record fails, the known
+facts remain visible. The first version has no automatic retry/delete and normal
+Remove cannot clean an incomplete allocation; partial-allocation cleanup remains
+explicitly unsupported. Successful allocation and desired-empty teardown retain
+their normal paths. The outer `effects_attempted` count still counts admitted
+activity intent, while the ingress units report the finer capability history.
+The summary separates `current_owner_state` from `owner_fold`. A later normal
+removal by another run remains visible without attributing that success to an
+earlier denied command or hiding its retained unit evidence.
+
+Dynamic ingress composition requires `IngressInvocationService` and an explicit
+`IngressProviderRegistration` for profile `cpk.ingress-invocations.v1`. Passing
+an unqualified legacy adapter, including a wrapper accepting arbitrary keyword
+arguments, refuses before provider entry. The registration asserts reviewed
+adapter support; the actual Interpreter and Server owning suites must establish
+adoption. The Operations port fixtures establish only Operations semantics.
+
+`read.secret-material-provision` is an unpaged exact workspace/request lookup,
+available through HTTP and MCP. It requires workspace visibility and
+`secret-provider:read` independently of the provision command. Its public DTO
+includes only state, safe correlation/timestamps, retained version metadata and,
+after successful admission, the admitted reference. It excludes raw material,
+the original actor/grant and provider credentials. A conflict's status navigation
+does not authorize this read; a custody receipt alone does not imply admission.
 
 ## Public Material Disclosure
 
@@ -69,11 +182,17 @@ gateway verifier configuration
   includes: bounded public_key_pem, derived public environment
   disclosure: purpose-limited public verification material, not a secret
 all read surfaces
-  forbid: private-key bytes, private-key references, provider credentials, resolved secret values
+  forbid: private-key bytes, provider credentials, resolved secret values
+exact delegation-key generation receipt
+  requires: workspace visibility and delegation-key:read
+  includes: authorized destination reference, validated public key/version, distinct provider/admission status
+  omits: provider endpoint/credential references and raw provider responses
+other read surfaces
+  forbid: private-key references
 ```
 
-Public verification material is disclosed only by the verifier-configuration
-projection that needs it. Calling public PEM non-secret does not make it part of
+Public verification material is disclosed by verifier-configuration projections
+and the exact authorized generation receipt. Calling public PEM non-secret does not make it part of
 general signing-key inventory or permit disclosure of any private or resolved
 credential material.
 
@@ -343,3 +462,77 @@ bounds memory and transfer, not total work or lock duration; no global scan runs
 per HTTP read. An older schema is rejected without writes. The retained acceptance
 installation stays pinned; no migration, reset, backfill, history import or
 new-UI compatibility with that installation is implied.
+
+Original installation sources (#1987): each new configuration acceptance retains
+a private canonical `accepted-installation-sources.v1` document alongside its
+existing artifact slots. Advancement events and actions expose only the source
+count and document digest. Explicit empty documents are valid; missing commitments
+are not interpreted as empty legacy evidence. Full acceptance, command replay and
+current-schema validation prove the document and its exact original attempts.
+Artifact-scoped configuration and cleanup reads retain their existing semantics.
+
+Unchanged consumers carry the original acceptance revision and both request and
+outcome fingerprints verbatim. Generated connector material additionally commits
+the original allocation start, its direct successful terminal and all six durable
+event columns through that terminal. Fresh discovery examines the full available
+bounded journal; historical proof reads the retained prefix. Neither path uses a
+latest-success search or today's credential permissions as historical evidence.
+
+An actual qualifying provider observation may prove installation for publication.
+It does not produce a direct completion or release outstanding claims. Schema
+changes add three required fields and three checks to the existing acceptance
+table, with no migration, backfill, reset or production-data repair. This local
+implementation has passing focused Docker evidence. The first full Operations
+gate reported 2,781 tests with 64 failure and 216 error entries; all 280 entries
+subsequently received reviewed focused green evidence. The second full gate ran
+2,781 tests with one failure and no errors: a stale atlas-digest test expectation.
+The one-literal correction then passed all ten existing atlas-reader tests,
+compilation and clean import. This is combined full-run and focused-correction
+evidence, not a green full-suite run on the corrected candidate. Parent acceptance
+remains a separate gate. No published or live compatibility with an older
+installation is established.
+
+Current connector installation (#2007): the internal Operations store method
+`ConfigurationAcceptanceStore.read_current_connector_installation` takes the
+workspace, expected current graph and realized-projection pins, and exact runtime
+and connector node. Its strict `CurrentConnectorInstallationRead` result is
+`complete`, `unavailable`, or `capacity`; only `complete` carries an installation.
+This adds no cpk-server, HTTP, or MCP surface.
+
+The read proves the existing complete installation-source bundle under the same
+shared evidence budget, including original acceptance membership, exact original
+attempt/outcome and generated-token provenance. It returns the original Core
+request without secret-resolution grants and its typed secret installation
+receipt, even when the connector has no configuration artifacts. A supported
+workload content update preserves that origin while advancing the returned
+current pins/revision. Missing, corrupt, uncertain or nonconnector proof cannot
+fall back to an earlier success. No schema, provider call, write, lock or budget
+increase is introduced.
+
+The caller owns the UOW. Returned pins describe captured current truth and do not
+freeze subsequent workspace changes. Historical authority is provenance only;
+consumers must separately check fresh current authority and execution fences and
+close their UOW before effects. The request and receipt are omitted from value
+representations.
+
+Native dispatch consumption (#2009): a supported `MANAGED_UPDATE_V1` connector
+observation acquires this proof inside its fresh dispatch UOW, after the existing
+worker/fence, accepted-plan, runtime-authority and lease checks. Current workspace
+pins must still match the execution base. A new immutable
+`ActivityRealizationContext.connector_installation` carries the original creation
+request/receipt; the observation request and event retain their own identities.
+The optional field is excluded from repr and remains `None` for fresh bootstrap
+and signed health reads. Historical installation credentials are provenance;
+current runtime authority is independently reloaded for dispatch.
+
+Only the proof read activates the existing run-owned evidence ledger, and its
+previous state is restored in `finally` before leaving the UOW or awaiting the
+provider. Its accumulated footprint is never reset. Closed `unavailable` or
+`capacity` results skip the provider and enter the existing guarded uncertain
+fold. With an exhausted ledger, the later bounded context reload can still raise
+`ExecutionCoordinatorConflict` after that uncertain outcome has been committed.
+Response failure therefore does not imply absence of a durable outcome. Exact
+command replay reports uncertainty without another proof read or provider call.
+Unexpected proof-reader exceptions propagate and retain the existing STARTED
+attempt; current-pin/authority denial likewise adds no retry path. This does not
+activate retained-container support in an external Interpreter.
