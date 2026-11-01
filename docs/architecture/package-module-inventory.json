@@ -11616,6 +11616,7 @@
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
+        "tests/test_connector_observation_material.py",
         "tests/test_effect_attempt_coordinator_contract.py",
         "tests/test_execution_coordinator.py",
         "tests/test_postgres_effect_attempt_coordinator_budget_lifecycle.py",

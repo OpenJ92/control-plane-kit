@@ -1510,7 +1510,8 @@ class ExecutionCoordinator:
         replay = self._admit_command(execution, provenance, admit=False)
         if replay is not None:
             return replay
-        context = self._load_context(execution)
+        context = self._load_context(execution,
+            material_activity_id=command.predecessor.activity_id)
         if self._managed_preflight(context, command.context) is not None:
             raise ExecutionCoordinatorDenied("native reobservation capability is unavailable")
         options = {}
@@ -2576,7 +2577,7 @@ class ExecutionCoordinator:
             unit_of_work.commit()
             return outcome
 
-    def _load_context(self, command: ExecuteActivityRun) -> "_CoordinatorContext":
+    def _load_context(self, command: ExecuteActivityRun, *, material_activity_id=None) -> "_CoordinatorContext":
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
@@ -2585,7 +2586,8 @@ class ExecutionCoordinator:
             try:
                 request, run = _locked_request_and_run(stores, command)
                 if active:
-                    return self._configuration_context(stores, command, request, run)
+                    return self._configuration_context(stores, command, request, run,
+                        material_activity_id=material_activity_id)
             except (KeyError, ValueError, TypeError, AttributeError):
                 if not active:
                     raise
@@ -2655,7 +2657,8 @@ class ExecutionCoordinator:
                     for pinned in (base_graph, desired_graph)
                     for node in DEFAULT_GRAPH_CODEC.decode(pinned.graph_descriptor).nodes.values()):
                 try:
-                    return self._configuration_context(stores, command, request, run)
+                    return self._configuration_context(stores, command, request, run,
+                        material_activity_id=material_activity_id)
                 except (KeyError, ValueError, TypeError, AttributeError):
                     pass
                 raise ExecutionCoordinatorConflict("configuration material is unavailable")
@@ -2708,7 +2711,7 @@ class ExecutionCoordinator:
             fence=command.fence,
         )
 
-    def _configuration_context(self, stores, command, request, run):
+    def _configuration_context(self, stores, command, request, run, *, material_activity_id=None):
         from control_plane_kit_core.runtime_effects import RuntimeEffectKind
         (plan, base, desired), events, read = stores.configuration_preparation._snapshot(request, run)
         if run.plan_id != plan.plan_id or request.identity.plan_id != plan.plan_id:
@@ -2720,7 +2723,7 @@ class ExecutionCoordinator:
             authority=command.authority, fence=command.fence)
         # Locating an in-flight original is pure. In particular, the ordinary
         # classifier is not called here: it can complete or fail the run.
-        if (run.status is ActivityRunStatus.RUNNING and not projection.uncertain
+        if (material_activity_id is None and run.status is ActivityRunStatus.RUNNING and not projection.uncertain
                 and not schedule.failed and schedule.running):
             identity = EffectAttemptIdentity(RunId(run.run_id), schedule.running[0].activity_id.value, 1)
             try:
@@ -2731,6 +2734,10 @@ class ExecutionCoordinator:
                 return _ConfigurationReplayContext(**common, original=original)
         selected = schedule.running or schedule.ready
         activity = plan.plan.activity(selected[0].activity_id) if selected else None
+        if material_activity_id is not None:
+            activity = plan.plan.activity(ActivityId(material_activity_id))
+            if not is_native_connection_operation(activity.operation):
+                raise ExecutionCoordinatorConflict("reobservation material requires a native activity")
         material = stores.configuration_preparation._material(stores, request, run, activity, read)
         context = _CoordinatorContext(**common,
             registered_products=material.registered_products,
@@ -2742,7 +2749,7 @@ class ExecutionCoordinator:
             generated_ingress_secrets=material.generated_ingress_secrets)
         # Keep the existing unsupported/terminal classification ahead of
         # translation; this pure check neither completes nor fails the run.
-        if (activity is not None and run.status is ActivityRunStatus.RUNNING
+        if (material_activity_id is None and activity is not None and run.status is ActivityRunStatus.RUNNING
                 and not projection.uncertain and not schedule.failed
                 and not runtime_management_execution_is_unsupported(
                     DEFAULT_GRAPH_CODEC.decode(base.graph_descriptor),
