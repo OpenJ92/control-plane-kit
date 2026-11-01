@@ -261,3 +261,12 @@ the handed-off capability to its installed acquisition configuration.
 The real-owner dispatch targets were causal-red at checkpoint 4929bb82 and
 passed with the selected owner regressions at 75743cde (102 tests). Full gate
 evidence, limitations and acceptance disposition are recorded on #2055.
+
+#2072 makes the initial explicit reobservation material read select its named
+native predecessor from the pinned plan, even while that step is WAITING.
+Ordinary context loading still selects running/ready work. The private override
+requires a native connection operation and does not enter an unrelated
+configuration replay or proposal. It only selects metadata through the existing
+accounted material loader; it does not grant admission. Latest waiting-predecessor,
+current runtime/permission/lease, original intent copying and dispatch equality
+checks remain authoritative. Post-fold classification uses ordinary context.

@@ -11,7 +11,7 @@ from uuid import uuid4
 import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
-from control_plane_kit_core.planning import AllocatePublicIngress, ManagementBootstrapStage
+from control_plane_kit_core.planning import ActivityId, AllocatePublicIngress, ManagementBootstrapStage
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
     ExecuteManagedActivityRun, ExecutionCoordinator, ExecutionCoordinatorDenied, ExecutionCoordinatorConflict,
@@ -239,11 +239,33 @@ class _CoordinatorManagementPermissionFixture(_CurrentCoordinatorPermission, Rec
             self.health_activity, = (value for value in self.plan.activities
                 if type(value.operation) is AllocatePublicIngress)
             self.prepare_health_journal()
+        elif stage is ManagementBootstrapStage.CONNECTOR_CONNECTED:
+            # Native lowering needs the actual owned ingress/token references,
+            # which a predecessor-success journal premise cannot supply.
+            await self.prepare_and_start()
+            self.integral_observations()
+            self.health_activity = self.plan.activity(ActivityId(self.native_id))
+            for _ in range(len(self.plan.activities) + 1):
+                context, _ = self.execution_context()
+                self.assertTrue(context.schedule.ready)
+                if context.schedule.ready[0].activity_id == self.health_activity.activity_id:
+                    break
+                result = await self.execute_one()
+                self.assertEqual(result["coordinator_status"], "progressed", result)
+            else:
+                self.fail("native activity did not become the next ready activity")
+            # The authored fixture selects native before the independent PATH.
+            # Retain all setup evidence; neither health port has run yet.
+            self.assertEqual(self.health.native_reads, [])
+            self.assertEqual(self.health.signed_reads, [])
+            self.assertFalse(any(event.activity_id == self.native_id for event in self.history()))
+            self.start_command = self.health_start_command()
         else:
             await self.prepare_health(stage=stage)
-        # Counterpart of the fixture's recorded predecessor journal premise.
-        # This is a controlled port value, not a provider deployment claim.
-        self.runtime.containers["connector"] = "a" * 64
+        if legacy or stage is not ManagementBootstrapStage.CONNECTOR_CONNECTED:
+            # Only the direct signed/legacy journal-premise path needs this
+            # controlled port value; native setup retains its actual recording.
+            self.runtime.containers["connector"] = "a" * 64
         self.configure_permissions(self.worker.identity, installation="coordinator-permission")
         self.require_interface()
         context, execution = self.execution_context()

@@ -351,6 +351,7 @@ class RecordingManagedHealth:
 class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
     application_artifacts = ()
     application_deliveries = ()
+    connector_artifacts = ()
 
     def setUp(self):
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
@@ -406,6 +407,8 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                     WorkloadNodeControlSurfaceDeclarationProfile.V2)
                 chosen = tuple(artifact(family, declaration, node=name, receiver=True)
                     for family in families)
+            elif name == "connector":
+                chosen = self.connector_artifacts
             original_chosen = chosen
             if name == "gateway":
                 transit, control = chosen

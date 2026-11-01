@@ -20,6 +20,11 @@ from tests.receiver_health_execution_fixture import ReceiverHealthExecutionFixtu
 
 
 class ReceiverHealthExecutionTests(ReceiverHealthExecutionFixture):
+    def prepare_health_journal(self):
+        # Align the direct signed-health premise with the context loader's
+        # first scheduled activity; this does not claim provider execution.
+        super().prepare_health_journal(first_ready=True)
+
     def assert_selected_preparation(self, preparation, node="api"):
         self.assertIs(type(preparation.request), ReceiverHealthReadRequest)
         self.assertEqual(preparation.request.target, self.targets[node])

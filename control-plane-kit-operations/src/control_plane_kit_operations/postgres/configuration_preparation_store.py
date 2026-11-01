@@ -751,7 +751,7 @@ class ConfigurationPreparationStore:
         from control_plane_kit_operations.graph_authoring import product_references_in_graph
         from control_plane_kit_operations.runtime_effects import (
             _RuntimeEffectMaterial, _connector_ingress_for_node, _has_tunnel_token_delivery,
-            _material_graph, _node_target, _registered_product_for_node,
+            _material_graph, _material_node_target, _registered_product_for_node,
         )
         storage = _ExecutionScopeStorage(self._connection, read)
         if guard is not None:
@@ -780,7 +780,7 @@ class ConfigurationPreparationStore:
         require_verifier_refresh_authority(stores, workspace, graphs[0], graphs[1],
             plan.plan, plan.derivation_profile, activity=activity)
         graph = _material_graph(material, activity.operation)
-        node_id = _node_target(activity.operation)
+        node_id = _material_node_target(material, graph, activity)
         if node_id is None:
             return material
         node = graph.nodes[node_id]

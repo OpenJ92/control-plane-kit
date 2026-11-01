@@ -15,3 +15,18 @@ required by the pinned architecture policy. Its value and every other entry,
 the order-preserving helper, exact policies and assertions remain unchanged.
 Correction validation is pending; the 43 receiver-health target passes do not
 replace the full Operations package gate or downstream adoption evidence.
+
+#2072 adds the native connector material regression to the coordinator and
+runtime-effect protecting-test expectations, and records the two newly used
+runtime-effect dependencies: Core planning and Operations runtime management
+targets. The full CI run at e2b2a17b exposed the stale expectation. Exact-set
+comparisons remain unchanged; this is inventory alignment, not a relaxed rule.
+
+The same CI run exposed incomplete native permission-test prerequisites. The
+shared permission fixture's native path now uses existing coordinator/recording
+ports to create predecessor ownership facts, stopping before the native read.
+It retains all setup history and asserts neither native nor signed health has
+run under the fixture's existing authored native-before-PATH ordering. Signed
+and legacy direct-health journal premises and all permission/handoff assertions
+remain unchanged. Corrected focused and full CI evidence is tracked on #2072
+and PR #2074; these fixture changes do not establish live provider behavior.
