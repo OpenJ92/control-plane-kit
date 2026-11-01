@@ -173,6 +173,7 @@ RUNTIME_EFFECTS_DEPENDENCIES = {
     "control_plane_kit_core.configuration",
     "control_plane_kit_core.environment",
     "control_plane_kit_core.operations",
+    "control_plane_kit_core.planning",
     "control_plane_kit_core.planning.activity_plan",
     "control_plane_kit_core.products",
     "control_plane_kit_core.probe_intents",
@@ -188,6 +189,7 @@ RUNTIME_EFFECTS_DEPENDENCIES = {
     "control_plane_kit_operations.products",
     "control_plane_kit_operations.runtime_authorities",
     "control_plane_kit_operations.runtime_management_admission",
+    "control_plane_kit_operations.runtime_management_targets",
     "control_plane_kit_operations.workflows",
 }
 
@@ -1297,6 +1299,7 @@ class EffectAttemptCoordinatorContractTests(
         self.assertEqual(
             set(coordinator["protecting_tests"]),
             {
+                "tests/test_connector_observation_material.py",
                 "tests/test_effect_attempt_coordinator_contract.py",
                 "tests/test_execution_coordinator.py",
                 "tests/test_postgres_effect_attempt_coordinator_budget_lifecycle.py",
@@ -1325,7 +1328,8 @@ class EffectAttemptCoordinatorContractTests(
         )
         self.assertEqual(
             set(runtime_effects["protecting_tests"]),
-            {"tests/test_runtime_effect_translation.py", "tests/test_secret_version_dispatch.py"},
+            {"tests/test_connector_observation_material.py", "tests/test_runtime_effect_translation.py",
+             "tests/test_secret_version_dispatch.py"},
         )
 
     @staticmethod
