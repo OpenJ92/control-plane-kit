@@ -1,6 +1,15 @@
 Source: [configuration_preparation_store.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/configuration_preparation_store.py).
 Maintain this companion alongside its source.
 
+#2072 shares the pure accepted-activity material-node selector with runtime
+projection. For native connector-connected observation it validates the pinned
+graph pair, selected graph and connector runtime, then reaches the existing
+accounted point reads for that connector's ingress resource, authority and
+generated token reference. Previously the ordinary node-only selector returned
+before those reads. Guard, plan verification, evidence ledger, ownership checks
+and caller transaction remain unchanged. This reads stored reference/version
+metadata, not secret values; signed observations still select no node material.
+
 #1977 checks current verifier-refresh authority in fresh `_material`, both for
 the optimistic coordinator proposal and the start owner's locked rederivation.
 The shared selector holds ordered purpose locks until that caller's UoW ends;

@@ -25,6 +25,23 @@ Material selection preserves removal meaning. StopNode, RemoveNodeResource, Remo
 
 Authority delivery is distinct from the runtime authority reference. Only StartNode/ReconcileNode project active process delivery at request level, using [runtime_authorities.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_authorities.py) to match exact declared material, workspace, enclosing reference and active admission. Registration alone does not deliver anything. Teardown can retain the node's declared delivery inside product material while request-level delivery is empty; do not reinterpret that retained declaration as a fresh delivery grant.
 
+For native connector-connected observations, #2072 resolves the connector through
+Core's management resolver using the pinned graph pair and the independently
+selected plan activity. The resolved graph and runtime must match this material
+projection. That one connector then uses the existing registered-product,
+configuration and generated-token/version projection before the durable intent
+and fingerprint are created. Signed health observations retain no product
+material. This supplies references and public configuration, not token values,
+resolution grants or authority to observe. Historical intents are unchanged.
+
+The Operations regression captures actual native requests through the public
+coordinator path for fresh, explicit-successor and retained-content cases,
+comparing them with the owner's actual connector installation material and
+stored intent. Its post-dispatch intent read proves correspondence; existing
+attempt-start laws establish persistence timing. Servers separately owns the
+composition check into the real native reader; Operations tests do not import
+that interpreter or prove downstream provider observation.
+
 Secret delivery selects the compiled node tuple exactly once. Core product instantiation constrains the declared delivery contract but permits per-instance reference substitution; its compiler places those selected values and active socket deliveries on the node. Descriptor declarations are not a second material channel. Concatenating or deduplicating descriptor defaults with selected node values would duplicate slots or retain the wrong references. StopNode/RemoveNodeResource preserve that historical tuple directly, including when ingress is already REMOVED and no generated token is supplied. They do not synthesize a new token delivery or require an active ingress. Other operations retain existing selection: if an environment delivery named TUNNEL_TOKEN is already present, this helper uses that declaration rather than selecting a generated one. Otherwise a connector ingress requires one active owned resource, a generated token reference correlated by source run/activity/event, and matching registered ingress authority; [ingress_authorities.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/ingress_authorities.py) validates resource/authority policy and builds the delivery plan. This is reference selection from supplied truth, not custody/provider verification.
 
 Raw authored graphs can carry registered product metadata without the required selected deliveries; Core instantiation is not the only admission path. For StartNode/ReconcileNode, this owner therefore checks the assembled selected/generated material before constructing runtime product material. Each unconditional descriptor contract slot must occur exactly once. The slot projection consumes public Core `secret_delivery_sort_key` and excludes only reference; kind, target, intent, file policy and path binding remain part of the contract. Other node/socket deliveries are allowed, and existing authoritative ingress generation can satisfy a declared slot. This is required-slot coverage, not global target uniqueness or a broad graph validator. Missing, partial, mismatched or repeated required slots raise a fixed redacted InvalidOperationCommand before executable intent, StartEffectAttempt or interpreter I/O. No descriptor fallback, provider result or historical attempt is invented. Teardown is exempt from this fresh admission check.
@@ -93,3 +110,8 @@ authority for a retained workload reconcile. Adding the durable identity does no
 add a secret/provider capability. Generic exact registered material and the
 recorded canonical plan remain authoritative; no application-specific decoder is
 introduced.
+
+The same pure material-node selector is used by the existing configuration
+preparation store before its bounded ingress-reference reads. This keeps
+configuration-bearing graphs and the ordinary context on the same pinned
+connector selection; no historical request is enriched after admission.

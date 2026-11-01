@@ -9,6 +9,7 @@ from typing import Mapping
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import ActivityEventKind, RunId
+from control_plane_kit_core.planning import resolve_management_observation
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
     CleanupConfigurationInstances,
@@ -66,7 +67,7 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
     secret_delivery_sort_key,
 )
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, Node
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, Node, validate_graph
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations.runtime_secret_uses import (
     OperationalSecretUse, _secret_use_key, secret_authorization_command, required_secret_uses_for_runtime_effect,
@@ -98,6 +99,7 @@ from control_plane_kit_operations.runtime_authorities import (
 from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_execution_is_unsupported,
 )
+from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 _GATEWAY_TARGETS_ENVIRONMENT = "CPK_GATEWAY_TARGETS_JSON"
@@ -206,7 +208,7 @@ def _runtime_effect_intent_for_material(context: _RuntimeEffectMaterial, activit
             raise InvalidOperationCommand("configuration compensation execution is unsupported")
     runtime_id = _runtime_id_for_context(context, graph, operation)
     authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
-    products = _products_for_context(context, graph, runtime_id, operation)
+    products = _products_for_context(context, graph, runtime_id, activity)
     if (context.plan_record.derivation_profile in (
                 PlanDerivationProfile.MANAGED_UPDATE_V1, PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1)
             and type(operation) is ReconcileNode
@@ -329,13 +331,31 @@ def _runtime_authority_deliveries_for_context(
     return selected
 
 
+def _material_node_target(context, graph: DeploymentGraph, activity: object) -> str | None:
+    """Select material from the accepted activity and its pinned graph pair."""
+    operation = activity.operation
+    if not is_native_connection_operation(operation):
+        return _node_target(operation)
+    resolved = resolve_management_observation(
+        operation,
+        validate_graph(DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor)),
+        validate_graph(DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)),
+        expected_operation=context.plan_record.plan.activity(activity.activity_id).operation,
+    )
+    runtime_id = _runtime_id_for_context(context, graph, operation)
+    if resolved.selected_graph.graph != graph or resolved.connector_node.runtime_id != runtime_id:
+        raise InvalidOperationCommand("native observation material does not match its pinned graph")
+    return resolved.connector_node.node_id
+
+
 def _products_for_context(
     context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
     runtime_id: str,
-    operation: object,
+    activity: object,
 ) -> tuple[RuntimeProductMaterial, ...]:
-    node_id = _node_target(operation)
+    operation = activity.operation
+    node_id = _material_node_target(context, graph, activity)
     if node_id is None:
         return ()
     missing_node = False
