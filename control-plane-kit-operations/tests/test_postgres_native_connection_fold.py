@@ -46,6 +46,66 @@ from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT
 
 
 class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffectStartFixture, unittest.TestCase):
+    def native_history(self, *, workspace="workspace-a", limit=100, cursor=None):
+        from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, RunReadScope
+        with self.unit_of_work().run_events_snapshot() as snapshot:
+            return snapshot.run_events(ReadPageRequest(ReadCollection.RUN_EVENTS,
+                RunReadScope(workspace, self.started.state.identity.run_id.value), limit, cursor))
+
+    def fold_diagnostic(self):
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            return self.service().execute_native(self.command(replace(
+                self.raw(kind=NativeConnectionOutcome.UNKNOWN),
+                diagnostic=NativeConnectionDiagnostic.SNAPSHOT_CHANGED)))
+
+    def test_native_history_projects_exact_diagnostic_without_changing_page_or_event(self):
+        result = self.fold_diagnostic()
+        event = result.attempt.latest_transition_event
+        page = self.native_history()
+        projected = next(item for item in page.items if item["event_id"] == event.event_id)
+        self.assertEqual(projected["native_connection"], dict(status="available",
+            acceptance_reason="unknown", diagnostic="snapshot-changed"))
+        self.assertEqual(projected["payload"], event.evidence.descriptor())
+        self.assertIsNone(projected["failure"])
+        gathered, cursor = [], None
+        while True:
+            part = self.native_history(limit=1, cursor=cursor)
+            gathered.extend(part.items)
+            cursor = part.next_cursor
+            if cursor is None:
+                break
+        self.assertEqual(tuple(gathered), page.items)
+        from control_plane_kit_operations.read_services.errors import ReadModelError
+        with self.assertRaises(ReadModelError):
+            self.native_history(workspace="foreign-workspace")
+
+    def test_native_history_omits_verified_legacy_diagnostic(self):
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            self.service().execute_native(self.command(self.raw(kind=NativeConnectionOutcome.UNKNOWN)))
+        self.assertTrue(all("native_connection" not in event for event in self.native_history().items))
+
+    def test_native_history_unavailable_proof_preserves_base_event_but_not_corrupt_page(self):
+        result = self.fold_diagnostic()
+        event = result.attempt.latest_transition_event
+        before = self.native_history()
+        row = self.connection.execute("SELECT preimage FROM cpk_effect_attempt_outcomes "
+            "WHERE direct_event_id=%s", (event.event_id,)).fetchone()
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (b"{}", event.event_id))
+        after = self.native_history()
+        projected = next(item for item in after.items if item["event_id"] == event.event_id)
+        self.assertEqual(projected.pop("native_connection"), dict(status="unavailable"))
+        expected = dict(next(item for item in before.items if item["event_id"] == event.event_id))
+        expected.pop("native_connection")
+        self.assertEqual(projected, expected)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (row[0], event.event_id))
+        self.connection.execute("UPDATE cpk_activity_events SET payload=%s WHERE event_id=%s",
+            (Jsonb({}), event.event_id))
+        from control_plane_kit_operations.read_services.errors import ReadModelError
+        with self.assertRaises(ReadModelError):
+            self.native_history()
+
     def test_unsampled_diagnostic_roundtrips_and_replays_without_changing_event_evidence(self):
         raw = replace(self.raw(kind=NativeConnectionOutcome.UNKNOWN),
             diagnostic=NativeConnectionDiagnostic.SNAPSHOT_CHANGED)
