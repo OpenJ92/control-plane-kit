@@ -610,6 +610,22 @@ def _native_timestamp_ns(value: object) -> int:
         * 1_000_000_000 + int((fraction or "").ljust(9, "0")) - offset_seconds * 1_000_000_000)
 
 
+class NativeConnectionDiagnostic(StrEnum):
+    """Fixed rejection stage, never provider text or an assertion of root cause."""
+
+    INITIAL_EVIDENCE_UNAVAILABLE = "initial-evidence-unavailable"
+    CONTAINER_STATE_INELIGIBLE = "container-state-ineligible"
+    SAMPLE_MISSING = "sample-missing"
+    BINDING_MISMATCH = "binding-mismatch"
+    FRESHNESS_REJECTED = "freshness-rejected"
+    IMAGE_EVIDENCE_UNAVAILABLE = "image-evidence-unavailable"
+    IMAGE_OR_MOUNT_MISMATCH = "image-or-mount-mismatch"
+    CONFIGURATION_EVIDENCE_REJECTED = "configuration-evidence-rejected"
+    FINAL_EVIDENCE_UNAVAILABLE = "final-evidence-unavailable"
+    SNAPSHOT_CHANGED = "snapshot-changed"
+    SAMPLE_INVALID = "sample-invalid"
+
+
 @dataclass(frozen=True)
 class NativeConnectionObservation:
     """Bounded original passive evidence with no provider body or token."""
@@ -622,6 +638,7 @@ class NativeConnectionObservation:
     sample_end: str | None = None
     ready_connections: int | None = None
     connector_id: str | None = None
+    diagnostic: NativeConnectionDiagnostic | None = None
 
     def __post_init__(self):
         if type(self.outcome) is not NativeConnectionOutcome:
@@ -657,14 +674,23 @@ class NativeConnectionObservation:
         if self.outcome is NativeConnectionOutcome.UNKNOWN and (
                 self.ready_connections is not None or self.connector_id is not None):
             raise OperationsRecordError("unknown native observation is contradictory")
+        if self.diagnostic is not None and (
+                type(self.diagnostic) is not NativeConnectionDiagnostic
+                or self.outcome is not NativeConnectionOutcome.UNKNOWN
+                or any(value is not None for value in (*samples, self.ready_connections, self.connector_id))):
+            raise OperationsRecordError("native diagnostic observation is invalid")
 
     def descriptor(self):
-        return {"effect_id": self.effect_id, "activity_id": self.activity_id,
+        value = {"effect_id": self.effect_id, "activity_id": self.activity_id,
             "container_id": self.container_id, "sample_start": self.sample_start, "sample_end": self.sample_end,
             # Reader-v1 uses uint64; JCS numeric values cannot preserve its full
             # domain. Keep the actual value typed and fingerprint exact decimal.
             "ready_connections": None if self.ready_connections is None else str(self.ready_connections),
             "connector_id": self.connector_id, "outcome": self.outcome.value}
+        # Omission preserves historical canonical bytes and their commitments.
+        if self.diagnostic is not None:
+            value["diagnostic"] = self.diagnostic.value
+        return value
 
 
 def _native_acceptance_reason(observation, accepted_at):
@@ -1416,6 +1442,7 @@ __all__ = (
     "ExecutionEffectOutcome",
     "NativeConnectionEffectOutcome",
     "NativeConnectionObservation",
+    "NativeConnectionDiagnostic",
     "NativeConnectionRefused",
     "NativeConnectionReadFailure",
     "NativeConnectionOutcome",

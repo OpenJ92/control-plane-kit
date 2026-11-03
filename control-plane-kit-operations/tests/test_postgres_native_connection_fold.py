@@ -29,6 +29,7 @@ from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectA
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_outcome_evidence import (
     ExecutionEffectOutcome, NativeConnectionObservation, NativeConnectionOutcome,
+    NativeConnectionDiagnostic,
     effect_outcome_failure, effect_outcome_transition,
 )
 from control_plane_kit_operations.postgres import PostgresExecutionStore
@@ -45,6 +46,26 @@ from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT
 
 
 class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffectStartFixture, unittest.TestCase):
+    def test_unsampled_diagnostic_roundtrips_and_replays_without_changing_event_evidence(self):
+        raw = replace(self.raw(kind=NativeConnectionOutcome.UNKNOWN),
+            diagnostic=NativeConnectionDiagnostic.SNAPSHOT_CHANGED)
+        command = self.command(raw)
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            result = self.service().execute_native(command)
+        event = result.attempt.latest_transition_event
+        self.assertEqual(set(event.evidence.descriptor()), {"effect_attempt"})
+        self.assertEqual(event.kind.value, "step_observation_not_ready")
+        self.assertIsNone(event.failure)
+        with self.unit_of_work() as uow:
+            retained = uow.stores.effect_outcomes.get(self.started.state.identity, event.event_id)
+        self.assertEqual(retained, result.outcome_record)
+        self.assertEqual(retained.outcome.observation, raw)
+        before = self.native_snapshot()
+        with self.observed_time("2030-01-01T01:00:00Z"):
+            replay = self.service().execute_native(command)
+        self.assertEqual(replay.outcome_record, retained)
+        self.assertEqual(self.native_snapshot(), before)
+
     def test_distinct_latest_run_is_locked_before_started_attempt_and_refuses_without_writes(self):
         self.seed_distinct_latest_run()
         identity = self.started.state.identity
