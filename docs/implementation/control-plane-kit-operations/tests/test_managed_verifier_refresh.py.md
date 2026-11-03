@@ -7,7 +7,10 @@ now through CpkServerApplicationError status 500 and an exact preconditions/inco
 unverified diagnostic bound to the requested workspace/run/plan/idempotency key.
 Existing replacement, replay and history checks remain. This fixes the second
 stale alias consumer found while diagnosing CI; direct-owner exception tests are
-unchanged. Corrected source/focused validation is pending.
+unchanged. The correction at `95bcfb49ab05c583282a51defdf38318017ba242` passed the
+ordinary focused gate: all eight affected methods, 622.790 seconds, complete
+exit 0 with integrity, compilation and clean import. Full corrected CI remains
+pending; see [the result](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6595490883).
 
 Real Operations/Postgres owners and the established managed application fixture
 prove exact fresh verifier-family authority. Runtime/health ports remain the
