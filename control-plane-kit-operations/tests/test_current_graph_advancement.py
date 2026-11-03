@@ -187,6 +187,55 @@ def _contract_result(
 
 
 class CurrentGraphAdvancementContractTests(unittest.TestCase):
+    def test_diagnostic_entry_preserves_direct_exception_identity_and_cancellation(self):
+        original = ValueError("private-exception-canary")
+        calls = []
+        def unavailable():
+            calls.append("entered")
+            raise original
+        service = CurrentGraphAdvancementCommandService(unavailable, clock=lambda: "unused", id_factory=lambda: "unused")
+        command = _contract_command("run-a")
+        with self.assertRaises(ValueError) as captured:
+            service.execute(command)
+        self.assertIs(captured.exception, original)
+        self.assertEqual(len(calls), 1)
+        failure = service.execute_with_diagnostic(command)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual((failure.stage, failure.reason), ("preconditions", "internal-error"))
+        self.assertNotIn("private-exception-canary", json.dumps(failure.descriptor()))
+        with self.assertRaises(ValueError) as captured:
+            service.execute_with_diagnostic(replace(command, workspace_id="x" * 513))
+        self.assertIs(captured.exception, original)
+        self.assertEqual(len(calls), 3)
+
+        class Cancelled(BaseException):
+            pass
+        cancelled = Cancelled()
+        def cancel():
+            raise cancelled
+        service = CurrentGraphAdvancementCommandService(cancel, clock=lambda: "unused", id_factory=lambda: "unused")
+        for execute in (service.execute, service.execute_with_diagnostic):
+            with self.assertRaises(Cancelled) as captured:
+                execute(command)
+            self.assertIs(captured.exception, cancelled)
+
+    def test_advancement_diagnostic_has_closed_fields_and_serialized_bound(self):
+        from control_plane_kit_operations.advancement import CurrentGraphAdvancementFailure
+        from control_plane_kit_operations.cpk_server import CpkServerAdvancementFailure
+        coordinate = "é" * 256
+        failure = CurrentGraphAdvancementFailure("transaction-exit", "internal-error",
+            coordinate, coordinate, coordinate, coordinate)
+        envelope = CpkServerAdvancementFailure(failure).descriptor()
+        raw = json.dumps(envelope, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self.assertLessEqual(len(raw), 8192)
+        self.assertEqual(set(envelope["error"]), {"status", "message", "diagnostic"})
+        self.assertEqual(set(envelope["error"]["diagnostic"]), {"stage", "reason", "acceptance", "correlation"})
+        self.assertEqual(envelope["error"]["diagnostic"]["acceptance"], "unverified")
+        with self.assertRaises(ValueError):
+            replace(failure, reason="unbounded-provider-message")
+        with self.assertRaises(ValueError):
+            replace(failure, plan_id=coordinate + "é")
+
     def assert_invalid_run(self, callback, canaries: tuple[str, ...]) -> None:
         with self.assertRaises(Exception) as captured:
             callback()
@@ -480,6 +529,41 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             after = (uow.stores.workspaces.get("workspace-a"),
                 uow.stores.execution.events_for_run("run-a"))
         self.assertEqual(after, before)
+
+    def test_advancement_diagnostic_does_not_infer_rollback_from_exit_failure(self):
+        for after_commit in (False, True):
+            with self.subTest(after_commit=after_commit):
+                self.reset_truth()
+                self.seed_succeeded_run()
+                calls = []
+                class ExitFailureConnection:
+                    def __init__(self, connection):
+                        self.connection = connection
+                    def __getattr__(self, name):
+                        return getattr(self.connection, name)
+                    def commit(self):
+                        calls.append("commit")
+                        if not after_commit:
+                            raise RuntimeError("private-commit-canary")
+                        self.connection.commit()
+                    def close(self):
+                        self.connection.close()
+                        if after_commit:
+                            raise RuntimeError("private-close-canary")
+                service = CurrentGraphAdvancementCommandService(
+                    lambda: PostgresUnitOfWork(lambda: ExitFailureConnection(psycopg.connect(self.database_url))),
+                    clock=lambda: "2026-07-22T13:05:00Z", id_factory=Sequence("advance-event", "advance-action"))
+                failure = service.execute_with_diagnostic(self.command())
+                self.assertEqual(calls, ["commit"])
+                self.assertEqual((failure.stage, failure.reason), ("transaction-exit", "internal-error"))
+                self.assertEqual(failure.descriptor()["acceptance"], "unverified")
+                self.assertNotIn("canary", json.dumps(failure.descriptor()))
+                with self.unit_of_work() as uow:
+                    workspace = uow.stores.workspaces.get("workspace-a")
+                    events = uow.stores.execution.events_for_run("run-a")
+                self.assertEqual(workspace.current_graph_id, "graph-desired" if after_commit else "graph-current")
+                self.assertIs(events[-1].kind,
+                    ActivityEventKind.CURRENT_GRAPH_ADVANCED if after_commit else ActivityEventKind.RUN_SUCCEEDED)
 
     def test_complete_durable_success_advances_current_graph_once(self) -> None:
         self.seed_succeeded_run()

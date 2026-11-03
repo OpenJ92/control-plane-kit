@@ -1,6 +1,11 @@
 Source: [test_cpk_server_adapters.py](../../../../control-plane-kit-operations/tests/test_cpk_server_adapters.py).
 Maintain this companion alongside its source.
 
+#2078 extends the advancement recording port with the explicit diagnostic entry
+and a valid existing result fixture. The adapter must reject owner evidence bound
+to another workspace with a generic error after exactly one call. Existing
+run-identity, authority and fence tests remain the permission boundary evidence.
+
 For #1989, `test_public_secret_choices_*` proves HTTP/MCP selection descriptor
 translation and authenticated scope propagation. Body-supplied scope claims do
 not enter command authority; malformed, duplicate, null-version and unknown-node

@@ -69,6 +69,8 @@ from control_plane_kit_operations.admission import (
 from control_plane_kit_operations.advancement import (
     AdvanceCurrentGraph,
     CurrentGraphAdvancementCommandService,
+    CurrentGraphAdvancementFailure,
+    CurrentGraphAdvancementResult,
 )
 from control_plane_kit_operations.approvals import (
     ApprovalCommandService,
@@ -294,6 +296,24 @@ class CpkServerApplicationError(RuntimeError):
                 "message": self.message,
             }
         }
+
+
+class CpkServerAdvancementFailure(CpkServerApplicationError):
+    """A closed owner diagnostic within the existing authenticated error boundary."""
+
+    def __init__(self, diagnostic: CurrentGraphAdvancementFailure):
+        super().__init__(500, "application service failed")
+        if type(diagnostic) is not CurrentGraphAdvancementFailure:
+            raise TypeError("advancement diagnostic must be an exact owner value")
+        diagnostic.__post_init__()
+        self.diagnostic = diagnostic
+
+    def descriptor(self):
+        result = super().descriptor()
+        result["error"]["diagnostic"] = self.diagnostic.descriptor()
+        if len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > 8192:
+            return super().descriptor()
+        return result
 
 
 class CpkServerProvisionConflict(CpkServerApplicationError):
@@ -1549,8 +1569,7 @@ class CpkServerLifecycleService:
             if self._advancement is None:
                 raise _service_not_configured(request)
             payload = _arguments(request)
-            result = self._advancement.execute(
-                AdvanceCurrentGraph(
+            command = AdvanceCurrentGraph(
                     workspace_id=_workspace_id(payload),
                     run_id=_path_or_payload(payload, "run_id", "run_id"),
                     plan_id=_text(payload, "plan_id"),
@@ -1577,8 +1596,15 @@ class CpkServerLifecycleService:
                         _claim_generation(payload),
                     ),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
-                )
             )
+            result = self._advancement.execute_with_diagnostic(command)
+            if type(result) is CurrentGraphAdvancementFailure:
+                if (result.workspace_id, result.run_id, result.plan_id, result.idempotency_key) != (
+                        command.workspace_id, command.run_id, command.plan_id, command.idempotency_key.value):
+                    raise CpkServerApplicationError(500, "application service failed")
+                raise CpkServerAdvancementFailure(result)
+            if type(result) is not CurrentGraphAdvancementResult:
+                raise CpkServerApplicationError(500, "application service failed")
             return result.descriptor()
         if request.route_id != "command.run.claim":
             raise _unsupported_route(request)

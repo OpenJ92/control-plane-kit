@@ -80,7 +80,6 @@ from control_plane_kit_operations.activity_journal import activity_journal_event
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService
 from control_plane_kit_operations.advancement import (
     CurrentGraphAdvancementCommandService,
-    CurrentGraphAdvancementIncomplete,
 )
 from control_plane_kit_operations.approvals import ApprovalCommandService
 from control_plane_kit_operations.coordinator import (
@@ -1201,7 +1200,7 @@ class ManagedUpdateExecutionTests(ManagedApplicationFixture):
             still_b = uow.stores.workspaces.get("workspace-a")
         self.assertEqual(still_b.current_graph_id, workspace_b.current_graph_id)
         remove_plan = remove_detail["plan"]
-        with self.assertRaises(CurrentGraphAdvancementIncomplete):
+        with self.assertRaises(CpkServerApplicationError) as refused:
             await self.invoke(
                 "command.graph.advance-current",
                 ControlPlaneServiceRole.LIFECYCLE,
@@ -1218,3 +1217,8 @@ class ManagedUpdateExecutionTests(ManagedApplicationFixture):
                     "idempotency_key": "advance-remove-without-proof",
                 },
             )
+        failure = refused.exception.descriptor()["error"]
+        self.assertEqual(failure["status"], 500)
+        self.assertEqual(failure["diagnostic"]["reason"], "incomplete")
+        self.assertEqual(failure["diagnostic"]["acceptance"], "unverified")
+        self.assertEqual(failure["diagnostic"]["correlation"]["run_id"], remove_run)

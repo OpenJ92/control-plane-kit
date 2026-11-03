@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from control_plane_kit_core.operations import RunId
@@ -66,6 +66,42 @@ class CurrentGraphAdvancementIncomplete(CurrentGraphAdvancementError):
 
 class CurrentGraphAdvancementIdempotencyConflict(CurrentGraphAdvancementError):
     """Raised when one idempotency key is reused for a different advancement."""
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentGraphAdvancementFailure:
+    """Bounded response evidence, never authoritative acceptance or retry permission."""
+
+    stage: str
+    reason: str
+    workspace_id: str
+    run_id: str
+    plan_id: str
+    idempotency_key: str
+
+    def __post_init__(self):
+        if type(self.stage) is not str or type(self.reason) is not str or self.stage not in {
+                "preconditions", "receiver-validation", "configuration-acceptance",
+                "publication", "transaction-exit", "unknown"} or self.reason not in {
+                "denied", "not-found", "conflict", "incomplete", "idempotency-conflict", "internal-error"}:
+            raise ValueError("advancement diagnostic category is invalid")
+        for value in (self.workspace_id, self.run_id, self.plan_id, self.idempotency_key):
+            if (type(value) is not str or not value or len(value.encode("utf-8")) > 512
+                    or any(ord(character) < 32 or ord(character) == 127 for character in value)):
+                raise ValueError("advancement diagnostic correlation is invalid")
+
+    def descriptor(self):
+        self.__post_init__()
+        return {"stage": self.stage, "reason": self.reason, "acceptance": "unverified",
+            "correlation": {"workspace_id": self.workspace_id, "run_id": self.run_id,
+                "plan_id": self.plan_id, "idempotency_key": self.idempotency_key}}
+
+
+@dataclass
+class _AdvancementProgress:
+    stage: str = "preconditions"
+    exiting: bool = False
+    body_error: Exception | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -290,170 +326,211 @@ class CurrentGraphAdvancementCommandService:
         self,
         command: AdvanceCurrentGraph,
     ) -> CurrentGraphAdvancementResult:
+        return self._execute(command, _AdvancementProgress())
+
+    def execute_with_diagnostic(
+        self, command: AdvanceCurrentGraph,
+    ) -> CurrentGraphAdvancementResult | CurrentGraphAdvancementFailure:
+        """Run once; return safe failure evidence only after all transaction contexts exit."""
+        progress = _AdvancementProgress()
+        try:
+            return self._execute(command, progress)
+        except Exception as error:
+            reasons = {CurrentGraphAdvancementDenied: "denied", CurrentGraphAdvancementNotFound: "not-found",
+                CurrentGraphAdvancementConflict: "conflict", CurrentGraphAdvancementIncomplete: "incomplete",
+                CurrentGraphAdvancementIdempotencyConflict: "idempotency-conflict"}
+            stage = ("transaction-exit" if progress.exiting and error is not progress.body_error
+                else progress.stage)
+            diagnostic = None
+            try:
+                diagnostic = CurrentGraphAdvancementFailure(stage, reasons.get(type(error), "internal-error"),
+                    command.workspace_id, command.run_id, command.plan_id, command.idempotency_key.value)
+            except Exception:
+                # Reporting must never replace an unrepresentable original failure.
+                pass
+            if diagnostic is None:
+                raise
+            return diagnostic
+
+    def _execute(self, command, progress):
         _require_operate_scope(command.authority)
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work, \
                 unit_of_work.stores.configuration_preparation._advancement_evidence(
                     command.workspace_id, command.run_id):
-            stores = unit_of_work.stores
-            locator_run = _get_run(stores, command.run_id)
-            locator_request = _get_request(
-                stores,
-                locator_run.admission.request_id,
-            )
+            try:
+                return self._execute_in_unit_of_work(command, fingerprint, unit_of_work, progress)
+            except Exception as error:
+                progress.body_error = error
+                raise
+            finally:
+                progress.exiting = True
 
-            history = stores.activity_history
-            history.lock_action_idempotency(
-                locator_request.identity.session_id,
-                command.idempotency_key.value,
-            )
-            existing = _action_for_idempotency(
-                history,
-                locator_request.identity.session_id,
-                command.idempotency_key.value,
-            )
-            if existing is not None:
-                _require_replay_intent(existing, fingerprint)
-                request = _get_request_for_update(
-                    stores,
-                    locator_request.identity.request_id,
-                )
-                run = _get_run_for_update(stores, command.run_id)
-                _require_run_request_linkage(run, request)
-                _require_worker_owns(request, command.authority, command.fence)
-                result = _replay(
-                    stores,
-                    command,
-                    request,
-                    run,
-                    existing,
-                    fingerprint,
-                )
-                stores.configuration_acceptance._verify_replay(result)
-                unit_of_work.commit()
-                return result
-            guard = stores.graphs.lock_receiver_lifecycle(command.workspace_id)
+    def _execute_in_unit_of_work(self, command, fingerprint, unit_of_work, progress):
+        stores = unit_of_work.stores
+        locator_run = _get_run(stores, command.run_id)
+        locator_request = _get_request(
+            stores,
+            locator_run.admission.request_id,
+        )
+
+        history = stores.activity_history
+        history.lock_action_idempotency(
+            locator_request.identity.session_id,
+            command.idempotency_key.value,
+        )
+        existing = _action_for_idempotency(
+            history,
+            locator_request.identity.session_id,
+            command.idempotency_key.value,
+        )
+        if existing is not None:
+            _require_replay_intent(existing, fingerprint)
             request = _get_request_for_update(
                 stores,
-                locator_run.admission.request_id,
+                locator_request.identity.request_id,
             )
             run = _get_run_for_update(stores, command.run_id)
-            session = _get_session_for_update(
-                history,
-                locator_request.identity.session_id,
-            )
-            workspace = _get_workspace_for_update(stores, command.workspace_id)
-            plan = _get_plan(history, command.plan_id)
             _require_run_request_linkage(run, request)
-            if session.status is not OperationSessionStatus.OPEN:
-                raise CurrentGraphAdvancementConflict(
-                    "current graph advancement requires an open session"
-                )
-            if request.identity.session_id != session.session_id:
-                raise CurrentGraphAdvancementConflict(
-                    "activity run session linkage changed"
-                )
-
             _require_worker_owns(request, command.authority, command.fence)
-            current_projection, desired_projection = _require_identity(
+            result = _replay(
+                stores,
                 command,
-                workspace,
                 request,
                 run,
-                plan,
-                stores.realized_graphs,
+                existing,
+                fingerprint,
             )
-            _require_graph_ownership(
-                stores.graphs,
-                command.workspace_id,
-                command.expected_current_graph_id,
-                command.desired_graph_id,
-            )
-            events = stores.execution.events_for_run(command.run_id)
-            _require_complete_success(plan.plan, run, events)
-            with stores.configuration_acceptance._publication_scope(unit_of_work, guard):
-                receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard,
-                    current_projection, desired_projection)
-                prepared = stores.configuration_acceptance._prepare(stores, workspace, request, run, plan, guard,
-                    current_projection, desired_projection, receiver_truth=receiver_truth)
-                stores.configuration_acceptance._preflight(prepared)
-
-                occurred_at = self._clock()
-                evidence = BoundedEvidence.from_mapping(
-                    {
-                        "workspace_id": command.workspace_id,
-                        "plan_id": command.plan_id,
-                        "run_id": command.run_id,
-                        "from_authored_graph_id": command.expected_current_graph_id,
-                        "from_realized_projection_id": current_projection.projection_id,
-                        "to_authored_graph_id": command.desired_graph_id,
-                        "to_realized_projection_id": desired_projection.projection_id,
-                        "to_realized_projection_digest": (
-                            desired_projection.projection_digest
-                        ),
-                        "desired_graph_revision": command.expected_desired_graph_revision,
-                        **prepared.installation_sources.commitment,
-                    }
-                )
-                event = ActivityEventRecord(
-                        self._id_factory(),
-                        command.run_id,
-                        stores.execution.next_event_ordinal(command.run_id),
-                        ActivityEventKind.CURRENT_GRAPH_ADVANCED,
-                        occurred_at,
-                        evidence=evidence,
-                    )
-                action = OperationActionRecord(
-                        self._id_factory(),
-                        request.identity.session_id,
-                        history.next_action_ordinal(
-                            request.identity.session_id
-                        ),
-                        LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
-                        command.authority.worker_id,
-                        payload={
-                            **evidence.descriptor(),
-                            "execution_request_id": request.identity.request_id,
-                            "claim_generation": command.fence.generation,
-                            "event_id": event.event_id,
-                        },
-                        created_at=occurred_at,
-                        idempotency_key=command.idempotency_key.value,
-                        intent_fingerprint=fingerprint,
-                    )
-                prepared = prepared.with_records(event, action)
-                stores.configuration_acceptance._preflight(prepared)
-                advanced = stores.workspaces._compare_and_set_current_graph(
-                    command.workspace_id,
-                    prepared_receipt=prepared,
-                    expected_graph_id=command.expected_current_graph_id,
-                    replacement_graph_id=command.desired_graph_id,
-                    expected_realized_projection_id=(
-                        command.expected_current_realized_projection_id
-                    ),
-                    replacement_realized_projection_id=(
-                        command.desired_realized_projection_id
-                    ),
-                    expected_desired_graph_id=command.desired_graph_id,
-                    expected_desired_realized_projection_id=(
-                        command.desired_realized_projection_id
-                    ),
-                    expected_desired_graph_revision=(
-                        command.expected_desired_graph_revision
-                    ),
-                )
-                if advanced is None:
-                    raise CurrentGraphAdvancementConflict(
-                        "workspace current graph changed concurrently"
-                    )
-
-                event = stores.execution._add_advancement_event(event, prepared)
-                action = history._add_advancement_action(action, prepared)
-                stores.configuration_acceptance._insert(prepared)
-                stores.configuration_acceptance._insert_transfers(prepared)
-                _finish_receiver_advancement(stores, request, run, guard, receiver_truth, action, advanced)
+            progress.stage = "configuration-acceptance"
+            stores.configuration_acceptance._verify_replay(result)
+            progress.stage = "publication"
             unit_of_work.commit()
-            return _result(event, action)
+            return result
+        guard = stores.graphs.lock_receiver_lifecycle(command.workspace_id)
+        request = _get_request_for_update(
+            stores,
+            locator_run.admission.request_id,
+        )
+        run = _get_run_for_update(stores, command.run_id)
+        session = _get_session_for_update(
+            history,
+            locator_request.identity.session_id,
+        )
+        workspace = _get_workspace_for_update(stores, command.workspace_id)
+        plan = _get_plan(history, command.plan_id)
+        _require_run_request_linkage(run, request)
+        if session.status is not OperationSessionStatus.OPEN:
+            raise CurrentGraphAdvancementConflict(
+                "current graph advancement requires an open session"
+            )
+        if request.identity.session_id != session.session_id:
+            raise CurrentGraphAdvancementConflict(
+                "activity run session linkage changed"
+            )
+
+        _require_worker_owns(request, command.authority, command.fence)
+        current_projection, desired_projection = _require_identity(
+            command,
+            workspace,
+            request,
+            run,
+            plan,
+            stores.realized_graphs,
+        )
+        _require_graph_ownership(
+            stores.graphs,
+            command.workspace_id,
+            command.expected_current_graph_id,
+            command.desired_graph_id,
+        )
+        events = stores.execution.events_for_run(command.run_id)
+        _require_complete_success(plan.plan, run, events)
+        with stores.configuration_acceptance._publication_scope(unit_of_work, guard):
+            progress.stage = "receiver-validation"
+            receiver_truth = _prepare_receiver_advancement(stores, workspace, request, run, guard,
+                current_projection, desired_projection)
+            progress.stage = "configuration-acceptance"
+            prepared = stores.configuration_acceptance._prepare(stores, workspace, request, run, plan, guard,
+                current_projection, desired_projection, receiver_truth=receiver_truth)
+            stores.configuration_acceptance._preflight(prepared)
+
+            occurred_at = self._clock()
+            evidence = BoundedEvidence.from_mapping(
+                {
+                    "workspace_id": command.workspace_id,
+                    "plan_id": command.plan_id,
+                    "run_id": command.run_id,
+                    "from_authored_graph_id": command.expected_current_graph_id,
+                    "from_realized_projection_id": current_projection.projection_id,
+                    "to_authored_graph_id": command.desired_graph_id,
+                    "to_realized_projection_id": desired_projection.projection_id,
+                    "to_realized_projection_digest": (
+                        desired_projection.projection_digest
+                    ),
+                    "desired_graph_revision": command.expected_desired_graph_revision,
+                    **prepared.installation_sources.commitment,
+                }
+            )
+            event = ActivityEventRecord(
+                    self._id_factory(),
+                    command.run_id,
+                    stores.execution.next_event_ordinal(command.run_id),
+                    ActivityEventKind.CURRENT_GRAPH_ADVANCED,
+                    occurred_at,
+                    evidence=evidence,
+                )
+            action = OperationActionRecord(
+                    self._id_factory(),
+                    request.identity.session_id,
+                    history.next_action_ordinal(
+                        request.identity.session_id
+                    ),
+                    LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
+                    command.authority.worker_id,
+                    payload={
+                        **evidence.descriptor(),
+                        "execution_request_id": request.identity.request_id,
+                        "claim_generation": command.fence.generation,
+                        "event_id": event.event_id,
+                    },
+                    created_at=occurred_at,
+                    idempotency_key=command.idempotency_key.value,
+                    intent_fingerprint=fingerprint,
+                )
+            prepared = prepared.with_records(event, action)
+            stores.configuration_acceptance._preflight(prepared)
+            progress.stage = "publication"
+            advanced = stores.workspaces._compare_and_set_current_graph(
+                command.workspace_id,
+                prepared_receipt=prepared,
+                expected_graph_id=command.expected_current_graph_id,
+                replacement_graph_id=command.desired_graph_id,
+                expected_realized_projection_id=(
+                    command.expected_current_realized_projection_id
+                ),
+                replacement_realized_projection_id=(
+                    command.desired_realized_projection_id
+                ),
+                expected_desired_graph_id=command.desired_graph_id,
+                expected_desired_realized_projection_id=(
+                    command.desired_realized_projection_id
+                ),
+                expected_desired_graph_revision=(
+                    command.expected_desired_graph_revision
+                ),
+            )
+            if advanced is None:
+                raise CurrentGraphAdvancementConflict(
+                    "workspace current graph changed concurrently"
+                )
+
+            event = stores.execution._add_advancement_event(event, prepared)
+            action = history._add_advancement_action(action, prepared)
+            stores.configuration_acceptance._insert(prepared)
+            stores.configuration_acceptance._insert_transfers(prepared)
+            _finish_receiver_advancement(stores, request, run, guard, receiver_truth, action, advanced)
+        unit_of_work.commit()
+        return _result(event, action)
 
 
 def _prepare_receiver_advancement(stores, workspace, request, run, guard, current_projection, desired_projection):

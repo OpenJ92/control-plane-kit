@@ -7,4 +7,10 @@ while preserving graph and run history. The diagnostic entry shares one underlyi
 exception-raising entry; it does not replay the command or infer acceptance from
 the diagnostic. The earlier unrun exception-attribute test was superseded to
 avoid stale exception evidence. Focused target-red evidence is pending through
-the ordinary Operations Docker suite.
+the ordinary Operations Docker suite. The final adapter-driven target at
+`dad0f03164703eaa10c51f1f7ccddc808f70fedf` ran once in 5.833 seconds and failed at
+the expected missing bounded application-error assertion; production was unchanged.
+The implementation checks direct exception identity and cancellation, closed
+serialized evidence and unrepresentable-correlation fallback. Real PostgreSQL
+commit refusal and a close failure after successful commit both return unverified
+outcomes while their authoritative graph/history states differ. Green is pending.

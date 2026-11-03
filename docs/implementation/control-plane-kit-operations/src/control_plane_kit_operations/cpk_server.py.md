@@ -1,6 +1,14 @@
 Source: [cpk_server.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py).
 Maintain this companion alongside its source.
 
+#2078's advancement route explicitly calls the owner's diagnostic entry once.
+It accepts exact success/failure types and matches the closed failure correlation
+against the admitted command. The fixed service-error response may carry only
+that diagnostic, capped at 8 KiB of serialized UTF-8 including outer fields and
+escaping. Missing/unbound/oversized evidence retains the generic error response;
+auth refusal and successful advancement projection are unchanged. The response
+does not prove acceptance or authorize retry. Focused validation is pending.
+
 `command.desired-graph.set` accepts optional `explicit_secret_choices`, mapping
 node IDs to arrays of the existing Core selection descriptor
 `{reference_id, intent, version_id}`. Unselected, duplicate, malformed, oversized

@@ -1,6 +1,17 @@
 Source: [advancement.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/advancement.py).
 Maintain this companion alongside its source.
 
+#2078 adds `execute_with_diagnostic` for the application adapter, sharing the
+same computation and UnitOfWork with ordinary `execute`. The latter retains
+original success, exception identity and cancellation behavior. The diagnostic
+entry catches only Exception after complete context exit and returns an immutable
+closed stage/reason/correlation with acceptance unverified. Unrepresentable
+correlation re-raises the original failure. Per-call state distinguishes an
+unchanged body exception from a new exit exception; result construction remains
+in the body. A commit request is not a physical commit, and even a postcommit
+close failure stays unverified. No diagnostic SQL, events, exception attributes,
+second execution or persistent state is added. Focused green evidence is pending.
+
 Current source supports nonempty membership and E4.C qualified claim transfers;
 see the final section below. The earlier B2 slice and pending-review statements
 record historical stages, not current restrictions or acceptance status.

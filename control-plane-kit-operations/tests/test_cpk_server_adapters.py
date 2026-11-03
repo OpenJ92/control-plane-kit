@@ -186,6 +186,11 @@ class RecordingService:
         self.commands.append(command)
         return DescriptorResult({"command_type": type(command).__name__})
 
+    def execute_with_diagnostic(self, command):
+        from tests.test_current_graph_advancement import _contract_result
+        self.commands.append(command)
+        return _contract_result(command.run_id, replayed=False)
+
 
 class RecordingDeploymentProgram:
     def __init__(self, result: object) -> None:
@@ -271,6 +276,23 @@ def foreign_worker_principal() -> AuthenticatedPrincipal:
 
 
 class RunIdentityAdapterContractTests(unittest.TestCase):
+    def test_advancement_adapter_refuses_unbound_owner_diagnostic_without_redispatch(self):
+        from control_plane_kit_operations.advancement import CurrentGraphAdvancementFailure
+        calls = []
+        class UnboundOwner:
+            def execute_with_diagnostic(self, command):
+                calls.append(command)
+                return CurrentGraphAdvancementFailure("preconditions", "conflict",
+                    "workspace-other", command.run_id, command.plan_id, command.idempotency_key.value)
+        service = CpkServerLifecycleService(RecordingService(), advancement=UnboundOwner())
+        request = self.command_request("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+            surface="http", run_id="run-a")
+        with self.assertRaises(CpkServerApplicationError) as captured:
+            service.handle(request)
+        self.assertEqual(captured.exception.descriptor(), {
+            "error": {"status": 500, "message": "application service failed"}})
+        self.assertEqual(len(calls), 1)
+
     def services(self):
         lifecycle = RecordingService()
         execution = RecordingService()
