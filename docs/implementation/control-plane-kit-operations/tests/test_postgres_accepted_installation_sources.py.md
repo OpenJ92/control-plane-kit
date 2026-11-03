@@ -1,0 +1,22 @@
+Source: [test_postgres_accepted_installation_sources.py](../../../../control-plane-kit-operations/tests/test_postgres_accepted_installation_sources.py).
+Maintain this companion alongside its source.
+
+The existing #1987 tests exercise original installation-source publication,
+carry, replay, generated-allocation provenance and bounded reads through real
+Operations/PostgreSQL owners with recording provider ports.
+
+The #2076 case adds a first-attempt-connected initial deployment with separate
+management and application ingresses and four managed receiver identities.
+Management bootstrap enables health; application ingress follows application
+health. The real compiler, commands, coordinator, effect records and advancement
+produce all history. Recording connectors match their incoming selected token
+to its owner-produced allocation, retaining the existing consumer-grant and
+installation-receipt checks. No successful history or acceptance is seeded.
+
+The test requires both original connector provenance chains and all four
+receiver first-acceptances to commit with the planned current graph/projection.
+Advancement preserves the entire recorded external-effects tuple and original
+claim identities. An actual failure is inspected once without replay; existing
+late/deferred rollback tests remain the negative evidence. This is Operations
+composition evidence, not provider conformance or an explanation of the live
+HTTP error. The first focused baseline-plus-new-case result is pending.
