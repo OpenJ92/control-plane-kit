@@ -500,7 +500,8 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
         for name, observation in health.items():
             dependencies.extend(((observation, native), (observation, ready), (observation, starts[name])))
         for successor, predecessor in dependencies:
-            self.assertIn(predecessor.activity_id, successor.dependencies)
+            self.assertIn(predecessor.activity_id,
+                {dependency.predecessor for dependency in successor.dependencies})
 
     def acceptance_snapshot(self):
         return tuple(self.rows(name) for name in ("cpk_workspaces", "cpk_configuration_acceptances",

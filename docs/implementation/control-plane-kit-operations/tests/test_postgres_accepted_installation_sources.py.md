@@ -22,5 +22,8 @@ composition evidence, not provider conformance or an explanation of the live
 HTTP error. The first focused run passed the baseline but the new case failed
 fixture setup because the cloned connector retained the API block role identity.
 The fixture now changes both node and block role identities, matching the existing
-managed-application clone pattern. The corrected focused result is pending;
-the setup failure provides no behavioral reproduction evidence.
+managed-application clone pattern. The second focused run passed the baseline
+and new-case setup, then exposed a test assertion comparing activity IDs directly
+with dependency records. The assertion now compares their predecessor IDs,
+preserving every required edge. Neither failure reached advancement or provides
+behavioral reproduction evidence. The corrected focused result is pending.
