@@ -161,8 +161,15 @@ class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffe
         self.assertEqual(projected, expected)
         self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
             "WHERE direct_event_id=%s", (row[0], event.event_id))
-        self.connection.execute("UPDATE cpk_activity_events SET payload=%s WHERE event_id=%s",
-            (Jsonb({}), event.event_id))
+        nested = b"[" * 1500 + b"0" + b"]" * 1500
+        self.assertLess(len(nested), 8192)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (nested, event.event_id))
+        projected = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(projected.pop("native_connection"), dict(status="unavailable"))
+        self.assertEqual(projected, expected)
+        self.connection.execute("UPDATE cpk_activity_events SET occurred_at='infinity' WHERE event_id=%s",
+            (event.event_id,))
         from control_plane_kit_operations.read_services.errors import ReadModelError
         with self.assertRaises(ReadModelError):
             self.native_history()

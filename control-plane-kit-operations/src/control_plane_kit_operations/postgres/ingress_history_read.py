@@ -127,7 +127,7 @@ class RunEventsSnapshot:
             rows = self._rows(table, columns, where,
                 tuple(value for key in keys for value in key) + (workspace_id,), limit=len(keys) + 1)
             require(len(rows) <= len(keys))
-        except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
+        except (KeyError, ValueError, TypeError, AttributeError, OverflowError, RecursionError):
             return summaries
         seen = set()
         for joined in rows:
@@ -147,7 +147,7 @@ class RunEventsSnapshot:
                 else:
                     summaries[event_id] = dict(status="available",
                         acceptance_reason=record.outcome.acceptance_reason, diagnostic=diagnostic.value)
-            except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
+            except (KeyError, ValueError, TypeError, AttributeError, OverflowError, RecursionError):
                 summaries[event_id] = {"status": "unavailable"}
         return summaries
 
