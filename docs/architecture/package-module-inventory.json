@@ -11771,6 +11771,7 @@
         "EffectAttemptOutcomeRecord",
         "EffectOutcomeProfile",
         "ExecutionEffectOutcome",
+        "NativeConnectionDiagnostic",
         "NativeConnectionEffectOutcome",
         "NativeConnectionObservation",
         "NativeConnectionOutcome",

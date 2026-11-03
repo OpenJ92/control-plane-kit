@@ -54,6 +54,7 @@ from effect_outcome_evidence_fixture import (
 ROOT_EXPORTS = {
     "EffectOutcomeProfile",
     "ExecutionEffectOutcome",
+    "NativeConnectionDiagnostic",
     "NativeConnectionEffectOutcome",
     "NativeConnectionObservation",
     "NativeConnectionOutcome",
@@ -413,6 +414,8 @@ NATIVE_VALUE_CALL_SURFACE = (
         "_native_acceptance_reason", "_native_acceptance_reason",
         "_native_timestamp_ns", "_native_timestamp_ns", "_native_timestamp_ns", "_native_timestamp_ns",
         "any", "any", "any", "cls",
+        # Optional diagnostic admission: exact enum, unsampled shape, bounded rejection.
+        "type", "any", "control_plane_kit_operations.records.OperationsRecordError",
         *("control_plane_kit_operations.records.OperationsRecordError",) * 14,
         "control_plane_kit_operations.records._validate_text",
         "dataclasses.dataclass", "dataclasses.dataclass", "dataclasses.dataclass", "dataclasses.dataclass",
