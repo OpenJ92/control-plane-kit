@@ -1,6 +1,37 @@
 Source: [advancement.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/advancement.py).
 Maintain this companion alongside its source.
 
+#2078 adds `execute_with_diagnostic` for the application adapter, sharing the
+same computation and UnitOfWork with ordinary `execute`. The latter retains
+original success, exception identity and cancellation behavior. The diagnostic
+entry catches only Exception after complete context exit and returns an immutable
+closed stage/reason/correlation with acceptance unverified. Unrepresentable
+correlation re-raises the original failure. Per-call state distinguishes an
+unchanged body exception from a new exit exception; result construction remains
+in the body. A commit request is not a physical commit, and even a postcommit
+close failure stays unverified. No diagnostic SQL, events, exception attributes,
+second execution or persistent state is added. Detail is available only after
+already-read run/request linkage binds the requested workspace, run and plan;
+otherwise fresh and replay failures use unknown/internal-error and echo only the
+requested correlation. No extra reads or admission changes are introduced. The
+body-error tracker surrounds the inner evidence context, so its existing conflict
+translation remains a body failure before the outer UnitOfWork exits. Focused
+green evidence passed at executable checkpoint `5558ea434ddd0cc05dee238c5df1356a67c8691b`:
+19 tests, complete owning gate exit 0 including compilation and clean import.
+Full CI and integration remain separate; see
+[the terminal record](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6594537852).
+
+The serialization inventory names `_execute_in_unit_of_work` as the physical
+action writer shared by both entrypoints; its public service, lock roles and
+ordering laws remain unchanged. The receiver-transfer composition test now
+expects the routed publication/internal-error/unverified diagnostic after its
+injected receiver FINISH error, while retaining real finish, compound rollback,
+connection release, successful advancement/replay and physical accounting checks.
+At executable checkpoint `0db2f42244c46c20fb159bc04a6ca9d7e0afbb16`, all three
+affected methods passed the ordinary focused gate in 53.601 seconds, full exit 0
+including integrity, compilation and clean import. Required combined-tree CI
+remains pending; see [the focused result and failure correspondence](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6595765572).
+
 Current source supports nonempty membership and E4.C qualified claim transfers;
 see the final section below. The earlier B2 slice and pending-review statements
 record historical stages, not current restrictions or acceptance status.

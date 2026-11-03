@@ -1,6 +1,17 @@
 Source: [test_managed_verifier_refresh.py](../../../../control-plane-kit-operations/tests/test_managed_verifier_refresh.py).
 Maintain this companion alongside its source.
 
+#2078's adapter projection supersedes the historical raw-owner exception assertion
+below for this routed command. Failed desired health must still refuse advancement,
+now through CpkServerApplicationError status 500 and an exact preconditions/incomplete/
+unverified diagnostic bound to the requested workspace/run/plan/idempotency key.
+Existing replacement, replay and history checks remain. This fixes the second
+stale alias consumer found while diagnosing CI; direct-owner exception tests are
+unchanged. The correction at `95bcfb49ab05c583282a51defdf38318017ba242` passed the
+ordinary focused gate: all eight affected methods, 622.790 seconds, complete
+exit 0 with integrity, compilation and clean import. Full corrected CI remains
+pending; see [the result](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6595490883).
+
 Real Operations/Postgres owners and the established managed application fixture
 prove exact fresh verifier-family authority. Runtime/health ports remain the
 existing recording implementations; this is package evidence, not installation
