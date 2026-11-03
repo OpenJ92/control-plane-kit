@@ -27,8 +27,10 @@ ordering laws remain unchanged. The receiver-transfer composition test now
 expects the routed publication/internal-error/unverified diagnostic after its
 injected receiver FINISH error, while retaining real finish, compound rollback,
 connection release, successful advancement/replay and physical accounting checks.
-These additional CI corrections await focused validation; see
-[the terminal CI findings](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6595704904).
+At executable checkpoint `0db2f42244c46c20fb159bc04a6ca9d7e0afbb16`, all three
+affected methods passed the ordinary focused gate in 53.601 seconds, full exit 0
+including integrity, compilation and clean import. Required combined-tree CI
+remains pending; see [the focused result and failure correspondence](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6595765572).
 
 Current source supports nonempty membership and E4.C qualified claim transfers;
 see the final section below. The earlier B2 slice and pending-review statements
