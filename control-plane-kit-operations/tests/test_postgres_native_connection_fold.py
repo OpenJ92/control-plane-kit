@@ -29,6 +29,7 @@ from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectA
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_outcome_evidence import (
     ExecutionEffectOutcome, NativeConnectionObservation, NativeConnectionOutcome,
+    NativeConnectionDiagnostic,
     effect_outcome_failure, effect_outcome_transition,
 )
 from control_plane_kit_operations.postgres import PostgresExecutionStore
@@ -45,6 +46,154 @@ from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT
 
 
 class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffectStartFixture, unittest.TestCase):
+    def native_history(self, *, workspace="workspace-a", limit=100, cursor=None):
+        from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, RunReadScope
+        with self.unit_of_work().run_events_snapshot() as snapshot:
+            return snapshot.run_events(ReadPageRequest(ReadCollection.RUN_EVENTS,
+                RunReadScope(workspace, self.started.state.identity.run_id.value), limit, cursor))
+
+    def fold_diagnostic(self):
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            return self.service().execute_native(self.command(replace(
+                self.raw(kind=NativeConnectionOutcome.UNKNOWN),
+                diagnostic=NativeConnectionDiagnostic.SNAPSHOT_CHANGED)))
+
+    def test_native_history_projects_exact_diagnostic_without_changing_page_or_event(self):
+        result = self.fold_diagnostic()
+        event = result.attempt.latest_transition_event
+        page = self.native_history()
+        projected = next(item for item in page.items if item["event_id"] == event.event_id)
+        self.assertEqual(projected["native_connection"], dict(status="available",
+            acceptance_reason="unknown", diagnostic="snapshot-changed"))
+        self.assertEqual(projected["payload"], event.evidence.descriptor())
+        self.assertIsNone(projected["failure"])
+        gathered, cursor = [], None
+        while True:
+            part = self.native_history(limit=1, cursor=cursor)
+            gathered.extend(part.items)
+            cursor = part.next_cursor
+            if cursor is None:
+                break
+        self.assertEqual(tuple(gathered), page.items)
+        from control_plane_kit_operations.read_services.errors import ReadModelError
+        with self.assertRaises(ReadModelError):
+            self.native_history(workspace="foreign-workspace")
+
+    def test_native_history_omits_verified_legacy_diagnostic(self):
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            self.service().execute_native(self.command(self.raw(kind=NativeConnectionOutcome.UNKNOWN)))
+        self.assertTrue(all("native_connection" not in event for event in self.native_history().items))
+
+    def test_native_history_batches_only_emitted_eligible_events_with_constant_queries(self):
+        from control_plane_kit_operations.read_pages import (
+            ReadCollection, ReadPageRequest, RunReadScope, ReadPage, ReadPageCandidate, OrdinalReadCursor)
+        event = self.fold_diagnostic().attempt.latest_transition_event
+        scope = RunReadScope("workspace-a", event.run_id)
+        # Synthetic event pages exercise missing proof at page scale; they do
+        # not claim those events were produced by the execution lifecycle.
+        counts = []
+        for size in (1, 100):
+            request = ReadPageRequest(ReadCollection.RUN_EVENTS, scope, size)
+            candidates = tuple(ReadPageCandidate(replace(event, event_id=f"page-{index}",
+                ordinal=event.ordinal + index), OrdinalReadCursor(ReadCollection.RUN_EVENTS,
+                    scope, event.ordinal + index, f"page-{index}")) for index in range(size + 1))
+            page = ReadPage.from_candidates(request, candidates)
+            with self.unit_of_work().run_events_snapshot() as snapshot:
+                real = snapshot._connection
+                calls = []
+                class CountingConnection:
+                    def execute(self, sql, parameters=()):
+                        calls.append((sql, parameters))
+                        return real.execute(sql, parameters)
+                snapshot._connection = CountingConnection()
+                with mock.patch.object(snapshot, "event_page", return_value=page):
+                    projected = snapshot.run_events(request)
+            reads = [(sql, parameters) for sql, parameters in calls if "cpk_effect_attempt_outcomes" in sql]
+            self.assertEqual(len(reads), 1)
+            self.assertNotIn(f"page-{size}", reads[0][1])
+            self.assertEqual(len(projected.items), size)
+            self.assertTrue(all(item["native_connection"] == dict(status="unavailable")
+                for item in projected.items))
+            self.assertEqual(projected.next_cursor, page.next_cursor)
+            counts.append(len(calls))
+        self.assertEqual(counts[0], counts[1])
+
+        with self.unit_of_work().run_events_snapshot() as snapshot:
+            from control_plane_kit_operations.postgres import ingress_history_read
+            original_rows = ingress_history_read.bounded_rows
+            calls = []
+            def traced(*args, **kwargs):
+                calls.append(args[1])
+                return original_rows(*args, **kwargs)
+            # The first real page has only unrelated events. Its lookahead
+            # must not cause a native outcome query either.
+            with mock.patch.object(ingress_history_read, "bounded_rows", side_effect=traced):
+                snapshot.run_events(ReadPageRequest(ReadCollection.RUN_EVENTS, scope, 1))
+            self.assertFalse(any("cpk_effect_attempt_outcomes" in table for table in calls))
+
+    def test_native_history_rejects_mismatched_commitment_and_missing_outcome(self):
+        event = self.fold_diagnostic().attempt.latest_transition_event
+        before = self.connection.execute("SELECT preimage FROM cpk_effect_attempt_outcomes "
+            "WHERE direct_event_id=%s", (event.event_id,)).fetchone()[0]
+        changed = before.replace(b"snapshot-changed", b"sample-invalid")
+        self.assertNotEqual(before, changed)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (changed, event.event_id))
+        item = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(item["native_connection"], dict(status="unavailable"))
+        self.connection.execute("DELETE FROM cpk_effect_attempt_outcomes WHERE direct_event_id=%s", (event.event_id,))
+        item = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(item["native_connection"], dict(status="unavailable"))
+
+    def test_native_history_unavailable_proof_preserves_base_event_but_not_corrupt_page(self):
+        result = self.fold_diagnostic()
+        event = result.attempt.latest_transition_event
+        before = self.native_history()
+        row = self.connection.execute("SELECT preimage FROM cpk_effect_attempt_outcomes "
+            "WHERE direct_event_id=%s", (event.event_id,)).fetchone()
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (b"{}", event.event_id))
+        after = self.native_history()
+        projected = next(item for item in after.items if item["event_id"] == event.event_id)
+        self.assertEqual(projected.pop("native_connection"), dict(status="unavailable"))
+        expected = dict(next(item for item in before.items if item["event_id"] == event.event_id))
+        expected.pop("native_connection")
+        self.assertEqual(projected, expected)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (row[0], event.event_id))
+        nested = b"[" * 1500 + b"0" + b"]" * 1500
+        self.assertLess(len(nested), 8192)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (nested, event.event_id))
+        projected = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(projected.pop("native_connection"), dict(status="unavailable"))
+        self.assertEqual(projected, expected)
+        self.connection.execute("UPDATE cpk_activity_events SET occurred_at='infinity' WHERE event_id=%s",
+            (event.event_id,))
+        from control_plane_kit_operations.read_services.errors import ReadModelError
+        with self.assertRaises(ReadModelError):
+            self.native_history()
+
+    def test_unsampled_diagnostic_roundtrips_and_replays_without_changing_event_evidence(self):
+        raw = replace(self.raw(kind=NativeConnectionOutcome.UNKNOWN),
+            diagnostic=NativeConnectionDiagnostic.SNAPSHOT_CHANGED)
+        command = self.command(raw)
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            result = self.service().execute_native(command)
+        event = result.attempt.latest_transition_event
+        self.assertEqual(set(event.evidence.descriptor()), {"effect_attempt"})
+        self.assertEqual(event.kind.value, "step_observation_not_ready")
+        self.assertIsNone(event.failure)
+        with self.unit_of_work() as uow:
+            retained = uow.stores.effect_outcomes.get(self.started.state.identity, event.event_id)
+        self.assertEqual(retained, result.outcome_record)
+        self.assertEqual(retained.outcome.observation, raw)
+        before = self.native_snapshot()
+        with self.observed_time("2030-01-01T01:00:00Z"):
+            replay = self.service().execute_native(command)
+        self.assertEqual(replay.outcome_record, retained)
+        self.assertEqual(self.native_snapshot(), before)
+
     def test_distinct_latest_run_is_locked_before_started_attempt_and_refuses_without_writes(self):
         self.seed_distinct_latest_run()
         identity = self.started.state.identity

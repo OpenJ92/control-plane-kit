@@ -51,6 +51,7 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     EffectOutcomeProfile,
     ExecutionEffectOutcome,
     NativeConnectionEffectOutcome,
+    NativeConnectionDiagnostic,
     NativeConnectionObservation,
     NativeConnectionOutcome,
     ObservedEffectOutcome,
@@ -754,8 +755,11 @@ def _runtime_result(value: object) -> RuntimeEffectResult:
 
 def _native_acceptance(value: object):
     row = _exact_mapping(value, {"observation", "accepted_at", "acceptance_reason"})
-    raw = _exact_mapping(row["observation"], {"outcome", "effect_id", "activity_id",
-        "container_id", "sample_start", "sample_end", "ready_connections", "connector_id"})
+    keys = {"outcome", "effect_id", "activity_id", "container_id", "sample_start",
+        "sample_end", "ready_connections", "connector_id"}
+    if type(row["observation"]) is dict and "diagnostic" in row["observation"]:
+        keys = keys | {"diagnostic"}
+    raw = _exact_mapping(row["observation"], keys)
     count = raw["ready_connections"]
     if count is not None:
         if (type(count) is not str or not 1 <= len(count) <= 20
@@ -765,7 +769,8 @@ def _native_acceptance(value: object):
         count = int(count)
     sample = NativeConnectionObservation(NativeConnectionOutcome(raw["outcome"]),
         raw["effect_id"], raw["activity_id"], raw["container_id"], raw["sample_start"],
-        raw["sample_end"], count, raw["connector_id"])
+        raw["sample_end"], count, raw["connector_id"],
+        NativeConnectionDiagnostic(raw["diagnostic"]) if "diagnostic" in raw else None)
     if sample.descriptor() != raw:
         raise ValueError("native sample is invalid")
     return sample, row["accepted_at"], row["acceptance_reason"]

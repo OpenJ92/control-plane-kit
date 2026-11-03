@@ -134,6 +134,20 @@ bounded models for:
 Read models contain no raw secret values. Authority and secret-provider reads
 expose bounded metadata and references only.
 
+Native connection NOT_READY events may include a derived `native_connection`
+summary. A verified retained diagnostic yields `status: available`,
+`acceptance_reason: unknown` and a closed `diagnostic` code. Valid older outcomes
+without a diagnostic omit the summary. Missing or invalid explanation yields
+only `status: unavailable`; it does not hide an invalid base event page or
+invent a cause. The existing repeatable-read snapshot resolves exact emitted
+event/attempt identities in one bounded batch, preserving event payloads,
+ordering and cursors. Unrelated events do not trigger native outcome reads.
+
+Diagnostic-bearing records require upgraded readers before producers are
+selected. Older records retain their original canonical bytes and fingerprints;
+older binaries cannot read the new-field records. Downgrade or mixed-version
+compatibility after such records are written is not supported.
+
 For dynamically admitted public ingress, `read.run-events` enriches the original
 step-start event with its bounded `ingress` history. The route materializes the
 event page, immutable ingress selection, at most three unit decisions, at most
