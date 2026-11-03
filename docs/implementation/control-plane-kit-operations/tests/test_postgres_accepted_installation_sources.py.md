@@ -19,4 +19,8 @@ Advancement preserves the entire recorded external-effects tuple and original
 claim identities. An actual failure is inspected once without replay; existing
 late/deferred rollback tests remain the negative evidence. This is Operations
 composition evidence, not provider conformance or an explanation of the live
-HTTP error. The first focused baseline-plus-new-case result is pending.
+HTTP error. The first focused run passed the baseline but the new case failed
+fixture setup because the cloned connector retained the API block role identity.
+The fixture now changes both node and block role identities, matching the existing
+managed-application clone pattern. The corrected focused result is pending;
+the setup failure provides no behavioral reproduction evidence.

@@ -455,6 +455,7 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
             reference = ProductReference.from_document(document)
             endpoint = api.endpoints["http"]
             nodes[name] = replace(api, node_id=name, configuration_artifacts=(control,),
+                block_spec=replace(api.block_spec, role_id=name),
                 public_environment=environment,
                 endpoints={"http": Endpoint(LiteralAddress(f"http://{name}:8000"), endpoint.protocol)},
                 metadata={"product_identity": reference.identity.key,
