@@ -16,7 +16,10 @@ otherwise fresh and replay failures use unknown/internal-error and echo only the
 requested correlation. No extra reads or admission changes are introduced. The
 body-error tracker surrounds the inner evidence context, so its existing conflict
 translation remains a body failure before the outer UnitOfWork exits. Focused
-green evidence is pending.
+green evidence passed at executable checkpoint `5558ea434ddd0cc05dee238c5df1356a67c8691b`:
+19 tests, complete owning gate exit 0 including compilation and clean import.
+Full CI and integration remain separate; see
+[the terminal record](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6594537852).
 
 Current source supports nonempty membership and E4.C qualified claim transfers;
 see the final section below. The earlier B2 slice and pending-review statements

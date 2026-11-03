@@ -7,7 +7,10 @@ against the admitted command. The fixed service-error response may carry only
 that diagnostic, capped at 8 KiB of serialized UTF-8 including outer fields and
 escaping. Missing/unbound/oversized evidence retains the generic error response;
 auth refusal and successful advancement projection are unchanged. The response
-does not prove acceptance or authorize retry. Focused validation is pending.
+does not prove acceptance or authorize retry. The focused owning gate at
+`5558ea434ddd0cc05dee238c5df1356a67c8691b` passed all 19 selected tests and the
+integrity, compilation and clean import phases. Full CI and integration remain
+separate; see [the terminal record](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6594537852).
 
 `command.desired-graph.set` accepts optional `explicit_secret_choices`, mapping
 node IDs to arrays of the existing Core selection descriptor
