@@ -100,6 +100,7 @@ class CurrentGraphAdvancementFailure:
 @dataclass
 class _AdvancementProgress:
     stage: str = "preconditions"
+    workspace_bound: bool = False
     exiting: bool = False
     body_error: Exception | None = field(default=None, repr=False)
 
@@ -341,9 +342,12 @@ class CurrentGraphAdvancementCommandService:
                 CurrentGraphAdvancementIdempotencyConflict: "idempotency-conflict"}
             stage = ("transaction-exit" if progress.exiting and error is not progress.body_error
                 else progress.stage)
+            reason = reasons.get(type(error), "internal-error")
+            if not progress.workspace_bound:
+                stage, reason = "unknown", "internal-error"
             diagnostic = None
             try:
-                diagnostic = CurrentGraphAdvancementFailure(stage, reasons.get(type(error), "internal-error"),
+                diagnostic = CurrentGraphAdvancementFailure(stage, reason,
                     command.workspace_id, command.run_id, command.plan_id, command.idempotency_key.value)
             except Exception:
                 # Reporting must never replace an unrepresentable original failure.
@@ -355,11 +359,11 @@ class CurrentGraphAdvancementCommandService:
     def _execute(self, command, progress):
         _require_operate_scope(command.authority)
         fingerprint = _fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work, \
-                unit_of_work.stores.configuration_preparation._advancement_evidence(
-                    command.workspace_id, command.run_id):
+        with self._unit_of_work_factory() as unit_of_work:
             try:
-                return self._execute_in_unit_of_work(command, fingerprint, unit_of_work, progress)
+                with unit_of_work.stores.configuration_preparation._advancement_evidence(
+                        command.workspace_id, command.run_id):
+                    return self._execute_in_unit_of_work(command, fingerprint, unit_of_work, progress)
             except Exception as error:
                 progress.body_error = error
                 raise
@@ -372,6 +376,12 @@ class CurrentGraphAdvancementCommandService:
         locator_request = _get_request(
             stores,
             locator_run.admission.request_id,
+        )
+        progress.workspace_bound = (
+            locator_run.run_id == command.run_id
+            and locator_run.admission.request_id == locator_request.identity.request_id
+            and command.plan_id == locator_run.plan_id == locator_request.identity.plan_id
+            and locator_request.identity.workspace_id == command.workspace_id
         )
 
         history = stores.activity_history

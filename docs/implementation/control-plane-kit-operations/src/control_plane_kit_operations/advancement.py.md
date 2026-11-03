@@ -10,7 +10,13 @@ correlation re-raises the original failure. Per-call state distinguishes an
 unchanged body exception from a new exit exception; result construction remains
 in the body. A commit request is not a physical commit, and even a postcommit
 close failure stays unverified. No diagnostic SQL, events, exception attributes,
-second execution or persistent state is added. Focused green evidence is pending.
+second execution or persistent state is added. Detail is available only after
+already-read run/request linkage binds the requested workspace, run and plan;
+otherwise fresh and replay failures use unknown/internal-error and echo only the
+requested correlation. No extra reads or admission changes are introduced. The
+body-error tracker surrounds the inner evidence context, so its existing conflict
+translation remains a body failure before the outer UnitOfWork exits. Focused
+green evidence is pending.
 
 Current source supports nonempty membership and E4.C qualified claim transfers;
 see the final section below. The earlier B2 slice and pending-review statements

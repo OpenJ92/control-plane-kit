@@ -13,4 +13,10 @@ the expected missing bounded application-error assertion; production was unchang
 The implementation checks direct exception identity and cancellation, closed
 serialized evidence and unrepresentable-correlation fallback. Real PostgreSQL
 commit refusal and a close failure after successful commit both return unverified
-outcomes while their authoritative graph/history states differ. Green is pending.
+outcomes while their authoritative graph/history states differ. Authorized adapter
+negatives require the same generic failure for missing and foreign runs, and for
+missing and unrelated plans, both before acceptance and against an existing replay
+receipt. Correlation echoes only the request. A real evidence context translates
+an unavailable acceptance read into a configuration-acceptance conflict, distinct
+from physical transaction exit. These failures preserve graph and run history.
+Green is pending.

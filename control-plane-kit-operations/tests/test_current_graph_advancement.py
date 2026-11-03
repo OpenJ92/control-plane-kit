@@ -201,7 +201,7 @@ class CurrentGraphAdvancementContractTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         failure = service.execute_with_diagnostic(command)
         self.assertEqual(len(calls), 2)
-        self.assertEqual((failure.stage, failure.reason), ("preconditions", "internal-error"))
+        self.assertEqual((failure.stage, failure.reason), ("unknown", "internal-error"))
         self.assertNotIn("private-exception-canary", json.dumps(failure.descriptor()))
         with self.assertRaises(ValueError) as captured:
             service.execute_with_diagnostic(replace(command, workspace_id="x" * 513))
@@ -494,19 +494,14 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             idempotency_key=IdempotencyKey(key),
         )
 
-    def test_advancement_failure_returns_bounded_diagnostic_without_publication(self) -> None:
+    def advancement_route_failure(self, command, principal=None):
         from control_plane_kit_core.operations import ControlPlaneServiceRole
-        from control_plane_kit_operations.cpk_server import CpkServerApplicationError, CpkServerLifecycleService
+        from control_plane_kit_operations.cpk_server import CpkServerLifecycleService
         from tests.test_cpk_server_adapters import RouteRequest, worker_principal
 
-        self.seed_succeeded_run()
-        command = self.command(expected_desired_graph_revision=self.desired_graph_revision + 1)
-        with self.unit_of_work() as uow:
-            before = (uow.stores.workspaces.get("workspace-a"),
-                uow.stores.execution.events_for_run("run-a"))
         adapter = CpkServerLifecycleService(None, advancement=self.service("unused-event", "unused-action"))
         request = RouteRequest(surface="http", route_id="command.graph.advance-current",
-            service_role=ControlPlaneServiceRole.LIFECYCLE, principal=worker_principal(),
+            service_role=ControlPlaneServiceRole.LIFECYCLE, principal=principal or worker_principal(),
             path_parameters={"workspace_id": command.workspace_id, "run_id": command.run_id},
             payload={"plan_id": command.plan_id,
                 "expected_current_graph_id": command.expected_current_graph_id,
@@ -518,9 +513,19 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
                 "idempotency_key": command.idempotency_key.value})
         with self.assertRaises(Exception) as captured:
             adapter.handle(request)
-        self.assertIsInstance(captured.exception, CpkServerApplicationError,
+        return captured.exception
+
+    def test_advancement_failure_returns_bounded_diagnostic_without_publication(self) -> None:
+        from control_plane_kit_operations.cpk_server import CpkServerApplicationError
+        self.seed_succeeded_run()
+        command = self.command(expected_desired_graph_revision=self.desired_graph_revision + 1)
+        with self.unit_of_work() as uow:
+            before = (uow.stores.workspaces.get("workspace-a"),
+                uow.stores.execution.events_for_run("run-a"))
+        error = self.advancement_route_failure(command)
+        self.assertIsInstance(error, CpkServerApplicationError,
             "authorized adapter must retain the owner's bounded failure evidence")
-        self.assertEqual(captured.exception.descriptor()["error"]["diagnostic"], {
+        self.assertEqual(error.descriptor()["error"]["diagnostic"], {
             "stage": "preconditions", "reason": "conflict", "acceptance": "unverified",
             "correlation": {"workspace_id": "workspace-a", "run_id": "run-a",
                 "plan_id": "plan-a", "idempotency_key": command.idempotency_key.value},
@@ -528,6 +533,67 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
         with self.unit_of_work() as uow:
             after = (uow.stores.workspaces.get("workspace-a"),
                 uow.stores.execution.events_for_run("run-a"))
+        self.assertEqual(after, before)
+
+    def test_advancement_diagnostic_does_not_disclose_unbound_run_or_plan(self):
+        from control_plane_kit_core.identity import WorkspaceGrant
+        from control_plane_kit_operations.cpk_server import CpkServerApplicationError
+        from tests.test_cpk_server_adapters import worker_principal
+
+        self.seed_succeeded_run()
+        WorkspaceCommandService(self.unit_of_work,
+            clock=lambda: "2026-07-22T10:00:00Z", id_factory=lambda: "other-origin-graph").create(
+                CreateWorkspace("workspace-other", "Other", "operator-a", IdempotencyKey("other-create")))
+        with self.unit_of_work() as uow:
+            history = uow.stores.activity_history
+            history.add_plan(replace(history.get_plan("plan-a"), plan_id="plan-other"))
+            uow.commit()
+        other_principal = replace(worker_principal(), workspace_grants=(
+            WorkspaceGrant("workspace-other", (PolicyScope.EXECUTION_OPERATE,)),))
+
+        for replay in (False, True):
+            if replay:
+                self.service("advance-event", "advance-action").execute(self.command())
+            with self.unit_of_work() as uow:
+                before = (self.advancement_truth(), uow.stores.execution.events_for_run("run-a"))
+            for commands, principal in (
+                ((replace(self.command(), workspace_id="workspace-other", run_id=run_id)
+                  for run_id in ("run-missing", "run-a")), other_principal),
+                ((replace(self.command(), plan_id=plan_id)
+                  for plan_id in ("plan-missing", "plan-other")), worker_principal()),
+            ):
+                for command in commands:
+                    with self.subTest(replay=replay, run_id=command.run_id, plan_id=command.plan_id,
+                            workspace_id=command.workspace_id):
+                        error = self.advancement_route_failure(command, principal)
+                        self.assertIsInstance(error, CpkServerApplicationError)
+                        self.assertEqual(error.status, 500)
+                        self.assertEqual(error.descriptor(), {"error": {
+                            "status": 500, "message": "application service failed",
+                            "diagnostic": {"stage": "unknown", "reason": "internal-error",
+                                "acceptance": "unverified", "correlation": {
+                                    "workspace_id": command.workspace_id, "run_id": command.run_id,
+                                    "plan_id": command.plan_id, "idempotency_key": command.idempotency_key.value}},
+                        }})
+            with self.unit_of_work() as uow:
+                after = (self.advancement_truth(), uow.stores.execution.events_for_run("run-a"))
+            self.assertEqual(after, before)
+
+    def test_advancement_diagnostic_preserves_translated_evidence_failure_stage(self):
+        from unittest.mock import patch
+        from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
+        from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable
+
+        self.seed_succeeded_run()
+        with self.unit_of_work() as uow:
+            before = (self.advancement_truth(), uow.stores.execution.events_for_run("run-a"))
+        with patch.object(ConfigurationAcceptanceStore, "_prepare", side_effect=_Unavailable):
+            error = self.advancement_route_failure(self.command())
+        diagnostic = error.descriptor()["error"]["diagnostic"]
+        self.assertEqual((diagnostic["stage"], diagnostic["reason"], diagnostic["acceptance"]),
+            ("configuration-acceptance", "conflict", "unverified"))
+        with self.unit_of_work() as uow:
+            after = (self.advancement_truth(), uow.stores.execution.events_for_run("run-a"))
         self.assertEqual(after, before)
 
     def test_advancement_diagnostic_does_not_infer_rollback_from_exit_failure(self):
