@@ -214,7 +214,7 @@
     {
       "command": "advance-current-graph",
       "service": "CurrentGraphAdvancementCommandService.execute",
-      "writer": "advancement.py:CurrentGraphAdvancementCommandService.execute",
+      "writer": "advancement.py:CurrentGraphAdvancementCommandService._execute_in_unit_of_work",
       "source": "advancement.py",
       "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
       "session_rule": "requires OPEN after lock; immutable run and request linkage may locate the session before locking"

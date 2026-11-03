@@ -21,6 +21,15 @@ green evidence passed at executable checkpoint `5558ea434ddd0cc05dee238c5df1356a
 Full CI and integration remain separate; see
 [the terminal record](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6594537852).
 
+The serialization inventory names `_execute_in_unit_of_work` as the physical
+action writer shared by both entrypoints; its public service, lock roles and
+ordering laws remain unchanged. The receiver-transfer composition test now
+expects the routed publication/internal-error/unverified diagnostic after its
+injected receiver FINISH error, while retaining real finish, compound rollback,
+connection release, successful advancement/replay and physical accounting checks.
+These additional CI corrections await focused validation; see
+[the terminal CI findings](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6595704904).
+
 Current source supports nonempty membership and E4.C qualified claim transfers;
 see the final section below. The earlier B2 slice and pending-review statements
 record historical stages, not current restrictions or acceptance status.

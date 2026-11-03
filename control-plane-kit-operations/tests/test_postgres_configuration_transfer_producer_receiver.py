@@ -29,6 +29,7 @@ from control_plane_kit_core.secret_version_grants import SecretVersionResolution
 from control_plane_kit_core.secrets import SecretReference, SecretUseIntent
 from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
 from control_plane_kit_operations import advancement as advancement_module
+from control_plane_kit_operations.cpk_server import CpkServerApplicationError
 from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.postgres.configuration_acceptance_store import ConfigurationAcceptanceStore
@@ -170,9 +171,15 @@ class PostgresConfigurationTransferProducerReceiverTests(receiver.ReceiverHealth
             finished.append(True)
             raise RuntimeError("injected after real receiver finish")
         with mock.patch.object(advancement_module, "_finish_receiver_advancement", fail_after_finish), \
-                self.assertRaisesRegex(RuntimeError, "^injected after real receiver finish$"):
+                self.assertRaises(CpkServerApplicationError) as refused:
             await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
                 path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker, payload=payload)
+        self.assertEqual(refused.exception.status, 500)
+        self.assertEqual(refused.exception.descriptor()["error"]["diagnostic"], {
+            "stage": "publication", "reason": "internal-error", "acceptance": "unverified",
+            "correlation": {"workspace_id": "workspace-a", "run_id": self.run_id,
+                "plan_id": self.plan_id, "idempotency_key": payload["idempotency_key"]},
+        })
         self.assertEqual(finished, [True])
         self.assertEqual(compound_truth(), before)
         self.assertEqual(self.tracker.active, 0)
