@@ -445,6 +445,26 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             idempotency_key=IdempotencyKey(key),
         )
 
+    def test_advancement_failure_preserves_owner_error_and_bounded_diagnostic(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command(expected_desired_graph_revision=self.desired_graph_revision + 1)
+        with self.unit_of_work() as uow:
+            before = (uow.stores.workspaces.get("workspace-a"),
+                uow.stores.execution.events_for_run("run-a"))
+        with self.assertRaises(CurrentGraphAdvancementConflict) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+        diagnostic = getattr(captured.exception, "advancement_diagnostic", None)
+        self.assertIsNotNone(diagnostic, "owner failure must carry bounded diagnostic evidence")
+        self.assertEqual(diagnostic.descriptor(), {
+            "stage": "preconditions", "reason": "conflict", "acceptance": "unverified",
+            "correlation": {"workspace_id": "workspace-a", "run_id": "run-a",
+                "plan_id": "plan-a", "idempotency_key": command.idempotency_key.value},
+        })
+        with self.unit_of_work() as uow:
+            after = (uow.stores.workspaces.get("workspace-a"),
+                uow.stores.execution.events_for_run("run-a"))
+        self.assertEqual(after, before)
+
     def test_complete_durable_success_advances_current_graph_once(self) -> None:
         self.seed_succeeded_run()
 
