@@ -445,17 +445,14 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             idempotency_key=IdempotencyKey(key),
         )
 
-    def test_advancement_failure_preserves_owner_error_and_bounded_diagnostic(self) -> None:
+    def test_advancement_failure_returns_bounded_diagnostic_without_publication(self) -> None:
         self.seed_succeeded_run()
         command = self.command(expected_desired_graph_revision=self.desired_graph_revision + 1)
         with self.unit_of_work() as uow:
             before = (uow.stores.workspaces.get("workspace-a"),
                 uow.stores.execution.events_for_run("run-a"))
-        with self.assertRaises(CurrentGraphAdvancementConflict) as captured:
-            self.service("unused-event", "unused-action").execute(command)
-        diagnostic = getattr(captured.exception, "advancement_diagnostic", None)
-        self.assertIsNotNone(diagnostic, "owner failure must carry bounded diagnostic evidence")
-        self.assertEqual(diagnostic.descriptor(), {
+        result = self.service("unused-event", "unused-action").execute_with_diagnostic(command)
+        self.assertEqual(result.diagnostic.descriptor(), {
             "stage": "preconditions", "reason": "conflict", "acceptance": "unverified",
             "correlation": {"workspace_id": "workspace-a", "run_id": "run-a",
                 "plan_id": "plan-a", "idempotency_key": command.idempotency_key.value},
