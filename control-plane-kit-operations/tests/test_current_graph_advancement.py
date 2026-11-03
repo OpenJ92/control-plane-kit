@@ -446,13 +446,32 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
         )
 
     def test_advancement_failure_returns_bounded_diagnostic_without_publication(self) -> None:
+        from control_plane_kit_core.operations import ControlPlaneServiceRole
+        from control_plane_kit_operations.cpk_server import CpkServerApplicationError, CpkServerLifecycleService
+        from tests.test_cpk_server_adapters import RouteRequest, worker_principal
+
         self.seed_succeeded_run()
         command = self.command(expected_desired_graph_revision=self.desired_graph_revision + 1)
         with self.unit_of_work() as uow:
             before = (uow.stores.workspaces.get("workspace-a"),
                 uow.stores.execution.events_for_run("run-a"))
-        result = self.service("unused-event", "unused-action").execute_with_diagnostic(command)
-        self.assertEqual(result.diagnostic.descriptor(), {
+        adapter = CpkServerLifecycleService(None, advancement=self.service("unused-event", "unused-action"))
+        request = RouteRequest(surface="http", route_id="command.graph.advance-current",
+            service_role=ControlPlaneServiceRole.LIFECYCLE, principal=worker_principal(),
+            path_parameters={"workspace_id": command.workspace_id, "run_id": command.run_id},
+            payload={"plan_id": command.plan_id,
+                "expected_current_graph_id": command.expected_current_graph_id,
+                "expected_current_realized_projection_id": command.expected_current_realized_projection_id,
+                "desired_graph_id": command.desired_graph_id,
+                "desired_realized_projection_id": command.desired_realized_projection_id,
+                "expected_desired_graph_revision": command.expected_desired_graph_revision,
+                "claim_generation": command.fence.generation,
+                "idempotency_key": command.idempotency_key.value})
+        with self.assertRaises(Exception) as captured:
+            adapter.handle(request)
+        self.assertIsInstance(captured.exception, CpkServerApplicationError,
+            "authorized adapter must retain the owner's bounded failure evidence")
+        self.assertEqual(captured.exception.descriptor()["error"]["diagnostic"], {
             "stage": "preconditions", "reason": "conflict", "acceptance": "unverified",
             "correlation": {"workspace_id": "workspace-a", "run_id": "run-a",
                 "plan_id": "plan-a", "idempotency_key": command.idempotency_key.value},
