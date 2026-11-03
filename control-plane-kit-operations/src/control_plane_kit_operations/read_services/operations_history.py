@@ -54,6 +54,7 @@ class _OperationsHistoryReadProjection:
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         run_event_scope=None,
         ingress_summary=None,
+        native_summaries=None,
     ) -> None:
         self._require_workspace = require_workspace
         self._graph_topology_store = graph_topology_store
@@ -62,6 +63,7 @@ class _OperationsHistoryReadProjection:
         self._graph_codec = graph_codec
         self._run_event_scope = run_event_scope
         self._ingress_summary = ingress_summary
+        self._native_summaries = native_summaries
 
     def activity_sessions(
         self,
@@ -135,8 +137,11 @@ class _OperationsHistoryReadProjection:
             if getattr(identity, "workspace_id", None) != workspace_id:
                 raise ReadModelError("missing run in workspace")
 
-        return store.event_page(request).map(lambda event: _event_descriptor(event,
-            ingress_summary=self._ingress_summary, workspace_id=workspace_id))
+        page = store.event_page(request)
+        summaries = {} if self._native_summaries is None else self._native_summaries(workspace_id, page.items)
+        return page.map(lambda event: _event_descriptor(event,
+            ingress_summary=self._ingress_summary, workspace_id=workspace_id,
+            native_summary=summaries.get(event.event_id)))
 
     def session_plans(
         self,
@@ -368,7 +373,8 @@ def _run_summary_descriptor(run: ActivityRunRecord) -> dict[str, object]:
     }
 
 
-def _event_descriptor(event: ActivityEventRecord, *, ingress_summary=None, workspace_id=None) -> dict[str, object]:
+def _event_descriptor(event: ActivityEventRecord, *, ingress_summary=None, workspace_id=None,
+        native_summary=None) -> dict[str, object]:
     descriptor = {
         "event_id": event.event_id,
         "run_id": event.run_id,
@@ -381,6 +387,8 @@ def _event_descriptor(event: ActivityEventRecord, *, ingress_summary=None, works
     }
     if event.recovery is not None:
         descriptor["recovery"] = event.recovery.descriptor()
+    if native_summary is not None:
+        descriptor["native_connection"] = native_summary
     if ingress_summary is not None:
         summary = ingress_summary(workspace_id, event)
         if summary is not None:

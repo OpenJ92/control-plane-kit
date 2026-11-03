@@ -56,7 +56,7 @@ class RunEventsSnapshot:
     def run_events(self, request):
         try:
             projection = _OperationsHistoryReadProjection(self._workspace, None, execution_store=self,
-                run_event_scope=self._run_scope, ingress_summary=self._summary)
+                run_event_scope=self._run_scope, ingress_summary=self._summary, native_summaries=self._native_summaries)
             return projection.run_events(request)
         except ReadModelError:
             raise
@@ -73,6 +73,83 @@ class RunEventsSnapshot:
             limit=request.limit + 1, order="ordinal ASC, event_id ASC")
         return ReadPage.from_candidates(request, tuple(ReadPageCandidate(_activity_event(row),
             OrdinalReadCursor(ReadCollection.RUN_EVENTS, request.scope, row[2], row[0])) for row in rows))
+
+    def _native_summaries(self, workspace_id, events):
+        """One bounded exact-key read for emitted native NOT_READY events only."""
+        from control_plane_kit_operations.effect_attempts import EffectAttemptEventEvidence
+        from .effect_outcome_store import (_COLUMN_NAMES, _decode_preimage,
+            _record_from_events, _require_intent_membership)
+        from .effect_attempt_intent_store import _COLUMN_NAMES as intent_names, _decode_row as decode_intent
+
+        eligible = {event.event_id: event for event in events
+            if event.kind is ActivityEventKind.STEP_OBSERVATION_NOT_READY}
+        summaries = {key: {"status": "unavailable"} for key in eligible}
+        keys = []
+        for event in eligible.values():
+            try:
+                evidence = event.evidence.descriptor()
+                require(set(evidence) == {"effect_attempt"})
+                commitment = EffectAttemptEventEvidence(**evidence["effect_attempt"])
+                keys.append((event.run_id, event.activity_id, commitment.attempt, event.event_id, event.ordinal))
+            except (KeyError, ValueError, TypeError):
+                continue
+        if not keys:
+            return summaries
+        numeric = {"attempt", "fence_generation", "prior_attempt", "original_event_ordinal",
+            "direct_event_ordinal", "observation_count"}
+        columns = tuple(("outcome." + name,
+            ("int" if name in numeric else "bytes" if name == "preimage" else "text")
+                + ("?" if name.startswith("prior_") else ""),
+            8192 if name == "preimage" else 2048) for name in _COLUMN_NAMES)
+        columns += tuple(("intent." + name,
+            "int" if name in ("attempt", "original_event_ordinal") else "bytes" if name == "preimage" else "text",
+            1048576 if name == "preimage" else 2048) for name in intent_names)
+        columns += (("original.event_type", "text", 64),
+            ("(original.occurred_at AT TIME ZONE 'UTC')", "time", 0), ("original.payload", "json", 16384))
+        placeholders = ",".join(["(%s,%s,%s,%s,%s)"] * len(keys))
+        table = "(VALUES " + placeholders + ") AS selected(run_id,activity_id,attempt,event_id,ordinal) " + """
+            JOIN cpk_effect_attempt_outcomes AS outcome
+              ON outcome.run_id=selected.run_id AND outcome.activity_id=selected.activity_id
+             AND outcome.attempt=selected.attempt AND outcome.direct_event_id=selected.event_id
+             AND outcome.direct_event_run_id=selected.run_id AND outcome.direct_event_ordinal=selected.ordinal
+            JOIN cpk_activity_runs AS run ON run.run_id=outcome.run_id AND run.request_id=outcome.request_id
+            JOIN cpk_effect_attempt_intents AS intent
+              ON intent.run_id=outcome.run_id AND intent.activity_id=outcome.activity_id AND intent.attempt=outcome.attempt
+            JOIN cpk_activity_events AS original
+              ON original.event_id=intent.original_event_id AND original.run_id=intent.original_event_run_id
+             AND original.ordinal=intent.original_event_ordinal
+        """
+        where = """outcome.workspace_id=%s AND outcome.profile='native-connection'
+            AND NOT EXISTS (SELECT 1 FROM cpk_effect_attempt_outcome_observations AS membership
+                WHERE membership.run_id=outcome.run_id AND membership.activity_id=outcome.activity_id
+                  AND membership.attempt=outcome.attempt)"""
+        try:
+            rows = self._rows(table, columns, where,
+                tuple(value for key in keys for value in key) + (workspace_id,), limit=len(keys) + 1)
+            require(len(rows) <= len(keys))
+        except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
+            return summaries
+        seen = set()
+        for joined in rows:
+            row, intent_row = joined[:len(_COLUMN_NAMES)], joined[len(_COLUMN_NAMES):]
+            event_id = row[18]
+            try:
+                require(event_id in eligible and event_id not in seen)
+                seen.add(event_id)
+                intent = decode_intent(intent_row)
+                record = _record_from_events(row, _decode_preimage(row[6], row[5]), (),
+                    intent.original_start_event, eligible[event_id])
+                _require_intent_membership(record.outcome, record.attempt, record.endpoint_observations,
+                    workspace_id, row[4], intent)
+                diagnostic = record.outcome.observation.diagnostic
+                if diagnostic is None:
+                    summaries.pop(event_id, None)
+                else:
+                    summaries[event_id] = dict(status="available",
+                        acceptance_reason=record.outcome.acceptance_reason, diagnostic=diagnostic.value)
+            except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
+                summaries[event_id] = {"status": "unavailable"}
+        return summaries
 
     def _original(self, context, event):
         # No current policy, active-registration selection, provider reads or locks.

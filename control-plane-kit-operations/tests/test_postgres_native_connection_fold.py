@@ -84,6 +84,67 @@ class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffe
             self.service().execute_native(self.command(self.raw(kind=NativeConnectionOutcome.UNKNOWN)))
         self.assertTrue(all("native_connection" not in event for event in self.native_history().items))
 
+    def test_native_history_batches_only_emitted_eligible_events_with_constant_queries(self):
+        from control_plane_kit_operations.read_pages import (
+            ReadCollection, ReadPageRequest, RunReadScope, ReadPage, ReadPageCandidate, OrdinalReadCursor)
+        event = self.fold_diagnostic().attempt.latest_transition_event
+        scope = RunReadScope("workspace-a", event.run_id)
+        # Synthetic event pages exercise missing proof at page scale; they do
+        # not claim those events were produced by the execution lifecycle.
+        counts = []
+        for size in (1, 100):
+            request = ReadPageRequest(ReadCollection.RUN_EVENTS, scope, size)
+            candidates = tuple(ReadPageCandidate(replace(event, event_id=f"page-{index}",
+                ordinal=event.ordinal + index), OrdinalReadCursor(ReadCollection.RUN_EVENTS,
+                    scope, event.ordinal + index, f"page-{index}")) for index in range(size + 1))
+            page = ReadPage.from_candidates(request, candidates)
+            with self.unit_of_work().run_events_snapshot() as snapshot:
+                real = snapshot._connection
+                calls = []
+                class CountingConnection:
+                    def execute(self, sql, parameters=()):
+                        calls.append((sql, parameters))
+                        return real.execute(sql, parameters)
+                snapshot._connection = CountingConnection()
+                with mock.patch.object(snapshot, "event_page", return_value=page):
+                    projected = snapshot.run_events(request)
+            reads = [(sql, parameters) for sql, parameters in calls if "cpk_effect_attempt_outcomes" in sql]
+            self.assertEqual(len(reads), 1)
+            self.assertNotIn(f"page-{size}", reads[0][1])
+            self.assertEqual(len(projected.items), size)
+            self.assertTrue(all(item["native_connection"] == dict(status="unavailable")
+                for item in projected.items))
+            self.assertEqual(projected.next_cursor, page.next_cursor)
+            counts.append(len(calls))
+        self.assertEqual(counts[0], counts[1])
+
+        with self.unit_of_work().run_events_snapshot() as snapshot:
+            from control_plane_kit_operations.postgres import ingress_history_read
+            original_rows = ingress_history_read.bounded_rows
+            calls = []
+            def traced(*args, **kwargs):
+                calls.append(args[1])
+                return original_rows(*args, **kwargs)
+            # The first real page has only unrelated events. Its lookahead
+            # must not cause a native outcome query either.
+            with mock.patch.object(ingress_history_read, "bounded_rows", side_effect=traced):
+                snapshot.run_events(ReadPageRequest(ReadCollection.RUN_EVENTS, scope, 1))
+            self.assertFalse(any("cpk_effect_attempt_outcomes" in table for table in calls))
+
+    def test_native_history_rejects_mismatched_commitment_and_missing_outcome(self):
+        event = self.fold_diagnostic().attempt.latest_transition_event
+        before = self.connection.execute("SELECT preimage FROM cpk_effect_attempt_outcomes "
+            "WHERE direct_event_id=%s", (event.event_id,)).fetchone()[0]
+        changed = before.replace(b"snapshot-changed", b"sample-invalid")
+        self.assertNotEqual(before, changed)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (changed, event.event_id))
+        item = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(item["native_connection"], dict(status="unavailable"))
+        self.connection.execute("DELETE FROM cpk_effect_attempt_outcomes WHERE direct_event_id=%s", (event.event_id,))
+        item = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(item["native_connection"], dict(status="unavailable"))
+
     def test_native_history_unavailable_proof_preserves_base_event_but_not_corrupt_page(self):
         result = self.fold_diagnostic()
         event = result.attempt.latest_transition_event
