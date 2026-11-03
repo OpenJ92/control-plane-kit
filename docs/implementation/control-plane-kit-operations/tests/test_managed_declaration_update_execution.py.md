@@ -1,6 +1,14 @@
 Source: [test_managed_declaration_update_execution.py](../../../../control-plane-kit-operations/tests/test_managed_declaration_update_execution.py).
 Maintain this companion with its source.
 
+#2078 changes the application adapter's failure boundary while preserving direct
+owner exceptions. The existing incomplete-run refusal helper now requires the
+bounded CpkServerApplicationError, status 500 and the exact preconditions/incomplete/
+unverified diagnostic with its requested workspace/run/plan/idempotency correlation.
+It retains all graph, effects, history and replay assertions. This corrects the
+seven CI errors caused by the stale imported exception alias before route dispatch;
+corrected source/focused validation is pending, with no production change.
+
 #1979 extends the real Operations application/PostgreSQL fixture with seven
 focused new-law/strengthened composition tests. Existing public prepare, approve,
 admit, claim, start, execute and advance commands own all durable state. The

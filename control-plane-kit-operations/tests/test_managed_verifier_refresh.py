@@ -258,7 +258,7 @@ class ManagedVerifierRefreshTests(chain.ManagedApplicationFixture):
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
                 self.before_update.current_graph_id)
-        with self.assertRaises(chain.CurrentGraphAdvancementIncomplete):
+        with self.assertRaises(CpkServerApplicationError) as refused:
             await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
                 path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
                 payload={"plan_id": self.record.plan_id,
@@ -268,3 +268,9 @@ class ManagedVerifierRefreshTests(chain.ManagedApplicationFixture):
                     "desired_realized_projection_id": self.update_plan["desired_realized_projection_id"],
                     "expected_desired_graph_revision": self.update_plan["desired_graph_revision"],
                     "claim_generation": self.update_generation, "idempotency_key": "reject-failed-refresh"})
+        self.assertEqual(refused.exception.status, 500)
+        self.assertEqual(refused.exception.descriptor()["error"]["diagnostic"], {
+            "stage": "preconditions", "reason": "incomplete", "acceptance": "unverified",
+            "correlation": {"workspace_id": "workspace-a", "run_id": self.update_run,
+                "plan_id": self.record.plan_id, "idempotency_key": "reject-failed-refresh"},
+        })

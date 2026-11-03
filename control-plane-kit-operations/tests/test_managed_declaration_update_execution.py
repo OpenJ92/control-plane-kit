@@ -71,10 +71,16 @@ class ManagedDeclarationUpdateExecutionTests(chain.ManagedApplicationFixture):
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id,
                 self.before_update.current_graph_id)
-        with self.assertRaises(chain.CurrentGraphAdvancementIncomplete):
+        with self.assertRaises(CpkServerApplicationError) as refused:
             await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
                 path={"workspace_id": "workspace-a", "run_id": self.update_run}, principal=self.worker,
                 payload=self.advancement_payload(key))
+        self.assertEqual(refused.exception.status, 500)
+        self.assertEqual(refused.exception.descriptor()["error"]["diagnostic"], {
+            "stage": "preconditions", "reason": "incomplete", "acceptance": "unverified",
+            "correlation": {"workspace_id": "workspace-a", "run_id": self.update_run,
+                "plan_id": self.record.plan_id, "idempotency_key": key},
+        })
 
     def desired_health(self):
         return [(request, preparation, outcome) for request, preparation, outcome in self.health.signed_reads
