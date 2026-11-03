@@ -2,6 +2,9 @@
 import os
 import json
 import unittest
+import traceback
+from collections import Counter
+from dataclasses import replace
 from unittest import mock
 from hashlib import sha256
 
@@ -11,7 +14,19 @@ import rfc8785
 
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
 from control_plane_kit_core.operations import EffectAttemptIdentity
-from control_plane_kit_core.planning import AllocatePublicIngress
+from control_plane_kit_core.planning import (
+    ActivityId, AllocatePublicIngress, ManagementBootstrapStage, ObserveManagementBootstrap,
+    ObserveNodeHealth, StartNode,
+)
+from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.products import (
+    ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
+    ProductIdentity, ProductReference, ProductRuntimeContract, ProviderRuntimePort,
+)
+from control_plane_kit_core.public_ingress import PublicIngressTarget
+from control_plane_kit_core.secrets import SecretUseIntent
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
+from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit_core.planning.saga import SagaStepId, project_activity_journal
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations._configuration_preparation import _configuration_accounting
@@ -20,7 +35,14 @@ from control_plane_kit_operations.postgres.configuration_evidence import _Eviden
 from control_plane_kit_operations.postgres.execution import _activity_event
 from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
 from tests.configuration_cleanup_phase_read_bounds_fixture import _PhaseConnection
-from tests.test_managed_application_chain import ManagedApplicationFixture
+from tests.test_managed_application_chain import ManagedApplicationFixture, management_routes
+from tests.health_receiver_trust_fixture import artifact, wrapper_environment
+from tests.test_ingress_realization import RecordingIngressInterpreter
+from control_plane_kit_core.node_control_surface_reads import (
+    WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
+)
+from control_plane_kit_core.receiver_management_routes import ReceiverManagementRoutesCodec
+from control_plane_kit_operations.effect_outcome_evidence import NativeConnectionOutcome
 from tests.test_postgres_configuration_installation_capacity import (
     PostgresConfigurationInstallationCapacityTests, measurement_wire_report,
 )
@@ -365,6 +387,224 @@ class PostgresAcceptedInstallationSourcePublicationTests(unittest.TestCase):
                     self.replay_service().execute(final_command)
                 self.assertEqual(self.member.fixture.retained_snapshot(), before)
                 self.assertEqual(bundle(first), first_bytes)
+
+
+class _TwoIngressRuntime(ProfiledRecordingRuntime):
+    def execute_with_authority(self, request, authority):
+        if type(request.operation) is StartNode:
+            ingresses = tuple(value for value in self.test.graph.public_ingresses
+                if value.connector_node_id == request.operation.target.node_id)
+            if ingresses:
+                ingress, = ingresses
+                selection, = (value for material in request.products for value in material.secret_selections
+                    if value.intent is SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN)
+                with self.test.unit_of_work() as uow:
+                    generated, = (value for value in uow.stores.generated_ingress_secrets.list_for_workspace(
+                        request.source.workspace_id) if value.secret_ref == selection.reference)
+                    event = uow.stores.execution.get_event(generated.source_event_id)
+                self.test.assertEqual(selection.version_id, generated.provider_version_id)
+                self.test.assertEqual(generated.source_run_id, request.source.run_id.value)
+                self.test.assertIs(event.kind, ActivityEventKind.STEP_STARTED)
+                allocation = self.test.plan.activity(ActivityId(generated.source_activity_id)).operation
+                self.test.assertIs(type(allocation), AllocatePublicIngress)
+                self.test.assertEqual(allocation.target.ingress_id, ingress.ingress_id)
+                self._require_connector_grant(request, selection.reference.reference_id)
+        # Preserve both the profiled consumer/receipt checks and base port behavior.
+        return super().execute_with_authority(request, authority)
+
+
+class _TwoIngressProvider(RecordingIngressInterpreter):
+    def create(self, ingress, **kwargs):
+        allocated = super().create(ingress, **kwargs)
+        name = kwargs["allocation_name"]
+        return replace(allocated, tunnel_id="tunnel-" + name, dns_record_id="dns-" + name,
+            endpoint_url="https://" + ingress.hostname)
+
+
+class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
+    """#2076 actual owner composition; only external effects are recorded."""
+
+    def setUp(self):
+        super().setUp()
+        self.runtime = _TwoIngressRuntime(self)
+        self.ingress = _TwoIngressProvider(self.tracker)
+        self.health.responses = [NativeConnectionOutcome.CONNECTED]
+
+    def native_before_path_graph(self, graph):
+        # This positive case needs no overlap-specific sibling ordering.
+        return replace(graph, public_ingresses=(replace(graph.public_ingresses[0],
+            hostname="cpk-gateway-management.openj92.dev"),))
+
+    def authored_graph(self):
+        graph, documents, registry = super().authored_graph()
+        api = graph.node("api")
+        declaration = WorkloadNodeControlSurfaceDeclaration(api.block_spec.control_surfaces[0],
+            WorkloadNodeControlSurfaceDeclarationProfile.V2)
+        nodes = dict(graph.nodes)
+        for name, receiver_id in (("connector", "c" * 32), ("application-connector", "d" * 32)):
+            control = artifact("workload", declaration, node=name, receiver=True,
+                receiver_id=receiver_id, revision=self.authored_revision)
+            environment = wrapper_environment((control,))
+            product = ContainerServerProduct(ProductIdentity("test", "chain-" + name, 1),
+                OciImageReference("ghcr.io", "test/chain-" + name, "sha256:" + "a" * 64),
+                ProductRuntimeContract(sockets=api.sockets, provider_ports=(ProviderRuntimePort("http", 8000),),
+                    capabilities=api.block_spec.capabilities, control_surfaces=api.block_spec.control_surfaces,
+                    configuration_artifacts=(control,), public_environment=environment))
+            document = ProductDescriptorCodec().encode_document(product)
+            documents[name] = document
+            reference = ProductReference.from_document(document)
+            endpoint = api.endpoints["http"]
+            nodes[name] = replace(api, node_id=name, configuration_artifacts=(control,),
+                block_spec=replace(api.block_spec, role_id=name),
+                public_environment=environment,
+                endpoints={"http": Endpoint(LiteralAddress(f"http://{name}:8000"), endpoint.protocol)},
+                metadata={"product_identity": reference.identity.key,
+                    "product_descriptor_digest": reference.descriptor_sha256.value})
+        gateway = nodes["gateway"]
+        routes = ReceiverManagementRoutesCodec().encode_bytes(management_routes(nodes)).decode("utf-8")
+        nodes["gateway"] = replace(gateway, configuration_artifacts=tuple(
+            replace(value, content=routes) if value.artifact_id == "gateway-health-targets" else value
+            for value in gateway.configuration_artifacts))
+        management, = graph.public_ingresses
+        application = replace(management, ingress_id="application", target=PublicIngressTarget("api", "http"),
+            connector_node_id="application-connector", hostname="cpk-gateway-application.openj92.dev")
+        runtime = graph.runtimes["docker"]
+        graph = replace(graph, nodes=nodes, public_ingresses=(management, application),
+            runtimes={"docker": replace(runtime, children=(*runtime.children, "application-connector"))})
+        graph = DEFAULT_GRAPH_CODEC.decode(DEFAULT_GRAPH_CODEC.encode(graph))
+        validate_graph(graph).require_valid()
+        return graph, documents, registry
+
+    def assert_initial_dependencies(self):
+        starts = {item.operation.target.node_id: item for item in self.plan.activities
+            if type(item.operation) is StartNode}
+        allocations = {item.operation.target.ingress_id: item for item in self.plan.activities
+            if type(item.operation) is AllocatePublicIngress}
+        bootstrap = {item.operation.stage: item for item in self.plan.activities
+            if type(item.operation) is ObserveManagementBootstrap}
+        health = {item.operation.node_id: item for item in self.plan.activities
+            if type(item.operation) is ObserveNodeHealth}
+        self.assertEqual(set(starts), {"gateway", "api", "connector", "application-connector"})
+        self.assertEqual(set(allocations), {"management", "application"})
+        self.assertEqual(set(bootstrap), {ManagementBootstrapStage.CONNECTOR_CONNECTED,
+            ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH, ManagementBootstrapStage.GATEWAY_INGRESS_READY})
+        self.assertEqual(set(health), {"api", "connector", "application-connector"})
+        native = bootstrap[ManagementBootstrapStage.CONNECTOR_CONNECTED]
+        path = bootstrap[ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH]
+        ready = bootstrap[ManagementBootstrapStage.GATEWAY_INGRESS_READY]
+        dependencies = [(allocations["management"], starts["gateway"]),
+            (starts["connector"], allocations["management"]),
+            (native, starts["connector"]), (path, starts["connector"]), (ready, path),
+            (ready, starts["gateway"]), (allocations["application"], health["api"]),
+            (starts["application-connector"], allocations["application"])]
+        for name, observation in health.items():
+            dependencies.extend(((observation, native), (observation, ready), (observation, starts[name])))
+        for successor, predecessor in dependencies:
+            self.assertIn(predecessor.activity_id,
+                {dependency.predecessor for dependency in successor.dependencies})
+
+    def acceptance_snapshot(self):
+        return tuple(self.rows(name) for name in ("cpk_workspaces", "cpk_configuration_acceptances",
+            "cpk_operation_actions", "cpk_graph_receiver_introductions", "cpk_activity_events"))
+
+    async def test_two_managed_ingress_connectors_advance_with_original_sources(self):
+        await self.prepare_and_start()
+        self.assert_initial_dependencies()
+        for _ in range(len(self.plan.activities) + 1):
+            result = await self.execute_one()
+            if result["coordinator_status"] == "completed":
+                break
+            self.assertEqual(result["coordinator_status"], "progressed")
+        else:
+            self.fail("bounded initial execution did not complete")
+        self.assertEqual(result["run_status"], "succeeded")
+        self.assertEqual(len(self.health.native_reads), 1)
+        self.assertEqual(self.health.responses, [])
+        events = self.history()
+        self.assertIs(events[-1].kind, ActivityEventKind.RUN_SUCCEEDED)
+        self.assertEqual(Counter(event.activity_id for event in events
+            if event.kind is ActivityEventKind.STEP_SUCCEEDED),
+            Counter(item.activity_id.value for item in self.plan.activities))
+        plan = self.plan_descriptor
+        with self.unit_of_work() as uow:
+            receivers = uow.stores.graphs.receiver_bindings("workspace-a",
+                plan["desired_graph_id"], plan["desired_realized_projection_id"])
+            self.assertEqual(len({value.receiver_id for value in receivers}), 4)
+            self.assertTrue(all(uow.stores.graphs.receiver_introduction("workspace-a", value.receiver_id)
+                .first_accepted_action_id is None for value in receivers))
+        claims = self.connection.execute("SELECT run_id,activity_id,attempt,artifact_id,workspace_id,"
+            "allocation_id,runtime_id,node_id FROM cpk_configuration_claims ORDER BY 1,2,3,4").fetchall()
+        effects, before = self.effects(), self.acceptance_snapshot()
+        try:
+            advanced = await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+                path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
+                payload={"plan_id": self.plan_id, "expected_current_graph_id": self.workspace["current_graph_id"],
+                    "expected_current_realized_projection_id": self.workspace["current_realized_projection_id"],
+                    "desired_graph_id": plan["desired_graph_id"],
+                    "desired_realized_projection_id": plan["desired_realized_projection_id"],
+                    "expected_desired_graph_revision": plan["desired_graph_revision"],
+                    "claim_generation": self.generation, "idempotency_key": "two-ingress-advance"})
+        except Exception as error:
+            allowed_classes = {"CurrentGraphAdvancementConflict", "CurrentGraphAdvancementIncomplete",
+                "CurrentGraphAdvancementDenied", "CurrentGraphAdvancementNotFound",
+                "CurrentGraphAdvancementIdempotencyConflict", "CurrentGraphAdvancementError",
+                "_Unavailable", "_Capacity", "CheckViolation", "ForeignKeyViolation", "UniqueViolation",
+                "SerializationFailure", "DeadlockDetected", "AssertionError", "TypeError", "ValueError",
+                "AttributeError", "KeyError", "InvalidOperationCommand"}
+            allowed_files = {"advancement.py", "configuration_acceptance_store.py", "receiver_lifecycle.py",
+                "receiver_execution_scopes.py", "configuration_evidence.py", "unit_of_work.py"}
+            frames = [(frame.filename.rsplit("/", 1)[-1], frame.name, frame.lineno)
+                for frame in traceback.extract_tb(error.__traceback__)
+                if frame.filename.rsplit("/", 1)[-1] in allowed_files
+                and frame.name.isidentifier() and len(frame.name) <= 96][-8:]
+            print("two-ingress-acceptance-diagnostic", json.dumps({"stage": "advance-current",
+                "exception": type(error).__name__ if type(error).__name__ in allowed_classes else "other",
+                "cause": (type(error.__cause__).__name__
+                    if type(error.__cause__).__name__ in allowed_classes else None), "frames": frames}))
+            # No second invocation: a failed owner transaction must preserve its inputs.
+            self.assertTrue(self.acceptance_snapshot() == before, "failed advancement published acceptance")
+            self.assertTrue(self.effects() == effects, "advancement dispatched an external effect")
+            raise
+        self.assertEqual(self.effects(), effects)
+        self.assertEqual(self.connection.execute("SELECT run_id,activity_id,attempt,artifact_id,workspace_id,"
+            "allocation_id,runtime_id,node_id FROM cpk_configuration_claims ORDER BY 1,2,3,4").fetchall(), claims)
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            self.assertEqual((workspace.current_graph_id, workspace.current_realized_projection_id),
+                (plan["desired_graph_id"], plan["desired_realized_projection_id"]))
+            for receiver in receivers:
+                origin = uow.stores.graphs.receiver_introduction("workspace-a", receiver.receiver_id)
+                self.assertEqual((origin.first_accepted_action_id, origin.first_accepted_session_id),
+                    (advanced["action_id"], plan["session_id"]))
+            generated = uow.stores.generated_ingress_secrets.list_for_workspace("workspace-a")
+        preimage, = self.connection.execute("SELECT installation_sources_preimage FROM cpk_configuration_acceptances "
+            "WHERE workspace_id=%s AND pinned_revision=%s", ("workspace-a", plan["desired_graph_revision"])).fetchone()
+        accepted = {value["node_id"]: value for value in json.loads(preimage)["bindings"]}
+        self.assertEqual(set(accepted), {"connector", "application-connector"})
+        installed = tuple(request for request in self.runtime.calls if type(request.operation) is StartNode
+            and request.operation.target.node_id in accepted)
+        originals = self.mutation_records(installed)
+        allocation_starts = set()
+        for request, (original, attempt, outcome) in zip(installed, originals, strict=True):
+            binding = accepted[request.operation.target.node_id]
+            self.assertEqual(binding["source"], {"run_id": self.run_id,
+                "activity_id": request.activity_id.value, "attempt": attempt.state.identity.attempt})
+            self.assertEqual(binding["original_request_fingerprint"], original.request_fingerprint)
+            self.assertEqual(binding["outcome_fingerprint"], outcome.outcome.outcome_fingerprint)
+            selection, = (value for material in request.products for value in material.secret_selections
+                if value.intent is SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN)
+            allocation, = (value for value in generated if value.secret_ref == selection.reference)
+            provenance, = binding["generated_allocations"]
+            self.assertEqual(provenance["source_event_id"], allocation.source_event_id)
+            start, = (event for event in events if event.event_id == provenance["source_event_id"])
+            terminal, = (event for event in events if event.event_id == provenance["terminal_event_id"])
+            self.assertIs(start.kind, ActivityEventKind.STEP_STARTED)
+            self.assertIs(terminal.kind, ActivityEventKind.STEP_SUCCEEDED)
+            self.assertEqual(start.activity_id, terminal.activity_id)
+            self.assertLess(start.ordinal, terminal.ordinal)
+            self.assertLess(terminal.ordinal, original.original_start_event.ordinal)
+            allocation_starts.add(start.event_id)
+        self.assertEqual(len(allocation_starts), 2)
 
 
 class PostgresAcceptedInstallationSourcesTests(ManagedApplicationFixture):
