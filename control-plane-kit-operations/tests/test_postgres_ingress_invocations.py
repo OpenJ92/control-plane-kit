@@ -1,9 +1,21 @@
 """Real owning-store admission, result retention and bounded history laws."""
 
 from dataclasses import replace
+import json
 from unittest import mock
 
+from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+from control_plane_kit_core.planning import AllocatePublicIngress, derive_schedule, project_activity_journal
+from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.coordinator import (
+    ActivityExecutionDispatcher, ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator,
+)
+from control_plane_kit_operations.ingress_authorities import IngressAuthorityProviderKind
+from control_plane_kit_operations.ingress_realization import IngressProviderRegistration, IngressRealizationAdapter
 from control_plane_kit_operations.ingress_invocation_service import IngressInvocationService
+from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.execution_invocations import ExecutionInvocationControlError
 from control_plane_kit_operations.ingress_invocations import (
     IngressInvocationContextRecord, validate_ingress_result, MAX_CANONICAL_INTEGER,
@@ -11,8 +23,90 @@ from control_plane_kit_operations.ingress_invocations import (
 from control_plane_kit_operations.execution_invocations import ExecutionInvocationKind as Kind, ExecutionInvocationOutcome as Outcome
 from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, RunReadScope
 from tests.ingress_invocation_fixture import StagedIngressPort
-from tests.test_postgres_coordinator_permissions import _CoordinatorManagementPermissionFixture
+from tests.test_postgres_coordinator_permissions import _CoordinatorManagementPermissionFixture, _CurrentCoordinatorPermission
 from tests.test_managed_application_chain import now
+from tests import test_managed_application_chain as managed
+from tests import test_postgres_configuration_transfer_producer_receiver as profiled
+
+
+class PostgresNativeIngressAcceptanceTests(_CurrentCoordinatorPermission, managed.ManagedApplicationFixture):
+    """Actual native allocation evidence must satisfy the existing acceptance owner."""
+
+    def setUp(self):
+        super().setUp()
+        self.runtime = profiled.ProfiledRecordingRuntime(self)
+        self.ingress = StagedIngressPort(self)
+        self.health.responses = [managed.NativeConnectionOutcome.CONNECTED]
+
+    async def allocate_native(self):
+        factory = self.unit_of_work
+        fold = managed.EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
+        owner = ExecutionCoordinator(factory,
+            lifecycle=managed.RunLifecycleCommandService(factory, clock=now, id_factory=self.ids["lifecycle"]),
+            adapter=ActivityExecutionDispatcher(runtime=self.runtime,
+                ingress=IngressRealizationAdapter(factory,
+                    {IngressAuthorityProviderKind.CLOUDFLARE: IngressProviderRegistration(
+                        self.ingress, "cpk.ingress-invocations.v1")}, now,
+                    managed.SecretUseAuthorizationService(factory), invocation_service=IngressInvocationService(
+                        factory, permission_policy=self.policy, clock=now))),
+            start_service=managed.EffectAttemptStartService(factory,
+                id_factory=self.ids["effect-start"], permission_policy=self.policy), fold_service=fold,
+            reconciliation_service=managed.EffectAttemptReconciliationService(
+                factory, managed.ForbiddenRecovery(), fold),
+            clock=now, id_factory=self.ids["execution"], permission_policy=self.policy,
+            managed_health=self.health, health_signing_authority=managed.HealthSigningAuthorityReloadService(
+                factory, health_receiver_decoders=self.registry))
+        with factory() as uow:
+            request = uow.stores.execution.get_request(self.request_id)
+        execution = ExecuteActivityRun(self.run_id,
+            ExecutionWorkerAuthority(request.claim.worker_id, self.original.granted_scopes),
+            request.claim.fence, IdempotencyKey("native-ingress-acceptance"))
+        return (await owner.execute_managed(ExecuteManagedActivityRun(execution, self.original))).descriptor()
+
+    async def test_native_allocation_reaches_current_graph_acceptance_with_original_evidence(self):
+        await self.prepare_and_start()
+        self.configure_permissions(self.worker.identity, installation="native-ingress-acceptance")
+        for _ in range(len(self.plan.activities) + 2):
+            journal = project_activity_journal(self.plan, activity_journal_events(self.history()))
+            ready = derive_schedule(self.plan, journal.state).ready
+            if ready and type(ready[0].operation) is AllocatePublicIngress:
+                result = await self.allocate_native()
+            else:
+                result = await self.execute_one()
+            if result["coordinator_status"] == "completed":
+                break
+            self.assertEqual(result["coordinator_status"], "progressed", result)
+        self.assertEqual(result["run_status"], "succeeded")
+        self.assertEqual(self.ingress.calls, ["secret-resolution", "ingress-provider-create", "ingress-custody-write"])
+        plan = self.plan_descriptor
+        await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
+            payload={"plan_id": self.plan_id, "expected_current_graph_id": self.workspace["current_graph_id"],
+                "expected_current_realized_projection_id": self.workspace["current_realized_projection_id"],
+                "desired_graph_id": plan["desired_graph_id"],
+                "desired_realized_projection_id": plan["desired_realized_projection_id"],
+                "expected_desired_graph_revision": plan["desired_graph_revision"],
+                "claim_generation": self.generation, "idempotency_key": "native-ingress-advance"})
+        current = await self.invoke("read.current-graph", ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a"})
+        self.assertEqual(current["graph_id"], plan["desired_graph_id"])
+        preimage = self.connection.execute("SELECT installation_sources_preimage FROM cpk_configuration_acceptances "
+            "WHERE workspace_id='workspace-a' AND pinned_revision=%s", (plan["desired_graph_revision"],)).fetchone()[0]
+        binding, = json.loads(preimage)["bindings"]
+        allocation, = binding["generated_allocations"]
+        with self.unit_of_work() as uow:
+            generated, = uow.stores.generated_ingress_secrets.list_for_workspace("workspace-a")
+            start = uow.stores.execution.get_event(allocation["source_event_id"])
+            terminal = uow.stores.execution.get_event(allocation["terminal_event_id"])
+        self.assertEqual(binding["node_id"], "connector")
+        self.assertEqual(start.event_id, generated.source_event_id)
+        self.assertEqual(start.run_id, self.run_id)
+        self.assertEqual(terminal.run_id, self.run_id)
+        self.assertEqual(start.activity_id, generated.source_activity_id)
+        self.assertIs(start.kind, ActivityEventKind.STEP_STARTED)
+        self.assertIs(terminal.kind, ActivityEventKind.STEP_SUCCEEDED)
+        self.assertEqual(start.activity_id, terminal.activity_id)
+        self.assertIs(terminal.evidence.descriptor()["details"]["connector_material_recorded"], True)
 
 
 class PostgresIngressInvocationTests(_CoordinatorManagementPermissionFixture):
@@ -52,6 +146,10 @@ class PostgresIngressInvocationTests(_CoordinatorManagementPermissionFixture):
         self.assertEqual(len(self.rows("cpk_ingress_invocation_results")), 2)
         history = self.ingress_history()
         self.assertEqual(history["owner_fold"], "active")
+        terminal, = (event for event in self.history() if event.activity_id == self.health_activity.activity_id.value
+            and event.kind is ActivityEventKind.STEP_SUCCEEDED)
+        self.assertEqual(terminal.run_id, self.run_id)
+        self.assertIs(terminal.evidence.descriptor()["details"]["connector_material_recorded"], True)
         self.assertNotIn("secret://", str(history))
         self.assertNotIn("credential_reference", str(history))
         self.assertEqual(await owner.execute_managed(command), result)
@@ -89,6 +187,13 @@ class PostgresIngressInvocationTests(_CoordinatorManagementPermissionFixture):
         history = self.ingress_history()
         self.assertEqual(history["owner_fold"], "not-recorded")
         self.assertEqual([unit["outcome"] for unit in history["units"]], ["returned"] * 3)
+        allocation_events = tuple(event for event in self.history()
+            if event.activity_id == self.health_activity.activity_id.value)
+        self.assertTrue(allocation_events)
+        self.assertTrue(all(event.run_id == self.run_id for event in allocation_events))
+        self.assertFalse(any(event.kind is ActivityEventKind.STEP_SUCCEEDED for event in allocation_events))
+        self.assertFalse(any(event.evidence.descriptor().get("details", {}).get("connector_material_recorded")
+            for event in allocation_events if event.evidence is not None))
         self.assertEqual(await owner.execute_managed(command), result)
         self.assertEqual(len(self.ingress.calls), 3)
 
