@@ -8,6 +8,7 @@ class StagedIngressPort:
         self.test = test
         self.calls = []
         self.create_allocation_names = []
+        self.create_custody_grants = []
         self.create_active_counts = []
         self.after_token = self.after_provider = self.after_custody = None
         self.before_provider_result = self.before_custody_result = None
@@ -34,6 +35,7 @@ class StagedIngressPort:
             secret_resolution_grant, secret_custody_grant, invocations):
         self.port = invocations
         self.create_allocation_names.append(allocation_name)
+        self.create_custody_grants.append(secret_custody_grant)
         self.create_active_counts.append(self.test.tracker.active)
         self._unit(invocations, "secret-resolution", authorization_id=secret_resolution_grant.authorization_id,
             hook=self.after_token)
