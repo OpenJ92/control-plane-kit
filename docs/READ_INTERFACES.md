@@ -171,6 +171,13 @@ The summary separates `current_owner_state` from `owner_fold`. A later normal
 removal by another run remains visible without attributing that success to an
 earlier denied command or hiding its retained unit evidence.
 
+After a native allocation's durable owner fold succeeds, its terminal success
+evidence includes `connector_material_recorded: true`. Configuration acceptance
+uses that fact alongside the original generated-secret and installation evidence.
+A returned provider result alone does not earn this marker; failed folds and
+removal do not emit it. This applies to newly produced success events and does
+not repair incomplete evidence retained by earlier versions.
+
 Dynamic ingress composition requires `IngressInvocationService` and an explicit
 `IngressProviderRegistration` for profile `cpk.ingress-invocations.v1`. Passing
 an unqualified legacy adapter, including a wrapper accepting arbitrary keyword

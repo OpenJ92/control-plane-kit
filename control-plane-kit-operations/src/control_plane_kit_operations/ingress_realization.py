@@ -227,10 +227,13 @@ class IngressRealizationAdapter:
             # A returned provider object is not durable success. The owner fold
             # requires the acknowledged closed records for all reached units.
             resource = self.invocation_service.fold(bound)
-            return ActivityExecutionOutcome.succeeded(BoundedEvidence.from_mapping(dict(
+            details = dict(
                 provider_kind=authority.provider_kind.value, ingress_id=ingress.ingress_id,
                 runtime_id=resource.runtime_id, hostname=ingress.hostname, tunnel_id=resource.tunnel_id,
-                dns_record_id=resource.dns_record_id, lifecycle=ingress.lifecycle.value)))
+                dns_record_id=resource.dns_record_id, lifecycle=ingress.lifecycle.value)
+            if allocating:
+                details["connector_material_recorded"] = True
+            return ActivityExecutionOutcome.succeeded(BoundedEvidence.from_mapping(details))
         except ExecutionInvocationDenied:
             return _unsupported(context, "ingress.authorization-denied", "current ingress unit permission was denied")
         except ExecutionInvocationControlError:
