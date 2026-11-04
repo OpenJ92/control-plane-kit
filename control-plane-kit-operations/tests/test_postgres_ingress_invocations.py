@@ -8,6 +8,7 @@ from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
 from control_plane_kit_core.planning import AllocatePublicIngress, derive_schedule, project_activity_journal
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.cpk_server import CpkServerAdvancementFailure
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionDispatcher, ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator,
 )
@@ -79,14 +80,18 @@ class PostgresNativeIngressAcceptanceTests(_CurrentCoordinatorPermission, manage
         self.assertEqual(result["run_status"], "succeeded")
         self.assertEqual(self.ingress.calls, ["secret-resolution", "ingress-provider-create", "ingress-custody-write"])
         plan = self.plan_descriptor
-        await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
-            path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
-            payload={"plan_id": self.plan_id, "expected_current_graph_id": self.workspace["current_graph_id"],
-                "expected_current_realized_projection_id": self.workspace["current_realized_projection_id"],
-                "desired_graph_id": plan["desired_graph_id"],
-                "desired_realized_projection_id": plan["desired_realized_projection_id"],
-                "expected_desired_graph_revision": plan["desired_graph_revision"],
-                "claim_generation": self.generation, "idempotency_key": "native-ingress-advance"})
+        try:
+            await self.invoke("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE,
+                path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
+                payload={"plan_id": self.plan_id, "expected_current_graph_id": self.workspace["current_graph_id"],
+                    "expected_current_realized_projection_id": self.workspace["current_realized_projection_id"],
+                    "desired_graph_id": plan["desired_graph_id"],
+                    "desired_realized_projection_id": plan["desired_realized_projection_id"],
+                    "expected_desired_graph_revision": plan["desired_graph_revision"],
+                    "claim_generation": self.generation, "idempotency_key": "native-ingress-advance"})
+        except CpkServerAdvancementFailure as error:
+            error.add_note(f"native ingress acceptance: stage={error.diagnostic.stage}, reason={error.diagnostic.reason}")
+            raise
         current = await self.invoke("read.current-graph", ControlPlaneServiceRole.READS,
             path={"workspace_id": "workspace-a"})
         self.assertEqual(current["graph_id"], plan["desired_graph_id"])
