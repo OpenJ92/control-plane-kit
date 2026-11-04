@@ -65,7 +65,7 @@ class PostgresNativeIngressAcceptanceTests(_CurrentCoordinatorPermission, manage
 
     async def test_native_allocation_reaches_current_graph_acceptance_with_original_evidence(self):
         await self.prepare_and_start()
-        self.configure_permissions(self.worker.identity, installation="native-ingress-acceptance")
+        self.configure_permissions(self.worker.identity, installation="coordinator-permission")
         for _ in range(len(self.plan.activities) + 2):
             journal = project_activity_journal(self.plan, activity_journal_events(self.history()))
             ready = derive_schedule(self.plan, journal.state).ready
