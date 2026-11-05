@@ -32,8 +32,11 @@ class ReceiverAuthoringContextContractTests(unittest.TestCase):
         bindings = [item for item in parity.projections if item.operation_id == route.route_id]
         self.assertEqual([(item.http_route_id, item.mcp_tool_name, item.projection_schema) for item in bindings],
             [(route.route_id, "get_receiver_authoring_context", "ReceiverAuthoringContextReadResponse")])
-        # The new query override must not silently alter existing GET schemas.
+        # Named collection input is separately explicit; the authoring query
+        # override must not silently alter any other GET schema.
         for other in routes:
             if (other.route_id != route.route_id
                     and other.service_role is ControlPlaneServiceRole.READS):
-                self.assertEqual(other.request_schema, HttpSchemaRef("EmptyRequest", max_bytes=1024))
+                expected = (HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384)
+                    if other.route_id == "read.workspaces" else HttpSchemaRef("EmptyRequest", max_bytes=1024))
+                self.assertEqual(other.request_schema, expected)

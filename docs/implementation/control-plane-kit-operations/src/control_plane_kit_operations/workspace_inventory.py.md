@@ -19,7 +19,7 @@ No schema change, metadata access, global inventory or provider effect occurs.
 The unsigned cursor binds a seek ID to a digest of installation, full identity
 and the durable-only profile. It is attacker-chosen seek input, not authority.
 Malformed/foreign-scope cursors return 400. Hidden, missing and revoked anchors
-return the same 409 and suppress candidate reads. Missing/mismatched installation
+return the same 409 and suppress candidate rows. Missing/mismatched installation
 truth, malformed matching rows and storage failure return fixed 503 errors,
 never a partial page. An operator with no readable workspace receives an empty
 page, including an installation administrator with no ordinary read grants.
@@ -33,8 +33,10 @@ it does not establish historical completeness.
 Owning evidence: `test_postgres_workspace_inventory.py` in the normal Operations
 Docker/PostgreSQL suite. First tests-only gate at `3bf7cede` established only a
 missing interface. The first reader gate at `692cd7d2` passed 12 focused tests,
-compile/import and cleanup. The NUL-cursor correction has independent source
-PASS at `f161d401`; its added test and the subsequent application slice await
-their owning gates. The shared application now binds this reader for the
+compile/import and cleanup. At `499541fd`, all 26 selected inventory, shared
+admission and policy-coverage tests passed, followed by compile/import and
+cleanup. Both reviewers gave source PASS to that adapter and the NUL-cursor
+correction. Full package/combined CI acceptance remains separate. The shared
+application binds this reader for the
 canonical HTTP/MCP inventory route in the exact dynamic durable-only profile.
 Consumer Servers adoption and live API evidence remain separate.
