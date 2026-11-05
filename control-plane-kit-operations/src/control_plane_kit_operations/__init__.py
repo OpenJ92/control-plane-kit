@@ -27,6 +27,10 @@ from .managed_runtime_assignments import (
     ManagedRuntimeAssignmentPage, ManagedRuntimeAssignmentListCursor, ManagedRuntimeAssignmentHistoryCursor,
     ManagedRuntimeSelection, ManagedRuntimeSelectionService, select_managed_runtime_assignment,
 )
+from .workspace_inventory import (
+    WorkspaceInventoryReadService, WorkspaceInventoryCursor, WorkspaceInventoryItem,
+    WorkspaceInventoryPage, WorkspaceInventoryError,
+)
 from .workspace_permissions import (
     WorkspaceAdministrationContext, WorkspaceAdministrationPolicy,
     WorkspaceAdministrationReceipt, WorkspaceAdministrationResult,
@@ -735,6 +739,8 @@ __all__ = [
     "ManagedRuntimeSelection", "ManagedRuntimeSelectionService", "select_managed_runtime_assignment",
     "WorkspaceAdministrationContext", "WorkspaceAdministrationPolicy",
     "WorkspaceAdministrationReceipt", "WorkspaceAdministrationResult",
+    "WorkspaceInventoryReadService", "WorkspaceInventoryCursor", "WorkspaceInventoryItem",
+    "WorkspaceInventoryPage", "WorkspaceInventoryError",
     "GrantWorkspacePermissions", "RevokeWorkspacePermissions",
     "WorkspacePermissionRecord", "WorkspacePermissionReceipt", "WorkspacePermissionResult",
     "WorkspacePermissionInitializationReceipt", "WorkspacePermissionInitializationResult",

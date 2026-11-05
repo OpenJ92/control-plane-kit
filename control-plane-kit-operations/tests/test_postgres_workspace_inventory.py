@@ -10,7 +10,9 @@ from uuid import uuid4
 import psycopg
 from psycopg.types.json import Jsonb
 
+import control_plane_kit_operations as operations
 from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind, WorkspaceGrant
+from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.workspace_permissions import (
@@ -19,6 +21,7 @@ from control_plane_kit_operations.workspace_permissions import (
 )
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
 from control_plane_kit_operations.workflows import IdempotencyKey
+from tests.test_postgres_application_initial_context import Request
 
 
 MODULE = "control_plane_kit_operations.workspace_inventory"
@@ -239,3 +242,68 @@ class PostgresWorkspaceInventoryTests(unittest.TestCase):
             separators=(",", ":"), ensure_ascii=True).encode("ascii")).rstrip(b"=").decode("ascii")
         self.error(lambda: self.reader(factory=self.forbidden_lookup).read(
             AuthenticatedPrincipal(self.member), after=token), 400)
+
+    def application(self, *, mode="dynamic", factory=None, resolver_type=None, reads=None):
+        factory = factory or self.unit_of_work
+        resolver_type = resolver_type or operations.WorkspaceContextResolver
+        services = {role: operations.CpkServerUnsupportedService(role) for role in ControlPlaneServiceRole}
+        services[ControlPlaneServiceRole.READS] = reads or operations.CpkServerReadService(factory)
+        return operations.CpkServerOperationsApplication(services, authority_mode=mode,
+            workspace_context_resolver=None if mode == "static" else
+                resolver_type(factory, installation_id="installation-a"))
+
+    def request(self, *, surface="http", payload=None, principal=None):
+        return Request(surface, "read.workspaces", ControlPlaneServiceRole.READS, {},
+            {} if payload is None else payload, principal or AuthenticatedPrincipal(self.member))
+
+    def application_error(self, call, status):
+        with self.assertRaises(operations.CpkServerApplicationError) as caught:
+            call()
+        self.assertEqual(caught.exception.status, status)
+        return caught.exception
+
+    def test_public_http_mcp_inventory_and_revocation_use_same_current_owner(self):
+        app = self.application()
+        first = app.handle(self.request(payload={"limit": 1}))
+        self.assertEqual(first, app.handle(self.request(surface="mcp", payload={"limit": 1})))
+        self.assertEqual(first, self.page(limit=1))
+        self.revoke("workspace-c")
+        self.assertEqual(app.handle(self.request(payload={"after": first["next_cursor"]})),
+                         {"items": [], "next_cursor": None})
+        self.assertEqual(app.handle(self.request(principal=AuthenticatedPrincipal(self.admin))),
+                         {"items": [], "next_cursor": None})
+
+    def test_public_nonoperators_and_closed_arguments_refuse_before_storage(self):
+        app = self.application(factory=self.forbidden_lookup)
+        for identity in (self.worker, self.service_identity):
+            self.application_error(lambda: app.handle(self.request(
+                principal=AuthenticatedPrincipal(identity), payload={"after": "malformed"})), 403)
+        for payload in ({"workspace_id": "workspace-a"}, {"principal": self.admin.descriptor()},
+                        {"limit": True}, {"after": "malformed"}):
+            self.application_error(lambda: app.handle(self.request(payload=payload)), 400)
+        self.application_error(lambda: app.handle(replace(self.request(),
+            path_parameters={"workspace_id": "workspace-a"})), 400)
+        self.application_error(lambda: app.handle(replace(self.request(),
+            service_role=ControlPlaneServiceRole.AUTHORIZATION)), 404)
+
+    def test_static_intersection_and_direct_unadmitted_profiles_are_unavailable(self):
+        request = self.request(principal=AuthenticatedPrincipal(self.member,
+            (WorkspaceGrant("workspace-b", (self.read,)),)))
+        for app in (self.application(mode="static", factory=self.forbidden_lookup),
+                self.application(factory=self.forbidden_lookup, resolver_type=operations.DurablePrincipalAuthorizer)):
+            self.application_error(lambda: app.handle(request), 503)
+        self.application_error(lambda: operations.CpkServerReadService(self.forbidden_lookup).handle(request), 503)
+
+    def test_public_reentry_rebuilds_reader_and_cannot_reuse_another_profile(self):
+        retained = []
+        class CapturingReadService(operations.CpkServerReadService):
+            def handle(inner, request):
+                retained.append(request)
+                return super().handle(request)
+        app = self.application(reads=CapturingReadService(self.unit_of_work))
+        app.handle(self.request())
+        carrier = retained[0]
+        self.application_error(lambda: self.application(mode="static").handle(carrier), 503)
+        self.application_error(lambda: self.application(factory=self.forbidden_lookup).handle(carrier), 503)
+        self.revoke("workspace-a")
+        self.assertEqual([item["workspace_id"] for item in app.handle(carrier)["items"]], ["workspace-c"])

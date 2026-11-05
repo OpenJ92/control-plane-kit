@@ -32,6 +32,9 @@ it does not establish historical completeness.
 
 Owning evidence: `test_postgres_workspace_inventory.py` in the normal Operations
 Docker/PostgreSQL suite. First tests-only gate at `3bf7cede` established only a
-missing interface. The implementation remains unvalidated until its owning
-focused gate and independent review complete. HTTP/MCP adoption is a subsequent
-part of this issue; this service alone does not expose a live API.
+missing interface. The first reader gate at `692cd7d2` passed 12 focused tests,
+compile/import and cleanup. The NUL-cursor correction has independent source
+PASS at `f161d401`; its added test and the subsequent application slice await
+their owning gates. The shared application now binds this reader for the
+canonical HTTP/MCP inventory route in the exact dynamic durable-only profile.
+Consumer Servers adoption and live API evidence remain separate.

@@ -10,7 +10,7 @@
       "movement": "remain", "migration_prerequisites": [],
       "canonical_public_exports": ["WorkspaceInventoryReadService", "WorkspaceInventoryCursor", "WorkspaceInventoryItem", "WorkspaceInventoryPage", "WorkspaceInventoryError"],
       "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.types", "control_plane_kit_operations.workspace_permissions"],
-      "known_package_consumers": [],
+      "known_package_consumers": ["control_plane_kit_operations.cpk_server", "control_plane_kit_operations.workspace_permissions"],
       "optional_external_dependencies": [],
       "protecting_tests": ["tests/test_postgres_workspace_inventory.py"],
       "motivation": "Bounded current operator workspace visibility from exact durable grants, with live keyset navigation and no provider effects."

@@ -18,6 +18,7 @@ class ReadProjectionKind(StrEnum):
     """Closed operator read projection identities."""
 
     WORKSPACE = "workspace"
+    WORKSPACES = "workspaces"
     PROVIDER_POLICY_COMMAND = "provider-policy-command"
     PROVIDER_POLICY_GRANT = "provider-policy-grant"
     PROVIDER_POLICY_GRANTS = "provider-policy-grants"
@@ -76,6 +77,7 @@ class ReadProjectionPolicy(StrEnum):
 
     REDACTED_PRODUCT_DIRECTORY = "redacted-product-directory"
     REDACTED_WORKSPACE = "redacted-workspace"
+    AUTHORIZED_WORKSPACE_INVENTORY = "authorized-workspace-inventory"
     AUTHORIZED_WORKSPACE_ADMINISTRATION = "authorized-workspace-administration"
     AUTHORIZED_PROVIDER_POLICY_ADMINISTRATION = (
         "authorized-provider-policy-administration"
@@ -329,6 +331,9 @@ class _ProjectionDefinition:
 
 
 _CANONICAL_PROJECTIONS = (
+    _ProjectionDefinition("read.workspaces", ReadProjectionKind.WORKSPACES,
+        "WorkspaceInventoryPage", ReadProjectionPolicy.AUTHORIZED_WORKSPACE_INVENTORY,
+        paged=True, max_page_size=100, requires_workspace_scope=False),
     *tuple(
         _ProjectionDefinition(
             "read." + kind.value,
