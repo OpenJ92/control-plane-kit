@@ -125,15 +125,16 @@ class HttpVerificationSampleTests(ReceiverHealthFixtures, unittest.TestCase):
         codec = self.api.HttpVerificationSampleResultCodec(request, check)
         for outcome, status in ((VerificationOutcome.PASSED, 200),
                                 (VerificationOutcome.FAILED, 500),
+                                (VerificationOutcome.FAILED, 302),
                                 (VerificationOutcome.MALFORMED, 200)):
             with self.subTest(outcome=outcome):
                 result = self.api.HttpVerificationSampleResult(
                     request, outcome, HttpVerificationEvidence(status, 1024))
-                document = result.descriptor()
+                document = result.descriptor(installed_check=check)
                 self.assertEqual(document["kind"], "service-sample")
                 self.assertEqual(document["evidence"]["status_code"], status)
                 self.assertEqual(codec.decode(document), result)
-                self.assertEqual(codec.decode_canonical_bytes(result.canonical_bytes()), result)
+                self.assertEqual(codec.decode_canonical_bytes(result.canonical_bytes(installed_check=check)), result)
                 self.assertEqual(codec.decode(document).outcome, outcome)
         for outcome, evidence in ((VerificationOutcome.PASSED, HttpVerificationEvidence(500, 21)),
                                   (VerificationOutcome.PASSED, HttpVerificationEvidence(200, 1025)),
@@ -144,22 +145,24 @@ class HttpVerificationSampleTests(ReceiverHealthFixtures, unittest.TestCase):
         digest_codec = self.api.HttpVerificationSampleResultCodec(digest_request, digest_check)
         capped = self.api.HttpVerificationSampleResult(digest_request, VerificationOutcome.MALFORMED,
             HttpVerificationEvidence(200, 1024, "d" * 64, True))
-        self.assertIs(digest_codec.decode(capped.descriptor()).outcome, VerificationOutcome.MALFORMED)
+        self.assertIs(digest_codec.decode(capped.descriptor(installed_check=digest_check)).outcome,
+                      VerificationOutcome.MALFORMED)
 
     def test_unavailable_never_has_service_evidence_and_old_reply_cannot_satisfy_new(self):
         request = self.sample()
         codec = self.api.HttpVerificationSampleResultCodec(request, self.check())
         result = self.api.HttpVerificationSampleResult(request, VerificationOutcome.TIMED_OUT)
-        self.assertEqual(result.descriptor()["kind"], "sample-unavailable")
-        self.assertIsNone(result.descriptor()["evidence"])
-        self.assertEqual(codec.decode(result.descriptor()), result)
+        document = result.descriptor(installed_check=self.check())
+        self.assertEqual(document["kind"], "sample-unavailable")
+        self.assertIsNone(document["evidence"])
+        self.assertEqual(codec.decode(document), result)
         self.refusal(lambda: self.api.HttpVerificationSampleResult(request, VerificationOutcome.PASSED))
         next_codec = self.api.HttpVerificationSampleResultCodec(
             replace(request, request_id="sample-2", sample_ordinal=2), self.check())
-        self.refusal(lambda: next_codec.decode(result.descriptor()))
+        self.refusal(lambda: next_codec.decode(document))
         self.refusal(lambda: next_codec.encode(result))
-        self.refusal(lambda: codec.decode(result.descriptor() | {"kind": "service-sample"}))
-        self.refusal(lambda: codec.decode(result.descriptor() | {"status_code": 500}))
+        self.refusal(lambda: codec.decode(document | {"kind": "service-sample"}))
+        self.refusal(lambda: codec.decode(document | {"status_code": 500}))
 
     def test_closed_wire_and_categorical_refusals(self):
         request = self.sample()
@@ -183,9 +186,29 @@ class HttpVerificationSampleTests(ReceiverHealthFixtures, unittest.TestCase):
         for serializer in (false_pass.descriptor, false_pass.canonical_bytes):
             with self.subTest(serializer=serializer.__name__):
                 self.refusal(serializer)
+                self.refusal(lambda: serializer(installed_check=self.check()))
+        oversized = self.api.HttpVerificationSampleResult(
+            request, VerificationOutcome.PASSED, HttpVerificationEvidence(200, 1025))
+        self.refusal(lambda: oversized.descriptor(installed_check=self.check()))
+        self.refusal(lambda: oversized.canonical_bytes(installed_check=self.check()))
         codec = self.api.HttpVerificationSampleResultCodec(request, self.check())
         for evidence in (None, HttpVerificationEvidence(200, 21)):
             with self.subTest(evidence=evidence):
                 self.refusal(lambda: codec.encode(self.api.HttpVerificationSampleResult(
                     request, VerificationOutcome.MALFORMED, evidence)))
+
+    def test_named_profile_refuses_redirect_expectations_without_rewriting_them(self):
+        for statuses in ((302,), (200, 302)):
+            check = replace(self.check(), expected_statuses=statuses)
+            request = self.sample(check_digest=self.api.http_verification_check_digest(check))
+            self.assertEqual(check.expected_statuses, statuses)
+            self.refusal(lambda: self.api.require_http_verification_sample_check(
+                request, expected_target=request.target,
+                expected_declaration_identity=request.declaration_identity, installed_check=check))
+            self.refusal(lambda: self.api.HttpVerificationSampleResultCodec(request, check))
+            for status in (200, 302):
+                result = self.api.HttpVerificationSampleResult(
+                    request, VerificationOutcome.PASSED, HttpVerificationEvidence(status, 21))
+                self.refusal(lambda: result.descriptor(installed_check=check))
+                self.refusal(lambda: result.canonical_bytes(installed_check=check))
 

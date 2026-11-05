@@ -41,7 +41,7 @@ _REQUEST_FIELDS = (
 
 
 class HttpVerificationSampleError(ValueError):
-    """A categorical refusal without retained candidate material."""
+    """Fixed refusal text with detached parser cause and context."""
 
 
 def _require(condition):
@@ -191,7 +191,8 @@ def require_http_verification_sample_check(request, *, expected_target,
                  and request.declaration_identity == expected_declaration_identity
                  and request.check_id == check.check_id
                  and request.check_digest == http_verification_check_digest(check)
-                 and request.sample_ordinal <= check.policy.maximum_attempts)
+                 and request.sample_ordinal <= check.policy.maximum_attempts
+                 and not any(300 <= status < 400 for status in check.expected_statuses))
         return check
     return _checked(require)
 
@@ -302,11 +303,12 @@ class HttpVerificationSampleResult:
     def __post_init__(self):
         _checked(lambda: _validate_result(self))
 
-    def descriptor(self):
-        return _checked(lambda: _result_document(replace(self)))
+    def descriptor(self, *, installed_check=None):
+        return _checked(lambda: HttpVerificationSampleResultCodec(
+            self.request, installed_check).encode(self))
 
-    def canonical_bytes(self):
-        return canonical_json_bytes(self.descriptor())
+    def canonical_bytes(self, *, installed_check=None):
+        return canonical_json_bytes(self.descriptor(installed_check=installed_check))
 
 
 def _result_document(result):
@@ -323,7 +325,8 @@ def _validate_result(result):
     _require(type(result) is HttpVerificationSampleResult and type(result.outcome) is VerificationOutcome)
     _validate_request(result.request)
     if result.evidence is None:
-        _require(result.outcome is not VerificationOutcome.PASSED)
+        _require(result.outcome in (VerificationOutcome.FAILED, VerificationOutcome.TIMED_OUT,
+                                   VerificationOutcome.REJECTED))
     else:
         _require(type(result.evidence) is HttpVerificationEvidence
                  and result.outcome in (VerificationOutcome.PASSED, VerificationOutcome.FAILED,
@@ -361,6 +364,8 @@ class HttpVerificationSampleResultCodec:
                     _require(passed)
                 elif result.outcome is VerificationOutcome.FAILED:
                     _require(not passed)
+                elif result.outcome is VerificationOutcome.MALFORMED:
+                    _require(evidence.response_bytes == check.policy.maximum_evidence_bytes)
                 # A capped matching prefix must remain malformed, never pass.
             return _result_document(result)
         return _checked(encode)
