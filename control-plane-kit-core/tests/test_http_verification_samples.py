@@ -1,8 +1,6 @@
 """Named HTTP samples bind existing whole-check authority without performing I/O."""
 from dataclasses import replace
 import hashlib
-import importlib
-import importlib.util
 import unittest
 
 import rfc8785
