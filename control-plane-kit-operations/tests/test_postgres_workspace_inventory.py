@@ -8,7 +8,7 @@ from uuid import uuid4
 import psycopg
 from psycopg.types.json import Jsonb
 
-from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
+from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind, WorkspaceGrant
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.workspace_permissions import (
@@ -112,8 +112,30 @@ class PostgresWorkspaceInventoryTests(unittest.TestCase):
             self.grant("workspace-b", target=target)
             with self.subTest(kind=target.kind):
                 self.error(lambda: self.reader(factory=self.forbidden_lookup).read(
+                    AuthenticatedPrincipal(target)), 403)
+                self.error(lambda: self.reader(factory=self.forbidden_lookup).read(
                     AuthenticatedPrincipal(target), after="malformed"), 403)
         self.assertEqual([x["workspace_id"] for x in self.page()["items"]], ["workspace-a", "workspace-c"])
+
+    def test_static_grants_do_not_expand_durable_visibility(self):
+        before = self.page(limit=1)
+        principal = AuthenticatedPrincipal(self.member, (WorkspaceGrant("workspace-b", (self.read,)),))
+        self.assertEqual(self.reader().read(principal, limit=1).descriptor(), before)
+        self.assertEqual([x["workspace_id"] for x in self.reader().read(principal).descriptor()["items"]],
+                         ["workspace-a", "workspace-c"])
+
+    def test_default_limit_and_inclusive_upper_bound(self):
+        for number in range(24):
+            workspace = f"workspace-extra-{number:02d}"
+            self.create(workspace, str(number))
+            self.grant(workspace)
+        first = self.page()
+        self.assertEqual(len(first["items"]), 25)
+        self.assertIsInstance(first["next_cursor"], str)
+        last = self.page(after=first["next_cursor"])
+        self.assertEqual(len(last["items"]), 1)
+        self.assertIsNone(last["next_cursor"])
+        self.assertEqual(len(self.page(limit=100)["items"]), 26)
 
     def test_full_principal_scope_and_admin_without_grants(self):
         self.assertEqual([x["workspace_id"] for x in self.page(principal=self.other)["items"]], ["workspace-d"])
@@ -165,6 +187,11 @@ class PostgresWorkspaceInventoryTests(unittest.TestCase):
         self.grant("workspace-bb", target=self.other)
         self.connection.execute("UPDATE cpk_workspaces SET name='Different hidden name' WHERE workspace_id='workspace-b'")
         self.assertEqual(self.page(limit=1), before)
+        self.connection.execute("UPDATE cpk_workspace_permissions SET scopes=%s WHERE workspace_id='workspace-bb' AND issuer='other-issuer'",
+            (Jsonb([self.read.value, "unknown-scope"]),))
+        self.assertEqual(self.page(limit=1), before)
+        self.connection.execute("UPDATE cpk_workspace_permissions SET scopes=%s WHERE workspace_id='workspace-bb' AND issuer='other-issuer'",
+            (Jsonb([self.read.value]),))
         self.permissions.revoke(RevokeWorkspacePermissions(context=self.context, workspace_id="workspace-bb",
             target=self.other, scopes=(self.read,), expected_revision=1, idempotency_key=IdempotencyKey(uuid4().hex)))
         self.assertEqual(self.page(limit=1), before)

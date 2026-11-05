@@ -2,6 +2,20 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.workspace_inventory",
+      "destination": "control_plane_kit_operations.workspace_inventory",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/workspace_inventory.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "authorization", "projections"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["WorkspaceInventoryReadService", "WorkspaceInventoryCursor", "WorkspaceInventoryItem", "WorkspaceInventoryPage", "WorkspaceInventoryError"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_core.types", "control_plane_kit_operations.workspace_permissions"],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_postgres_workspace_inventory.py"],
+      "motivation": "Bounded current operator workspace visibility from exact durable grants, with live keyset navigation and no provider effects."
+    },
+    {
       "module": "control_plane_kit_operations.provider_policy_commands",
       "destination": "control_plane_kit_operations.provider_policy_commands",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/provider_policy_commands.py",
