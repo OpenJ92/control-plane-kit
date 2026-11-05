@@ -1,6 +1,8 @@
 """#2041 current operator visibility, using the owning PostgreSQL services."""
 from dataclasses import replace
+import base64
 import importlib.util
+import json
 import os
 import unittest
 from uuid import uuid4
@@ -228,3 +230,12 @@ class PostgresWorkspaceInventoryTests(unittest.TestCase):
             raise RuntimeError("private-store-detail")
         message = self.error(lambda: self.reader(factory=unavailable).read(AuthenticatedPrincipal(self.member)), 503)
         self.assertNotIn("private-store-detail", message)
+
+    def test_canonical_nul_anchor_is_malformed_before_storage(self):
+        cursor = self.api().WorkspaceInventoryCursor("installation-a", self.member, "normal").encode()
+        payload = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+        payload["after"] = "a\x00b"
+        token = base64.urlsafe_b64encode(json.dumps(payload, sort_keys=True,
+            separators=(",", ":"), ensure_ascii=True).encode("ascii")).rstrip(b"=").decode("ascii")
+        self.error(lambda: self.reader(factory=self.forbidden_lookup).read(
+            AuthenticatedPrincipal(self.member), after=token), 400)

@@ -36,6 +36,8 @@ class WorkspaceInventoryCursor:
         _text(self.installation_id)
         _identity(self.identity)
         _text(self.after_workspace_id)
+        if "\x00" in self.after_workspace_id:
+            raise ValueError("workspace cursor anchor is malformed")
 
     def _scope(self):
         return sha256(_json({"installation_id": self.installation_id,
