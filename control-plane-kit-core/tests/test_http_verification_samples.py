@@ -17,7 +17,7 @@ class HttpVerificationSampleTests(ReceiverHealthFixtures, unittest.TestCase):
     module_name = "http_verification_samples"
 
     def check(self):
-        return HttpCheck("ready", "http-api", "/health/ready",
+        return HttpCheck(check_id="ready", provider_socket="http-api", path="/health/ready",
                          policy=VerificationPolicy(maximum_attempts=2,
                                                    maximum_evidence_bytes=1024))
 
@@ -175,4 +175,17 @@ class HttpVerificationSampleTests(ReceiverHealthFixtures, unittest.TestCase):
         self.refusal(lambda: codec.decode_canonical_bytes(b"x" * 4097))
         self.assertNotIn("run-1", repr(request))
         self.assertNotIn("sample-key", repr(self.grant()))
+
+    def test_public_result_serializers_and_oversize_claim_require_check_evidence(self):
+        request = self.sample()
+        false_pass = self.api.HttpVerificationSampleResult(
+            request, VerificationOutcome.PASSED, HttpVerificationEvidence(500, 21))
+        for serializer in (false_pass.descriptor, false_pass.canonical_bytes):
+            with self.subTest(serializer=serializer.__name__):
+                self.refusal(serializer)
+        codec = self.api.HttpVerificationSampleResultCodec(request, self.check())
+        for evidence in (None, HttpVerificationEvidence(200, 21)):
+            with self.subTest(evidence=evidence):
+                self.refusal(lambda: codec.encode(self.api.HttpVerificationSampleResult(
+                    request, VerificationOutcome.MALFORMED, evidence)))
 

@@ -30,6 +30,7 @@ EXPECTED_MODULES = {
     "topology.secret_selection",
     "gateway_delegation",
     "identity",
+    "http_verification_samples",
     "lifecycle",
     "node_control",
     "node_control_surface_read_results",
