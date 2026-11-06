@@ -67,6 +67,7 @@ class ControlRouteTests(unittest.TestCase):
                 ControlRouteSetName.DISCOVERY,
                 ControlRouteSetName.NODE_CONTROL,
                 ControlRouteSetName.NODE_HEALTH,
+                ControlRouteSetName.HTTP_VERIFICATION_SAMPLE,
             },
         )
         self.assertEqual(

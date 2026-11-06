@@ -31,6 +31,7 @@ EXPECTED_MODULES = {
     "gateway_delegation",
     "identity",
     "http_verification_samples",
+    "http_verification_sample_installation",
     "lifecycle",
     "node_control",
     "node_control_surface_read_results",

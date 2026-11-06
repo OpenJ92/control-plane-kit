@@ -983,7 +983,19 @@ from control_plane_kit_core.http_verification_samples import (
     http_verification_check_digest, require_http_verification_sample_check,
     verify_http_verification_sample_grant,
 )
+from control_plane_kit_core.http_verification_sample_installation import (
+    MAX_HTTP_VERIFICATION_SAMPLE_CONFIGURATION_BYTES, HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT,
+    HttpVerificationSampleVerifierConfiguration, HttpVerificationSampleCheckBinding,
+    HttpVerificationSampleReceiverConfiguration, HttpVerificationSampleReceiverConfigurationCodec,
+    HttpVerificationSampleInstalledCheck, HttpVerificationSampleReceiverBinding,
+    select_http_verification_sample_configuration_slot,
+)
 __all__ += [
+    "MAX_HTTP_VERIFICATION_SAMPLE_CONFIGURATION_BYTES", "HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT",
+    "HttpVerificationSampleVerifierConfiguration", "HttpVerificationSampleCheckBinding",
+    "HttpVerificationSampleReceiverConfiguration", "HttpVerificationSampleReceiverConfigurationCodec",
+    "HttpVerificationSampleInstalledCheck", "HttpVerificationSampleReceiverBinding",
+    "select_http_verification_sample_configuration_slot",
     "MAX_HTTP_VERIFICATION_SAMPLE_REQUEST_BYTES", "MAX_HTTP_VERIFICATION_SAMPLE_GRANT_BYTES",
     "MAX_HTTP_VERIFICATION_SAMPLE_RESULT_BYTES", "MAX_HTTP_VERIFICATION_SAMPLE_GRANT_LIFETIME_SECONDS",
     "HttpVerificationSampleError", "HttpVerificationSampleRequest", "HttpVerificationSampleRequestCodec",

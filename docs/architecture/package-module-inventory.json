@@ -2,6 +2,34 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_core.http_verification_sample_installation",
+      "destination": "control_plane_kit_core.http_verification_sample_installation",
+      "source": "control-plane-kit-core/src/control_plane_kit_core/http_verification_sample_installation.py",
+      "owner": "core",
+      "role": "deployment-language",
+      "semantic_roles": ["values", "validation", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "MAX_HTTP_VERIFICATION_SAMPLE_CONFIGURATION_BYTES", "HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT",
+        "HttpVerificationSampleVerifierConfiguration", "HttpVerificationSampleCheckBinding",
+        "HttpVerificationSampleReceiverConfiguration", "HttpVerificationSampleReceiverConfigurationCodec",
+        "HttpVerificationSampleInstalledCheck", "HttpVerificationSampleReceiverBinding",
+        "select_http_verification_sample_configuration_slot"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.algebra", "control_plane_kit_core.configuration",
+        "control_plane_kit_core.delegation_keys", "control_plane_kit_core.environment",
+        "control_plane_kit_core.http_verification_samples", "control_plane_kit_core._node_control_public_wire",
+        "control_plane_kit_core.products", "control_plane_kit_core.receiver_configuration",
+        "control_plane_kit_core.receiver_identity", "control_plane_kit_core.types", "control_plane_kit_core.verification"
+      ],
+      "known_package_consumers": ["control_plane_kit_core"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_http_verification_sample_installation.py"],
+      "motivation": "Opt-in sample trust and admitted named-check subset bind independently installed receiver, product HTTP sockets, fixed runtime ports and exact configuration slots without effects or current authority."
+    },
+    {
       "module": "control_plane_kit_core.http_verification_samples",
       "destination": "control_plane_kit_core.http_verification_samples",
       "source": "control-plane-kit-core/src/control_plane_kit_core/http_verification_samples.py",
