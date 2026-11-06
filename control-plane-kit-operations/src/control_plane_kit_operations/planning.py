@@ -1111,10 +1111,6 @@ def _planning_evidence_matches(
         == plan_record.desired_graph_revision
         and _bounded_text(evidence.get("workspace_id"))
         and planning_derivation_matches_action(plan_record.derivation_profile, evidence)
-        and (("http_verification_intent" not in evidence
-                and plan_record.derivation_profile is not PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1)
-            or (evidence.get("http_verification_intent") == HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES.value
-                and plan_record.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1))
     )
 
 

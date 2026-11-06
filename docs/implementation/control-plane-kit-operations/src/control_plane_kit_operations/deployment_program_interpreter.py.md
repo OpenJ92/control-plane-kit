@@ -6,6 +6,9 @@ in inline parent intent only when present. Saved preparation has its own equival
 digest binding in saved_deployment_preparation.py. Old omission and child keys
 remain unchanged, so changed same-key intent conflicts rather than creating an
 unrelated preparation. The existing staged transaction/uncertainty model remains.
+Review blockers are surfaced before a no-op shortcut: unsupported explicit
+same-graph selection is review-blocked, and omitted same-graph planning remains
+no-changes. Neither path requests approval.
 
 Preparation composes existing session, desired-graph, planning and approval
 owners under their existing authority and transaction boundaries. Inline input

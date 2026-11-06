@@ -193,10 +193,10 @@ class DeploymentProgram:
             command.context.workspace_id,
             planning_result.plan_record.plan_id,
         )
-        if isinstance(planning_result.transition, NoOpDeployment):
-            return DeploymentNoChanges(reference)
         if not planning_result.plan_record.plan.ready_for_execution:
             return DeploymentReviewBlocked(reference)
+        if isinstance(planning_result.transition, NoOpDeployment):
+            return DeploymentNoChanges(reference)
         approval_result = _execute_approval(
             self._approvals,
             RequestApproval(

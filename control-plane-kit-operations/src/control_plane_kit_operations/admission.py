@@ -265,10 +265,6 @@ class ExecutionAdmissionCommandService:
             except KeyError as error:
                 raise ExecutionAdmissionNotFound(str(error)) from error
 
-            from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
-            if plan.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
-                raise ExecutionAdmissionDenied("HTTP sample execution admission is unavailable")
-
             if session.workspace_id != command.workspace_id:
                 raise ExecutionAdmissionConflict(
                     "session belongs to another workspace"
@@ -283,6 +279,9 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionConflict(
                     "only planned activity plans may be admitted"
                 )
+            from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+            if plan.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
+                raise ExecutionAdmissionDenied("HTTP sample execution admission is unavailable")
             if not plan.plan.activities:
                 raise ExecutionAdmissionConflict(
                     "activity plan contains no executable changes"

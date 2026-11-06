@@ -5,6 +5,8 @@ Maintain this companion alongside its source.
 empty/ready-plan shortcuts or execution-request creation. An otherwise approved
 ready plan does not grant the missing sampler/product compatibility authority.
 This hold remains until the separately accepted admission and sender composition.
+Existing session/workspace/plan ownership checks precede the profile-specific
+refusal, so unrelated plan IDs do not disclose their profile through that denial.
 
 Execution admission retains its existing plan/session/workspace lineage,
 permission, approval, risk and readiness checks inside the caller-owned

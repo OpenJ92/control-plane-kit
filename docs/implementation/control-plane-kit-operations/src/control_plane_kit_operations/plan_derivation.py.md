@@ -6,6 +6,9 @@ entrypoint. `HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES` is caller int
 not a raw profile override. The existing strict version1 stored envelope carries
 the new closed profile without a schema migration. Old and absent profiles keep
 their exact derivation. Recording the profile grants no execution authority.
+One shared action-evidence predicate enforces exact sample intent/profile
+congruence for both public result construction and persisted replay. Legacy
+profiles cannot carry sample intent and the sample profile cannot omit it.
 
 This pure Operations module declares which interpretation defines a stored plan.
 `PlanDerivationProfile.STRUCTURAL_V1` calls Core's existing structural compiler on

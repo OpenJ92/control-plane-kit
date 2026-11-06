@@ -99,6 +99,12 @@ def planning_derivation_matches_action(
     evidence: Mapping[str, object],
 ) -> bool:
     """Absence is legacy; explicit null or a one-sided marker is a conflict."""
+    sample_profile = profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+    if ("http_verification_intent" in evidence) != sample_profile:
+        return False
+    if sample_profile and (type(evidence["http_verification_intent"]) is not str
+            or evidence["http_verification_intent"] != HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES.value):
+        return False
     if profile is None:
         return "derivation_profile" not in evidence
     if type(profile) is not PlanDerivationProfile:
