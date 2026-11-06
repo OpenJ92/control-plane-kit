@@ -32,3 +32,18 @@ adoption, Secrets #29 owns its provider allowlist and family/provisioning contra
 and #1846/Interpreters #149 own approved-attempt reload and immediate-use material.
 Those consumers must adopt the exact families explicitly. No key generation,
 signing, network, schema, durable history or retained-store change occurs here.
+
+#1815 adds a separate nominal correspondence for HTTP verification samples:
+
+| Delegation key purpose | Secret-use intent |
+| --- | --- |
+| `WORKLOAD_HTTP_VERIFICATION_SAMPLE` | `workload.http-verification-sample-signing-key` |
+| `GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT` | `gateway.http-verification-sample-transit-signing-key` |
+
+`http_verification_sample_signing_intent_for` accepts only these two purposes;
+other families, raw strings and unknown values receive a fixed bounded error.
+The V2 `health_signing_intent_for` remains unchanged and refuses both sample
+purposes. Existing resolution grants retain exact reference/intent isolation.
+Neither mapping selects a current key, pins a provider material version, resolves
+private bytes or permits signing. Operations schema/admission and interpreter
+signing remain separate owners. This Core slice is pure public vocabulary.
