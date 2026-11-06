@@ -17,12 +17,13 @@ from control_plane_kit_core.http_verification_samples import (
 )
 from control_plane_kit_core.products import ProductRuntimeContract, ProviderRuntimePort
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import HttpCheck, VerificationContract, VerificationPolicy
-from tests.test_receiver_configuration import ReceiverConfigurationTests
+from tests import test_receiver_configuration as receiver_fixtures
 
 
 def fixture():
-    old = ReceiverConfigurationTests()
+    old = receiver_fixtures.ReceiverConfigurationTests()
     old.setUp()
     document = old.document()
     document["target"]["provider_socket_name"] = "http-api"
@@ -32,7 +33,7 @@ def fixture():
     receiver = old.codec.decode(document)
     checks = tuple(HttpCheck(check_id=name, provider_socket="http-api", path="/health/" + name,
         policy=VerificationPolicy(interval_seconds=2, maximum_attempts=10)) for name in ("live", "ready"))
-    sockets = (ProviderSocket("http-api", core.Protocol.HTTP), ProviderSocket("mcp", core.Protocol.MCP_STREAMABLE_HTTP))
+    sockets = (ProviderSocket("http-api", Protocol.HTTP), ProviderSocket("mcp", Protocol.MCP_STREAMABLE_HTTP))
     ports = (ProviderRuntimePort("http-api", 8080), ProviderRuntimePort("mcp", 8080))
     contract = ProductRuntimeContract(sockets=BlockSockets(providers=sockets),
         provider_ports=ports, verification=VerificationContract(checks))
@@ -44,8 +45,8 @@ class HttpSampleInstallationPredecessorTests(unittest.TestCase):
         receiver, _, contract = fixture()
         codec = ReceiverNodeControlConfigurationCodec()
         self.assertEqual(codec.decode_bytes(codec.encode_bytes(receiver)), receiver)
-        self.assertEqual(contract.sockets.provider("http-api").protocol, core.Protocol.HTTP)
-        self.assertEqual(contract.sockets.provider("mcp").protocol, core.Protocol.MCP_STREAMABLE_HTTP)
+        self.assertEqual(contract.sockets.provider("http-api").protocol, Protocol.HTTP)
+        self.assertEqual(contract.sockets.provider("mcp").protocol, Protocol.MCP_STREAMABLE_HTTP)
         self.assertEqual(tuple(port.container_port for port in contract.provider_ports), (8080, 8080))
 
 
