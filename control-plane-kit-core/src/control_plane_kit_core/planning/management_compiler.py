@@ -5,8 +5,15 @@ readiness, successful transport, or freshness of an execution attempt.
 """
 from dataclasses import dataclass, replace
 import hashlib
+import re
 
-from control_plane_kit_core.configuration import ConfigurationMediaType
+from control_plane_kit_core.configuration import ConfigurationMediaType, ConfigurationFileMode
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.http_verification_sample_installation import (
+    HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT,
+    HttpVerificationSampleCheckBinding, HttpVerificationSampleReceiverConfigurationCodec,
+)
+from control_plane_kit_core.http_verification_samples import http_verification_check_digest
 from control_plane_kit_core.lifecycle import ResourceOwnership, ResourcePersistence
 from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor
 from control_plane_kit_core.planning.activity_plan import (
@@ -35,8 +42,10 @@ from control_plane_kit_core.topology.codec import _management_ingress
 from control_plane_kit_core.topology.diff import diff_graphs
 from control_plane_kit_core.topology.graph import Node
 from control_plane_kit_core.topology.validation import (
-    NodeSubject, RuntimeSubject, ValidatedGraph, management_ingress_for_health_read,
+    GraphSubject, NodeSubject, RuntimeSubject, ValidatedGraph, management_ingress_for_health_read,
 )
+from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.verification import HttpCheck
 
 
 _GRAPH_DOMAIN = b"control-plane-kit.management-graph.v1\0"
@@ -785,6 +794,84 @@ def compile_managed_update_activity_plan(current: ValidatedGraph, desired: Valid
 
 def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
     """Derive management observation obligations from two complete graph values."""
+    return _compile_graph_activity_plan(current, desired)
+
+
+def compile_http_sample_bootstrap_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
+    """Explicit fresh interpretation; graph coverage is not execution admission."""
+    _require_pair(current, desired)
+    # An explicit unsupported selection cannot become a structural/no-op success.
+    fresh_owned = (not current.graph.nodes and not current.graph.runtimes and not current.graph.public_ingresses
+        and bool(desired.graph.runtimes)
+        and all(runtime.management is not None and runtime.lifecycle.ownership is ResourceOwnership.OWNED
+            for runtime in desired.graph.runtimes.values())
+        and all(node.lifecycle.ownership is ResourceOwnership.OWNED for node in desired.graph.nodes.values()))
+    plan = _compile_graph_activity_plan(current, desired, http_samples=fresh_owned)
+    covered = fresh_owned and any(_full_http_sample_coverage(node)
+        for node in desired.graph.nodes.values()
+        if node.node_id not in (
+            desired.graph.runtimes[node.runtime_id].management.gateway_node_id,
+            next(ingress.connector_node_id for ingress in desired.graph.public_ingresses
+                if ingress.ingress_id == desired.graph.runtimes[node.runtime_id].management.management_ingress_id)))
+    if not covered:
+        review = _review_activity(GraphSubject(), ReviewReason.UNSUPPORTED_CHANGE)
+        return ActivityPlan((*plan.activities, review))
+    return plan
+
+
+_HTTP_SAMPLE_PATH = re.compile(r"/(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%[0-9A-Fa-f]{2})*")
+
+
+def _full_http_sample_coverage(node):
+    """Graph-declared compatibility only; independent registered slots/ports remain admission facts."""
+    checks = node.block_spec.verification.checks
+    if (node.lifecycle.ownership is not ResourceOwnership.OWNED or node.block_spec.health_path is not None
+            or not checks or any(type(check) is not HttpCheck or check.expected_statuses != (200,)
+                or check.expected_body_sha256 is not None or not 0 < check.policy.timeout_seconds <= 5
+                or _HTTP_SAMPLE_PATH.fullmatch(check.path) is None or check.path.startswith("//") for check in checks)):
+        return False
+    try:
+        # A pinned descriptor reference is a graph fact, never registry provenance.
+        namespace, name, revision = node.metadata["product_identity"].split("/")
+        identity = ProductIdentity(namespace, name, int(revision))
+        if identity.key != node.metadata["product_identity"]:
+            return False
+        ProductDescriptorDigest(node.metadata["product_descriptor_digest"])
+        surface, _ = _selected_surface(node)
+        if surface is None:
+            return False
+        wrapper = select_receiver_node_control_configuration_artifact(
+            artifacts=node.configuration_artifacts, environment=node.public_environment + node.socket_environment,
+            control_surfaces=node.block_spec.control_surfaces)
+        receiver = ReceiverNodeControlConfigurationCodec().decode_bytes(wrapper.content.encode("utf-8"))
+        if (receiver.target.node_id.value != node.node_id or receiver.target.runtime_id.value != node.runtime_id
+                or receiver.target.provider_socket_name.value != surface.provider_socket_name.value
+                or node.sockets.provider(surface.provider_socket_name.value).protocol is not Protocol.HTTP):
+            return False
+        environment = tuple(value for value in node.public_environment + node.socket_environment
+            if value.name == HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT)
+        if len(environment) != 1 or type(environment[0]) is not PublicStaticEnvironmentBinding:
+            return False
+        artifacts = tuple(value for value in node.configuration_artifacts if value.target_path == environment[0].value)
+        if len(artifacts) != 1:
+            return False
+        artifact, = artifacts
+        if (artifact == wrapper or artifact.media_type is not ConfigurationMediaType.JSON
+                or artifact.file_mode is not ConfigurationFileMode.READ_ONLY):
+            return False
+        configured = HttpVerificationSampleReceiverConfigurationCodec().decode_canonical_bytes(artifact.content.encode("utf-8"))
+        expected = tuple(sorted(HttpVerificationSampleCheckBinding(check.check_id,
+            http_verification_check_digest(check)) for check in checks))
+        return (configured.target == receiver.target
+            and configured.declaration_identity == receiver.declaration.identity().value
+            and configured.checks == expected
+            and all(node.sockets.provider(check.provider_socket).protocol is Protocol.HTTP
+                and node.endpoint(check.provider_socket).protocol is Protocol.HTTP for check in checks))
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return False
+
+
+def _compile_graph_activity_plan(current, desired, *, http_samples=False):
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
     structural = compile_activity_plan(diff)
@@ -830,7 +917,9 @@ def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph
         sdk = {}
         for node_id, wait in owned_waits.items():
             node = graph.nodes[node_id]
-            if _independent_verification(node):
+            sample_covered = (http_samples and fresh and node_id not in (gateway_id, connector_id)
+                and node_id in node_starts and _full_http_sample_coverage(node))
+            if _independent_verification(node) and not sample_covered:
                 refuse(NodeSubject(node_id))
             if node_id == gateway_id:
                 continue

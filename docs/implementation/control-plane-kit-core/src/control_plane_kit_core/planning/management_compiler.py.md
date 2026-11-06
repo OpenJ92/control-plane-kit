@@ -7,6 +7,19 @@ obligations. Empty/name-only plans remain empty; retained-runtime management
 cutover remains ReviewChange. It supplies no infrastructure, provider effects or
 Operations Deploy object. ActivityPlan still owns dependency/cycle validation.
 
+`compile_http_sample_bootstrap_activity_plan` is #2088's explicit separate
+interpretation. It requires an empty source and fresh owned management relation;
+unsupported/no-op/update/teardown inputs retain an explicit review. Only a workload
+with complete original HTTP check ID+digest coverage, canonical sample companion
+and independently selected V2 receiver can avoid the producing independent-check
+refusal. The initial sampler subset is unchanged safe ASCII origin-form paths,
+200-only, no body hash and at most five seconds. Original waits, policy, semantic
+health and ordering remain unchanged. The graph's product pin is only a claim;
+registered descriptor/slot/port/route and sampler admission before effects, actual
+loaded configuration after startup, and current credentials belong outside Core.
+The old compiler still selects the original interpretation. No report or plan
+result grants execution or converts credential expiry into application timeout.
+
 The submitted topology has an ordinary gateway node and connector, plus a named
 ingress. RuntimeManagement selects those values. For example:
 
