@@ -1,6 +1,14 @@
 Source: [cpk_server.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py).
 Maintain this companion alongside its source.
 
+#2041 treats only the canonical `read.workspaces`/READS pair as an inventory
+entrance. It requires an operator and explicitly selected exact durable-only
+resolver; static/intersection/unsupported compositions return 503. Each public
+entrance constructs a new internal reader using the resolver's installation and
+factory, discarding prior carrier authority. Closed limit/after arguments pass
+to the dedicated owner without constructing a fake workspace context. HTTP/MCP
+share results and fixed errors. Storage is entered only by that reader.
+
 #2078's advancement route explicitly calls the owner's diagnostic entry once.
 It accepts exact success/failure types and matches the closed failure correlation
 against the admitted command. The fixed service-error response may carry only

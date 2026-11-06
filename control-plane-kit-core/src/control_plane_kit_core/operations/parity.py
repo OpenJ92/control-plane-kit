@@ -901,6 +901,7 @@ _OPERATOR_READ_PROJECTIONS = (
         "get_workspace",
         "WorkspaceReadResponse",
     ),
+    ("read.workspaces", "read.workspaces", "list_workspaces", "WorkspaceInventoryPage"),
     (
         "read.current-graph",
         "read.current-graph",

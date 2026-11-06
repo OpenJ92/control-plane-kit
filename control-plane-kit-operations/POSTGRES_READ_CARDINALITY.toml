@@ -776,6 +776,14 @@ consumer = "Current schema and retained upgrade verification preserve management
 
 [[read]]
 module = "control_plane_kit_operations.postgres.workspace_permission_store"
+selector = "WorkspacePermissionStore.readable_workspaces"
+category = "public-paged"
+sql = "Exact installation/full issuer/subject_id/kind and workspace-read filter before bytewise workspace-ID keyset LIMIT at most 101 (page plus lookahead); UNION ALL with at most one authorized anchor in the same snapshot. Full grant primary key plus workspace join primary key makes the anchor unique; strict page > anchor makes the branches disjoint, at most 102 fetched rows."
+consumer_kind = "production"
+consumer = "control_plane_kit_operations.workspace_inventory.WorkspaceInventoryReadService.read returns at most 100 summaries and supplies limit+1 for authorized lookahead"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.workspace_permission_store"
 selector = "WorkspacePermissionStore.list"
 category = "public-paged"
 sql = "Installation/workspace filter; full issuer/subject_id/kind keyset and order; read-service limit at most 101"
