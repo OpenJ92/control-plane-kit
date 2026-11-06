@@ -563,6 +563,12 @@ class WorkspaceContextResolver:
         self._factory = unit_of_work_factory
         self._installation = _text(installation_id)
 
+    def workspace_inventory_reader(self):
+        """Compose the durable-only inventory with this exact installation/store."""
+        from control_plane_kit_operations.workspace_inventory import WorkspaceInventoryReadService
+
+        return WorkspaceInventoryReadService(self._factory, installation_id=self._installation)
+
     def resolve(self, verified_principal: AuthenticatedPrincipal, workspace_id: str) -> TrustedCommandContext:
         if type(verified_principal) is not AuthenticatedPrincipal:
             raise IdentityContractError("verified principal is required")

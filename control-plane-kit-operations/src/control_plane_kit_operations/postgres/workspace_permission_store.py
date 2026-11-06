@@ -184,6 +184,43 @@ class WorkspacePermissionStore:
         )
         return WorkspacePermissionResult(receipt)
 
+    def readable_workspaces(self, installation_id, target, *, limit, after=None):
+        """Filter before the bound; anchor and candidates share one SQL snapshot.
+
+        A missing/hidden anchor suppresses all candidates. Only matching current
+        grants are decoded, including the authorized lookahead and anchor.
+        """
+        _text(installation_id)
+        _identity(target)
+        if type(limit) is not int or not 1 <= limit <= 101:
+            raise WorkspacePermissionError("workspace inventory bound is malformed")
+        if after is not None:
+            _text(after)
+        columns = ", ".join("p." + name.strip() for name in _COLUMNS.split(","))
+        rows = self.connection.execute(
+            "WITH eligible AS (SELECT " + columns + ", left(w.name,513) AS name, w.lifecycle "
+            "FROM cpk_workspace_permissions p JOIN cpk_workspaces w USING(workspace_id) "
+            "WHERE p.installation_id=%s AND p.issuer=%s AND p.subject_id=%s AND p.kind=%s "
+            "AND p.scopes @> %s), "
+            "anchor AS (SELECT * FROM eligible WHERE workspace_id=%s::text), "
+            "page AS (SELECT * FROM eligible "
+            "WHERE (%s::text IS NULL OR EXISTS(SELECT 1 FROM anchor)) "
+            "AND (%s::text IS NULL OR workspace_id COLLATE \"C\" > %s::text COLLATE \"C\") "
+            "ORDER BY workspace_id COLLATE \"C\" LIMIT %s) "
+            "SELECT false AS is_anchor, * FROM page UNION ALL SELECT true, * FROM anchor",
+            (installation_id, target.issuer, target.subject_id, target.kind.value,
+             Jsonb([PolicyScope.INSTANCE_WORKSPACE_READ.value]), after, after, after, after, limit),
+        ).fetchall()
+        candidates = []
+        anchored = after is None
+        for row in rows:
+            grant = _decode(row[1:8])
+            if row[0]:
+                anchored = True
+            else:
+                candidates.append((grant, row[8], row[9]))
+        return tuple(sorted(candidates, key=lambda item: item[0].workspace_id.encode("utf-8"))), anchored
+
     def lock_administration_command(self, context, idempotency_key, fingerprint):
         self.require_installation(context.installation_id)
         identity = context.identity

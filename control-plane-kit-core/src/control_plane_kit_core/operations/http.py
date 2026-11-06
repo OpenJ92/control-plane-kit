@@ -306,6 +306,7 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
     return tuple(
         _read_route(route_id, path, response_schema)
         for route_id, path, response_schema in (
+            ("read.workspaces", "/workspaces", "WorkspaceInventoryPage"),
             (
                 "read.workspace",
                 "/workspaces/{workspace_id}",
@@ -1018,10 +1019,12 @@ def _read_route(
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
-        request_schema=HttpSchemaRef("ReceiverAuthoringContextReadRequest", max_bytes=16384)
+        request_schema=HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384)
+        if route_id == "read.workspaces" else HttpSchemaRef("ReceiverAuthoringContextReadRequest", max_bytes=16384)
         if route_id == "read.receiver-authoring-context" else HttpSchemaRef("EmptyRequest", max_bytes=1024),
         response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
             "read.receiver-authoring-context",
+            "read.workspaces",
             "read.products", "read.product-detail",
             "read.desired-topology-draft-revision-preparations",
             "read.desired-topology-draft-revision-attempts",

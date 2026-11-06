@@ -274,6 +274,7 @@ class AdapterParityContractTests(unittest.TestCase):
                     "get_workspace",
                     "WorkspaceReadResponse",
                 ),
+                ("read.workspaces", "read.workspaces", "list_workspaces", "WorkspaceInventoryPage"),
             ],
         )
         self.assertEqual(

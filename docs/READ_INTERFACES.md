@@ -57,6 +57,37 @@ interfaces expose the model; they do not define the model
 
 ## Workspace Administration And Current Request Authority
 
+`GET /workspaces` / MCP `list_workspaces` is a distinct Operations-owned
+inventory projection for authenticated operators, without a target workspace.
+It returns `{items: [{workspace_id, name, lifecycle}], next_cursor}` with default
+25 and maximum 100. Names are display summaries bounded to 512 Unicode
+characters; no metadata, graph pointers, totals or permission records are
+included. Its explicit dynamic durable-only profile uses the exact configured
+`WorkspaceContextResolver` installation and factory. Static authority and the
+static/durable intersection profile report 503 rather than a misleading list.
+
+The existing permission store filters current exact installation/full-identity
+read grants before the SQL page limit. Candidates and the anchor use one
+statement snapshot; all bounded matching grants, including anchor/lookahead,
+are typed. Static grants and administrator status cannot add rows. Unsupported
+nonoperator principals return 403 before cursor parsing or storage. An operator
+with no current readable grant receives 200 with an empty page.
+
+The unsigned opaque cursor is a scoped seek input, not authority. Malformed,
+foreign-scope and nonrepresentable anchors return 400 before storage; missing,
+hidden and revoked anchors share a fixed 409. Unavailable or malformed matching
+stored truth returns fixed 503 without a partial page. Pages are live keyset
+reads in bytewise workspace-ID order, not a snapshot across requests. Clear
+cursors after 400/409 or connection changes and explicitly refresh the first
+page to see earlier insertions. Preserve a deliberately opened known workspace
+independently of this navigation list. A null cursor ends the traversal only.
+
+The shared application creates a fresh internal reader binding per public
+invocation; resubmitting a prior carrier cannot preserve another installation's
+or profile's authority. HTTP/MCP use the same service and errors. Core declares
+16-KiB input and 1-MiB response budgets; consumer Servers query decoding and
+compatible dependency adoption still require their own qualification.
+
 The Core HTTP/MCP contract also declares six workspace-local administration
 reads: permission list, exact permission, permission history, managed-runtime
 assignment list, exact assignment, and assignment history. They use the

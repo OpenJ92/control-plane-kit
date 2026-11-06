@@ -38,6 +38,7 @@ class HttpApiContractTests(unittest.TestCase):
         self.assertEqual(
             [(route.method.value, route.path_template) for route in contract.routes],
             [
+                ("GET", "/workspaces"),
                 ("GET", "/workspaces/{workspace_id}"),
                 ("GET", "/workspaces/{workspace_id}/activity"),
                 ("GET", "/workspaces/{workspace_id}/approvals/pending"),
@@ -164,6 +165,7 @@ class HttpApiContractTests(unittest.TestCase):
                 "/administration/provider-policies/{logical_provider_id}/commands/{command_id}",
                 "/administration/provider-policies/{logical_provider_id}/grants",
                 "/administration/provider-policies/{logical_provider_id}/grants/{grant_id}",
+                "/workspaces",
                 "/workspaces/{workspace_id}",
                 "/workspaces/{workspace_id}/activity",
                 "/workspaces/{workspace_id}/approvals/pending",

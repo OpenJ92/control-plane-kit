@@ -180,6 +180,7 @@ from control_plane_kit_operations.products import (
     RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
+from control_plane_kit_operations.workspace_inventory import WorkspaceInventoryError, WorkspaceInventoryReadService
 from control_plane_kit_operations.read_services.receiver_authoring_context import (
     ReceiverAuthoringContextError, ReceiverAuthoringContextQuery, ReceiverAuthoringContextReadService,
 )
@@ -564,6 +565,7 @@ class _AdmittedRouteRequest:
     context: TrustedCommandContext | None = field(repr=False)
     dynamic_admission: bool = True
     confidential_source: CpkServerRouteRequest | None = field(default=None, repr=False)
+    workspace_inventory: WorkspaceInventoryReadService | None = field(default=None, repr=False)
 
     @property
     def payload(self) -> Mapping[str, object]:
@@ -617,10 +619,21 @@ class CpkServerOperationsApplication:
         return self._dispatch(request)
 
     def _prepare(self, request: CpkServerRouteRequest) -> CpkServerRouteRequest:
+        if request.route_id == "read.workspaces":
+            if request.service_role is not ControlPlaneServiceRole.READS:
+                raise CpkServerApplicationError(404, "unknown application route")
+            _inventory_operator(request.principal)
+            if (self.authority_mode != "dynamic"
+                    or type(self.workspace_context_resolver) is not WorkspaceContextResolver):
+                raise CpkServerApplicationError(503, "Workspace list unavailable")
+            arguments = _inventory_arguments(request)
+            return _AdmittedRouteRequest(request.surface, request.route_id, request.service_role,
+                {}, arguments, request.principal, None,
+                workspace_inventory=self.workspace_context_resolver.workspace_inventory_reader())
         if self.authority_mode == "static":
             # A carrier resubmitted through any public entrance cannot retain
             # authority from a previous invocation or another application.
-            return (replace(request, context=None, dynamic_admission=False)
+            return (replace(request, context=None, dynamic_admission=False, workspace_inventory=None)
                 if type(request) is _AdmittedRouteRequest else request)
         role = _APPLICATION_ROUTE_ROLES.get(request.route_id)
         if role is None or request.service_role is not role:
@@ -688,6 +701,18 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id == "read.workspaces":
+            _inventory_operator(request.principal)
+            if (type(request) is not _AdmittedRouteRequest or not request.dynamic_admission
+                    or type(request.workspace_inventory) is not WorkspaceInventoryReadService):
+                raise CpkServerApplicationError(503, "Workspace list unavailable")
+            arguments = _inventory_arguments(request)
+            failure = None
+            try:
+                return request.workspace_inventory.read(request.principal, **arguments).descriptor()
+            except WorkspaceInventoryError as error:
+                failure = (error.status, str(error))
+            raise CpkServerApplicationError(*failure)
         if request.route_id == "read.receiver-authoring-context":
             context = _trusted_context(request)
             arguments = _closed_read_arguments(request)
@@ -2755,6 +2780,20 @@ _PAGED_READ_COLLECTIONS = {
     "read.gateway-probe-timeline": ReadCollection.GATEWAY_PROBES,
     "read.delegation-keys": ReadCollection.DELEGATION_SIGNING_KEYS,
 }
+
+
+def _inventory_operator(principal):
+    if (type(principal) is not AuthenticatedPrincipal
+            or principal.identity.kind is not PrincipalKind.OPERATOR):
+        raise CpkServerApplicationError(403, "Workspace list access is denied")
+
+
+def _inventory_arguments(request):
+    if (request.surface not in {"http", "mcp"} or type(request.path_parameters) is not dict
+            or request.path_parameters or type(request.payload) is not dict
+            or not set(request.payload) <= {"limit", "after"}):
+        raise CpkServerApplicationError(400, "Workspace list arguments are malformed")
+    return dict(request.payload)
 
 
 def _closed_read_arguments(request: CpkServerRouteRequest) -> dict[str, object]:

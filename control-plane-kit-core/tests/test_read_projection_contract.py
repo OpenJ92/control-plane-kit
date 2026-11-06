@@ -21,6 +21,18 @@ from control_plane_kit_core.operations import (
 
 
 class ReadProjectionContractTests(unittest.TestCase):
+    def test_workspace_inventory_is_a_bounded_read_without_target_workspace(self):
+        projection = canonical_operator_read_projection_set().projection("read.workspaces")
+        self.assertFalse(projection.requires_workspace_scope)
+        self.assertTrue(projection.paged)
+        self.assertEqual(projection.max_page_size, 100)
+        route = HttpApiContract(operator_read_http_routes()).route("read.workspaces")
+        self.assertEqual(route.path_template, "/workspaces")
+        self.assertEqual(route.auth_scope, HttpAuthScope.READ)
+        self.assertEqual(route.safety, HttpOperationSafety.READ_ONLY)
+        self.assertEqual(route.request_schema, HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384))
+        self.assertEqual(route.response_schema, HttpSchemaRef("WorkspaceInventoryPage", max_bytes=1048576))
+
     def test_operator_overview_is_one_closed_http_mcp_read_projection(self) -> None:
         projections = canonical_operator_read_projection_set()
         http_api = HttpApiContract(operator_read_http_routes())
@@ -460,6 +472,9 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                     False,
                 ),
+                ("read.workspaces", ReadProjectionKind.WORKSPACES,
+                    "WorkspaceInventoryPage", ReadProjectionPolicy.AUTHORIZED_WORKSPACE_INVENTORY,
+                    False, True),
             ],
         )
         self.assertTrue(
