@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=7288fee837b51ffd6e470ed33395159aa143804665e7e9aac0f219cc57fb43de relations=70 columns=854 constraints=779 indexes=221 foreign-keys=197 -->
+<!-- current-schema-contract: sha256=75b6b900f70a170376c1133af7a066df11b27a147c29075230c26a94ab219d25 relations=70 columns=854 constraints=779 indexes=221 foreign-keys=197 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -257,6 +257,13 @@ material. `cpk_secret_use_authorizations` binds one workspace, provider,
 reference, intent, and correlation before provider I/O. Delegation keys retain
 public verification material plus an opaque private-key reference. Compact
 grants and signatures are not durable operations-table truth.
+
+#1815 appends the workload HTTP-verification-sample and gateway sample-transit
+purpose/use pairs to the two existing closed domains. Rotation vocabulary and
+authorization role shapes are unchanged. These records pin admitted registrations,
+not a provider material version or a current signing permit. An older namespace
+is refused intact by the unchanged exact-current installer; this extension
+supplies no migration/reset or installed-grandparent upgrade for Servers #384.
 
 Gateway rotation is its own aggregate: `cpk_gateway_key_rotations` owns current
 state and compare-and-set version; deployments and revocation rows are exact
@@ -1056,7 +1063,7 @@ deleting its retained draft history.
 - **Lifecycle, retention, deletion, and restore:** Retired and revoked registrations remain for audit and verification; restore workspaces before registrations.
 - **JSON boundary:** None; public key material and references use bounded typed text columns.
 - **Sensitive material:** `public_key_pem` and its fingerprint are public material; `private_key_reference` is a sensitive locator, never a private key or signing result.
-- **Future impact:** Both health purposes retain exact reference intents. #2023 supplies purpose-bound internal generation and #2024 retains durable attempts; #2025 supplies the authenticated generation surface. Deployment rotation and immediate-use authority remain separate from admission.
+- **Future impact:** Health and HTTP-sample workload/transit purposes retain their exact, distinct reference intents. #2023 supplies purpose-bound internal generation and #2024 retains durable attempts; #2025 supplies the authenticated generation surface. Generation, deployment rotation and immediate-use authority require their own supported purpose policy; extending registration vocabulary does not expand those policies.
 
 ### `cpk_desired_topology_draft_revisions`
 - **Durable meaning and owner:** `PostgresDesiredTopologyDraftStore` owns append-only saved topology revisions; Core owns the referenced graph language.

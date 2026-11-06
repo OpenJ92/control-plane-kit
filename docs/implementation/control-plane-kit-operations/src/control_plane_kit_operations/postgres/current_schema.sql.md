@@ -1,6 +1,16 @@
 Source: [current_schema.sql](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema.sql).
 Maintain this companion alongside its source.
 
+#1815 extends only the existing signing-key purpose and secret-use intent CHECK
+domains for the workload HTTP-sample and gateway HTTP-sample transit pairs.
+No columns, relations, keys, authorization-role shapes or rotation purposes are
+added. The exact catalogue, fingerprints and table atlas move with those two
+constraint expressions. Fresh owned test namespaces admit both families; exact
+current reentry is query-only. An immediately prior namespace is incompatible
+even if its rows fit the larger domains and is refused without installer DDL or
+retained-row changes. Later Servers #384 planning must account for that refusal;
+this source work provides no migration, reset or installed-grandparent upgrade.
+
 Receiver storage adds graph-owned introductions and complete per-projection
 binding sets. Seven keys include global receiver uniqueness and structural
 action/session and draft/graph support. Seven checks constrain receiver/digest

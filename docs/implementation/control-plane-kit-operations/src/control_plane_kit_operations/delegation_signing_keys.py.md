@@ -1,6 +1,15 @@
 Source: [delegation_signing_keys.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/delegation_signing_keys.py).
 Maintain this companion alongside its source.
 
+#1815 extends registration/activation admission to the two HTTP verification
+sample purposes using Core's dedicated exact purpose/use mapping. Workload
+samples require `workload.http-verification-sample-signing-key`; gateway sample
+transit requires `gateway.http-verification-sample-transit-signing-key`. Opposite
+sample, V2 health and legacy probe uses do not substitute. Existing lifecycle,
+scope, locking, overlap and immutable registration semantics remain unchanged.
+Registration admits references only: it grants no reached-check signing right,
+provider-version selection, key resolution, signature or network dispatch.
+
 The lifecycle service consumes Core's closed health correspondence at both
 registration and activation. For example, a registration command with purpose
 `DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ` requires an actively admitted
