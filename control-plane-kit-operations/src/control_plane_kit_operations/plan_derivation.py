@@ -12,6 +12,7 @@ from control_plane_kit_core.planning import (
     ManagementObservationError,
     compile_activity_plan,
     compile_graph_activity_plan,
+    compile_http_sample_bootstrap_activity_plan,
     compile_managed_update_activity_plan,
     compile_retained_image_ingress_activity_plan,
 )
@@ -36,10 +37,16 @@ from control_plane_kit_operations.configuration_cleanup import (
 class PlanDerivationProfile(StrEnum):
     STRUCTURAL_V1 = "structural-v1"
     MANAGEMENT_GRAPH_PAIR_V1 = "management-graph-pair-v1"
+    MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1 = "managed-http-sample-bootstrap-v1"
     MANAGED_UPDATE_V1 = "managed-update-v1"
     RETAINED_IMAGE_INGRESS_V1 = "retained-image-ingress-v1"
     CONFIGURATION_CLEANUP_V1 = "configuration-cleanup-v1"
     CONFIGURATION_CLEANUP_V2 = "configuration-cleanup-v2"
+
+
+class HttpVerificationPlanningIntent(StrEnum):
+    """Caller intent, not an arbitrary compiler-profile override."""
+    AUTHENTICATED_SAMPLES = "authenticated-samples"
 
 
 class PlanDerivationError(ValueError):
@@ -74,6 +81,8 @@ def derive_activity_plan(
         raise PlanDerivationError("activity plan derivation requires a deployment transition")
     if profile is PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1:
         return compile_graph_activity_plan(transition.current, transition.desired)
+    if profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
+        return compile_http_sample_bootstrap_activity_plan(transition.current, transition.desired)
     if profile is PlanDerivationProfile.MANAGED_UPDATE_V1:
         return compile_managed_update_activity_plan(
             transition.current, transition.desired,

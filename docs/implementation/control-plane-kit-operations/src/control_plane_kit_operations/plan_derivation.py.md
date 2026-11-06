@@ -1,6 +1,12 @@
 Source: [plan_derivation.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/plan_derivation.py).
 Maintain this companion alongside its source.
 
+#2088 adds `MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1`, dispatched only to the new pure Core
+entrypoint. `HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES` is caller intent,
+not a raw profile override. The existing strict version1 stored envelope carries
+the new closed profile without a schema migration. Old and absent profiles keep
+their exact derivation. Recording the profile grants no execution authority.
+
 This pure Operations module declares which interpretation defines a stored plan.
 `PlanDerivationProfile.STRUCTURAL_V1` calls Core's existing structural compiler on
 `transition.diff`; `MANAGEMENT_GRAPH_PAIR_V1` calls Core's accepted compiler on

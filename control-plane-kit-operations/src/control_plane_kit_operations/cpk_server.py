@@ -166,6 +166,7 @@ from control_plane_kit_operations.lifecycle import (
     StartActivityRun,
 )
 from control_plane_kit_operations.planning import (
+    HttpVerificationPlanningIntent,
     ActivityPlanningCommandService,
     RequestActivityPlan,
     DesiredGraphCommandService,
@@ -1161,6 +1162,7 @@ class CpkServerPlanningService:
                 expected_current_graph_id=_text(payload, "expected_current_graph_id"),
                 expected_desired_graph_id=_text(payload, "expected_desired_graph_id"),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                http_verification_intent=_http_verification_planning_intent(payload),
                 expected_current_realized_projection_id=_optional_text(
                     payload,
                     "expected_current_realized_projection_id",
@@ -1210,6 +1212,7 @@ def _prepare_deployment(
                 ),
                 approval_comment=_optional_text(payload, "approval_comment"),
                 proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
+                http_verification_intent=_http_verification_planning_intent(payload),
             )
         )
     except DeploymentProgramAuthorizationDenied:
@@ -1234,6 +1237,17 @@ def _prepare_deployment(
             "deployment preparation request is malformed",
         ) from None
     return _deployment_preparation_response(result)
+
+
+def _http_verification_planning_intent(payload):
+    if "derivation_profile" in payload:
+        raise CpkServerApplicationError(400, "derivation profile override is unavailable")
+    if "http_verification_intent" not in payload:
+        return None
+    value = payload["http_verification_intent"]
+    if type(value) is not str or value != HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES.value:
+        raise CpkServerApplicationError(400, "HTTP verification planning intent is invalid")
+    return HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES
 
 
 def _deployment_preparation_response(result: object) -> Mapping[str, object]:

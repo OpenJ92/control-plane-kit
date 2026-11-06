@@ -167,6 +167,8 @@ def runtime_management_execution_is_unsupported(
 
     # Parse independently of catalog contents. A malformed selected reference
     # cannot acquire a no-op exemption or leak its parser error into a receipt.
+    if derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
+        return True
     try:
         references = set(product_references_in_graph(current)) | set(
             product_references_in_graph(desired)

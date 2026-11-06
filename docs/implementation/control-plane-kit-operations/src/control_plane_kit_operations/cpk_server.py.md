@@ -1,6 +1,12 @@
 Source: [cpk_server.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py).
 Maintain this companion alongside its source.
 
+#2088 maps one canonical optional `http_verification_intent` at both direct plan
+and composed prepare entrances. Absence is preserved; present null/unknown/raw
+profile override refuses with bounded 400 before the service call. The mapper
+produces the typed intent and leaves profile/history selection to Operations.
+Servers client/journal and public composition qualification remain separate.
+
 #2041 treats only the canonical `read.workspaces`/READS pair as an inventory
 entrance. It requires an operator and explicitly selected exact durable-only
 resolver; static/intersection/unsupported compositions return 503. Each public

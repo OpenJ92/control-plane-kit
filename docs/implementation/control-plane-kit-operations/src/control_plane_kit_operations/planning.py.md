@@ -1,6 +1,14 @@
 Source: [planning.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/planning.py).
 Maintain this companion alongside its source.
 
+#2088 adds keyword-only `http_verification_intent=HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES`
+to RequestActivityPlan. Omission adds no descriptor/action field and preserves the
+old fingerprint and fresh/update selector. Explicit intent selects only the
+closed sample-bootstrap profile, never falls back, and is retained with the action.
+Replay returns before fresh selection and verifies intent/action/profile congruence
+using the original stored interpretation. An unsupported explicit graph produces
+review/refusal, not implicit old-profile execution. No schema or retained rewrite.
+
 #1977 binds an already canonical retained verifier-refresh plan to the current
 owner-selected public families before plan/action IDs or writes. All declared
 families must match full current public identities. The helper is not a new

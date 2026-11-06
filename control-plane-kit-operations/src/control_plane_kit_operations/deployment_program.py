@@ -13,6 +13,7 @@ from control_plane_kit_operations.graph_authoring import (
     validate_proposed_graph_id,
 )
 from control_plane_kit_operations.records import GraphProjectionLineage
+from control_plane_kit_operations.plan_derivation import HttpVerificationPlanningIntent
 from control_plane_kit_operations.workflows import IdempotencyKey
 
 
@@ -61,8 +62,11 @@ class PrepareDeploymentProgram:
     idempotency_key: IdempotencyKey
     approval_comment: str | None = field(default=None, repr=False)
     proposed_graph_id: str | None = None
+    http_verification_intent: HttpVerificationPlanningIntent | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
+        if self.http_verification_intent is not None and type(self.http_verification_intent) is not HttpVerificationPlanningIntent:
+            raise InvalidDeploymentProgramContract("HTTP verification planning intent is invalid")
         _context(self.context)
         if type(self.desired) not in (DeploymentGraph, SavedDesiredTopologyRevision):
             raise InvalidDeploymentProgramContract(
@@ -127,6 +131,8 @@ class PrepareDeploymentProgram:
         }
         if self.proposed_graph_id is not None:
             result["proposed_graph_id"] = self.proposed_graph_id
+        if self.http_verification_intent is not None:
+            result["http_verification_intent"] = self.http_verification_intent.value
         return result
 
 

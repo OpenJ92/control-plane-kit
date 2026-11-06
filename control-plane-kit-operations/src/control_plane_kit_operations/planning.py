@@ -69,6 +69,7 @@ from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_planning_is_unsupported,
 )
 from control_plane_kit_operations.plan_derivation import (
+    HttpVerificationPlanningIntent,
     PlanDerivationError,
     PlanDerivationProfile,
     derive_activity_plan,
@@ -287,8 +288,11 @@ class RequestActivityPlan:
     expected_current_realized_projection_id: str | None = None
     expected_desired_realized_projection_id: str | None = None
     expected_desired_graph_revision: int | None = None
+    http_verification_intent: HttpVerificationPlanningIntent | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
+        if self.http_verification_intent is not None and type(self.http_verification_intent) is not HttpVerificationPlanningIntent:
+            raise InvalidOperationCommand("HTTP verification planning intent is invalid")
         _required_text(self.session_id, "session_id")
         _required_text(self.workspace_id, "workspace_id")
         _required_text(self.actor_id, "actor_id")
@@ -319,7 +323,7 @@ class RequestActivityPlan:
         _require_idempotency_key(self.idempotency_key)
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        result = {
             "command": OperatorCommandKind.REQUEST_ACTIVITY_PLAN.value,
             "session_id": self.session_id,
             "workspace_id": self.workspace_id,
@@ -335,6 +339,9 @@ class RequestActivityPlan:
             "expected_desired_graph_revision": self.expected_desired_graph_revision,
             "idempotency_key": self.idempotency_key.value,
         }
+        if self.http_verification_intent is not None:
+            result["http_verification_intent"] = self.http_verification_intent.value
+        return result
 
 
 @dataclass(frozen=True)
@@ -697,7 +704,9 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningGraphStateConflict(
                     "workspace graph pointers changed"
                 )
-            profile = PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
+            profile = (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+                if command.http_verification_intent is HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES
+                else PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)
             invalid_plan = False
             try:
                 transition, plan = _planning_transition(
@@ -710,7 +719,7 @@ class ActivityPlanningCommandService:
                     graph_codec=self._graph_codec,
                     profile=profile,
                 )
-                selected_profile = runtime_management_plan_profile(
+                selected_profile = profile if command.http_verification_intent is not None else runtime_management_plan_profile(
                     transition,
                     registered_products=unit_of_work.stores.registered_products.list_active(
                         command.workspace_id,
@@ -812,6 +821,8 @@ class ActivityPlanningCommandService:
                     "ready_for_execution": plan.ready_for_execution,
                     "activity_count": len(plan.activities),
                     "derivation_profile": profile.value,
+                    **({"http_verification_intent": command.http_verification_intent.value}
+                        if command.http_verification_intent is not None else {}),
                 },
                 created_at=created_at,
                 idempotency_key=command.idempotency_key.value,
@@ -1100,6 +1111,10 @@ def _planning_evidence_matches(
         == plan_record.desired_graph_revision
         and _bounded_text(evidence.get("workspace_id"))
         and planning_derivation_matches_action(plan_record.derivation_profile, evidence)
+        and (("http_verification_intent" not in evidence
+                and plan_record.derivation_profile is not PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1)
+            or (evidence.get("http_verification_intent") == HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES.value
+                and plan_record.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1))
     )
 
 

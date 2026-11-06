@@ -1,6 +1,11 @@
 Source: [admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/admission.py).
 Maintain this companion alongside its source.
 
+#2088 explicitly denies new admission of the sample-bootstrap profile before
+empty/ready-plan shortcuts or execution-request creation. An otherwise approved
+ready plan does not grant the missing sampler/product compatibility authority.
+This hold remains until the separately accepted admission and sender composition.
+
 Execution admission retains its existing plan/session/workspace lineage,
 permission, approval, risk and readiness checks inside the caller-owned
 transaction. Recording a plan derivation profile grants no new authority.
