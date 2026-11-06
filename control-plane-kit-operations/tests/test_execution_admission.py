@@ -105,6 +105,19 @@ from tests.lifecycle_lock_fixture import LifecycleLockFixture, LIFECYCLE_LOCK, S
 
 
 class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
+    def test_http_sample_profile_cannot_admit_even_an_otherwise_ready_approved_plan(self):
+        from psycopg.types.json import Jsonb
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, encode_stored_activity_plan
+        profile = getattr(PlanDerivationProfile, "MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1", None)
+        self.assertIsNotNone(profile, "explicit sample profile is missing")
+        self.assertTrue(self._base_plan.ready_for_execution)
+        self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id='plan-a'",
+            (Jsonb(encode_stored_activity_plan(self._base_plan, profile=profile)),))
+        with self.assertRaises(ExecutionAdmissionDenied):
+            self.admission_service().execute(self.command())
+        for relation in ("cpk_execution_requests", "cpk_activity_runs", "cpk_effect_attempts"):
+            self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {relation}").fetchone()[0], 0)
+
     def test_admission_takes_both_command_keys_then_lifecycle_before_existing_rows(self):
         self.database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
         def execute(uow):

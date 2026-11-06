@@ -67,6 +67,25 @@ class FailAfter:
 
 
 class DeploymentProgramPreparationTests(unittest.TestCase):
+    def test_prepare_parent_intent_conflicts_omitted_to_explicit_and_back(self):
+        from control_plane_kit_operations import planning
+        intent = getattr(planning, "HttpVerificationPlanningIntent", None)
+        self.assertIsNotNone(intent, "typed sample planning intent is missing")
+        for explicit_first in (False, True):
+            with self.subTest(explicit_first=explicit_first):
+                self._reset()
+                scenario = self.scenario("no-change")
+                current = self.setup_workspace(scenario.current_graph)
+                command = self.command(scenario.desired_graph, current)
+                explicit = replace(command, http_verification_intent=intent.AUTHENTICATED_SAMPLES)
+                first, changed = (explicit, command) if explicit_first else (command, explicit)
+                result = self.program().prepare(first)
+                before = self._counts()
+                self.assertEqual(self.program().prepare(first), result)
+                with self.assertRaises(self.module().DeploymentProgramStateConflict):
+                    self.program().prepare(changed)
+                self.assertEqual(self._counts(), before)
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:

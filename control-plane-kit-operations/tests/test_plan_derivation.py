@@ -56,6 +56,41 @@ def managed_update_pair(test):
 
 
 class PlanDerivationTests(unittest.TestCase):
+    def test_http_sample_intent_is_typed_and_omission_preserves_old_descriptor(self):
+        import hashlib
+        import json
+        from control_plane_kit_operations import planning
+        from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
+        command = planning.RequestActivityPlan("session", "workspace", "actor", "current", "desired", IdempotencyKey("key"))
+        literal = {"command": "request-activity-plan", "session_id": "session", "workspace_id": "workspace",
+            "actor_id": "actor", "expected_current_graph_id": "current", "expected_desired_graph_id": "desired",
+            "expected_current_realized_projection_id": None, "expected_desired_realized_projection_id": None,
+            "expected_desired_graph_revision": None, "idempotency_key": "key"}
+        self.assertEqual(command.descriptor(), literal)
+        expected = hashlib.sha256(json.dumps(literal, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        self.assertEqual(planning._activity_plan_fingerprint(command), expected)
+        intent = getattr(planning, "HttpVerificationPlanningIntent", None)
+        self.assertIsNotNone(intent, "typed sample planning intent is missing")
+        selected = replace(command, http_verification_intent=intent.AUTHENTICATED_SAMPLES)
+        self.assertEqual(selected.descriptor(), {**literal, "http_verification_intent": "authenticated-samples"})
+        self.assertNotEqual(planning._activity_plan_fingerprint(selected), expected)
+        for value in ("authenticated-samples", "managed-http-sample-bootstrap-v1", False, {}):
+            with self.subTest(value=value), self.assertRaises(InvalidOperationCommand):
+                replace(command, http_verification_intent=value)
+
+    def test_http_sample_profile_roundtrips_and_denies_execution_before_generic_exemptions(self):
+        module = require_derivation(self)
+        profile = getattr(module.PlanDerivationProfile, "MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1", None)
+        self.assertIsNotNone(profile, "explicit sample profile is missing")
+        self.assertEqual(profile.value, "managed-http-sample-bootstrap-v1")
+        plan = ActivityPlan(())
+        self.assertEqual(module.decode_stored_activity_plan(module.encode_stored_activity_plan(plan, profile=profile)), (plan, profile))
+        from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
+        empty = DeploymentGraph("empty")
+        self.assertTrue(runtime_management_execution_is_unsupported(empty, empty, plan, derivation_profile=profile))
+        derived = module.derive_activity_plan(Deploy(validate_graph(empty), validate_graph(empty)), profile=profile)
+        self.assertFalse(derived.ready_for_execution)
+
     def test_legacy_wire_remains_literal_core_descriptor(self):
         module = require_derivation(self)
         wire = {"schema": "control-plane-kit.activity-plan", "version": 1, "activities": []}

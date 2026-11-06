@@ -1,6 +1,12 @@
 Source: [test_cpk_server_adapters.py](../../../../control-plane-kit-operations/tests/test_cpk_server_adapters.py).
 Maintain this companion alongside its source.
 
+#2088 checks direct plan and composed prepare mapping for the same closed optional
+HTTP sample intent. Present null/unknown/raw-profile values must refuse rather
+than be silently discarded. The mapper passes typed data to Operations owners;
+it does not select arbitrary profiles or grant execution. External Servers wire,
+client and journal support remains a separate integration boundary.
+
 #2078 extends the advancement recording port with the explicit diagnostic entry
 and a valid existing result fixture. The adapter must reject owner evidence bound
 to another workspace with a generic error after exactly one call. Existing

@@ -172,6 +172,41 @@ class ReplayUnitOfWork:
 
 
 class PlanningTransitionReplayTests(unittest.TestCase):
+    def test_explicit_http_sample_intent_selects_stores_and_replays_without_silent_fallback(self):
+        from control_plane_kit_operations import planning
+        from control_plane_kit_operations.planning import ActivityPlanningIdempotencyConflict
+        intent_type = getattr(planning, "HttpVerificationPlanningIntent", None)
+        self.assertIsNotNone(intent_type, "typed sample planning intent is missing")
+        command = self.prepare(DeploymentGraph("empty"), bootstrap_management_graph(self))
+        old = self.planning_service("old-plan", "old-action").execute(command)
+        self.assertTrue(old.plan_record.plan.ready_for_execution)
+        self.assertEqual(old.plan_record.derivation_profile.value, "management-graph-pair-v1")
+        with self.assertRaises(ActivityPlanningIdempotencyConflict):
+            self.planning_service().execute(replace(command,
+                http_verification_intent=intent_type.AUTHENTICATED_SAMPLES))
+        selected = replace(command, http_verification_intent=intent_type.AUTHENTICATED_SAMPLES,
+            idempotency_key=IdempotencyKey("explicit-plan"))
+        result = self.planning_service("sample-plan", "sample-action").execute(selected)
+        self.assertEqual(result.plan_record.derivation_profile.value, "managed-http-sample-bootstrap-v1")
+        self.assertEqual(result.action.payload["http_verification_intent"], "authenticated-samples")
+        # This graph lacks sample companions: the explicit interpretation refuses,
+        # rather than falling back to the otherwise-ready old interpretation.
+        self.assertFalse(result.plan_record.plan.ready_for_execution)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.activity_history.get_plan("sample-plan"), result.plan_record)
+        before = self._durable_counts()
+        self.assertEqual(self.planning_service().execute(selected).plan_record, result.plan_record)
+        self.assertEqual(self.planning_service().execute(command).plan_record, old.plan_record)
+        with self.assertRaises(ActivityPlanningIdempotencyConflict):
+            self.planning_service().execute(replace(selected, http_verification_intent=None))
+        payload = dict(result.action.payload)
+        payload.pop("http_verification_intent")
+        self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+            (Jsonb(payload), result.action.action_id))
+        with self.assertRaises(ActivityPlanningGraphStateConflict):
+            self.planning_service().execute(selected)
+        self.assertEqual(self._durable_counts(), before)
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
