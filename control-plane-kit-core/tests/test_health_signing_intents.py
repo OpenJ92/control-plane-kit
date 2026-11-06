@@ -18,6 +18,63 @@ from control_plane_kit_core.secrets import (
 )
 
 
+class HttpVerificationSampleSigningIntentTests(unittest.TestCase):
+    def mapping(self):
+        function = getattr(secrets, "http_verification_sample_signing_intent_for", None)
+        self.assertIsNotNone(function, "HTTP sample signing correspondence is missing")
+        return function
+
+    def test_exact_sample_purposes_select_distinct_uses(self):
+        function = self.mapping()
+        for purpose, wire in (
+            (DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE,
+             "workload.http-verification-sample-signing-key"),
+            (DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT,
+             "gateway.http-verification-sample-transit-signing-key"),
+        ):
+            with self.subTest(purpose=purpose):
+                self.assertIs(function(purpose), SecretUseIntent(wire))
+
+    def test_sample_mapping_refuses_other_families_and_non_nominal_values(self):
+        function = self.mapping()
+        accepted = (DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE,
+                    DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT)
+        rejected = tuple(value for value in DelegationKeyPurpose if value not in accepted) + (
+            accepted[0].value, accepted[1].value, None,
+            SecretUseIntent.WORKLOAD_NODE_HEALTH_READ_SIGNING_KEY, "UNTRUSTED-SAMPLE-PURPOSE",
+        )
+        for purpose in rejected:
+            with self.subTest(purpose=purpose):
+                with self.assertRaises(SecretProviderContractError) as captured:
+                    function(purpose)
+                self.assertEqual(str(captured.exception), "HTTP sample signing purpose is unsupported")
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+
+    def test_sample_grants_keep_exact_reference_and_use_isolation(self):
+        function = self.mapping()
+        reference = SecretReference("secret://provider-a/http-sample/key")
+        workload = function(DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE)
+        transit = function(DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT)
+        base = SecretResolutionGrant(
+            authorization_id="suse_" + "a" * 64, workspace_id="workspace-a",
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference("secret://bootstrap/provider-token"),
+            reference=reference, intent=workload, actor_subject="worker-a",
+            correlation_id="http-sample-request-a", intent_fingerprint="d" * 64,
+        )
+        for intent, other in ((workload, transit), (transit, workload)):
+            grant = replace(base, intent=intent)
+            self.assertTrue(grant.permits(reference, intent))
+            self.assertFalse(grant.permits(reference, other))
+            self.assertFalse(grant.permits(reference, SecretUseIntent.WORKLOAD_NODE_HEALTH_READ_SIGNING_KEY))
+            self.assertFalse(grant.permits(reference, SecretUseIntent.GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY))
+            self.assertFalse(grant.permits(SecretReference("secret://provider-a/http-sample/other"), intent))
+            self.assertEqual(grant.descriptor(), {**base.descriptor(), "intent": intent.value})
+
+
 class HealthSigningIntentTests(unittest.TestCase):
     def pairs(self):
         values = (
