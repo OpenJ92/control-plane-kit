@@ -6,6 +6,15 @@ fixtures do not implement a second planner. It covers initial and retained
 management observation ordering, exact graph-bound references, unsupported
 changes and real service dependency cycle refusal.
 
+#2088 adds an explicitly selected HTTP-sample bootstrap interpretation. Frozen
+CPK/Secrets check shapes at Servers ca225825 use the independently reviewed RFC8785
+digest vectors. Both live and ready obligations must be covered while the V2
+surface remains liveness-only. Tests preserve the original wait, policy and DAG,
+refuse partial/cross-wired or unsupported authored semantics and retained/update/
+teardown inputs, and leave gateway-owned refusal intact. These are pure planning
+proofs; they do not simulate registered-product admission, signing or transport.
+Tests-only checkpoint is unvalidated until the owning Docker result is recorded.
+
 `ManagedConfigurationUpdateTests` adds #1970's new-law target: exactly one
 existing public JSON application file changes content while the strict V2
 wrapper and all other graph material remain fixed. It checks deterministic

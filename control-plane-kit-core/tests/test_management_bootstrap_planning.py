@@ -176,6 +176,146 @@ class CustomCodec:
         return CustomSpec(**{item.name: getattr(generic, item.name) for item in fields(BlockSpec)}, marker=descriptor["marker"])
 
 
+def http_sample_bootstrap_graph(*, socket="http-api", port=8080, interval=2,
+                                selected=("live", "ready"), checks=None):
+    """Frozen public CPK/Secrets check shapes at Servers ca225825; no product import."""
+    from control_plane_kit_core.http_verification_sample_installation import (
+        HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT,
+        HttpVerificationSampleCheckBinding, HttpVerificationSampleReceiverConfiguration,
+        HttpVerificationSampleReceiverConfigurationCodec, HttpVerificationSampleVerifierConfiguration,
+    )
+    from control_plane_kit_core.http_verification_samples import http_verification_check_digest
+    from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+    from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
+    from control_plane_kit_core.verification import VerificationPolicy
+    checks = tuple(HttpCheck(check_id=name, provider_socket=socket, path="/health/" + name,
+        policy=VerificationPolicy(timeout_seconds=5, interval_seconds=interval, maximum_attempts=10))
+        for name in ("live", "ready")) if checks is None else checks
+    desired = graph(workload_surfaces=(surface(socket, (NodeHealthReadKind.LIVENESS,)),), checks=checks)
+    node = desired.node("workload")
+    old = receiver_fixtures.ReceiverConfigurationTests()
+    old.setUp()
+    declaration = replace(old.declaration, surface=node.block_spec.control_surfaces[0])
+    document = old.document(declaration)
+    document["target"].update(runtime_id=node.runtime_id, node_id=node.node_id, provider_socket_name=socket)
+    receiver = old.codec.decode(document)
+    configuration = HttpVerificationSampleReceiverConfiguration(receiver.target, declaration.identity().value,
+        HttpVerificationSampleVerifierConfiguration(core.DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE,
+            "sample-controller", (old.key,)),
+        tuple(HttpVerificationSampleCheckBinding(check.check_id, http_verification_check_digest(check))
+            for check in checks if check.check_id in selected))
+    artifacts = (
+        ConfigurationArtifact("receiver", "/etc/test/receiver.json", ConfigurationMediaType.JSON,
+            ReceiverNodeControlConfigurationCodec().encode_bytes(receiver).decode()),
+        ConfigurationArtifact("samples", "/etc/test/samples.json", ConfigurationMediaType.JSON,
+            HttpVerificationSampleReceiverConfigurationCodec().encode_canonical_bytes(configuration).decode()),
+    )
+    providers = (ProviderSocket(socket, Protocol.HTTP),)
+    endpoints = {socket: Endpoint(LiteralAddress(f"http://workload:{port}"), Protocol.HTTP)}
+    if socket == "http-api":
+        providers += (ProviderSocket("mcp", Protocol.MCP_STREAMABLE_HTTP),)
+        endpoints["mcp"] = Endpoint(LiteralAddress(f"http://workload:{port}"), Protocol.MCP_STREAMABLE_HTTP)
+    node = replace(node, sockets=BlockSockets(providers=providers), endpoints=endpoints,
+        configuration_artifacts=artifacts, metadata={"product_identity": "test/sample/1",
+            "product_descriptor_digest": "a" * 64},
+        public_environment=(PublicStaticEnvironmentBinding(receiver_fixtures.PATH_KEY, artifacts[0].target_path),
+            PublicStaticEnvironmentBinding(HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT, artifacts[1].target_path)))
+    return replace(desired, nodes={**desired.nodes, node.node_id: node})
+
+
+class HttpSampleBootstrapPlanningTests(unittest.TestCase):
+    def compile(self, desired, current=None):
+        left, right = validate_graph(empty() if current is None else current), validate_graph(desired)
+        left.require_valid()
+        right.require_valid()
+        compiler = getattr(core, "compile_http_sample_bootstrap_activity_plan", None)
+        self.assertTrue(callable(compiler), "explicit HTTP sample bootstrap interpretation is missing")
+        return compiler(left, right)
+
+    def workload_review(self, plan):
+        return any(isinstance(item.operation, ReviewChange)
+            and item.operation.target.subject == NodeSubject("workload") for item in plan.activities)
+
+    def test_both_actual_http_pairs_keep_original_wait_and_liveness_only_observation(self):
+        from control_plane_kit_core.http_verification_samples import http_verification_check_digest
+        vectors = (
+            ("http-api", 8080, 2, ("c8be570e0e803aae4fedd7ffafb438b1d05fd8421efda44ba0bc2cbf4c55e14a", "d0891d692827c12337c3417f7da6766c342c25f071a0938f7f57ad618273d763")),
+            ("control", 8081, 1, ("5911cb3dce76dacd9bdea52d33cc07fb8879fb6318a826cf64653316ae3920b7", "9168b2fe37d83e63062a3d22be950b90b3be48062755744ff70879c5c0538b1f")),
+        )
+        for socket, port, interval, digests in vectors:
+            with self.subTest(socket=socket):
+                desired = http_sample_bootstrap_graph(socket=socket, port=port, interval=interval)
+                before = GraphDescriptorCodec().encode(desired)
+                self.assertEqual(tuple(map(http_verification_check_digest,
+                    desired.node("workload").block_spec.verification.checks)), digests)
+                old = core.compile_graph_activity_plan(validate_graph(empty()), validate_graph(desired))
+                plan = self.compile(desired)
+                self.assertTrue(any(isinstance(item.operation, ReviewChange) for item in old.activities))
+                self.assertTrue(plan.ready_for_execution)
+                wait = next(item for item in plan.activities if isinstance(item.operation, WaitForHealthy)
+                    and item.operation.target.node_id == "workload")
+                original = next(item for item in old.activities if item.activity_id == wait.activity_id)
+                self.assertEqual(wait, original)
+                sdk = next(item for item in plan.activities if isinstance(item.operation, core.ObserveNodeHealth)
+                    and item.operation.node_id == "workload")
+                self.assertIs(sdk.operation.health_kind, NodeHealthReadKind.LIVENESS)
+                self.assertEqual(GraphDescriptorCodec().encode(desired), before)
+                self.assertEqual(self.compile(desired), plan)
+
+    def test_partial_or_cross_wired_companion_keeps_review(self):
+        desired = http_sample_bootstrap_graph()
+        node = desired.node("workload")
+        sample = node.configuration_artifacts[1]
+        for changed in (http_sample_bootstrap_graph(selected=("ready",)),
+                replace(desired, nodes={**desired.nodes, "workload": replace(node,
+                    configuration_artifacts=(node.configuration_artifacts[0],))})):
+            self.assertTrue(self.workload_review(self.compile(changed)))
+        for edit in (lambda value: value["checks"][0].update(check_digest="f" * 64),
+                     lambda value: value.update(declaration_identity="f" * 64),
+                     lambda value: value["target"].update(receiver_id="f" * 32),
+                     lambda value: value["target"].update(provider_socket_name="mcp")):
+            value = json.loads(sample.content)
+            edit(value)
+            malformed = replace(sample, content=rfc8785.dumps(value).decode())
+            changed = replace(desired, nodes={**desired.nodes, "workload": replace(node,
+                configuration_artifacts=(node.configuration_artifacts[0], malformed))})
+            self.assertTrue(self.workload_review(self.compile(changed)))
+
+    def test_unsupported_original_semantics_never_get_clamped(self):
+        from control_plane_kit_core.verification import VerificationPolicy
+        base = HttpCheck(check_id="ready", provider_socket="http-api", path="/health/ready")
+        cases = (replace(base, policy=VerificationPolicy(timeout_seconds=6)),
+            replace(base, expected_statuses=(201,)), replace(base, expected_body_sha256="b" * 64))
+        cases += tuple(replace(base, path=path) for path in ("/x?", "/x#", "/x%GG", "/caf\u00e9", "/x y"))
+        for check in cases:
+            with self.subTest(check=check):
+                desired = http_sample_bootstrap_graph(checks=(check,), selected=("ready",))
+                self.assertTrue(self.workload_review(self.compile(desired)))
+
+    def test_retained_update_and_teardown_cannot_use_fresh_interpretation(self):
+        desired = http_sample_bootstrap_graph()
+        for current, target in ((desired, desired), (desired, empty()),
+                (graph(workload=False), desired)):
+            with self.subTest(current=current.name, target=target.name):
+                plan = self.compile(target, current)
+                self.assertFalse(plan.ready_for_execution)
+
+    def test_fresh_order_consumers_and_unrelated_reviews_are_preserved(self):
+        desired = http_sample_bootstrap_graph()
+        # A gateway's authored obligation is never borrowed by the workload exception.
+        gateway = desired.node("gateway")
+        gateway = replace(gateway, block_spec=replace(gateway.block_spec,
+            verification=VerificationContract((HttpCheck(check_id="own", provider_socket="control", path="/"),))))
+        desired = replace(desired, nodes={**desired.nodes, "gateway": gateway})
+        old = core.compile_graph_activity_plan(validate_graph(empty()), validate_graph(desired))
+        plan = self.compile(desired)
+        self.assertFalse(plan.ready_for_execution)
+        self.assertFalse(self.workload_review(plan))
+        old_others = tuple(item for item in old.activities if not (isinstance(item.operation, ReviewChange)
+            and item.operation.target.subject == NodeSubject("workload")))
+        self.assertEqual(plan.activities, old_others)
+
+
 class ManagementBootstrapPlanningTests(unittest.TestCase):
     def api(self, name):
         value = getattr(core, name, None)
