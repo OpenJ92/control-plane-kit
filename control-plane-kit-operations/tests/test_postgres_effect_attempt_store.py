@@ -72,7 +72,7 @@ class PostgresEffectAttemptStoreTests(
             stores = unit_of_work.stores
             self.add_record_events(stores, record)
             self.add_record_intent(stores, record)
-            self.assertEqual(stores.effect_attempts.insert_absent(record), record)
+            self.assertEqual(stores.effect_attempts._insert_absent(record), record)
 
         with self.unit_of_work() as unit_of_work:
             with self.assertRaises(KeyError) as caught:
@@ -81,7 +81,7 @@ class PostgresEffectAttemptStoreTests(
 
         self.assertEqual(self.persist(record), record)
         with self.unit_of_work() as unit_of_work:
-            self.assertIsNone(unit_of_work.stores.effect_attempts.insert_absent(record))
+            self.assertIsNone(unit_of_work.stores.effect_attempts._insert_absent(record))
             unit_of_work.commit()
 
     def test_predecessor_and_event_role_constraints_are_raw_integrity(self) -> None:
@@ -97,7 +97,7 @@ class PostgresEffectAttemptStoreTests(
                 stores = unit_of_work.stores
                 self.add_record_events(stores, retry)
                 self.add_record_intent(stores, retry)
-                stores.effect_attempts.insert_absent(retry)
+                stores.effect_attempts._insert_absent(retry)
                 unit_of_work.commit()
 
         predecessor = self.record(event_prefix="predecessor", original_ordinal=20)

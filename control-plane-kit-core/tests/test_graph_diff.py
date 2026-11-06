@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from control_plane_kit_core.secret_selections import UnselectedSecretUse
+
 from dataclasses import dataclass, replace
 import json
 from typing import Mapping
@@ -371,6 +373,8 @@ class GraphDiffTests(unittest.TestCase):
                 provider,
                 endpoints={"internal": desired_endpoint},
                 metadata={"api_token": "new-secret"},
+                secret_selections=(UnselectedSecretUse(SecretReference("secret://workspace/api-token"),
+                    SecretUseIntent.APPLICATION_CONTROL_TOKEN),),
                 configuration_artifacts=(
                     ConfigurationArtifact(
                         "settings",

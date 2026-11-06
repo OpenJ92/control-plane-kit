@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -36,11 +37,20 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityNotFound,
     RuntimeAuthorityRegistrationConflict,
     RuntimeAuthorityRegistrationError,
+    _validate_identifier,
 )
 
 
 _LOOKUP_ERROR = "runtime authority lookup is invalid"
 _ROW_ERROR = "registered runtime authority row is invalid"
+
+_HISTORICAL_COLUMNS = (("registration_id", 2048), ("workspace_id", 2048),
+    ("authority_ref", 2048), ("runtime_kind", 64), ("authority", 65536),
+    ("admitted_by", 2048), ("admitted_at", None), ("status", 64), ("metadata", 16384))
+_HISTORICAL_SELECT = "SELECT " + ",".join(
+    name if limit is None else
+    f"CASE WHEN octet_length({name}::text)<={limit} THEN {name} END"
+    for name, limit in _HISTORICAL_COLUMNS) + " FROM cpk_runtime_authorities "
 
 
 class RuntimeAuthorityStore:
@@ -143,6 +153,20 @@ class RuntimeAuthorityStore:
             raise RuntimeAuthorityNotFound("registered runtime authority was not found")
         return _row_to_authority(row)
 
+    def _configuration_authority(self, workspace_id, reference, read):
+        columns = (("registration_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("authority_ref", "text", 2048), ("runtime_kind", "text", 64),
+            ("authority", "json", 65536), ("admitted_by", "text", 2048),
+            ("admitted_at", "time", 64), ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_runtime_authorities", columns,
+            "workspace_id=%s AND authority_ref=%s AND status='active'", (workspace_id, reference.reference_id))
+        if not rows:
+            raise RuntimeAuthorityNotFound("registered runtime authority is unavailable")
+        value = _row_to_authority(rows[0])
+        if value.workspace_id != workspace_id or value.authority_ref != reference:
+            raise RuntimeAuthorityNotFound("registered runtime authority is unavailable")
+        return value
+
     def get_active_for_update(
         self,
         workspace_id: str,
@@ -166,6 +190,12 @@ class RuntimeAuthorityStore:
                 invalid = True
         if invalid:
             raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR) from None
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT 1 FROM cpk_runtime_authorities WHERE workspace_id=%s AND authority_ref=%s "
+                "AND status='active' FOR UPDATE", (workspace_id, admitted_reference.reference_id),
+                records=1, octets=1, cells=1)
+            return self._configuration_authority(workspace_id, admitted_reference, read)
         rows = self._connection.execute(
             """
             SELECT
@@ -274,25 +304,69 @@ class RuntimeAuthorityStore:
             ),
         )
 
+    def get_registration(self, workspace_id, authority_ref, registration_id):
+        """Read one retained identity without current selection or row locking."""
+        return self._registration(workspace_id, authority_ref, registration_id, for_update=False)
+
+    def get_registration_for_update(self, workspace_id, authority_ref, registration_id):
+        """Lock one retained identity, including revoked rows used by exact replay."""
+        return self._registration(workspace_id, authority_ref, registration_id, for_update=True)
+
+    def _registration(self, workspace_id, authority_ref, registration_id, *, for_update):
+        _validate_identifier(workspace_id, "workspace_id")
+        _validate_identifier(registration_id, "registration_id")
+        if not isinstance(authority_ref, RuntimeAuthorityReference):
+            raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            where = "registration_id=%s AND workspace_id=%s AND authority_ref=%s"
+            parameters = (registration_id, workspace_id, authority_ref.reference_id)
+            if for_update:
+                read.query("SELECT 1 FROM cpk_runtime_authorities WHERE " + where + " FOR UPDATE",
+                    parameters, records=1, octets=1, cells=1)
+            columns = tuple((name, "json" if name in ("authority", "metadata")
+                else "time" if name == "admitted_at" else "text", 64 if limit is None else limit)
+                for name, limit in _HISTORICAL_COLUMNS)
+            rows = read.bounded_rows("cpk_runtime_authorities", columns, where, parameters)
+            if not rows:
+                raise RuntimeAuthorityNotFound("registered runtime authority was not found")
+            return _row_to_authority(rows[0])
+        selection = ("SELECT registration_id,workspace_id,authority_ref,runtime_kind,authority,admitted_by,"
+            "admitted_at,status,metadata FROM cpk_runtime_authorities " if for_update else _HISTORICAL_SELECT)
+        row = self._connection.execute(selection
+            + "WHERE registration_id=%s AND workspace_id=%s AND authority_ref=%s"
+            + (" FOR UPDATE" if for_update else ""),
+            (registration_id, workspace_id, authority_ref.reference_id),
+        ).fetchone()
+        if row is None:
+            raise RuntimeAuthorityNotFound("registered runtime authority was not found")
+        if not for_update and (type(row) is not tuple or len(row) != 9 or any(value is None for value in row)):
+            raise RuntimeAuthorityRegistrationError(_ROW_ERROR)
+        return _row_to_authority(row)
+
     def revoke(
         self,
         workspace_id: str,
         authority_ref: RuntimeAuthorityReference,
     ) -> RegisteredRuntimeAuthority:
-        current = self.get(workspace_id, authority_ref)
+        observed = self.get(workspace_id, authority_ref)
+        current = self.get_registration_for_update(workspace_id, authority_ref, observed.registration_id)
         if current.status is RegisteredRuntimeAuthorityStatus.REVOKED:
             return current
         self._connection.execute(
             """
             UPDATE cpk_runtime_authorities
             SET status = 'revoked'
-            WHERE workspace_id = %s
-              AND authority_ref = %s
+            WHERE registration_id = %s
               AND status = 'active'
             """,
-            (workspace_id, authority_ref.reference_id),
+            (current.registration_id,),
         )
-        return self.get(workspace_id, authority_ref)
+        # Same owner transaction and authority-before-assignment lock order.
+        # Preserve the original registration lifecycle and separate delivery owner.
+        from .managed_runtime_assignment_store import ManagedRuntimeAssignmentStore
+        ManagedRuntimeAssignmentStore(self._connection).invalidate_authority(current)
+        return replace(current, status=RegisteredRuntimeAuthorityStatus.REVOKED)
 
     def _get_active_by_ref(
         self,
@@ -438,6 +512,19 @@ class RuntimeAuthorityDeliveryStore:
                 "registered runtime authority delivery was not found"
             )
         return _row_to_delivery(row)
+
+    def _configuration_delivery(self, workspace_id, reference, read):
+        columns = (("delivery_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("delivery", "json", 65536), ("admitted_by", "text", 2048),
+            ("admitted_at", "time", 64), ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_runtime_authority_deliveries", columns,
+            "workspace_id=%s AND authority_ref=%s AND status='active'", (workspace_id, reference.reference_id))
+        if not rows:
+            raise RuntimeAuthorityNotFound("registered runtime authority delivery is unavailable")
+        value = _row_to_delivery(rows[0])
+        if value.workspace_id != workspace_id or value.authority_ref != reference:
+            raise RuntimeAuthorityNotFound("registered runtime authority delivery is unavailable")
+        return value
 
     def list_active(
         self,

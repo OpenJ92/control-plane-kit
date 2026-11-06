@@ -14,7 +14,10 @@ from control_plane_kit_core.approval_subjects import (
 )
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import LifecycleOperationKind
-from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit_operations.plan_derivation import (
+    decode_stored_activity_plan_record,
+    encode_stored_activity_plan,
+)
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres.schema import PostgresConnection
@@ -85,13 +88,22 @@ class PostgresActivityHistoryStore:
 
     def lock_action_idempotency(self, session_id: str, idempotency_key: str) -> None:
         """Serialize one session-scoped command before its action row exists."""
-
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"operation-action:{session_id}:{idempotency_key}",), records=1, octets=1, cells=1)
+            return
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"operation-action:{session_id}:{idempotency_key}",),
         )
 
     def get_session(self, session_id: str) -> OperationSessionRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            return self._configuration_session(read, session_id)
         row = self._connection.execute(
             """
             SELECT session_id, workspace_id, actor_id, title, status, created_at,
@@ -105,9 +117,25 @@ class PostgresActivityHistoryStore:
             raise KeyError(f"missing session {session_id!r}")
         return _session_record(row)
 
+    def _configuration_session(self, read, session_id):
+        names = ("session_id", "workspace_id", "actor_id", "title", "status", "created_at",
+            "closed_at", "metadata", "idempotency_key", "intent_fingerprint")
+        columns = tuple((name, "json" if name == "metadata" else "time" if name in
+            ("created_at", "closed_at") else "text", 65536 if name == "metadata" else 2048) for name in names)
+        from .configuration_cleanup_phase_read_bounds import _phase_columns
+        columns = _phase_columns(self._connection, "session", (session_id,), columns)
+        rows = read.bounded_rows("cpk_operation_sessions", columns, "session_id=%s", (session_id,))
+        if not rows:
+            raise KeyError("missing operation session")
+        return _session_record(rows[0])
+
     def get_session_for_update(self, session_id: str) -> OperationSessionRecord:
         """Lock and return the authoritative lifecycle row for one session."""
-
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT 1 FROM cpk_operation_sessions WHERE session_id=%s FOR UPDATE",
+                (session_id,), records=1, octets=1, cells=1)
+            return self._configuration_session(read, session_id)
         row = self._connection.execute(
             """
             SELECT session_id, workspace_id, actor_id, title, status, created_at,
@@ -234,14 +262,31 @@ class PostgresActivityHistoryStore:
         return None if row is None else _session_record(row)
 
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord:
-        self._connection.execute(
-            """
+        return self._insert_action(record)
+
+    def _add_advancement_action(self, record, prepared_receipt):
+        return self._insert_action(record, prepared_receipt)
+
+    def _insert_action(self, record, prepared_receipt=None):
+        locators = (None,) * 5
+        if record.action_type is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH:
+            from control_plane_kit_operations._configuration_acceptance import _require_prepared_advancement
+            _require_prepared_advancement(prepared_receipt, self._connection,
+                record.payload.get("workspace_id"), after_cas=True)
+            if record != prepared_receipt.action:
+                raise OperationsRecordError("advancement action differs from original owner")
+            locators = (prepared_receipt.workspace.workspace_id, prepared_receipt.request.identity.request_id,
+                prepared_receipt.plan.plan_id, prepared_receipt.run.run_id, prepared_receipt.plan.desired_graph_revision)
+        elif prepared_receipt is not None:
+            raise OperationsRecordError("prepared advancement requires original action")
+        query = """
             INSERT INTO cpk_operation_actions
               (action_id, session_id, ordinal, action_type, actor_id, payload,
-               created_at, idempotency_key, intent_fingerprint)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
+               created_at, idempotency_key, intent_fingerprint, advancement_workspace_id,
+               advancement_request_id, advancement_plan_id, advancement_run_id, advancement_revision)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+        values = (
                 record.action_id,
                 record.session_id,
                 record.ordinal,
@@ -251,8 +296,12 @@ class PostgresActivityHistoryStore:
                 encode_postgres_timestamp(record.created_at),
                 record.idempotency_key,
                 record.intent_fingerprint,
-            ),
-        )
+            ) + locators
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)
+        else:
+            self._connection.execute(query, values)
         return record
 
     def action_for_idempotency(
@@ -260,6 +309,16 @@ class PostgresActivityHistoryStore:
         session_id: str,
         idempotency_key: str,
     ) -> OperationActionRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("action_id", "session_id", "ordinal", "action_type", "actor_id", "payload",
+                "created_at", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "json" if name == "payload" else "int" if name == "ordinal"
+                else "time" if name == "created_at" else "text", 65536 if name == "payload" else 2048)
+                for name in names)
+            rows = read.bounded_rows("cpk_operation_actions", columns,
+                "session_id=%s AND idempotency_key=%s", (session_id, idempotency_key))
+            return None if not rows else _action_record(rows[0])
         row = self._connection.execute(
             """
             SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
@@ -272,6 +331,13 @@ class PostgresActivityHistoryStore:
         return None if row is None else _action_record(row)
 
     def next_action_ordinal(self, session_id: str) -> int:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            if not read.query("SELECT 1 FROM cpk_operation_sessions WHERE session_id=%s FOR UPDATE",
+                    (session_id,), records=1, octets=1, cells=1):
+                raise KeyError("missing operation session")
+            return read.query("SELECT COALESCE(MAX(ordinal),0)+1 FROM cpk_operation_actions WHERE session_id=%s",
+                (session_id,), records=1, octets=20, cells=1)[0][0]
         session = self._connection.execute(
             "SELECT session_id FROM cpk_operation_sessions WHERE session_id = %s FOR UPDATE",
             (session_id,),
@@ -298,6 +364,42 @@ class PostgresActivityHistoryStore:
             ORDER BY ordinal ASC
             """,
             (session_id,),
+        ).fetchall()
+        return tuple(_action_record(row) for row in rows)
+
+    def _projection_publication_actions(
+        self, session_id: str, desired_projection_id: str,
+    ) -> tuple[OperationActionRecord, ...]:
+        """Return at most two candidate receipts so ambiguity cannot be hidden.
+
+        The caller validates session ownership and all original associations.
+        LIMIT bounds returned material, not PostgreSQL's internal scan work.
+        """
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("action_id", "session_id", "ordinal", "action_type", "actor_id", "payload",
+                "created_at", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "json" if name == "payload" else "int" if name == "ordinal"
+                else "time" if name == "created_at" else "text", 65536 if name == "payload" else 2048)
+                for name in names)
+            # Two candidates, not a collection's three-row overflow sentinel.
+            # The semantic consumer still rejects ambiguity after decoding.
+            rows = read.bounded_rows("cpk_operation_actions", columns,
+                "session_id=%s AND action_type=%s AND payload->>'desired_realized_projection_id'=%s",
+                (session_id, OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION.value,
+                    desired_projection_id), maximum=2, point=True)
+            return tuple(_action_record(row) for row in rows)
+        rows = self._connection.execute(
+            """
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
+                   created_at, idempotency_key, intent_fingerprint
+            FROM cpk_operation_actions
+            WHERE session_id = %s AND action_type = %s
+              AND payload->>'desired_realized_projection_id' = %s
+            LIMIT 2
+            """,
+            (session_id, OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION.value,
+             desired_projection_id),
         ).fetchall()
         return tuple(_action_record(row) for row in rows)
 
@@ -347,6 +449,11 @@ class PostgresActivityHistoryStore:
         return ReadPage.from_candidates(request, candidates)
 
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
+        record.__post_init__()
+        if record.cleanup_proposal is not None:
+            context = record.cleanup_proposal.descriptor()["context"]
+            if self.get_session(record.session_id).workspace_id != context["workspace_id"]:
+                raise OperationsRecordError("cleanup plan workspace is inconsistent")
         if (
             record.base_realized_projection_id is None
             or record.desired_realized_projection_id is None
@@ -354,8 +461,7 @@ class PostgresActivityHistoryStore:
             raise OperationsRecordError(
                 "activity plan record requires complete graph lineage"
             )
-        inserted = self._connection.execute(
-            """
+        query = """
             WITH candidate (
               plan_id, session_id, base_graph_id, desired_graph_id,
               base_realized_projection_id, desired_realized_projection_id,
@@ -389,8 +495,8 @@ class PostgresActivityHistoryStore:
               AND desired_projection.source_authored_graph_id =
                     candidate.desired_graph_id
             RETURNING plan_id
-            """,
-            (
+            """
+        values = (
                 record.plan_id,
                 record.session_id,
                 record.base_graph_id,
@@ -400,9 +506,15 @@ class PostgresActivityHistoryStore:
                 record.desired_graph_revision,
                 record.status.value,
                 encode_postgres_timestamp(record.created_at),
-                Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
-            ),
-        ).fetchone()
+                Jsonb(encode_stored_activity_plan(record.plan, profile=record.derivation_profile,
+                    cleanup_proposal=record.cleanup_proposal)),
+            )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            rows = read.query(query, values, records=1, octets=2048, cells=1)
+            inserted = rows[0] if rows else None
+        else:
+            inserted = self._connection.execute(query, values).fetchone()
         if inserted is None:
             raise OperationsRecordError(
                 "activity plan record requires complete graph lineage"
@@ -461,13 +573,46 @@ class PostgresActivityHistoryStore:
         return tuple(_approval_request_record(row) for row in rows)
 
     def get_plan(self, plan_id: str) -> ActivityPlanRecord:
+        return self._get_plan(plan_id, for_share=False)
+
+    def get_plan_for_share(self, plan_id: str) -> ActivityPlanRecord:
+        """Retain a plan's current status and payload through the caller's UoW."""
+        return self._get_plan(plan_id, for_share=True)
+
+    def _get_plan(self, plan_id: str, *, for_share: bool) -> ActivityPlanRecord:
+        from .configuration_cleanup_phase_read_bounds import _phase_context
+        _phase_context(self._connection)
+        from .configuration_evidence import _active_read
+        from .configuration_cleanup_read_ceilings import _cleanup_original_limits
+        ceilings = _cleanup_original_limits(self._connection, "plan", plan_id)
+        if (read := _active_read(self._connection)) is not None:
+            from .receiver_execution_scopes import _PLAN, _Transport, _columns, _decode
+            if for_share:
+                read.query("SELECT 1 FROM cpk_activity_plans WHERE plan_id=%s FOR SHARE",
+                    (plan_id,), records=1, octets=1, cells=1)
+            rows = _Transport(self._connection, read).read("cpk_activity_plans",
+                _columns(_PLAN, json_columns=("payload",), ceilings=ceilings),
+                "plan_id=%s", (plan_id,), point=True, phase=("plan", (plan_id,)))
+            if not rows:
+                raise KeyError("missing activity plan")
+            record = _plan_record(_decode(rows[0], _PLAN, json_columns=("payload",),
+                int_columns=("desired_graph_revision",), time_columns=("created_at",)))
+            from .configuration_cleanup_phase_read_bounds import _phase_require
+            for side in ("base", "desired"):
+                _phase_require(self._connection, "plan", (plan_id,), "graph", (getattr(record, side+"_graph_id"),))
+                projection_id = getattr(record, side+"_realized_projection_id")
+                if projection_id is not None:
+                    _phase_require(self._connection, "plan", (plan_id,), "projection", (projection_id,))
+            return record
+        lock = "FOR SHARE" if for_share else ""
         row = self._connection.execute(
-            """
+            f"""
             SELECT plan_id, session_id, base_graph_id, desired_graph_id,
                    base_realized_projection_id, desired_realized_projection_id,
                    desired_graph_revision, status, created_at, payload
             FROM cpk_activity_plans
             WHERE plan_id = %s
+            {lock}
             """,
             (plan_id,),
         ).fetchone()
@@ -536,7 +681,7 @@ class PostgresActivityHistoryStore:
         self,
         record: ApprovalRequestRecord,
     ) -> ApprovalRequestRecord:
-        self._connection.execute(
+        self._insert_approval(
             """
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, rotation_id, subject_kind,
@@ -566,6 +711,17 @@ class PostgresActivityHistoryStore:
         return record
 
     def get_approval_request(self, request_id: str) -> ApprovalRequestRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("request_id", "session_id", "plan_id", "rotation_id", "subject_kind",
+                "subject_payload", "review_digest", "requested_by", "requested_at", "required_scope",
+                "max_risk", "destructive", "comment", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "json" if name == "subject_payload" else "time" if name == "requested_at"
+                else "bool" if name == "destructive" else "text", 16384) for name in names)
+            rows = read.bounded_rows("cpk_approval_requests", columns, "request_id=%s", (request_id,))
+            if not rows:
+                raise KeyError("missing approval request")
+            return _approval_request_record(rows[0])
         row = self._connection.execute(
             """
             SELECT request_id, session_id, plan_id, rotation_id, subject_kind,
@@ -586,6 +742,16 @@ class PostgresActivityHistoryStore:
         session_id: str,
         idempotency_key: str,
     ) -> ApprovalRequestRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("request_id", "session_id", "plan_id", "rotation_id", "subject_kind",
+                "subject_payload", "review_digest", "requested_by", "requested_at", "required_scope",
+                "max_risk", "destructive", "comment", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "json" if name == "subject_payload" else "time" if name == "requested_at"
+                else "bool" if name == "destructive" else "text", 16384) for name in names)
+            rows = read.bounded_rows("cpk_approval_requests", columns,
+                "session_id=%s AND idempotency_key=%s", (session_id, idempotency_key))
+            return _approval_request_record(rows[0]) if rows else None
         row = self._connection.execute(
             """
             SELECT request_id, session_id, plan_id, rotation_id, subject_kind,
@@ -722,7 +888,7 @@ class PostgresActivityHistoryStore:
         self,
         record: ApprovalDecisionRecord,
     ) -> ApprovalDecisionRecord:
-        self._connection.execute(
+        self._insert_approval(
             """
             INSERT INTO cpk_approval_decisions
               (decision_id, request_id, actor_id, decision, scope, decided_at,
@@ -743,10 +909,24 @@ class PostgresActivityHistoryStore:
         )
         return record
 
+    def _insert_approval(self, query, values):
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)
+        else:
+            self._connection.execute(query, values)
+
     def approval_decision_for_request(
         self,
         request_id: str,
     ) -> ApprovalDecisionRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("decision_id", "request_id", "actor_id", "decision", "scope", "decided_at",
+                "comment", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "time" if name == "decided_at" else "text", 16384) for name in names)
+            rows = read.bounded_rows("cpk_approval_decisions", columns, "request_id=%s", (request_id,))
+            return _approval_decision_record(rows[0]) if rows else None
         row = self._connection.execute(
             """
             SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
@@ -763,6 +943,14 @@ class PostgresActivityHistoryStore:
         request_id: str,
         idempotency_key: str,
     ) -> ApprovalDecisionRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("decision_id", "request_id", "actor_id", "decision", "scope", "decided_at",
+                "comment", "idempotency_key", "intent_fingerprint")
+            columns = tuple((name, "time" if name == "decided_at" else "text", 16384) for name in names)
+            rows = read.bounded_rows("cpk_approval_decisions", columns,
+                "request_id=%s AND idempotency_key=%s", (request_id, idempotency_key))
+            return _approval_decision_record(rows[0]) if rows else None
         row = self._connection.execute(
             """
             SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
@@ -816,6 +1004,7 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
 
 
 def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
+    stored = decode_stored_activity_plan_record(row[9])
     return ActivityPlanRecord(
         plan_id=row[0],
         session_id=row[1],
@@ -826,7 +1015,9 @@ def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
         desired_graph_revision=row[6],
         status=ActivityPlanStatus(row[7]),
         created_at=decode_postgres_timestamp(row[8]),
-        plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[9]),
+        plan=stored.plan,
+        derivation_profile=stored.profile,
+        cleanup_proposal=stored.cleanup_proposal,
     )
 
 

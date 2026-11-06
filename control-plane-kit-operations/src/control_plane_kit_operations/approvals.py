@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
+from functools import wraps
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -31,6 +32,7 @@ from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
 )
+from control_plane_kit_operations.configuration_cleanup import ConfigurationCleanupContractError
 
 
 class ApprovalWorkflowError(RuntimeError):
@@ -51,6 +53,17 @@ class ApprovalStateConflict(ApprovalWorkflowError):
 
 class ApprovalTargetNotFound(ApprovalWorkflowError):
     """Raised when approval command target truth is missing."""
+
+
+def _cleanup_evidence_errors(command):
+    @wraps(command)
+    def invoke(*args, **kwargs):
+        try:
+            return command(*args, **kwargs)
+        except ConfigurationCleanupContractError:
+            pass
+        raise ApprovalStateConflict("cleanup approval evidence is unavailable")
+    return invoke
 
 
 @dataclass(frozen=True)
@@ -277,22 +290,27 @@ class ApprovalCommandService:
             return self._decide(command)
         raise InvalidOperationCommand("unsupported approval command")
 
+    @_cleanup_evidence_errors
     def _request(self, command: RequestApproval) -> ApprovalRequestResult:
         fingerprint = _fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work:
+        with (self._unit_of_work_factory() as unit_of_work,
+              unit_of_work.stores.configuration_cleanup.approval_evidence(command)):
             history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
             replay = history.approval_request_for_idempotency(
                 command.session_id,
                 command.idempotency_key.value,
             )
             if replay is not None:
+                _validate_plan_subject(history, replay)
+                if isinstance(replay.subject, ActivityPlanApprovalSubject) and replay.subject.proposal_fingerprint is not None:
+                    authority = self._policy.can_request_plan(command.actor_scopes)
+                    if not authority.allowed:
+                        raise ApprovalAuthorizationDenied(authority.reason)
                 result = _request_replay(history, replay, fingerprint)
                 unit_of_work.commit()
                 return result
+            located = _approval_plan(history, command.plan_id)
+            cleanup_workspace = _cleanup_lock(unit_of_work, located, command.session_id)
             session = _session_for_update(history, command.session_id)
             _require_open(session)
             _require_unused_action_key(
@@ -301,11 +319,13 @@ class ApprovalCommandService:
                 command.idempotency_key.value,
             )
             try:
-                plan = history.get_plan(command.plan_id)
+                plan = _approval_plan(history, command.plan_id)
             except KeyError as error:
                 raise ApprovalTargetNotFound("activity plan was not found") from error
             if plan.session_id != command.session_id:
                 raise ApprovalStateConflict("plan and request must share a session")
+            if cleanup_workspace is not None:
+                _fresh_cleanup(unit_of_work, located, plan, session, cleanup_workspace)
             if not plan.plan.ready_for_execution:
                 raise ApprovalStateConflict(
                     "plan contains review blockers and cannot be requested"
@@ -315,13 +335,14 @@ class ApprovalCommandService:
                 raise ApprovalAuthorizationDenied(authority.reason)
             requirement = self._policy.requirement_for(plan.plan)
 
+            unit_of_work.stores.configuration_cleanup.preflight_tail()
             ordinal = history.next_action_ordinal(command.session_id)
             requested_at = self._clock()
             request = history.add_approval_request(
                 ApprovalRequestRecord(
                     request_id=self._id_factory(),
                     session_id=command.session_id,
-                    subject=ActivityPlanApprovalSubject(command.plan_id),
+                    subject=_plan_subject(plan),
                     requested_by=command.actor_id,
                     requested_at=requested_at,
                     required_scope=requirement.required_scope,
@@ -441,14 +462,12 @@ class ApprovalCommandService:
             unit_of_work.commit()
             return ApprovalRequestResult(request, action)
 
+    @_cleanup_evidence_errors
     def _decide(self, command: DecideApproval) -> ApprovalDecisionResult:
         fingerprint = _fingerprint(command)
-        with self._unit_of_work_factory() as unit_of_work:
+        with (self._unit_of_work_factory() as unit_of_work,
+              unit_of_work.stores.configuration_cleanup.approval_evidence(command)):
             history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
             replay = history.approval_decision_for_idempotency(
                 command.request_id,
                 command.idempotency_key.value,
@@ -461,8 +480,21 @@ class ApprovalCommandService:
                         "approval request was not found"
                     ) from error
                 result = _decision_replay(history, request, replay, fingerprint)
+                if isinstance(request.subject, ActivityPlanApprovalSubject) and request.subject.proposal_fingerprint is not None:
+                    authority = self._policy.can_approve_plan(command.actor_scopes,
+                        requested_by=request.requested_by, decided_by=command.actor_id,
+                        destructive=request.destructive)
+                    if not authority.allowed:
+                        raise ApprovalAuthorizationDenied(authority.reason)
                 unit_of_work.commit()
                 return result
+            located_request = _approval_request(history, command.request_id)
+            located = None
+            cleanup_workspace = None
+            if isinstance(located_request.subject, ActivityPlanApprovalSubject):
+                located = _approval_plan(history, located_request.subject.plan_id)
+                _validate_plan_subject(history, located_request, plan=located)
+                cleanup_workspace = _cleanup_lock(unit_of_work, located, command.session_id)
             session = _session_for_update(history, command.session_id)
             _require_open(session)
             try:
@@ -471,6 +503,12 @@ class ApprovalCommandService:
                 raise ApprovalTargetNotFound("approval request was not found") from error
             if request.session_id != command.session_id:
                 raise ApprovalStateConflict("request and decision must share a session")
+            if cleanup_workspace is not None:
+                if request != located_request:
+                    raise ApprovalStateConflict("approval target changed")
+                plan = _approval_plan(history, located.plan_id)
+                _fresh_cleanup(unit_of_work, located, plan, session, cleanup_workspace)
+                _validate_plan_subject(history, request, plan=plan)
             _require_unused_action_key(
                 history,
                 command.session_id,
@@ -494,6 +532,7 @@ class ApprovalCommandService:
             if not authority.allowed:
                 raise ApprovalAuthorizationDenied(authority.reason)
 
+            unit_of_work.stores.configuration_cleanup.preflight_tail()
             ordinal = history.next_action_ordinal(command.session_id)
             decided_at = self._clock()
             decision = history.add_approval_decision(
@@ -529,6 +568,87 @@ class ApprovalCommandService:
             )
             unit_of_work.commit()
             return ApprovalDecisionResult(request, decision, action)
+
+
+def _approval_plan(history, plan_id):
+    plan = None
+    missing = False
+    try:
+        plan = history.get_plan(plan_id)
+        plan.__post_init__()
+    except KeyError:
+        missing = True
+    except (ValueError, TypeError, AttributeError):
+        pass
+    else:
+        return plan
+    if missing:
+        raise ApprovalTargetNotFound("activity plan was not found")
+    raise ApprovalStateConflict("approval plan is unavailable")
+
+
+def _approval_request(history, request_id):
+    missing = False
+    try:
+        return history.get_approval_request(request_id)
+    except KeyError:
+        missing = True
+    except (ValueError, TypeError):
+        pass
+    if missing:
+        raise ApprovalTargetNotFound("approval request was not found")
+    raise ApprovalStateConflict("approval request is unavailable")
+
+
+def _plan_subject(plan):
+    from control_plane_kit_operations.configuration_cleanup import configuration_cleanup_proposal_fingerprint
+    return ActivityPlanApprovalSubject(plan.plan_id, proposal_fingerprint=(None if plan.cleanup_proposal is None
+        else configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal)))
+
+
+def _validate_plan_subject(history, request, *, plan=None):
+    if isinstance(request.subject, ActivityPlanApprovalSubject):
+        plan = _approval_plan(history, request.subject.plan_id) if plan is None else plan
+        if plan.session_id != request.session_id or request.subject != _plan_subject(plan):
+            raise ApprovalStateConflict("approval subject and plan are inconsistent")
+        if plan.cleanup_proposal is not None:
+            requirement = ApprovalPolicy().requirement_for(plan.plan)
+            if (request.required_scope, request.max_risk, request.destructive) != (
+                    requirement.required_scope, requirement.max_risk, requirement.destructive):
+                raise ApprovalStateConflict("cleanup approval requirement is inconsistent")
+
+
+def _cleanup_lock(uow, plan, session_id):
+    from control_plane_kit_core.planning import CleanupConfigurationInstances
+    from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+    if plan.derivation_profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+            PlanDerivationProfile.CONFIGURATION_CLEANUP_V2):
+        if any(type(activity.operation) is CleanupConfigurationInstances for activity in plan.plan.activities):
+            raise ApprovalStateConflict("cleanup approval requires an exact proposal")
+        return None
+    context = plan.cleanup_proposal.descriptor()["context"]
+    session = uow.stores.activity_history.get_session(session_id)
+    if (plan.session_id != session_id or session.workspace_id != context["workspace_id"]
+            or context["session_id"] != session_id):
+        raise ApprovalStateConflict("cleanup approval owner is inconsistent")
+    # These are nonauthorizing locators. L precedes both mutable owner row locks.
+    uow.stores.graphs.lock_receiver_lifecycle(session.workspace_id)
+    return session.workspace_id
+
+
+def _fresh_cleanup(uow, located, plan, session, workspace_id):
+    from control_plane_kit_operations.configuration_cleanup_planning import revalidate_cleanup_proposal
+    if located != plan or session.workspace_id != workspace_id:
+        raise ApprovalStateConflict("cleanup approval target changed")
+    uow.stores.workspaces.get_for_update(workspace_id)
+    valid = False
+    try:
+        revalidate_cleanup_proposal(uow.stores, plan)
+        valid = True
+    except (ValueError, KeyError, TypeError, AttributeError):
+        pass
+    if not valid:
+        raise ApprovalStateConflict("cleanup approval evidence changed")
 
 
 def _session_for_update(history: Any, session_id: str) -> OperationSessionRecord:
@@ -569,6 +689,7 @@ def _decision_replay(
     decision: ApprovalDecisionRecord,
     fingerprint: str,
 ) -> ApprovalDecisionResult:
+    _validate_plan_subject(history, request)
     if decision.intent_fingerprint != fingerprint:
         raise ApprovalIdempotencyConflict(
             "idempotency key was used for different approval decision intent"

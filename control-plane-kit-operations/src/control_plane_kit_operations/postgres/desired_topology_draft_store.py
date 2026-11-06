@@ -9,6 +9,8 @@ from control_plane_kit_operations.read_pages import (
     TemporalReadCursor, OrdinalReadCursor,
 )
 from .schema import PostgresConnection
+from .graph_store import PostgresGraphTopologyStore, PostgresRealizedGraphProjectionStore, PostgresWorkspaceStore
+from control_plane_kit_operations.receiver_lifecycle import _require, derive_receiver_bindings
 from .temporal import (encode_postgres_timestamp, decode_postgres_timestamp,
     encode_postgres_cursor_timestamp, decode_postgres_cursor_timestamp)
 
@@ -50,6 +52,27 @@ class PostgresDesiredTopologyDraftStore:
         return _draft(row)
 
     def append(self, record: DesiredTopologyDraftRevisionRecord, *, expected_head_revision: int | None) -> None:
+        graphs = PostgresGraphTopologyStore(self.connection)
+        graphs.lock_receiver_lifecycle(record.workspace_id)
+        PostgresWorkspaceStore(self.connection).get_for_update(record.workspace_id)
+        draft = self.get(record.workspace_id, record.draft_id, for_update=True)
+        if expected_head_revision is not None:
+            head = self.revision(record.workspace_id, record.draft_id, draft.head_revision)
+            identity = PostgresRealizedGraphProjectionStore(self.connection).identity_for_authored(
+                record.workspace_id, head.graph_id)
+            _require(not derive_receiver_bindings(record.workspace_id, head.graph_id,
+                identity.projection_id, identity.graph_descriptor))
+        graph = graphs.get(record.graph_id)
+        _require(graph.workspace_id == record.workspace_id)
+        _require(not derive_receiver_bindings(record.workspace_id, record.graph_id,
+                                             "proposed-identity", graph.graph_descriptor))
+        self._append(record, expected_head_revision=expected_head_revision)
+
+    def _append(self, record, *, expected_head_revision):
+        self._advance_head(record, expected_head_revision=expected_head_revision)
+        self._insert_revision(record)
+
+    def _advance_head(self, record, *, expected_head_revision):
         if expected_head_revision is not None:
             if record.revision != expected_head_revision + 1:
                 raise DesiredTopologyDraftConflict("revision must extend the expected head")
@@ -60,6 +83,8 @@ class PostgresDesiredTopologyDraftStore:
                 raise DesiredTopologyDraftConflict("draft head is stale")
         elif record.revision != 1:
             raise DesiredTopologyDraftConflict("initial draft revision must be one")
+
+    def _insert_revision(self, record):
         self.connection.execute("INSERT INTO cpk_desired_topology_draft_revisions (" + _REVISION + ") "
             "VALUES (%s,%s,%s,%s,%s,%s)", (record.workspace_id, record.draft_id, record.revision,
             record.graph_id, record.created_by, encode_postgres_timestamp(record.created_at)))

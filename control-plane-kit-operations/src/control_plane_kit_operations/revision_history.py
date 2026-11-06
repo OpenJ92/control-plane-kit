@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from datetime import datetime
 
 from control_plane_kit_operations.advancement import CurrentGraphAdvancementError, CurrentGraphAdvancementResult
 from control_plane_kit_operations.workflows import InvalidOperationCommand
@@ -14,6 +15,27 @@ from control_plane_kit_operations.saved_deployment_preparation import (
 
 
 HISTORY_SCOPE = "source-or-target-sessions-and-exact-target-attempts"
+
+
+def validate_retry_predecessor(*, prior_run_id, attempt, plan_id, request_id, created_at, prior):
+    """Associate one retained retry with its original immediate predecessor.
+
+    ``prior`` is a bounded tuple of run, plan, request, attempt and creation time.
+    This checks historical association only; it grants no eligibility to retry.
+    """
+    from control_plane_kit_operations.records import RetryIdentity
+    from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+    retry = RetryIdentity(attempt, prior_run_id)
+    current_time = datetime.fromisoformat(validate_canonical_utc_timestamp(created_at).replace("Z", "+00:00"))
+    if retry.prior_run_id is None:
+        if prior is not None:
+            raise ValueError("retry predecessor is incongruent")
+        return
+    if prior is None or tuple(prior[:4]) != (prior_run_id, plan_id, request_id, attempt - 1):
+        raise ValueError("retry predecessor is incongruent")
+    prior_time = datetime.fromisoformat(validate_canonical_utc_timestamp(prior[4]).replace("Z", "+00:00"))
+    if prior_time > current_time:
+        raise ValueError("retry predecessor chronology is incongruent")
 
 
 class RevisionHistoryStore(Protocol):

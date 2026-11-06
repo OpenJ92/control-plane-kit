@@ -129,6 +129,7 @@ from control_plane_kit_core.operations.projections import (
     canonical_operator_read_projection_set,
 )
 from control_plane_kit_core.operations.parity import (
+    HTTP_ONLY_COMMAND_ROUTE_IDS,
     ActivityHistoryPolicy,
     AdapterCommandBinding,
     AdapterCommandParityContract,
@@ -178,6 +179,7 @@ __all__ = [
     "AdapterParityContract",
     "AdapterProjectionBinding",
     "ApprovalPolicy",
+    "HTTP_ONLY_COMMAND_ROUTE_IDS",
     "CommandIdempotencyPolicy",
     "CommandPayloadPolicy",
     "ControlPlaneServiceRole",

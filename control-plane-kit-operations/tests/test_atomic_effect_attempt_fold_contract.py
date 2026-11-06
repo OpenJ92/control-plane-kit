@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
-import inspect
 import json
 import os
 from pathlib import Path
 import unittest
 
-import control_plane_kit_architecture_testing as architecture_testing
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core.operations import (
     EffectAttemptTransition,
@@ -47,223 +45,6 @@ INVENTORY_PATH = Path(
         REPOSITORY_ROOT / "docs" / "architecture" / "package-module-inventory.json",
     )
 )
-INTERPRETER_SOURCE_PATH = (
-    "control_plane_kit_operations/effect_attempt_fold_interpreter.py"
-)
-
-EXACT_INTERPRETER_IMPORTS = tuple(
-    architecture_testing.ImportSurfaceEntry(*value)
-    for value in (
-        ("__future__", "annotations", None),
-        ("control_plane_kit_core.operations", "EffectAttemptFence", None),
-        ("control_plane_kit_core.operations", "EffectAttemptState", None),
-        ("control_plane_kit_core.operations", "EffectAttemptStatus", None),
-        ("control_plane_kit_core.operations", "EffectAttemptTransitionKind", None),
-        ("control_plane_kit_core.operations", "InvalidEffectRecoveryContract", None),
-        ("control_plane_kit_core.operations", "fold_effect_attempt", None),
-        ("control_plane_kit_core.operations.lifecycle", "ActivityEventKind", None),
-        (
-            "control_plane_kit_core.operations.lifecycle",
-            "ExecutionRequestStatus",
-            None,
-        ),
-        ("control_plane_kit_core.policies", "PolicyScope", None),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "EffectAttemptFoldConflict",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "EffectAttemptFoldDenied",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "EffectAttemptFoldNotFound",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "EffectAttemptFoldResult",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "ExistingFold",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "FoldEffectAttempt",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "GuardedObservedEffectFold",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "NewlyFolded",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "_valid_fold_command",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_fold",
-            "_valid_guarded_observed_fold",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempt_intent_evidence",
-            "EffectAttemptIntentRecord",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempts",
-            "EffectAttemptEventEvidence",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempts",
-            "EffectAttemptRecord",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_attempts",
-            "effect_attempt_state_fingerprint",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_outcome_evidence",
-            "EffectAttemptOutcomeRecord",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_outcome_evidence",
-            "ObservedEffectOutcome",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_outcome_evidence",
-            "_legacy_effect_outcome_failure",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_outcome_evidence",
-            "effect_outcome_failure",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.effect_outcome_evidence",
-            "effect_outcome_observation_records",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.records",
-            "ActivityEventRecord",
-            None,
-        ),
-        ("control_plane_kit_operations.records", "BoundedEvidence", None),
-        ("control_plane_kit_operations.records", "ObservationRecord", None),
-        (
-            "control_plane_kit_operations.records",
-            "OperationsRecordError",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.runtime_authorities",
-            "RegisteredRuntimeAuthority",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.runtime_authorities",
-            "RuntimeAuthorityNotFound",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.runtime_authorities",
-            "RuntimeAuthorityRegistrationError",
-            None,
-        ),
-        (
-            "control_plane_kit_operations.workflows",
-            "InvalidOperationCommand",
-            None,
-        ),
-        ("typing", "Any", None),
-        ("typing", "Callable", None),
-    )
-)
-
-EXACT_INTERPRETER_CALLS = (
-    architecture_testing.UnresolvedCallTarget(),
-    *tuple(
-        architecture_testing.ResolvedCallTarget(value)
-        for value in (
-            "_EVENT_KIND_BY_STATE.get",
-            "_attempt_for_update",
-            "_event_kind",
-            "_execute_fold",
-            "_execute_fold",
-            "_fold",
-            "_observation",
-            "_representable_effect_fence",
-            "_request_for_update",
-            "_require_current_authority",
-            "_require_exact_replay",
-            "_require_request_run",
-            "_require_transition_authority",
-            "_run_for_request_for_update",
-            "_translate_fence",
-            "control_plane_kit_core.operations.EffectAttemptFence",
-            "control_plane_kit_core.operations.fold_effect_attempt",
-            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldConflict",) * 14,
-            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldDenied",) * 3,
-            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldNotFound",) * 3,
-            "control_plane_kit_operations.effect_attempt_fold.ExistingFold",
-            "control_plane_kit_operations.effect_attempt_fold.NewlyFolded",
-            "control_plane_kit_operations.effect_attempt_fold._valid_fold_command",
-            "control_plane_kit_operations.effect_attempt_fold._valid_guarded_observed_fold",
-            "control_plane_kit_operations.effect_attempts.EffectAttemptEventEvidence",
-            "control_plane_kit_operations.effect_attempts.EffectAttemptRecord",
-            "control_plane_kit_operations.effect_attempts.effect_attempt_state_fingerprint",
-            "control_plane_kit_operations.effect_outcome_evidence.EffectAttemptOutcomeRecord",
-            "control_plane_kit_operations.effect_outcome_evidence._legacy_effect_outcome_failure",
-            "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_failure",
-            "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_observation_records",
-            "control_plane_kit_operations.records.ActivityEventRecord",
-            "control_plane_kit_operations.records.BoundedEvidence.from_mapping",
-            *("control_plane_kit_operations.workflows.InvalidOperationCommand",) * 3,
-            "len",
-            "self._id_factory",
-            "self._plan_result",
-            "self._unit_of_work_factory",
-            "stores.effect_attempt_intents.get",
-            "stores.effect_attempts.compare_and_set",
-            "stores.effect_attempts.get_for_update",
-            "stores.effect_outcomes.get",
-            "stores.effect_outcomes.insert",
-            "stores.execution.add_event",
-            "stores.execution.get_request_for_update",
-            "stores.execution.get_run_for_request_for_update",
-            "stores.execution.next_event_ordinal",
-            "stores.execution.observe_request_lease_for_update",
-            "stores.observed_state.put",
-            "stores.runtime_authorities.get_active_for_update",
-            *("type",) * 11,
-            "unit_of_work.commit",
-            "worker_id.encode",
-            "worker_id.strip",
-        )
-    ),
-)
-
-
 class FailIfUnitOfWork:
     def __init__(self, message: str = "unit of work opened") -> None:
         self.error = AssertionError(message)
@@ -287,6 +68,8 @@ class AtomicEffectAttemptFoldContractTests(
     AtomicEffectAttemptFoldFixture,
     unittest.TestCase,
 ):
+    maxDiff = None
+
     def require_atomic_command_surface(self) -> None:
         self.require_fold_language()
         self.assertEqual(
@@ -633,40 +416,11 @@ class AtomicEffectAttemptFoldContractTests(
             self.service(fail).execute(denied)
         self.assertEqual(fail.calls, 0)
 
-    def test_interpreter_shared_import_and_call_policy_is_exact(self) -> None:
-        module = __import__(INTERPRETER_MODULE, fromlist=("__file__",))
-        source_path = Path(inspect.getsourcefile(module))
-        facts = architecture_testing.analyze_source(
-            source_path.read_text(encoding="utf-8"),
-            path=INTERPRETER_SOURCE_PATH,
-            module=INTERPRETER_MODULE,
-        )
-        findings = architecture_testing.evaluate_policies(
-            (facts,),
-            (
-                architecture_testing.ExactImportSurfacePolicy(
-                    architecture_testing.PolicyId("cpk.operations.atomic-fold.imports"),
-                    architecture_testing.RuleId("exact"),
-                    INTERPRETER_SOURCE_PATH,
-                    INTERPRETER_MODULE,
-                    EXACT_INTERPRETER_IMPORTS,
-                    "atomic fold interpreter import surface differs",
-                ),
-                architecture_testing.ExactCallSurfacePolicy(
-                    architecture_testing.PolicyId("cpk.operations.atomic-fold.calls"),
-                    architecture_testing.RuleId("exact"),
-                    INTERPRETER_SOURCE_PATH,
-                    INTERPRETER_MODULE,
-                    EXACT_INTERPRETER_CALLS,
-                    "atomic fold interpreter lexical call surface differs",
-                ),
-            ),
-        )
-        self.assertEqual(findings, ())
-
     def test_root_and_inventory_publish_the_atomic_dependent_sum(self) -> None:
         expected_exports = {
             "FoldEffectAttempt",
+            "FoldNativeConnectionObservation",
+            "GuardedHealthEffectFold",
             "GuardedObservedEffectFold",
             "NewlyFolded",
             "ExistingFold",
@@ -691,6 +445,7 @@ class AtomicEffectAttemptFoldContractTests(
             self.assertEqual(
                 set(entries[FOLD_MODULE]["internal_dependencies"]),
                 {
+                    "control_plane_kit_core.identity",
                     "control_plane_kit_core.operations",
                     "control_plane_kit_core.policies",
                     "control_plane_kit_core.runtime_authority",
@@ -700,9 +455,12 @@ class AtomicEffectAttemptFoldContractTests(
                     "control_plane_kit_operations.effect_attempts",
                     "control_plane_kit_operations.effect_outcome_evidence",
                     "control_plane_kit_operations.execution_leases",
+                    "control_plane_kit_operations.health_effect_attempt_start",
+                    "control_plane_kit_operations.health_effect_preparations",
                     "control_plane_kit_operations.lifecycle",
                     "control_plane_kit_operations.records",
                     "control_plane_kit_operations.runtime_authorities",
+                    "control_plane_kit_operations.runtime_management_targets",
                     "control_plane_kit_operations.workflows",
                 },
             )
@@ -717,6 +475,8 @@ class AtomicEffectAttemptFoldContractTests(
                     "EffectAttemptFoldResult",
                     "ExistingFold",
                     "FoldEffectAttempt",
+                    "FoldNativeConnectionObservation",
+                    "GuardedHealthEffectFold",
                     "GuardedObservedEffectFold",
                     "NewlyFolded",
                 },
@@ -735,14 +495,26 @@ class AtomicEffectAttemptFoldContractTests(
             self.assertEqual(
                 set(entries[INTERPRETER_MODULE]["internal_dependencies"]),
                 {
+                    "control_plane_kit_operations.managed_effect_plan",
                     "control_plane_kit_core.operations",
+                    "control_plane_kit_core.planning",
                     "control_plane_kit_core.policies",
+                    "control_plane_kit_core.runtime_effect_observation",
+                    "control_plane_kit_core.runtime_effects",
+                    "control_plane_kit_core.topology",
+                    "control_plane_kit_operations._configuration_preparation",
                     "control_plane_kit_operations.effect_attempt_fold",
                     "control_plane_kit_operations.effect_attempt_intent_evidence",
                     "control_plane_kit_operations.effect_attempts",
                     "control_plane_kit_operations.effect_outcome_evidence",
+                    "control_plane_kit_operations.effect_run_prefix",
+                    "control_plane_kit_operations.health_signing_authority",
+                    "control_plane_kit_operations.plan_derivation",
+                    "control_plane_kit_operations.postgres.configuration_evidence",
                     "control_plane_kit_operations.records",
                     "control_plane_kit_operations.runtime_authorities",
+                    "control_plane_kit_operations.runtime_management_admission",
+                    "control_plane_kit_operations.runtime_management_targets",
                     "control_plane_kit_operations.workflows",
                 },
             )

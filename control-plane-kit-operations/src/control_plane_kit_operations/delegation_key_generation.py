@@ -17,6 +17,7 @@ from control_plane_kit_core.secrets import (
     SecretCustodyStatus,
     SecretReference,
     SecretUseIntent,
+    health_signing_intent_for,
 )
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisterDelegationSigningKeyCommand,
@@ -87,12 +88,10 @@ class DelegationKeyGenerationGrant:
             raise DelegationKeyGenerationError(
                 "generation grant requires secret custody authority"
             )
-        if self.custody_grant.intent is not SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY:
+        if self.custody_grant.intent is not _generation_intent_for(self.purpose):
             raise DelegationKeyGenerationError(
                 "generation grant has an unsupported secret intent"
             )
-        if not isinstance(self.purpose, DelegationKeyPurpose):
-            raise DelegationKeyGenerationError("generation purpose is unsupported")
         _identifier(self.issuer, "issuer")
         _text(self.requested_at, "requested_at")
 
@@ -246,6 +245,7 @@ class DelegationKeyGenerationService:
         if not isinstance(command, GenerateDelegationSigningKey):
             raise TypeError("command must be GenerateDelegationSigningKey")
         _scope(command.actor_scopes, PolicyScope.DELEGATION_KEY_GENERATE)
+        intent = _generation_intent_for(command.purpose)
         with self._unit_of_work_factory() as unit_of_work:
             try:
                 provider = unit_of_work.stores.secret_providers.require_active_registration(
@@ -260,7 +260,7 @@ class DelegationKeyGenerationService:
                 provider=provider,
                 workspace_id=command.workspace_id,
                 reference=command.reference,
-                intent=SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
+                intent=intent,
                 actor_subject=command.actor_subject,
                 actor_scopes=command.actor_scopes,
                 correlation_id=command.correlation_id,
@@ -279,72 +279,81 @@ class DelegationKeyGenerationService:
         self,
         command: AdmitGeneratedDelegationSigningKey,
     ) -> AdmittedGeneratedDelegationSigningKey:
-        if not isinstance(command, AdmitGeneratedDelegationSigningKey):
-            raise TypeError(
-                "command must be AdmitGeneratedDelegationSigningKey"
-            )
-        _scope(command.actor_scopes, PolicyScope.DELEGATION_KEY_REGISTER)
-        _match(command.grant, command.evidence)
-        receipt = SecretCustodyReceipt(
-            custody_id=command.grant.custody_grant.custody_id,
-            provider_registration_id=command.grant.provider_registration_id,
-            reference=command.evidence.reference,
-            version_id=command.evidence.version_id,
-            version_number=command.evidence.version_number,
-            status=SecretCustodyStatus.ACTIVE,
-        )
-        reference_candidate = generated_secret_reference_candidate(
-            grant=command.grant.custody_grant,
-            receipt=receipt,
-            admitted_at=command.admitted_at,
-        )
-        signing_key_candidate = RegisterDelegationSigningKeyCommand(
-            workspace_id=command.grant.workspace_id,
-            purpose=command.grant.purpose,
-            issuer=command.grant.issuer,
-            public_key=command.evidence.public_key,
-            private_key_reference=command.grant.reference,
-            admitted_by=command.admitted_by,
-            admitted_at=command.admitted_at,
-            actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,),
-        ).candidate()
+        _validate_generated_admission(command)
         with self._unit_of_work_factory() as unit_of_work:
-            unit_of_work.stores.delegation_signing_keys.lock_purpose_for_lifecycle(
-                command.grant.workspace_id,
-                command.grant.purpose,
-            )
-            try:
-                provider = unit_of_work.stores.secret_providers.require_active_registration(
-                    command.grant.workspace_id,
-                    command.grant.provider_registration_id,
-                )
-            except SecretProviderNotFound as error:
-                raise DelegationKeyGenerationConflict(
-                    "generation provider changed before durable fold"
-                ) from error
-            if (
-                provider.endpoint_reference
-                != command.grant.custody_grant.endpoint_reference
-                or provider.credential_reference
-                != command.grant.custody_grant.credential_reference
-            ):
-                raise DelegationKeyGenerationConflict(
-                    "generation provider changed before durable fold"
-                )
-            secret_reference = unit_of_work.stores.secret_references.register(
-                reference_candidate
-            )
-            signing_key = unit_of_work.stores.delegation_signing_keys.register(
-                signing_key_candidate
-            )
+            result = admit_generated_in_unit_of_work(unit_of_work, command)
             unit_of_work.commit()
-        return AdmittedGeneratedDelegationSigningKey(
-            secret_reference=secret_reference,
-            signing_key=signing_key,
-            provider_version_id=command.evidence.version_id,
-            provider_version_number=command.evidence.version_number,
-            replayed=command.evidence.replayed,
+        return result
+
+
+def _validate_generated_admission(command: AdmitGeneratedDelegationSigningKey) -> None:
+    if not isinstance(command, AdmitGeneratedDelegationSigningKey):
+        raise TypeError("command must be AdmitGeneratedDelegationSigningKey")
+    _scope(command.actor_scopes, PolicyScope.DELEGATION_KEY_REGISTER)
+    _generation_intent_for(command.grant.purpose)
+    _match(command.grant, command.evidence)
+
+
+def admit_generated_in_unit_of_work(
+    unit_of_work: Any, command: AdmitGeneratedDelegationSigningKey,
+) -> AdmittedGeneratedDelegationSigningKey:
+    """Join an active caller transaction; never request or perform its commit."""
+    _validate_generated_admission(command)
+    receipt = SecretCustodyReceipt(
+        custody_id=command.grant.custody_grant.custody_id,
+        provider_registration_id=command.grant.provider_registration_id,
+        reference=command.evidence.reference,
+        version_id=command.evidence.version_id,
+        version_number=command.evidence.version_number,
+        status=SecretCustodyStatus.ACTIVE,
+    )
+    reference_candidate = generated_secret_reference_candidate(
+        grant=command.grant.custody_grant, receipt=receipt, admitted_at=command.admitted_at,
+    )
+    signing_key_candidate = RegisterDelegationSigningKeyCommand(
+        workspace_id=command.grant.workspace_id, purpose=command.grant.purpose,
+        issuer=command.grant.issuer, public_key=command.evidence.public_key,
+        private_key_reference=command.grant.reference, admitted_by=command.admitted_by,
+        admitted_at=command.admitted_at, actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,),
+    ).candidate()
+    unit_of_work.stores.delegation_signing_keys.lock_purpose_for_lifecycle(
+        command.grant.workspace_id, command.grant.purpose,
+    )
+    try:
+        provider = unit_of_work.stores.secret_providers.require_active_registration(
+            command.grant.workspace_id, command.grant.provider_registration_id,
         )
+    except SecretProviderNotFound as error:
+        raise DelegationKeyGenerationConflict("generation provider changed before durable fold") from error
+    if (provider.endpoint_reference != command.grant.custody_grant.endpoint_reference
+            or provider.credential_reference != command.grant.custody_grant.credential_reference):
+        raise DelegationKeyGenerationConflict("generation provider changed before durable fold")
+    secret_reference = unit_of_work.stores.secret_references.register(reference_candidate)
+    signing_key = unit_of_work.stores.delegation_signing_keys.register(signing_key_candidate)
+    return AdmittedGeneratedDelegationSigningKey(
+        secret_reference=secret_reference, signing_key=signing_key,
+        provider_version_id=command.evidence.version_id,
+        provider_version_number=command.evidence.version_number,
+        replayed=command.evidence.replayed,
+    )
+
+
+def _generation_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
+    if type(purpose) is DelegationKeyPurpose:
+        if purpose in (
+            DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT,
+        ):
+            return health_signing_intent_for(purpose)
+        # Preserve existing internal generation semantics for legacy purposes.
+        if purpose in (
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+        ):
+            return SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY
+    raise DelegationKeyGenerationError("generation purpose is unsupported")
 
 
 def _match(
@@ -391,6 +400,7 @@ def _text(value: object, field_name: str) -> None:
 
 
 __all__ = [
+    "admit_generated_in_unit_of_work",
     "AdmitGeneratedDelegationSigningKey",
     "AdmittedGeneratedDelegationSigningKey",
     "DelegationKeyGenerationAuthorizationDenied",

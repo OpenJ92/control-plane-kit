@@ -217,6 +217,26 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
         self.assertEqual(revoked.registration_id, registered.registration_id)
         self.assertEqual(revoked.status, RegisteredRuntimeAuthorityStatus.REVOKED)
 
+    def test_revocation_preserves_existing_identifier_and_reference_contracts(self):
+        class AcceptedReference(RuntimeAuthorityReference):
+            pass
+
+        workspace = "workspace-" + "界" * 200
+        reference = AcceptedReference("unicode-docker")
+        self.connection.execute("INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) "
+                                "VALUES (%s,'Unicode workspace','created')", (workspace,))
+        service = RuntimeAuthorityRegistrationService(self.unit_of_work)
+        registered = service.register(RegisterRuntimeAuthorityCommand(
+            workspace_id=workspace, authority_ref=reference, runtime_kind=RuntimeKind.DOCKER,
+            authority=LocalDockerSocketAuthority(), admitted_by="operator-a",
+            admitted_at="2026-10-25T20:00:00Z", actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,)))
+        revoked = service.revoke(RevokeRuntimeAuthorityCommand(
+            workspace_id=workspace, authority_ref=reference, actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REVOKE,)))
+        self.assertEqual(revoked.registration_id, registered.registration_id)
+        self.assertEqual(revoked.workspace_id, workspace)
+        self.assertEqual(revoked.authority_ref.reference_id, reference.reference_id)
+        self.assertIs(revoked.status, RegisteredRuntimeAuthorityStatus.REVOKED)
+
     def test_runtime_authority_store_uses_caller_transaction(self) -> None:
         with self.unit_of_work() as unit_of_work:
             unit_of_work.stores.runtime_authorities.register(

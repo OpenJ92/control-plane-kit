@@ -7,12 +7,11 @@ import unittest
 import psycopg
 
 from tests.graph_lineage_fixture import seed_identity_graphs
+from tests.gateway_rotation_overlap_fixture import GatewayRotationOverlapFixture
 
 from control_plane_kit_core.approval_subjects import (
     ActivityPlanApprovalSubject,
-    GatewayKeyRotationApprovalSubject,
 )
-from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -101,8 +100,9 @@ def safe_error(
         test.assertNotIn(canary, rendered)
 
 
-class PostgresExecutionLeaseRecoveryFixture:
+class PostgresExecutionLeaseRecoveryFixture(GatewayRotationOverlapFixture):
     maxDiff = None
+    seeded_fence = ExecutionLeaseFence("worker-a", 7)
 
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
@@ -112,13 +112,24 @@ class PostgresExecutionLeaseRecoveryFixture:
             )
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
+        # Registered only after schema acceptance; never repair a failed schema.
+        self.addCleanup(self._cleanup_fixture_rows)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
 
     def tearDown(self) -> None:
-        if not self.connection.closed:
-            self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
-            self.connection.close()
+        try:
+            self._cleanup_fixture_rows()
+        finally:
+            connection = getattr(self, "connection", None)
+            if connection is not None:
+                connection.close()
+
+    def _cleanup_fixture_rows(self) -> None:
+        connection = getattr(self, "connection", None)
+        if connection is not None and not connection.closed:
+            connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
 
     def require_service(self) -> None:
         self.assertIsNotNone(
@@ -178,7 +189,7 @@ class PostgresExecutionLeaseRecoveryFixture:
         common = {
             "request_id": "request-a",
             "retained_run_id": RunId(retained_run_id),
-            "expected_fence": expected_fence or ExecutionLeaseFence("worker-a", 7),
+            "expected_fence": expected_fence or self.seeded_fence,
             "authority": self.authority(
                 scope,
                 actor_id=actor_id,
@@ -251,6 +262,11 @@ class PostgresExecutionLeaseRecoveryFixture:
             approval_subject=approval_subject,
         )
 
+    def seed_execution_request(self) -> None:
+        """Service fixtures establish request truth through real admission."""
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
+        admit_fixture_plan(self, requested_at="2026-08-15T03:59:00Z")
+
     def seed_truth(
         self,
         decision: RecoveryDecisionKind,
@@ -258,8 +274,14 @@ class PostgresExecutionLeaseRecoveryFixture:
         history: str | None = None,
         approval_subject: str = "activity-plan",
     ) -> None:
+        from tests.graph_lineage_fixture import execution_graph
         active = decision is RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
         history = history or ("active-empty" if active else "failed")
+        self.seeded_fence = ExecutionLeaseFence("worker-a", 7)
+        if approval_subject == "gateway-key-rotation":
+            self._seed_gateway_truth(active=active, history=history)
+            return
+        self.assertEqual(approval_subject, "activity-plan")
         plan = ActivityPlan(
             (
                 PlannedActivity(
@@ -278,7 +300,10 @@ class PostgresExecutionLeaseRecoveryFixture:
                 stores,
                 workspace_id="workspace-a",
                 graph_ids=("graph-current", "graph-desired"),
+                graphs={key: execution_graph(key) for key in ("graph-current", "graph-desired")},
             )
+            stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             stores.activity_history.add_session(
                 OperationSessionRecord(
                     "session-a",
@@ -305,55 +330,18 @@ class PostgresExecutionLeaseRecoveryFixture:
             )
             unit_of_work.commit()
 
-        if approval_subject == "activity-plan":
-            subject = ActivityPlanApprovalSubject("plan-a")
-            approval_scope = PolicyScope.PLAN_APPROVE
-            approval_risk = RiskLevel.LOW
-            destructive = False
-        else:
-            self.connection.execute(
-                """
-                INSERT INTO cpk_gateway_key_rotations
-                  (rotation_id, workspace_id, gateway_node_id, purpose, issuer,
-                   old_key_id, new_secret_reference, key_generation_correlation,
-                   maximum_grant_lifetime_seconds, clock_skew_seconds,
-                   correlation_id, requested_by, requested_at,
-                   intent_fingerprint, status, version)
-                VALUES
-                  ('rotation-a', 'workspace-a', 'gateway-a', 'gateway-probe',
-                   'cpk-server', 'old-key-a', 'secret-reference-a',
-                   'generation-a', 60, 5, 'correlation-a', 'operator-a',
-                   '2026-08-15T03:56:10Z', %s, 'requested', 1)
-                """,
-                ("a" * 64,),
-            )
-            subject = GatewayKeyRotationApprovalSubject(
-                "rotation-a",
-                "workspace-a",
-                "gateway-a",
-                DelegationKeyPurpose.GATEWAY_PROBE,
-                "cpk-server",
-                "old-key-a",
-                60,
-                5,
-                "a" * 64,
-            )
-            approval_scope = PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-            approval_risk = RiskLevel.HIGH
-            destructive = True
-
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             stores.activity_history.add_approval_request(
                 ApprovalRequestRecord(
                     "approval-request-a",
                     "session-a",
-                    subject,
+                    ActivityPlanApprovalSubject("plan-a"),
                     "operator-a",
                     "2026-08-15T03:57:00Z",
-                    approval_scope,
-                    approval_risk,
-                    destructive,
+                    PolicyScope.PLAN_APPROVE,
+                    RiskLevel.LOW,
+                    False,
                 )
             )
             stores.activity_history.add_approval_decision(
@@ -362,30 +350,21 @@ class PostgresExecutionLeaseRecoveryFixture:
                     "approval-request-a",
                     "manager-a",
                     ApprovalDecisionKind.APPROVED,
-                    approval_scope,
+                    PolicyScope.PLAN_APPROVE,
                     "2026-08-15T03:58:00Z",
                 )
             )
-            stores.execution.add_request(
-                ExecutionRequestRecord(
-                    ExecutionRequestIdentity(
-                        "request-a", "workspace-a", "session-a", "plan-a"
-                    ),
-                    ExecutionRequestStatus.CLAIMED,
-                    "operator-a",
-                    "2026-08-15T03:59:00Z",
-                    "approval-request-a",
-                    "approval-decision-a",
-                    ExecutionIdempotency("execute-a", "execute-fingerprint-a"),
-                    ClaimIdentity(
-                        "worker-a",
-                        7,
-                        "2098-01-01T00:00:00Z" if active else "1999-01-01T00:00:00Z",
-                        "2099-01-01T00:00:00Z" if active else "2000-01-01T00:00:00Z",
-                    ),
-                )
-            )
-            stores.execution.add_run(
+            unit_of_work.commit()
+        self.seed_execution_request()
+        # Recorded lease/run overlays preserve the recovery law's original fence and time.
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', "
+            "claim_generation=7, claimed_at=%s, lease_expires_at=%s WHERE request_id='request-a'",
+            ("2098-01-01T00:00:00Z" if active else "1999-01-01T00:00:00Z",
+             "2099-01-01T00:00:00Z" if active else "2000-01-01T00:00:00Z"))
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-a",
                     "plan-a",
@@ -401,10 +380,77 @@ class PostgresExecutionLeaseRecoveryFixture:
                 stores.execution.add_event(event)
             unit_of_work.commit()
 
+    def _seed_gateway_truth(self, *, active, history):
+        """Actual parent approval and child admission; no approval overlays.
+
+        The active case stops after public ClaimAndOpen. Failed cases use the
+        real coordinator and a failed provider substitute, then only expire
+        the lease's clock fixture for the recovery operation under test.
+        """
+        from datetime import datetime, timezone
+        from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
+        from control_plane_kit_operations.coordinator import ExecuteActivityRun
+        from control_plane_kit_operations.gateway_key_rotation_overlap import (
+            GatewayKeyRotationOverlapProjectionService, PublishGatewayKeyRotationOverlapProjection,
+        )
+        from control_plane_kit_operations.lifecycle import (
+            ClaimAndOpenActivityRun, ExecutionWorkerAuthority, RunLifecycleCommandService, StartActivityRun,
+        )
+        from control_plane_kit_operations.planning import ActivityPlanningCommandService, RequestActivityPlan
+        from control_plane_kit_operations.postgres.temporal import decode_postgres_timestamp
+        from control_plane_kit_operations.workflows import OperationCommandService, StartOperationSession
+        from tests.gateway_rotation_overlap_fixture import effect_attempt_execution_coordinator
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
+
+        self.assertEqual(history, "active-empty" if active else "failed")
+        clock = lambda: decode_postgres_timestamp(datetime.now(timezone.utc))
+        self.seed_graph_and_keys()
+        self.seed_rotation_approval(approval_request_id="approval-request-a",
+            approval_decision_id="approval-decision-a")
+        OperationCommandService(self.unit_of_work, clock=clock,
+            id_factory=Sequence("session-a", "child-session-action")).execute(StartOperationSession(
+                "workspace-a", "operator-a", "Recover gateway child", IdempotencyKey("child-session")))
+        publication = GatewayKeyRotationOverlapProjectionService(self.unit_of_work, clock=clock,
+            action_id_factory=Sequence("child-publication")).execute(PublishGatewayKeyRotationOverlapProjection(
+                self.rotation_id, "session-a", "operator-a", self.rotation_version,
+                "graph-a", "projection-a", "projection-a", 1,
+                (PolicyScope.DELEGATION_KEY_ROTATE,), IdempotencyKey("child-publication"))).publication
+        ActivityPlanningCommandService(self.unit_of_work, clock=clock,
+            id_factory=Sequence("plan-a", "child-plan-action")).execute(RequestActivityPlan(
+                "session-a", "workspace-a", "operator-a", "graph-a", "graph-a", IdempotencyKey("child-plan"),
+                publication.previous_realized_projection_id, publication.desired_realized_projection_id,
+                publication.desired_graph_revision))
+        admit_fixture_plan(self, requested_at=clock(),
+            actor_scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.DELEGATION_KEY_ROTATE))
+        authority = ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,))
+        claimed = RunLifecycleCommandService(self.unit_of_work, clock=clock,
+            id_factory=Sequence("run-a", "seed-event-1", "child-claim-action")).execute(ClaimAndOpenActivityRun(
+                "request-a", authority, ExecutionLeaseDuration(3600), IdempotencyKey("child-claim")))
+        self.seeded_fence = claimed.request.claim.fence
+        if active:
+            self.assertIs(claimed.run.status, ActivityRunStatus.CLAIMED)
+            return
+        RunLifecycleCommandService(self.unit_of_work, clock=clock,
+            id_factory=Sequence("seed-event-2", "child-start-action")).execute(StartActivityRun(
+                "run-a", authority, self.seeded_fence, IdempotencyKey("child-start")))
+
+        class FailedRuntime:
+            def execute_runtime(self, context, request):
+                return RuntimeEffectResult.failed(request.effect_id,
+                    RuntimeEffectFailure("fixture.failure", "Provider substitute failed"))
+
+        effect_attempt_execution_coordinator(self.unit_of_work, FailedRuntime(), clock=clock,
+            prefix="child-failure").execute(ExecuteActivityRun(
+                "run-a", authority, self.seeded_fence, IdempotencyKey("child-failure")))
+        with self.unit_of_work() as uow:
+            self.assertIs(uow.stores.execution.get_run("run-a").status, ActivityRunStatus.FAILED)
+        self.connection.execute("UPDATE cpk_execution_requests SET claimed_at='1999-01-01T00:00:00Z', "
+            "lease_expires_at='2000-01-01T00:00:00Z' WHERE request_id='request-a'")
+
     def add_newer_failed_run(self) -> None:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-b",
                     "plan-a",

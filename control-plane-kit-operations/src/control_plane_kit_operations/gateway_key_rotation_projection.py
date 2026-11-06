@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
 
 from control_plane_kit_core.delegation_authority import (
     DelegationVerifierProjection,
@@ -10,7 +11,10 @@ from control_plane_kit_core.delegation_authority import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations.desired_realized_projections import (
+    ExistingPublication,
+    PreparedPublication,
     PublishDesiredRealizedProjection,
+    prepare_desired_realized_projection_publication,
 )
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKeyStatus,
@@ -30,10 +34,26 @@ class GatewayKeyRotationProjectionConflict(ValueError):
     """Raised when durable key and graph truth cannot form an exact phase."""
 
 
+def prepare_gateway_key_rotation_projection_publication(unit_of_work, command):
+    """Replay before consulting current rotation truth; otherwise locate its scope."""
+    stores = unit_of_work.stores
+    history = stores.activity_history
+    history.lock_action_idempotency(command.session_id, command.idempotency_key.value)
+    existing = history.action_for_idempotency(command.session_id, command.idempotency_key.value)
+    if existing is not None:
+        return ExistingPublication(existing)
+    locator = stores.gateway_key_rotations.get(command.rotation_id)
+    # The generic preparation reenters exactly the held action key before L.
+    return prepare_desired_realized_projection_publication(
+        unit_of_work, locator.workspace_id, command.session_id, command.idempotency_key.value,
+    )
+
+
 def build_gateway_key_rotation_projection_publication(
     unit_of_work: Any,
     command: Any,
     *,
+    prepared: ExistingPublication | PreparedPublication,
     phase: GatewayKeyRotationDeploymentPhase,
     created_at: str,
     trusted_epoch: int | None = None,
@@ -42,10 +62,7 @@ def build_gateway_key_rotation_projection_publication(
 
     stores = unit_of_work.stores
     suffix = phase.value
-    existing = stores.activity_history.action_for_idempotency(
-        command.session_id,
-        command.idempotency_key.value,
-    )
+    existing = prepared.action if type(prepared) is ExistingPublication else None
     if existing is not None:
         payload = existing.payload
         projection_id = payload.get("desired_realized_projection_id")
@@ -82,10 +99,17 @@ def build_gateway_key_rotation_projection_publication(
             source_operation_id=command.rotation_id,
             source_operation_version=command.expected_rotation_version,
             idempotency_key=command.idempotency_key,
+            receiver_lifecycle=(ReceiverLifecycleExpectation(command.expected_authored_graph_id,
+                command.expected_current_realized_projection_id, command.expected_authored_graph_id,
+                command.expected_desired_realized_projection_id, command.expected_desired_graph_revision)
+                if "receiver_lifecycle" in payload else None),
         )
 
-    rotation_locator = stores.gateway_key_rotations.get(command.rotation_id)
-    workspace = stores.workspaces.get_for_update(rotation_locator.workspace_id)
+    if type(prepared) is not PreparedPublication:
+        raise GatewayKeyRotationProjectionConflict("publication preparation is missing")
+    prepared.require(unit_of_work, prepared.session.workspace_id, command.session_id,
+                     command.idempotency_key.value)
+    workspace = stores.workspaces.get_for_update(prepared.session.workspace_id)
     rotation = stores.gateway_key_rotations.get_for_update(command.rotation_id)
     if rotation.workspace_id != workspace.workspace_id:
         raise GatewayKeyRotationProjectionConflict(
@@ -170,6 +194,9 @@ def build_gateway_key_rotation_projection_publication(
         source_operation_id=rotation.rotation_id,
         source_operation_version=rotation.version,
         idempotency_key=command.idempotency_key,
+        receiver_lifecycle=ReceiverLifecycleExpectation(command.expected_authored_graph_id,
+            command.expected_current_realized_projection_id, command.expected_authored_graph_id,
+            command.expected_desired_realized_projection_id, command.expected_desired_graph_revision),
     )
 
 

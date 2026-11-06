@@ -37,6 +37,8 @@ class ControlRouteScope(StrEnum):
     READ_NODE_CONTROL_SURFACE = "node-control-surface:read"
     READ_NODE_CONTROL = "node-control:read"
     APPLY_NODE_CONTROL = "node-control:apply"
+    READ_NODE_HEALTH = "node-health:read"
+    READ_HTTP_VERIFICATION_SAMPLE = "http-verification-sample:read"
 
 
 class ControlRouteSetName(StrEnum):
@@ -54,6 +56,8 @@ class ControlRouteSetName(StrEnum):
     LOADS = "loads"
     DISCOVERY = "discovery"
     NODE_CONTROL = "node-control"
+    NODE_HEALTH = "node-health"
+    HTTP_VERIFICATION_SAMPLE = "http-verification-sample"
 
 
 @dataclass(frozen=True)
@@ -390,6 +394,31 @@ NODE_CONTROL_ROUTES = ControlRouteSet(
     ),
 )
 
+NODE_HEALTH_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.NODE_HEALTH,
+    routes=(
+        ControlRoute(
+            name="health-read",
+            method=ControlRouteMethod.GET,
+            path=control_path("health/{health_kind}", prefix=WORKLOAD_CONTROL_PREFIX),
+            scope=ControlRouteScope.READ_NODE_HEALTH,
+            description="Read one explicitly declared workload health observation.",
+        ),
+    ),
+)
+
+
+HTTP_VERIFICATION_SAMPLE_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.HTTP_VERIFICATION_SAMPLE,
+    routes=(ControlRoute(
+        name="http-verification-sample", method=ControlRouteMethod.GET,
+        path=control_path("verification/http", prefix=WORKLOAD_CONTROL_PREFIX),
+        scope=ControlRouteScope.READ_HTTP_VERIFICATION_SAMPLE,
+        description="Read one explicitly installed named HTTP verification sample.",
+    ),),
+)
+
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -403,6 +432,8 @@ CONTROL_ROUTE_SETS = (
     LOAD_ROUTES,
     DISCOVERY_ROUTES,
     NODE_CONTROL_ROUTES,
+    NODE_HEALTH_ROUTES,
+    HTTP_VERIFICATION_SAMPLE_ROUTES,
 )
 
 

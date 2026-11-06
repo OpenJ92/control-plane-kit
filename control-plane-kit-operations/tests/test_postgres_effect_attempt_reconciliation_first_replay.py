@@ -108,10 +108,21 @@ class PostgresEffectAttemptReconciliationFirstReplayTests(
                         forbidden = AssertionError(
                             "terminal replay crossed a lower interaction"
                         )
+                        original_get = EffectAttemptIntentStore.get
+                        original_reads = []
+
+                        def read_original(store, identity):
+                            self.assertEqual(identity, attempt.state.identity)
+                            original = original_get(store, identity)
+                            self.assertEqual(original.original_start_event, attempt.original_start_event)
+                            self.assertEqual(original.request_fingerprint, attempt.state.request_fingerprint)
+                            original_reads.append(identity)
+                            return original
+
                         with mock.patch.object(
                             EffectAttemptIntentStore,
                             "get",
-                            side_effect=forbidden,
+                            new=read_original,
                         ), mock.patch.object(
                             PostgresExecutionStore,
                             "observe_request_lease_for_update",
@@ -129,6 +140,7 @@ class PostgresEffectAttemptReconciliationFirstReplayTests(
                                 observer,
                                 fold_service=fold,
                             ).execute(command)
+                        self.assertEqual(original_reads, [attempt.state.identity])
                         self.assertEqual(result, ExistingFold(attempt, outcome))
                         self.assertEqual(observer.calls, [])
                         self.assertEqual(fold.calls, [])

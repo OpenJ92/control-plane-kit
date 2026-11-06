@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import unittest
+from dataclasses import replace
 
 import psycopg
 
@@ -148,7 +149,7 @@ class FailedRunCompensationFixture:
             "expected_current_graph_id": "graph-current",
             "desired_graph_id": "graph-desired",
             "expected_desired_graph_revision": 1,
-            "execution_intent_fingerprint": "a" * 64,
+            "execution_intent_fingerprint": self.execution_fingerprint,
             "authority": RecoveryAuthority(
                 "operator-a",
                 "authority-reference-a",
@@ -169,16 +170,54 @@ class FailedRunCompensationFixture:
             BoundedEvidence.from_mapping({"phase": "start"}),
         )
 
-    def seed_truth(self) -> None:
+    def seed_truth(self, *, graphs=None, runtime_operation=None, node_operation=None,
+                   success_material=None, desired_owner=None, product_registrations=(),
+                   actor_scopes=(PolicyScope.PLAN_EXECUTE,)) -> None:
+        from tests.graph_lineage_fixture import execution_graph
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
+        default_product = None
+        default_success_material = {}
+        if graphs is None and desired_owner is None:
+            from control_plane_kit_core.products import (
+                ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
+                ProductIdentity, ProductRuntimeContract,
+            )
+            from control_plane_kit_core.runtime_effects import RuntimeProductMaterial
+            from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
+            product = ContainerServerProduct(ProductIdentity("test", "compensation-node", 1),
+                OciImageReference("ghcr.io", "test/compensation-node", "sha256:" + "a" * 64),
+                ProductRuntimeContract())
+            default_product = RegisteredProduct.from_document(workspace_id="workspace-a",
+                descriptor_document=ProductDescriptorCodec().encode_document(product),
+                source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-08-25T11:49:00Z")
+            graphs = {}
+            for key in ("graph-current", "graph-desired"):
+                graph = execution_graph(key, node_ids=("node-a",))
+                node = replace(graph.node("node-a"), metadata={
+                    "product_identity": default_product.reference.identity.key,
+                    "product_descriptor_digest": default_product.reference.descriptor_sha256.value})
+                graphs[key] = replace(graph, nodes={"node-a": node})
+            node = graphs["graph-desired"].node("node-a")
+            runtime = graphs["graph-desired"].runtimes[node.runtime_id]
+            default_success_material["start-node"] = {
+                "authority_ref": runtime.authority_ref,
+                "products": (RuntimeProductMaterial(node_id=node.node_id, runtime_id=node.runtime_id,
+                    reference=default_product.reference, product=product),),
+            }
+        elif graphs is None:
+            # The callback owns its desired product; keep the original legacy
+            # base coordinate instead of supplying an unrelated default pin.
+            graphs = {key: execution_graph(key, node_ids=("node-a",))
+                for key in ("graph-current", "graph-desired")}
         plan = ActivityPlan(
             (
                 PlannedActivity(
                     ActivityId("start-runtime"),
-                    StartRuntime(RuntimeTarget("runtime-a")),
+                    runtime_operation or StartRuntime(RuntimeTarget("runtime-a")),
                 ),
                 PlannedActivity(
                     ActivityId("start-node"),
-                    StartNode(NodeTarget("node-a")),
+                    node_operation or StartNode(NodeTarget("node-a")),
                     (ActivityDependency(ActivityId("start-runtime")),),
                 ),
                 PlannedActivity(
@@ -194,11 +233,20 @@ class FailedRunCompensationFixture:
         )
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
+            for registered in ((default_product,) if default_product is not None else ()) + tuple(product_registrations):
+                stores.registered_products.register(workspace_id="workspace-a",
+                    descriptor_document=registered.descriptor_document,
+                    source=registered.source, imported_by=registered.imported_by,
+                    imported_at=registered.imported_at)
             lineage = seed_identity_graphs(
                 stores,
                 workspace_id="workspace-a",
-                graph_ids=("graph-current", "graph-desired"),
+                graph_ids=("graph-current",) if desired_owner else ("graph-current", "graph-desired"),
+                graphs=graphs,
             )
+            stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            if desired_owner is None:
+                stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             stores.activity_history.add_session(
                 OperationSessionRecord(
                     "session-a",
@@ -209,6 +257,18 @@ class FailedRunCompensationFixture:
                     "2026-08-25T11:50:00Z",
                 )
             )
+            unit_of_work.commit()
+        if desired_owner is not None:
+            # The callback composes the real C2 owner before original request
+            # coverage exists; it cannot manufacture receiver provenance.
+            desired_owner(self)
+        # Some callers populate this mapping while introducing the desired
+        # receiver. Read overrides only after that owner has completed.
+        selected_success_material = {key: {**default_success_material.get(key, {}),
+            **(success_material or {}).get(key, {})} for key in ("start-runtime", "start-node")}
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            workspace = stores.workspaces.get("workspace-a")
             stores.activity_history.add_plan(
                 ActivityPlanRecord(
                     "plan-a",
@@ -218,8 +278,8 @@ class FailedRunCompensationFixture:
                     ActivityPlanStatus.PLANNED,
                     "2026-08-25T11:51:00Z",
                     plan,
-                    base_realized_projection_id=lineage["graph-current"],
-                    desired_realized_projection_id=lineage["graph-desired"],
+                    base_realized_projection_id=workspace.current_realized_projection_id,
+                    desired_realized_projection_id=workspace.desired_realized_projection_id,
                     desired_graph_revision=1,
                 )
             )
@@ -246,26 +306,15 @@ class FailedRunCompensationFixture:
                     "2026-08-25T11:53:00Z",
                 )
             )
-            stores.execution.add_request(
-                ExecutionRequestRecord(
-                    ExecutionRequestIdentity(
-                        "request-a", "workspace-a", "session-a", "plan-a"
-                    ),
-                    ExecutionRequestStatus.CLAIMED,
-                    "operator-a",
-                    "2026-08-25T11:54:00Z",
-                    "approval-request-a",
-                    "approval-decision-a",
-                    ExecutionIdempotency("execute-a", "a" * 64),
-                    ClaimIdentity(
-                        "worker-a",
-                        1,
-                        "2026-08-25T11:54:00Z",
-                        "2026-08-25T13:54:00Z",
-                    ),
-                )
-            )
-            stores.execution.add_run(
+            unit_of_work.commit()
+        admitted = admit_fixture_plan(self, requested_at="2026-08-25T11:54:00Z", actor_scopes=actor_scopes)
+        self.execution_fingerprint = admitted.request.idempotency.intent_fingerprint
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', claim_generation=1, "
+            "claimed_at='2026-08-25T11:54:00Z', lease_expires_at='2026-08-25T13:54:00Z' WHERE request_id='request-a'")
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-a",
                     "plan-a",
@@ -282,8 +331,12 @@ class FailedRunCompensationFixture:
             )
             for event in events:
                 stores.execution.add_event(event)
-            self._add_success(stores, "start-runtime", 3, 4)
-            self._add_success(stores, "start-node", 5, 6)
+            self._add_success(stores, "start-runtime", 3, 4,
+                operation=plan.activity(ActivityId("start-runtime")).operation,
+                **selected_success_material.get("start-runtime", {}))
+            self._add_success(stores, "start-node", 5, 6,
+                operation=plan.activity(ActivityId("start-node")).operation,
+                **selected_success_material.get("start-node", {}))
             stores.execution.add_event(
                 self.event(
                     "wait-node-started",
@@ -348,8 +401,9 @@ class FailedRunCompensationFixture:
         activity_id: str,
         start_ordinal: int,
         success_ordinal: int,
+        *, operation=None, authority_ref=None, products=(),
     ) -> None:
-        operation = (
+        operation = operation or (
             StartRuntime(RuntimeTarget("runtime-a"))
             if activity_id == "start-runtime"
             else StartNode(NodeTarget("node-a"))
@@ -367,9 +421,9 @@ class FailedRunCompensationFixture:
             ),
             ActivityId(activity_id),
             operation,
-            None,
+            authority_ref,
             (),
-            (),
+            products,
         )
         request_fingerprint = runtime_effect_intent_fingerprint(intent)
         identity = EffectAttemptIdentity(RunId("run-a"), activity_id, 1)
@@ -423,11 +477,11 @@ class FailedRunCompensationFixture:
         )
         stores.execution.add_event(start_event)
         stores.execution.add_event(success_event)
-        stores.effect_attempt_intents.insert(
+        stores.effect_attempt_intents._insert(
             EffectAttemptIntentRecord(identity, start_event, intent)
         )
         attempt = EffectAttemptRecord(succeeded, start_event, success_event)
-        stores.effect_attempts.insert_absent(attempt)
+        stores.effect_attempts._insert_absent(attempt)
         stores.effect_outcomes.insert(
             EffectAttemptOutcomeRecord("workspace-a", outcome, attempt, ())
         )

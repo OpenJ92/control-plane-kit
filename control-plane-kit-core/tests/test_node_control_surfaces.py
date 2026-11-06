@@ -220,8 +220,29 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
             )
 
     def test_new_fields_append_without_reinterpreting_positional_callers(self) -> None:
-        self.assertEqual(fields(BlockSpec)[-1].name, "control_surfaces")
-        self.assertEqual(fields(ProductRuntimeContract)[-1].name, "control_surfaces")
+        for value_type in (BlockSpec, ProductRuntimeContract):
+            self.assertEqual(
+                tuple(value for value in fields(value_type) if not value.kw_only)[-1].name,
+                "control_surfaces",
+            )
+            self.assertTrue(next(value for value in fields(value_type) if value.name == "gateway_transit").kw_only)
+        surface = self.surface("control", "routing")
+        block = BlockSpec("node", capabilities=(CapabilityName.NODE_CONTROLLABLE,), control_surfaces=(surface,))
+        positional_block = BlockSpec(
+            block.role_id, block.display_name, block.health_path, block.capabilities,
+            block.verification, block.metadata, block.control_surfaces,
+        )
+        self.assertEqual(positional_block, block)
+        self.assertIsNone(positional_block.gateway_transit)
+        contract = self.product(surface).runtime_contract
+        positional_contract = ProductRuntimeContract(
+            contract.sockets, contract.provider_ports, contract.public_environment,
+            contract.configuration_artifacts, contract.secret_deliveries,
+            contract.retained_data_mounts, contract.capabilities, contract.verification,
+            contract.lifecycle, contract.control_surfaces,
+        )
+        self.assertEqual(positional_contract, contract)
+        self.assertIsNone(positional_contract.gateway_transit)
 
     def test_surface_identity_is_socket_plus_variable_and_order_is_canonical(self) -> None:
         alpha = self.surface("alpha-control", "routing")
@@ -332,7 +353,7 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
                     {finding.code for finding in result.errors},
                 )
 
-    def test_legacy_graph_descriptor_bytes_and_checksum_do_not_drift(self) -> None:
+    def test_current_graph_descriptor_bytes_and_checksum_do_not_drift(self) -> None:
         block = ApplicationBlock(
             spec=BlockSpec(role_id="hello"),
             implementation=PureImplementation(
@@ -357,7 +378,7 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
         self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
         self.assertEqual(
             hashlib.sha256(canonical).hexdigest(),
-            "1df54197127bb66cb0bcb166e0ff8ba70f4e975465f7d8c125eb1beba0ab93d8",
+            "26fb3cbefc2fb6e02b876966ecd956ba1e6b34af3d10f9c5e57d0f1857976f20",
         )
 
         explicit_empty = json.loads(canonical)

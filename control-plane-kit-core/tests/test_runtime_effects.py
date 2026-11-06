@@ -392,6 +392,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
             source=_source(),
             activity_id=ActivityId("activity-a"),
             operation=StartNode(NodeTarget("api")),
+            products=(_product_material(),),
         )
 
         descriptor = request.descriptor()
@@ -471,6 +472,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 activity_id=ActivityId("activity-a"),
                 operation=StartNode(NodeTarget("api")),
                 secret_resolution_grants=(grant, grant),
+                products=(_product_material(),),
             )
 
     def test_request_rejects_open_kind_and_review_work(self) -> None:

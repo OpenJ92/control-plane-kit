@@ -26,8 +26,11 @@ class DraftSelectionAdapterTests(DraftSelectionFixture, unittest.TestCase):
                                 principal() if actor == "default" else actor)
 
     def payload(self, command):
-        return {key: (value.value if key == "idempotency_key" else value)
-                for key, value in vars(command).items() if key not in {"context", "draft_id"}}
+        return {key: (value.value if key == "idempotency_key" else
+                      value.descriptor() if key == "receiver_lifecycle" else value)
+                for key, value in vars(command).items()
+                if key not in {"context", "draft_id"}
+                and not (key == "receiver_lifecycle" and value is None)}
 
     def overview(self, services=None):
         reads = (services or self.services())[ControlPlaneServiceRole.READS]

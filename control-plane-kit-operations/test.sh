@@ -8,6 +8,46 @@ ARCHITECTURE_TESTING_COMMIT="7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef"
 ARCHITECTURE_TESTING_ROOT="${CPK_ARCHITECTURE_TESTING_ROOT:-$REPO_ROOT/../control-plane-kit-architecture-testing}"
 NETWORK_NAME="${CPK_OPERATIONS_TEST_NETWORK_NAME:-cpk-operations-test}"
 POSTGRES_CONTAINER="${CPK_OPERATIONS_TEST_POSTGRES_CONTAINER:-cpk-operations-test-postgres}"
+SHARD_INDEX=""
+SHARD_COUNT=""
+SHARD_REPORT_DIRECTORY=""
+SOURCE_COMMIT=""
+
+validate_test_selection() {
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" != "-k" ] || [ "$#" -lt 2 ] || [ -z "$2" ]; then
+      echo "Usage: $0 [-k unittest-name-pattern] ..." >&2
+      return 2
+    fi
+    shift 2
+  done
+}
+
+if [ "${1:-}" = "--shard" ]; then
+  if [ "$#" -ne 4 ]; then
+    echo "Usage: $0 --shard INDEX COUNT REPORT_DIRECTORY (without -k)" >&2
+    exit 2
+  fi
+  for number in "$2" "$3"; do
+    case "$number" in
+      ""|*[!0-9]*) echo "Shard index/count must be unsigned integers" >&2; exit 2 ;;
+    esac
+  done
+  if [ "${#2}" -gt 2 ] || [ "${#3}" -gt 2 ] || [ "$3" -lt 1 ] || [ "$3" -gt 16 ] || [ "$2" -ge "$3" ] || [ -z "$4" ]; then
+    echo "Shard index/count or report directory is invalid" >&2
+    exit 2
+  fi
+  SHARD_INDEX="$2"
+  SHARD_COUNT="$3"
+  SHARD_REPORT_DIRECTORY="$4"
+  shift 4
+  echo "Operations shard $SHARD_INDEX of $SHARD_COUNT; full acceptance requires the aggregate."
+else
+  validate_test_selection "$@"
+fi
+if [ "$#" -gt 0 ]; then
+  echo "Focused Operations evidence (-k selection); not full package acceptance."
+fi
 
 if [ ! -d "$ARCHITECTURE_TESTING_ROOT" ]; then
   echo "Architecture testing checkout is missing" >&2
@@ -24,6 +64,23 @@ if [ -n "$(git -C "$ARCHITECTURE_TESTING_ROOT" status --short --untracked-files=
   echo "Architecture testing checkout is not clean" >&2
   exit 1
 fi
+
+if [ -n "$SHARD_INDEX" ]; then
+  SOURCE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  mkdir -p "$SHARD_REPORT_DIRECTORY"
+  SHARD_REPORT_DIRECTORY="$(CDPATH= cd -- "$SHARD_REPORT_DIRECTORY" && pwd)"
+  if [ -e "$SHARD_REPORT_DIRECTORY/shard-$SHARD_INDEX.json" ]; then
+    echo "Shard report already exists; use a fresh report directory" >&2
+    exit 2
+  fi
+fi
+
+run_behavior() {
+  if [ -n "$SHARD_INDEX" ]; then
+    set -- -v "$SHARD_REPORT_DIRECTORY:/reports" "$@"
+  fi
+  docker run --rm "$@"
+}
 
 cleanup() {
   docker rm -fv "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
@@ -79,9 +136,10 @@ if [ "$(docker inspect -f '{{.State.Health.Status}}' "$POSTGRES_CONTAINER")" != 
   exit 1
 fi
 
-if docker run --rm \
+if run_behavior \
   -v "$REPO_ROOT/control-plane-kit-core:/core:ro" \
   -v "$ROOT:/source:ro" \
+  -v "$REPO_ROOT/test_support:/test-support:ro" \
   -v "$REPO_ROOT/docs/architecture/package-module-inventory.json:/package-module-inventory.json:ro" \
   -v "$REPO_ROOT/docs/READ_INTERFACES.md:/read-interfaces.md:ro" \
   -v "$ARCHITECTURE_TESTING_ROOT:/architecture-testing:ro" \
@@ -96,9 +154,14 @@ if docker run --rm \
   -e CPK_OPERATIONS_SOURCE_ROOT=/source \
   -e CPK_PACKAGE_MODULE_INVENTORY=/package-module-inventory.json \
   -e CPK_READ_INTERFACES_DOCUMENT=/read-interfaces.md \
+  -e CPK_OPERATIONS_SUITE_HELPER=/test-support/operations_suite.py \
+  -e CPK_SHARD_INDEX="$SHARD_INDEX" \
+  -e CPK_SHARD_COUNT="$SHARD_COUNT" \
+  -e CPK_SHARD_SOURCE="$SOURCE_COMMIT" \
+  -e CPK_SHARD_ARCHITECTURE="$ARCHITECTURE_TESTING_COMMIT" \
   -e CPK_OPERATIONS_TEST_DATABASE_URL=postgresql://cpk:cpk@"$POSTGRES_CONTAINER":5432/cpk \
   "$IMAGE" \
-  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && python -m unittest discover -s tests'; then
+  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && if [ -n "$CPK_SHARD_INDEX" ]; then python /test-support/operations_suite.py run --index "$CPK_SHARD_INDEX" --count "$CPK_SHARD_COUNT" --report "/reports/shard-$CPK_SHARD_INDEX.json" --source "$CPK_SHARD_SOURCE" --architecture "$CPK_SHARD_ARCHITECTURE" --input /source --input /core --input /test-support/operations_suite.py --input /package-module-inventory.json --input /read-interfaces.md --input /cpk-test-evidence; else python -m unittest discover -s tests -v --durations 0 "$@"; fi' cpk-operations-unittest "$@"; then
   :
 else
   test_status=$?

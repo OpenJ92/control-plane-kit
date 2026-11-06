@@ -209,30 +209,6 @@ def _exact_boolean(rows: object) -> bool:
     return rows[0][0]
 
 
-_CURRENT_SCHEMA_RELATIONS_JSON = json.dumps(
-    tuple(asdict(item) for item in CURRENT_POSTGRES_SCHEMA_CONTRACT.relations),
-    ensure_ascii=True,
-    sort_keys=True,
-    separators=(",", ":"),
-)
-_CURRENT_SCHEMA_COLUMNS_JSON = json.dumps(
-    tuple(asdict(item) for item in CURRENT_POSTGRES_SCHEMA_CONTRACT.columns),
-    ensure_ascii=True,
-    sort_keys=True,
-    separators=(",", ":"),
-)
-_CURRENT_SCHEMA_CONSTRAINTS_JSON = json.dumps(
-    tuple(asdict(item) for item in CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints),
-    ensure_ascii=True,
-    sort_keys=True,
-    separators=(",", ":"),
-)
-_CURRENT_SCHEMA_INDEXES_JSON = json.dumps(
-    tuple(asdict(item) for item in CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes),
-    ensure_ascii=True,
-    sort_keys=True,
-    separators=(",", ":"),
-)
 _CURRENT_SCHEMA_RELATION_NAMES = tuple(item.name for item in CURRENT_POSTGRES_SCHEMA_CONTRACT.relations)
 
 
@@ -600,22 +576,22 @@ SELECT
 
 
 
-def current_schema_contract_is_exact(connection: PostgresConnection) -> bool:
+def current_schema_contract_is_exact(
+    connection: PostgresConnection, *, contract=CURRENT_POSTGRES_SCHEMA_CONTRACT,
+) -> bool:
+    # The retained policy transition compares its frozen predecessor through the
+    # same bounded semantic query. Ordinary installation still uses current truth.
+    sections = (contract.relations, contract.columns, contract.constraints, contract.indexes)
+    expected = tuple(json.dumps(tuple(asdict(item) for item in section),
+        ensure_ascii=True, sort_keys=True, separators=(",", ":")) for section in sections)
     rows = connection.execute(
         _CURRENT_SCHEMA_CONTRACT_QUERY,
         (
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations) + 1,
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns) + 1,
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints) + 1,
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes) + 1,
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations),
-            _CURRENT_SCHEMA_RELATIONS_JSON,
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns),
-            _CURRENT_SCHEMA_COLUMNS_JSON,
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints),
-            _CURRENT_SCHEMA_CONSTRAINTS_JSON,
-            len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes),
-            _CURRENT_SCHEMA_INDEXES_JSON,
+            *(len(section) + 1 for section in sections),
+            len(contract.relations), expected[0],
+            len(contract.columns), expected[1],
+            len(contract.constraints), expected[2],
+            len(contract.indexes), expected[3],
         ),
     ).fetchall()
     return (

@@ -5,11 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TypeAlias
+from control_plane_kit_core.configuration_instances import (
+    ConfigurationInstanceRef, _configuration_instance_candidates,
+)
 
 from control_plane_kit_core._activity_identity import (
     _is_canonical_activity_identity,
 )
 from control_plane_kit_core.topology.changes import DiffSubject
+from control_plane_kit_core.planning.management_observations import (
+    ObserveManagementBootstrap, ObserveNodeHealth,
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -160,6 +166,16 @@ class DestroyDataResource:
     target: DataResourceTarget
 
 
+@dataclass(frozen=True)
+class CleanupConfigurationInstances:
+    """Exact allocation incarnations, independent of current product material."""
+
+    instances: tuple[ConfigurationInstanceRef, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "instances", _configuration_instance_candidates(self.instances))
+
+
 class ReviewReason(StrEnum):
     UNSUPPORTED_CHANGE = "unsupported-change"
     AMBIGUOUS_CHANGE = "ambiguous-change"
@@ -187,7 +203,10 @@ ActivityOperation: TypeAlias = (
     | StopRuntime
     | RemoveRuntimeResource
     | DestroyDataResource
+    | CleanupConfigurationInstances
     | ReviewChange
+    | ObserveManagementBootstrap
+    | ObserveNodeHealth
 )
 
 
@@ -344,6 +363,12 @@ class ActivityPlan:
 
 
 def _require_typed_operation(operation: object) -> None:
+    if type(operation) is CleanupConfigurationInstances:
+        operation.__post_init__()
+        return
+    if type(operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+        operation.__post_init__()
+        return
     match operation:
         case StartNode(target=NodeTarget()):
             return
@@ -425,9 +450,9 @@ def compensation_for_operation(operation: ActivityOperation) -> CompensationSpec
                 ReconcileRuntime(target),
                 CompensationMaterialSource.BASE_GRAPH,
             )
-        case WaitForHealthy() | ReviewChange():
+        case WaitForHealthy() | ReviewChange() | ObserveManagementBootstrap() | ObserveNodeHealth():
             return NoCompensationRequired()
-        case RemoveNodeResource() | RemoveRuntimeResource():
+        case RemoveNodeResource() | RemoveRuntimeResource() | CleanupConfigurationInstances():
             return NonCompensatable(NonCompensatableReason.RESOURCE_REMOVAL)
         case DestroyDataResource():
             return NonCompensatable(NonCompensatableReason.DATA_DESTRUCTION)
@@ -496,6 +521,15 @@ def _validate_composition(
                     activity.activity_id,
                 )
             )
+        if isinstance(activity.operation, CleanupConfigurationInstances) and (
+            activity.impact is not ActivityImpact.DESTRUCTIVE
+            or _risk_rank(activity.risk) < _risk_rank(RiskLevel.HIGH)
+        ):
+            violations.append(PlanViolation(
+                PlanViolationCode.DESTRUCTIVE_RISK,
+                "configuration cleanup must be destructive and high or critical risk",
+                activity.activity_id,
+            ))
         if isinstance(activity.operation, DestroyDataResource) and (
             activity.risk is not RiskLevel.CRITICAL
             or activity.impact is not ActivityImpact.DESTRUCTIVE

@@ -25,7 +25,11 @@ class _ObservedConnection:
     def execute(self, query, parameters=None):
         statement = " ".join(str(query).split())
         self.statements.append(statement)
-        if "FROM cpk_workspaces" in statement and "FOR UPDATE" in statement:
+        # #1896 moves the common exclusion point before workspace rows. Preserve
+        # the existing opposing-service schedules at the exact new guard key.
+        lifecycle = ("pg_advisory_xact_lock" in statement and parameters
+                     and parameters[0] == "receiver-lifecycle:workspace-a")
+        if lifecycle or ("FROM cpk_workspaces" in statement and "FOR UPDATE" in statement):
             if self.before_workspace is not None:
                 self.before_workspace.set()
         cursor = self.connection.execute(query, parameters)

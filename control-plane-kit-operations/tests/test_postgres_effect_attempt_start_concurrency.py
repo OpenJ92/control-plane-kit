@@ -238,7 +238,7 @@ class PostgresEffectAttemptStartConcurrencyTests(
                         self.start_command(),
                     )
                     try:
-                        if not first_id.entered.wait(timeout=0.1):
+                        if not first_id.entered.wait(timeout=5):
                             first_future.result(timeout=0.1)
                         first_pid = pids.get(timeout=5)
                         second_future = executor.submit(

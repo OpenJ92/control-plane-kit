@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.test_runtime_effects import _product_material
+
 import ast
 from dataclasses import fields, replace
 import hashlib
@@ -208,6 +210,7 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
             source=_source(),
             activity_id=ActivityId("activity-a"),
             operation=StartNode(NodeTarget("api")),
+            products=(_product_material(),),
             secret_resolution_grants=(grant,),
         )
 
@@ -950,6 +953,7 @@ class RuntimeEffectObservationPackageBoundaryTests(unittest.TestCase):
             {
                 "control_plane_kit_core.runtime_effects",
                 "control_plane_kit_core.secrets",
+                "control_plane_kit_core.secret_version_grants",
             },
         )
         self.assertEqual(row["optional_external_dependencies"], [])

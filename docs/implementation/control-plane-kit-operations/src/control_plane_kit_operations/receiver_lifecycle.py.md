@@ -1,0 +1,26 @@
+Source: [receiver_lifecycle.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/receiver_lifecycle.py).
+Maintain this companion alongside its source.
+
+Frozen introduction and binding products describe durable structural facts.
+Core owns target/configuration/declaration decoding. Operations checks the
+selected raw artifact digest and exact workspace/runtime/node/socket scope
+when deriving binding membership. Records contain bounded identifiers and
+public digests; errors omit caller material.
+
+Introduction origin fields are immutable; first acceptance and retirement are
+paired optional witnesses. Retirement requires a distinct accepted action.
+These representation laws do not decide which actor, source lineage or action
+is currently authorized. C owns those admission and continuation decisions.
+
+The graph-owned PostgreSQL helper consumes these inward values. Private fresh
+execution checks read existing stores under the owner's lifecycle prefix and
+revalidate original coverage, pins, binding provenance and approval. Ordinary
+plan approval remains same-session/same-plan; gateway children use the shared
+retained parent/child association. There is no provider call, clock, ID
+allocation, independent commit or package-root export in this module.
+
+Coverage/pin/material validation is separable from approval. Recovery retains its
+existing approval owner, using the same original parent/child receipt proof;
+it does not layer the generic approval policy over that owner. The shared proof
+reads no rotation progress/checkpoint. Both approval and receiver truth are
+rechecked at the fresh owner's existing final postwrite boundary.

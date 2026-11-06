@@ -76,7 +76,7 @@ class NodeAuthorityDeliveryTests(unittest.TestCase):
         descriptor = GraphDescriptorCodec().encode(graph())
         self.assertNotIn("runtime_authority_deliveries", canonical(descriptor))
         fixture = Path(__file__).parent / "fixtures" / "node_authority_empty_graph.json"
-        # Captured from unchanged production at 0c53845 during the owning red gate.
+        # Current #1974 encoding adds explicit empty selections; no authority is inferred.
         frozen = fixture.read_text().strip()
         self.assertEqual(canonical(descriptor), frozen)
         self.assertEqual(canonical(GraphDescriptorCodec().encode(

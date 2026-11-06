@@ -1,0 +1,176 @@
+Source: [runtime_management_admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_admission.py).
+Maintain this companion alongside its source.
+
+The fresh planning predicate accepts a validated deployment transition, with no
+supplied plan, profile, or ready flag. It first parses every node in both snapshots
+using graph_authoring's authoritative per-node extractor. A second pure call to
+the shared graph-pair derivation proves canonical emptiness; this preserves the
+existing no-op exception without trusting a supplied plan or execution policy.
+
+Fresh retained-image preparation first selects `retained-image-ingress-v1` only
+when its separate Core compiler returns a nonempty ready plan and exact active
+registered products have identical full runtime contracts and matching image
+references. The existing participant/route checks still apply. Eligibility is
+independent of application brand; no Hello name, image, route or HTML is inspected.
+The declaration-successor exception does not apply to this new profile.
+
+Other managed-update profile selection remains a narrow opt-in. A structural prefilter
+recognizes only the retained single managed runtime/gateway family with exactly
+one node introduced or removed and no non-artifact gateway change, or a retained
+workload content, immutable-image or secret-selection candidate. The common Core compiler owns the
+exact closed union; the retained-update prefilters only locate affected nodes or
+runtimes. Recognized
+candidates must then satisfy the complete registered-product, lifecycle,
+readiness, authority-delivery, and exact route-artifact predicate; failure is a
+fixed refusal and cannot fall back to legacy execution. Other established
+management updates outside these closed laws retain
+`management-graph-pair-v1` planning and its existing execution guard. Equal and
+name-only pairs likewise retain their canonical empty legacy plan.
+
+For retained content, image or selected-version updates, all nodes in the affected Docker runtime must match an
+active exact registered product, including gateway, connector and every retained
+receiver. The complete configured route set must equal the scoped expected set.
+No workload count or same-product X/Y condition is imposed on this relation.
+Unrelated runtimes do not contribute routes or effects to the retained update.
+Current plan selection and independent execution admission both enforce these
+facts; the supplied plan must equal the ready canonical recorded derivation.
+Recorded V1 plans continue to use V1 even if fresh selection for the same graph
+pair would now choose the new profile. The new recorded profile is checked before
+generic no-management/empty exemptions and refuses equal, initial, teardown and
+unmanaged pairs. Core's empty no-op return alone never establishes its eligibility.
+
+The selection prefilter inspects retained nodes and management on both graph
+sides, including malformed candidates that move the consumer or remove
+management. It does not admit a shape by itself. Core must produce a ready plan
+for exactly one selected-version change with the complete delivery contract,
+image, configuration, receiver, routes and all other graph values unchanged.
+Operations then binds the one affected runtime to active exact participants and
+complete routes through the same retained-update predicate used by image/content
+updates. Unresolved, combined or multiple-consumer candidates refuse instead of
+falling back to the legacy profile. No-op selection equality retains the existing
+empty-plan behavior. Explicit selection, current grants/revocation, correlated
+receipts, immutable replay/history and graph advancement remain with their
+existing owners; this pure policy adds no I/O or new authority.
+
+Immutable image authority comes from the active descriptor selected by product
+identity and descriptor digest. For the closed image-update family, both exact
+registered references must be ACTIVE, their complete `ProductRuntimeContract`
+values must agree, and each graph's `oci_image` must equal its selected document's
+canonical execution reference. This includes descriptor-default artifact content,
+not merely graph-visible configuration slots. Core owns same namespace/name,
+distinct authored revisions, same registry/repository and changed image digest;
+all other graph values, including receiver bytes and selected artifacts, stay fixed.
+Malformed or incompatible image candidates refuse the managed-update profile.
+
+The same product-reference branch also consumes Core's closed same-image,
+health-only declaration successor with a coupled gateway route replacement.
+Both exact registrations and every affected runtime participant must be active.
+Restoring the successor's control surface and selected wrapper default must
+recover the entire previous registered runtime contract. Unchanged defaults are
+selected structurally and may remain opaque templates. Changed defaults must
+strictly decode, match their respective registered surfaces, and preserve their
+own complete target, verifier families, declaration profile and artifact slot.
+Template receiver identity need not equal the installed instance identity.
+Unrelated defaults and all other contract fields remain exact. Actual graph
+wrappers are independently strict and route origins still use the existing full
+registered/selected route checks. Core owns the health-only delta and ordering;
+the existing authority guard separately binds fresh planning and both installs
+to the workload's complete current public snapshot.
+
+The metadata field does not select image authority: effect lowering consumes the
+registered descriptor's immutable image and the approved instance's declared slot
+payloads. Other existing update families do not gain a global `oci_image` requirement.
+The existing managed non-gateway Reconcile pull-credential guard remains in force
+before fresh preparation. Receiver permissions, active-product reads, fences,
+correlated replacement receipts, uncertainty and original-attempt replay retain
+their existing owners. No provider or schema change is introduced. The image
+admission and Operations/Postgres execution tests prove these owner boundaries;
+Servers #251 separately owns real CPK-client-driven Docker replacement.
+
+The managed route slot is decoded with Core's shared
+`ReceiverManagementRoutesCodec` and compared to a complete value independently
+reconstructed for each pinned graph. The expected value selects each node's V2
+receiver configuration, requires its exact workspace/runtime/node/socket scope,
+uses the registered product's unique HTTP provider port for the private origin,
+and includes gateway self plus every readiness workload. Equality therefore
+preserves retained bindings and admits only the graph's exact Y addition/removal;
+an absent self binding, arbitrary origin, stale target, extra binding, or partial
+list is a fixed refusal. The accepted private origin is explicitly Docker-only,
+where graph node identifiers are the provider's private DNS names; other runtime
+kinds cannot inherit that provider-specific addressing law. This is
+application-independent: X and Y must share the
+same exact registered product within one transition, while unrelated product
+references in separate applications remain valid.
+
+Route `target_id` values remain caller-owned opaque aliases under Core's shared
+contract. Admission therefore compares the complete target, declaration, and
+origin set to graph-derived expectations without inventing alias names, while
+requiring every retained target's alias to remain byte-for-byte stable across
+the update. A newly introduced target may use any valid unique alias supplied by
+the accepted authoring path; an alias rewrite of gateway or retained X is refused.
+
+For nonempty plans, each node's `(gateway_transit, control_surfaces)` must exactly
+equal the same projection of every matched identity-plus-digest registered
+contract. Each node declaring either surface needs management selected in its
+own runtime on that same graph side. Core already validates the complete gateway,
+connector, ingress, socket and runtime relation. Unrelated catalog entries do not
+taint a graph, and an unrelated extra provider socket does not trigger a broader
+product audit. One faithful sibling or selected runtime cannot cover another.
+
+Complete selected pairs may yield ready or review-blocked Core plans. An
+unselected-to-selected SDK repair still fails the current-side law. Selected
+variable declarations may explain review work but grant no variable effects.
+Real compiler cycles propagate `InvalidActivityPlan` from this pure policy; the
+fresh public service owns its fixed error mapping. Planning performs no I/O.
+
+The execution predicate examines both complete pinned graphs for an explicit
+runtime management selection, a gateway transit declaration, or SDK control
+surfaces. Fresh and retained/mixed management execution stays guarded until
+the accepted transport exists. It does not infer support from a node name,
+metadata flag, changed node, supplied plan, or product registration. Ordinary
+legacy verification without this material retains existing behavior.
+
+The no-op exception permits only a congruent no-op: the supplied plan has no activities, both graphs validate,
+and Core's diff/compiler also produces no activities. An invalid graph or forged
+empty plan cannot qualify. Supplying no plan means direct activity translation
+and never receives this exception, even for equal graphs.
+
+Nonempty managed execution requires the actual recorded
+`PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1`, an existing `TeardownDeployment`
+from validated graph values, and full equality with its ready canonical derived
+plan. Teardown's empty desired boundary includes delegation authorities as well
+as nodes, edges, runtimes and ingress. Equality preserves targets, dependencies,
+risk and retention decisions without another operation allowlist. The existing
+planning predicate additionally enforces same-side management selection and
+catalog declaration fidelity. Legacy/absent profiles and string lookalikes do
+not acquire support. Callers still own full activity membership and permission;
+this exception grants neither. The pure and real PostgreSQL teardown targets
+prove support, direct-membership refusal, real approval/custody and uncertainty
+behavior; they do not prove live resource deletion.
+
+This owner imports
+Core and Operations' existing pure product-reference/registration values;
+callers retain transaction, authorization, and history ownership.
+
+The same refusal applies when authored fields omit a declaration that the exact
+referenced registered product supplies. Both graph reference sets use the
+existing normalized identity-plus-digest extractor; only matched descriptors
+are inspected. Unrelated registrations and same-identity/different-digest
+descriptors do not trigger refusal. The caller supplies the registration snapshot:
+there is no extra status filter absent from direct effect material selection.
+Any SDK surface, including variable-only surfaces, is conservatively guarded;
+the advertised transit profile itself remains health-only.
+
+Malformed reference parsing returns a fixed refusal independently of catalog
+contents, before the no-op exception. Only the extractor's ValueError family is
+handled here; its candidate-bearing exception does not escape or remain as the
+cause/context of a caller's error. Unexpected failures outside that call retain
+existing error/uncertainty semantics. This checks declared powers in selected
+material, without auditing or rewriting general graph/product congruence.
+
+The policy performs no I/O and persists no facts. It introduces no credential,
+address, grant, network exposure, or destructive effect. The three consumer
+test groups cover both graph directions, transit-only and SDK material,
+equal/name-only no-ops, forged emptiness and direct activity rejection.
+General product-contract congruence and transport support remain downstream work;
+declarations and these tests do not prove live execution.

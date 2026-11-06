@@ -38,6 +38,7 @@ from tests.postgres_effect_outcome_store_fixture import (
     PostgresEffectOutcomeStoreFixture,
     store_module,
 )
+from tests.secret_installation_receipt_fixture import selected_start_success
 
 
 OUTCOME = "cpk_effect_attempt_outcomes"
@@ -157,6 +158,7 @@ class PostgresEffectOutcomeStoreTests(
             "event-start",
             observations=(completion,),
         )
+        result = selected_start_success(intent, result)
         story = replace(self.story_named("execution-succeeded"), value=result)
         attempt = self.direct_attempt_for(
             story,
@@ -197,8 +199,8 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
             stores.execution.add_event(attempt.latest_transition_event)
-            stores.effect_attempt_intents.insert(intent_record)
-            stores.effect_attempts.insert_absent(attempt)
+            stores.effect_attempt_intents._insert(intent_record)
+            stores.effect_attempts._insert_absent(attempt)
             stores.observed_state.put(false_observation)
             with self.assertRaisesRegex(
                 OperationsRecordError,
@@ -223,8 +225,8 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
             stores.execution.add_event(attempt.latest_transition_event)
-            stores.effect_attempt_intents.insert(intent_record)
-            stores.effect_attempts.insert_absent(attempt)
+            stores.effect_attempt_intents._insert(intent_record)
+            stores.effect_attempts._insert_absent(attempt)
             for observation in observations:
                 stores.observed_state.put(observation)
             stores.effect_outcomes.insert(record)
@@ -335,12 +337,12 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(prior.original_start_event)
             self.add_record_intent(stores, prior)
-            self.assertEqual(stores.effect_attempts.insert_absent(prior), prior)
+            self.assertEqual(stores.effect_attempts._insert_absent(prior), prior)
             stores.execution.add_event(record.attempt.original_start_event)
             stores.execution.add_event(record.attempt.latest_transition_event)
             self.add_record_intent(stores, record.attempt)
             self.assertEqual(
-                stores.effect_attempts.insert_absent(record.attempt),
+                stores.effect_attempts._insert_absent(record.attempt),
                 record.attempt,
             )
             for observation in record.endpoint_observations:
@@ -518,7 +520,7 @@ class PostgresEffectOutcomeStoreTests(
             finite_story,
             value=RuntimeEffectResult.succeeded(
                 finite_story.value.effect_id,
-                evidence={"finite-number": 1.5},
+                evidence={**finite_story.value.evidence, "finite-number": 1.5},
                 observations=finite_story.value.observations,
             ),
         )
@@ -731,7 +733,7 @@ class PostgresEffectOutcomeStoreTests(
             stores.execution.add_event(second.attempt.original_start_event)
             stores.execution.add_event(second.attempt.latest_transition_event)
             self.add_record_intent(stores, second.attempt)
-            stores.effect_attempts.insert_absent(second.attempt)
+            stores.effect_attempts._insert_absent(second.attempt)
             with self.assertRaises(UniqueViolation) as caught:
                 stores.effect_outcomes.insert(second)
         self.assertEqual(
@@ -751,7 +753,9 @@ class PostgresEffectOutcomeStoreTests(
     def test_exact_8192_byte_preimage_roundtrips_and_workspace_is_derived(self) -> None:
         self.require_store()
         story = self.story_named("execution-succeeded")
-        bounded = replace(story, value=self.live_result_for_size(8_192))
+        bounded = replace(story, value=self.live_result_for_size(8_192,
+            extra_evidence={key: value for key, value in story.value.evidence.items()
+                if key in ("secret_resolution_receipt", "secret_installation_receipt")}))
         bounded = replace(bounded, attempt=self.direct_attempt_for(bounded))
         record = self.record_for(bounded)
         self.assertEqual(len(self.preimage_for(record)), 8_192)
@@ -780,7 +784,7 @@ class PostgresEffectOutcomeStoreTests(
             stores.execution.add_event(foreign.attempt.original_start_event)
             stores.execution.add_event(foreign.attempt.latest_transition_event)
             self.add_record_intent(stores, foreign.attempt)
-            stores.effect_attempts.insert_absent(foreign.attempt)
+            stores.effect_attempts._insert_absent(foreign.attempt)
             unit_of_work.commit()
         with self.unit_of_work() as unit_of_work:
             with self.assertRaises(OperationsRecordError) as caught:

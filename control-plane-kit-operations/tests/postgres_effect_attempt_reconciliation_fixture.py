@@ -29,6 +29,7 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 )
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.runtime_effects import (
+    OperationalSecretUse,
     required_secret_uses_for_runtime_effect,
 )
 from control_plane_kit_operations.secret_providers import (
@@ -267,6 +268,9 @@ class PostgresEffectAttemptReconciliationFixture(
         )
 
     def admit_secret_uses(self, uses) -> None:
+        # This inherited StartRuntime fixture admits operational uses only.
+        self.assertTrue(all(type(use) is OperationalSecretUse for use in uses))
+        uses = tuple((use.reference, use.intent) for use in uses)
         intents = tuple(sorted({intent for _reference, intent in uses}, key=lambda x: x.value))
         prefixes = tuple(
             sorted(

@@ -954,9 +954,9 @@ class NodeControlAttemptPostgresTests(
                   (authorization_id, workspace_id, reference_registration_id,
                    provider_registration_id, secret_reference, use_intent,
                    actor_subject, correlation_id, requested_at,
-                   intent_fingerprint)
+                   intent_fingerprint, authorization_kind)
                 VALUES (%s, 'workspace-a', %s, %s, %s, %s, 'operator-a',
-                        %s, '2027-01-15T08:00:00Z', %s)
+                        %s, '2027-01-15T08:00:00Z', %s, 'operational')
                 """,
                 (
                     "suse_" + suffix * 64,
