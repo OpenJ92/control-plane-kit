@@ -1,6 +1,7 @@
 """Pure registered compatibility over loaded owner records; never authority."""
 from dataclasses import dataclass, field, replace
 
+from control_plane_kit_core._node_control_public_wire import identifier_violation, reference_violation
 from control_plane_kit_core.configuration import ConfigurationArtifactRequirement
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
@@ -16,6 +17,7 @@ from control_plane_kit_core.receiver_configuration import (
     select_receiver_node_control_configuration_slot,
 )
 from control_plane_kit_core.receiver_identity import NodeControlReceiverTarget, NodeControlReceiverTargetCodec
+from control_plane_kit_core.receiver_management_routes import ReceiverManagementRoutesCodec
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations.graph_authoring import product_reference_in_node
 from control_plane_kit_operations.health_receiver_trust import _public_keys
@@ -23,7 +25,7 @@ from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, 
 from control_plane_kit_operations.deployment_transitions import Deploy
 from control_plane_kit_operations.products import RegisteredProduct
 from control_plane_kit_operations.records import ActivityPlanRecord, ActivityPlanStatus, RealizedGraphProjectionRecord
-from control_plane_kit_operations.runtime_management_admission import _node_matches_product, _configured_management_routes
+from control_plane_kit_operations.runtime_management_admission import _node_matches_product
 
 
 class HttpSampleCompatibilityUnavailable(ValueError):
@@ -45,9 +47,9 @@ class GatewayHttpSampleTrust:
     def __post_init__(self):
         NodeControlReceiverTargetCodec().encode(self.target)
         _require(self.purpose is DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT
-            and type(self.issuer) is str and 1 <= len(self.issuer) <= 200
-            and not any(ord(char) <= 32 or ord(char) == 127 for char in self.issuer))
+            and type(self.issuer) is str and reference_violation(self.issuer) is None)
         _public_keys(self.public_keys)
+        _require(all(identifier_violation(key.key_id) is None for key in self.public_keys))
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -56,6 +58,7 @@ class GatewayHttpSampleBinding:
     slot: ConfigurationArtifactRequirement
     # Product-specific, pure public-material decoder; not a signer or transport.
     decoder: object = field(repr=False)
+    route_slot: ConfigurationArtifactRequirement = field(kw_only=True)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -73,6 +76,15 @@ class HttpSampleCompatibility:
 
 def _slot(value):
     return value.artifact_id, value.target_path, value.media_type, value.file_mode
+
+
+def _qualified_artifact(node, product, expected):
+    _require(type(expected) is ConfigurationArtifactRequirement and replace(expected) == expected)
+    declared = tuple(value for value in product_configuration_slots(product.descriptor_document.product.runtime_contract)
+        if _slot(value) == _slot(expected))
+    actual = tuple(value for value in node.configuration_artifacts if _slot(value) == _slot(expected))
+    _require(len(declared) == len(actual) == 1)
+    return actual[0]
 
 
 def _registered(node, products, workspace):
@@ -160,19 +172,17 @@ def _bind(workspace, plan, current, desired, products, node_id, gateway_binding)
     receiver_ports = tuple(port.container_port for port in contract.provider_ports
         if port.provider_socket == receiver.target.provider_socket_name.value)
     _require(len(receiver_ports) == 1)
-    routes = _configured_management_routes(graph, gateway.node_id)
+    _require(type(gateway_binding.product) is ProductReference and gateway_binding.product == gateway_product.reference
+        and callable(getattr(gateway_binding.decoder, "decode", None)))
+    route_artifact = _qualified_artifact(gateway, gateway_product, gateway_binding.route_slot)
+    routes = ReceiverManagementRoutesCodec().decode_bytes(route_artifact.content.encode("utf-8"))
     selected = tuple(route for route in routes.targets if route.target == receiver.target
         and route.declaration == receiver.declaration)
     _require(routes.gateway_target == own.target and len(selected) == 1
-        and selected[0].origin == f"http://{node_id}:{receiver_ports[0]}")
-    _require(type(gateway_binding.product) is ProductReference and gateway_binding.product == gateway_product.reference
-        and type(gateway_binding.slot) is ConfigurationArtifactRequirement
-        and callable(getattr(gateway_binding.decoder, "decode", None)))
-    declared = tuple(value for value in product_configuration_slots(gateway_product.descriptor_document.product.runtime_contract)
-        if _slot(value) == _slot(gateway_binding.slot))
-    actual = tuple(value for value in gateway.configuration_artifacts if _slot(value) == _slot(gateway_binding.slot))
-    _require(len(declared) == len(actual) == 1)
-    trust = gateway_binding.decoder.decode(actual[0])
+        and selected[0].origin == f"http://{node_id}:{receiver_ports[0]}"
+        and reference_violation(selected[0].target_id) is None)
+    trust_artifact = _qualified_artifact(gateway, gateway_product, gateway_binding.slot)
+    trust = gateway_binding.decoder.decode(trust_artifact)
     _require(type(trust) is GatewayHttpSampleTrust and replace(trust) == trust and trust.target == own.target)
     return HttpSampleCompatibility(workspace, plan.plan_id, plan.desired_graph_id, desired.projection_id,
         workload_product.reference, gateway_product.reference, installed, selected[0], trust)

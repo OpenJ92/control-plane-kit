@@ -12,6 +12,7 @@
       "migration_prerequisites": [],
       "canonical_public_exports": ["HttpSampleCompatibilityUnavailable", "GatewayHttpSampleTrust", "GatewayHttpSampleBinding", "HttpSampleCompatibility", "bind_http_sample_compatibility"],
       "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.receiver_management_routes",
         "control_plane_kit_core.configuration", "control_plane_kit_core.delegation_keys", "control_plane_kit_core.environment",
         "control_plane_kit_core.http_verification_sample_installation", "control_plane_kit_core.planning", "control_plane_kit_core.products",
         "control_plane_kit_core.receiver_configuration", "control_plane_kit_core.receiver_identity", "control_plane_kit_core.topology",

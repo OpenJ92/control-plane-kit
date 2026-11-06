@@ -157,7 +157,8 @@ class HttpSampleCompatibilityTests(unittest.TestCase):
                 return api.GatewayHttpSampleTrust(core.NodeControlReceiverTargetCodec().decode(value["target"]),
                     core.DelegationKeyPurpose(value["purpose"]), value["issuer"], tuple(
                         core.DelegationPublicKey(key["key_id"], core.DelegationKeyAlgorithm.ED25519, key["pem"]) for key in value["keys"]))
-        return api.bind_http_sample_compatibility(**values, gateway_binding=api.GatewayHttpSampleBinding(reference, slot, Decoder()))
+        return api.bind_http_sample_compatibility(**values, gateway_binding=api.GatewayHttpSampleBinding(
+            reference, slot, Decoder(), route_slot=ROUTE_SLOT))
 
     def test_http_sample_compatibility_preserves_actual_pairs_and_distinct_destinations(self):
         for options in ({}, dict(socket="control", receiver_port=8081, interval=1),
