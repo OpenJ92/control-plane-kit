@@ -2,6 +2,29 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.http_sample_compatibility",
+      "destination": "control_plane_kit_operations.http_sample_compatibility",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/http_sample_compatibility.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["values"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["HttpSampleCompatibilityUnavailable", "GatewayHttpSampleTrust", "GatewayHttpSampleBinding", "HttpSampleCompatibility", "bind_http_sample_compatibility"],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration", "control_plane_kit_core.delegation_keys", "control_plane_kit_core.environment",
+        "control_plane_kit_core.http_verification_sample_installation", "control_plane_kit_core.planning", "control_plane_kit_core.products",
+        "control_plane_kit_core.receiver_configuration", "control_plane_kit_core.receiver_identity", "control_plane_kit_core.topology",
+        "control_plane_kit_operations.graph_authoring", "control_plane_kit_operations.health_receiver_trust",
+        "control_plane_kit_operations.plan_derivation", "control_plane_kit_operations.deployment_transitions",
+        "control_plane_kit_operations.products", "control_plane_kit_operations.records", "control_plane_kit_operations.runtime_management_admission"
+      ],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_http_sample_compatibility.py"],
+      "motivation": "Read-only registered compatibility distinguishes receiver routing from original-check ports; it grants no execution or installed-state evidence."
+    },
+    {
       "module": "control_plane_kit_core.http_verification_sample_installation",
       "destination": "control_plane_kit_core.http_verification_sample_installation",
       "source": "control-plane-kit-core/src/control_plane_kit_core/http_verification_sample_installation.py",
