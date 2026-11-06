@@ -285,6 +285,44 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
              SecretUseIntent.GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY),
         )
 
+    @staticmethod
+    def sample_pairs():
+        return (
+            (DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE,
+             SecretUseIntent.WORKLOAD_HTTP_VERIFICATION_SAMPLE_SIGNING_KEY),
+            (DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT,
+             SecretUseIntent.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT_SIGNING_KEY),
+        )
+
+    def test_http_sample_registration_and_activation_preserve_exact_purposes(self):
+        service = self.service()
+        for purpose, intent in self.sample_pairs():
+            with self.subTest(purpose=purpose):
+                reference = self.admit_health_reference(purpose.value, (intent,))
+                command = replace(self.command(), purpose=purpose, private_key_reference=reference)
+                registered = service.register(command)
+                self.assertEqual(service.register(command), registered)
+                active = service.activate(replace(self.activate("gateway-a"), purpose=purpose))
+                self.assertEqual(self.service().activate(replace(self.activate("gateway-a"), purpose=purpose)), active)
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.delegation_signing_keys.require_active(
+                        "workspace-a", purpose, "cpk-server"), active)
+                    self.assertEqual(uow.stores.delegation_signing_keys.list_for_verification(
+                        "workspace-b", purpose, "cpk-server"), ())
+
+    def test_http_sample_registration_refuses_other_signing_uses_without_records(self):
+        for purpose, expected in self.sample_pairs():
+            for wrong in (SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
+                          *(intent for _, intent in self.health_pairs()),
+                          *(intent for _, intent in self.sample_pairs() if intent is not expected)):
+                with self.subTest(purpose=purpose, wrong=wrong):
+                    reference = self.admit_health_reference(purpose.value + "/" + wrong.value, (wrong,))
+                    with self.assertRaisesRegex(DelegationSigningKeyConflict, "not admitted for delegation signing"):
+                        self.service().register(replace(self.command(), purpose=purpose,
+                                                       private_key_reference=reference))
+                    with self.unit_of_work() as uow:
+                        self.assertEqual(uow.stores.delegation_signing_keys.list_workspace("workspace-a"), ())
+
     def admit_health_reference(self, suffix, intents):
         service = SecretProviderRegistrationService(self.unit_of_work)
         provider = service.register_provider(RegisterSecretProviderCommand(
@@ -297,7 +335,8 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
             allowed_intents=(SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
                              SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY,
                              SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY,
-                             *(intent for _, intent in self.health_pairs())),
+                             *(intent for _, intent in self.health_pairs()),
+                             *(intent for _, intent in self.sample_pairs())),
             admitted_by="operator-a", admitted_at="2026-08-01T11:00:00Z",
             actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
         ))

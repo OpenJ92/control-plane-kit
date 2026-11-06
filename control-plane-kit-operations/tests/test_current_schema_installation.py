@@ -176,13 +176,17 @@ _PURPOSE_EXPRESSION = (
     "'workload-node-control-surface-read'::text, "
     "'gateway-node-control-transit'::text]))"
 )
-_SIGNING_PURPOSE_EXPRESSION = (
+_PRE_SAMPLE_SIGNING_PURPOSE_EXPRESSION = (
     "(purpose = ANY (ARRAY['gateway-probe'::text, "
     "'workload-node-control'::text, "
     "'workload-node-control-surface-read'::text, "
     "'gateway-node-control-transit'::text, "
     "'workload-node-health-read'::text, "
     "'gateway-node-health-read-transit'::text]))"
+)
+_SIGNING_PURPOSE_EXPRESSION = _PRE_SAMPLE_SIGNING_PURPOSE_EXPRESSION[:-3] + (
+    ", 'workload-http-verification-sample'::text, "
+    "'gateway-http-verification-sample-transit'::text]))"
 )
 _INTENT_VALUES = (
     "application.control-token",
@@ -238,9 +242,13 @@ _PRE_HEALTH_INTENT_EXPRESSION = (
     "'secrets.custody-root-key'::text, "
     "'secrets.provider-credentials-document'::text]))"
 )
-_INTENT_EXPRESSION = _PRE_HEALTH_INTENT_EXPRESSION[:-3] + (
+_PRE_SAMPLE_INTENT_EXPRESSION = _PRE_HEALTH_INTENT_EXPRESSION[:-3] + (
     ", 'workload.node-health-read-signing-key'::text, "
     "'gateway.node-health-read-transit-signing-key'::text]))"
+)
+_INTENT_EXPRESSION = _PRE_SAMPLE_INTENT_EXPRESSION[:-3] + (
+    ", 'workload.http-verification-sample-signing-key'::text, "
+    "'gateway.http-verification-sample-transit-signing-key'::text]))"
 )
 _TARGET_CONSTRAINTS = {
     "cpk_delegation_signing_keys_purpose_check": (
@@ -388,7 +396,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 self.assertIsNone(error.__context__)
                 self.assertIsNone(error.__cause__)
 
-    def test_health_contract_fingerprint_pins_exact_constraint_changes(self) -> None:
+    def test_http_sample_contract_fingerprint_pins_exact_constraint_changes(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract, schema
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
@@ -1100,12 +1108,14 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             tuple(sorted(_NEW_INTENTS)),
         )
 
-    def test_fresh_health_rows_survive_exact_query_only_reentry(self) -> None:
+    def test_fresh_signing_rows_survive_exact_query_only_reentry(self) -> None:
         postgres.install_schema(self.connection)
         self._seed_authority_vocabulary_rows()
         for index, (purpose, intent) in enumerate((
             ("workload-node-health-read", "workload.node-health-read-signing-key"),
             ("gateway-node-health-read-transit", "gateway.node-health-read-transit-signing-key"),
+            ("workload-http-verification-sample", "workload.http-verification-sample-signing-key"),
+            ("gateway-http-verification-sample-transit", "gateway.http-verification-sample-transit-signing-key"),
         ), start=40):
             self.connection.execute(
                 "INSERT INTO cpk_delegation_signing_keys "
@@ -1128,17 +1138,21 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         before_objects, before_rows = self._object_identities(), self._authority_rows()
         self.assertEqual(self.connection.execute(
             "SELECT purpose FROM cpk_delegation_signing_keys WHERE key_id LIKE 'health-key-%' ORDER BY purpose"
-        ).fetchall(), [("gateway-node-health-read-transit",), ("workload-node-health-read",)])
+        ).fetchall(), [("gateway-http-verification-sample-transit",),
+                      ("gateway-node-health-read-transit",),
+                      ("workload-http-verification-sample",), ("workload-node-health-read",)])
         recorder = _RecordingConnection(self.connection)
         postgres.install_schema(recorder)
         self.assertEqual(self._object_identities(), before_objects)
         self.assertEqual(self._authority_rows(), before_rows)
         self._assert_calls_are_read_only(recorder.calls)
 
-    def test_pre_health_constraints_refuse_without_repair_or_row_loss(self) -> None:
+    def test_prior_signing_domains_refuse_without_repair_or_row_loss(self) -> None:
         for name, expression in (
             ("cpk_delegation_signing_keys_purpose_check", _PURPOSE_EXPRESSION),
             ("cpk_secret_use_authorizations_intent_check", _PRE_HEALTH_INTENT_EXPRESSION),
+            ("cpk_delegation_signing_keys_purpose_check", _PRE_SAMPLE_SIGNING_PURPOSE_EXPRESSION),
+            ("cpk_secret_use_authorizations_intent_check", _PRE_SAMPLE_INTENT_EXPRESSION),
         ):
             with self.subTest(constraint=name):
                 self._reset_owned_schema()
@@ -1165,6 +1179,8 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             ("cpk_secret_use_authorizations", "use_intent", "unknown-health-intent", "cpk_secret_use_authorizations_intent_check"),
             ("cpk_gateway_key_rotations", "purpose", "workload-node-health-read", "cpk_gateway_key_rotations_purpose_check"),
             ("cpk_gateway_key_rotations", "purpose", "gateway-node-health-read-transit", "cpk_gateway_key_rotations_purpose_check"),
+            ("cpk_gateway_key_rotations", "purpose", "workload-http-verification-sample", "cpk_gateway_key_rotations_purpose_check"),
+            ("cpk_gateway_key_rotations", "purpose", "gateway-http-verification-sample-transit", "cpk_gateway_key_rotations_purpose_check"),
         ):
             with self.subTest(relation=relation, value=value):
                 before = self._authority_rows()
