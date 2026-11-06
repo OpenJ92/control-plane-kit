@@ -263,6 +263,15 @@ class HttpSampleBootstrapPlanningTests(unittest.TestCase):
                 self.assertEqual(self.compile(desired), plan)
 
     def test_partial_or_cross_wired_companion_keeps_review(self):
+        for socket, port, interval in (("http-api", 8080, 2), ("control", 8081, 1)):
+            with self.subTest(partial_socket=socket):
+                partial = http_sample_bootstrap_graph(socket=socket, port=port, interval=interval, selected=("ready",))
+                refused = self.compile(partial)
+                self.assertTrue(self.workload_review(refused))
+                ordinary = core.compile_graph_activity_plan(validate_graph(empty()), validate_graph(partial))
+                original_wait = next(item for item in ordinary.activities if isinstance(item.operation, WaitForHealthy)
+                    and item.operation.target.node_id == "workload")
+                self.assertEqual(refused.activity(original_wait.activity_id), original_wait)
         desired = http_sample_bootstrap_graph()
         node = desired.node("workload")
         sample = node.configuration_artifacts[1]
