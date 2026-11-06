@@ -64,7 +64,7 @@ class _HttpSampleFixture(_ManagedPermissionStartFixture):
                           health_reads=(NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS))
         workload = replace(workload, declaration=replace(workload.declaration, surface=surface))
         selected["workload"] = replace(selected["workload"], content=codec.encode_bytes(workload).decode())
-        check = HttpCheck("ready", "http", "/ready")
+        check = HttpCheck(check_id="ready", provider_socket="http", path="/ready")
         sample = HttpVerificationSampleReceiverConfiguration(
             workload.target, workload.declaration.identity().value,
             HttpVerificationSampleVerifierConfiguration(DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE,
@@ -202,7 +202,7 @@ class PostgresHttpSampleInvocationTests(_HttpSampleFixture, unittest.TestCase):
         child = port.for_check("ready")
         pair = getattr(child, "signing_authority", None)
         self.assertIsNotNone(pair, "reached HTTP check lacks its two signing roles")
-        self.assertEqual(pair.check, HttpCheck("ready", "http", "/ready"))
+        self.assertEqual(pair.check, HttpCheck(check_id="ready", provider_socket="http", path="/ready"))
         self.assertEqual(pair.target.node_id.value, "api")
         self.assertEqual(pair.gateway_target.node_id.value, "gateway")
         self.assertEqual(pair.route_id, "api")
