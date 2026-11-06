@@ -167,6 +167,24 @@ class HttpSampleInstallationTests(unittest.TestCase):
         document["verifier"]["public_keys"][0]["key_id"] = "localhost"
         self.refusal(lambda: codec.decode(document))
 
+    def test_binding_refuses_unaddressable_audience_before_exposing_checks(self):
+        socket_name = "s" * 128
+        socket_reference = replace(self.receiver.target.provider_socket_name, value=socket_name)
+        target = replace(self.receiver.target, provider_socket_name=socket_reference,
+            node_id=replace(self.receiver.target.node_id, value="n" * 128))
+        declaration = replace(self.receiver.declaration, surface=replace(self.receiver.declaration.surface,
+            provider_socket_name=socket_reference))
+        receiver = replace(self.receiver, target=target, declaration=declaration)
+        codec = ReceiverNodeControlConfigurationCodec()
+        self.assertEqual(codec.decode_bytes(codec.encode_bytes(receiver)), receiver)
+        check = replace(self.product.verification.checks[1], provider_socket=socket_name)
+        configuration = replace(self.configuration((check,)), target=target,
+            declaration_identity=declaration.identity().value)
+        self.refusal(lambda: self.bind(configuration, receiver_configuration=receiver,
+            verification_contract=VerificationContract((check,)),
+            provider_sockets=(ProviderSocket(socket_name, Protocol.HTTP),),
+            provider_ports=(ProviderRuntimePort(socket_name, 8080),)))
+
     def test_product_owned_slot_and_effective_binding_are_both_required(self):
         select = self.api.select_http_verification_sample_configuration_slot
         name = self.api.HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT

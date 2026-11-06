@@ -14,7 +14,7 @@ from control_plane_kit_core.http_verification_samples import (
     HttpVerificationSampleRequest, _bounded, _checked, _closed, _raw, _require, _text,
     http_verification_check_digest, require_http_verification_sample_check,
 )
-from control_plane_kit_core._node_control_public_wire import canonical_json_bytes, digest_violation
+from control_plane_kit_core._node_control_public_wire import canonical_json_bytes, digest_violation, identifier_violation
 from control_plane_kit_core.products import ProductRuntimeContract, ProviderRuntimePort
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfiguration, ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.receiver_identity import NodeControlReceiverTarget, NodeControlReceiverTargetCodec, receiver_node_control_audience
@@ -43,6 +43,7 @@ def _validate_verifier(verifier):
     _require(type(verifier.public_keys) is tuple and 1 <= len(verifier.public_keys) <= 16)
     for key in verifier.public_keys:
         _require(type(key) is DelegationPublicKey and key.algorithm is DelegationKeyAlgorithm.ED25519)
+        _text(key.key_id, identifier_violation)
         _require(replace(key) == key)
     _require(len({key.key_id for key in verifier.public_keys}) == len(verifier.public_keys)
              and len({key.fingerprint_sha256 for key in verifier.public_keys}) == len(verifier.public_keys))
@@ -172,7 +173,7 @@ class HttpVerificationSampleReceiverBinding:
     def key(self, key_id):
         def key():
             _admitted_checks(self)
-            _text(key_id)
+            _text(key_id, identifier_violation)
             selected = tuple(key for key in self.configuration.verifier.public_keys if key.key_id == key_id)
             _require(len(selected) == 1)
             return selected[0]
@@ -200,6 +201,7 @@ def _admitted_checks(binding):
     receiver = codec.decode(codec.encode(binding.receiver_configuration))
     _require(configuration.target == receiver.target
              and configuration.declaration_identity == receiver.declaration.identity().value)
+    receiver_node_control_audience(receiver.target)
     _require(type(binding.verification_contract) is VerificationContract
              and type(binding.provider_sockets) is tuple
              and all(type(socket) is ProviderSocket for socket in binding.provider_sockets)
