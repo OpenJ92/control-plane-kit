@@ -117,10 +117,13 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
             self.admission_service().execute(self.command())
         self.operation_service("other-session", "other-session-action").execute(
             StartOperationSession("workspace-a", "operator-a", "Other session", IdempotencyKey("other-session")))
-        self.connection.execute("UPDATE cpk_activity_plans SET session_id='other-session' WHERE plan_id='plan-a'")
+        with self.unit_of_work() as uow:
+            original = uow.stores.activity_history.get_plan("plan-a")
+            uow.stores.activity_history.add_plan(replace(original, plan_id="other-plan", session_id="other-session"))
+            uow.commit()
         from control_plane_kit_operations.admission import ExecutionAdmissionError
         with self.assertRaises(ExecutionAdmissionError) as caught:
-            self.admission_service().execute(self.command())
+            self.admission_service().execute(replace(self.command(), plan_id="other-plan"))
         self.assertIsInstance(caught.exception, ExecutionAdmissionConflict)
         self.assertEqual(str(caught.exception), "plan belongs to another session")
         for relation in ("cpk_execution_requests", "cpk_activity_runs", "cpk_effect_attempts"):
