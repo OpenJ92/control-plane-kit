@@ -5,6 +5,8 @@ Maintain this companion alongside its source.
 identity and the forwarded plan. Omitted/explicit same-key changes conflict in
 both directions, with exact replay and no extra durable rows. This is planning
 only and does not grant execution or prove Servers client/journal propagation.
+An explicit same-graph sample request is review-blocked, while omitted same-graph
+preparation retains no-changes; neither requests approval.
 
 Existing tests use real PostgreSQL services to protect composed preparation,
 plan/approval/no-change results, interruption/replay and bounded failures. #1875

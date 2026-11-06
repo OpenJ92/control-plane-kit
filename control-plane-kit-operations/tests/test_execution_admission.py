@@ -115,6 +115,14 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
             (Jsonb(encode_stored_activity_plan(self._base_plan, profile=profile)),))
         with self.assertRaises(ExecutionAdmissionDenied):
             self.admission_service().execute(self.command())
+        self.operation_service("other-session", "other-session-action").execute(
+            StartOperationSession("workspace-a", "operator-a", "Other session", IdempotencyKey("other-session")))
+        self.connection.execute("UPDATE cpk_activity_plans SET session_id='other-session' WHERE plan_id='plan-a'")
+        from control_plane_kit_operations.admission import ExecutionAdmissionError
+        with self.assertRaises(ExecutionAdmissionError) as caught:
+            self.admission_service().execute(self.command())
+        self.assertIsInstance(caught.exception, ExecutionAdmissionConflict)
+        self.assertEqual(str(caught.exception), "plan belongs to another session")
         for relation in ("cpk_execution_requests", "cpk_activity_runs", "cpk_effect_attempts"):
             self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {relation}").fetchone()[0], 0)
 

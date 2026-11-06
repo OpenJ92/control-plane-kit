@@ -80,7 +80,9 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
                 explicit = replace(command, http_verification_intent=intent.AUTHENTICATED_SAMPLES)
                 first, changed = (explicit, command) if explicit_first else (command, explicit)
                 result = self.program().prepare(first)
+                self.assertIsInstance(result, DeploymentReviewBlocked if explicit_first else DeploymentNoChanges)
                 before = self._counts()
+                self.assertEqual(before["cpk_approval_requests"], 0)
                 self.assertEqual(self.program().prepare(first), result)
                 with self.assertRaises(self.module().DeploymentProgramStateConflict):
                     self.program().prepare(changed)

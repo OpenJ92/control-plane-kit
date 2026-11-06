@@ -197,6 +197,14 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         before = self._durable_counts()
         self.assertEqual(self.planning_service().execute(selected).plan_record, result.plan_record)
         self.assertEqual(self.planning_service().execute(command).plan_record, old.plan_record)
+        absent = dict(result.action.payload)
+        absent.pop("http_verification_intent")
+        old_with_intent = {**old.action.payload, "http_verification_intent": "authenticated-samples"}
+        for record, action, transition, payload in (
+                (result.plan_record, result.action, result.transition, absent),
+                (old.plan_record, old.action, old.transition, old_with_intent)):
+            with self.subTest(profile=record.derivation_profile), self.assertRaises(InvalidOperationCommand):
+                ActivityPlanningResult(record, replace(action, payload=payload), transition)
         with self.assertRaises(ActivityPlanningIdempotencyConflict):
             self.planning_service().execute(replace(selected, http_verification_intent=None))
         payload = dict(result.action.payload)
