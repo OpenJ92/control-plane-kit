@@ -1240,11 +1240,14 @@ def _authoritative_http_check(
     if not valid:
         _OutcomeError.OBSERVATION.raised
     check = checks[0]
+    if completion.attempts > check.policy.maximum_attempts:
+        _OutcomeError.OBSERVATION.raised
     evidence = completion.evidence
     if evidence is not None and type(evidence) is not HttpVerificationEvidence:
         _OutcomeError.OBSERVATION.raised
     if evidence is not None and (
-        evidence.expected_body_sha256 != check.expected_body_sha256
+        evidence.response_bytes > check.policy.maximum_evidence_bytes
+        or evidence.expected_body_sha256 != check.expected_body_sha256
         or (
             check.expected_body_sha256 is None
             and evidence.body_sha256_matches is not None

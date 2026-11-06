@@ -54,6 +54,8 @@ class DelegationPublicKeyTests(unittest.TestCase):
                 "workload-node-health-read",
                 "gateway-node-control-transit",
                 "gateway-node-health-read-transit",
+                "workload-http-verification-sample",
+                "gateway-http-verification-sample-transit",
             ),
         )
         self.assertEqual(

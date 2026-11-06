@@ -36,6 +36,7 @@ from control_plane_kit_core.verification import (
     VerificationContract,
     VerificationIdentity,
     VerificationOutcome,
+    VerificationPolicy,
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.records import (
@@ -181,6 +182,9 @@ class EffectOutcomeRecordContractTest(
         status_code: int = 200,
         include_evidence: bool | None = None,
         body_sha256_matches: bool | None = None,
+        policy: VerificationPolicy = VerificationPolicy(),
+        attempts: int = 1,
+        response_bytes: int = 21,
     ):
         self.assertIn(
             "expected_body_sha256",
@@ -195,6 +199,7 @@ class EffectOutcomeRecordContractTest(
                     provider_socket="http",
                     path="/",
                     expected_body_sha256=expected_body_sha256,
+                    policy=policy,
                 ),
             )
         )
@@ -222,7 +227,7 @@ class EffectOutcomeRecordContractTest(
         if include_evidence:
             evidence = HttpVerificationEvidence(
                 status_code,
-                21,
+                response_bytes,
                 expected_body_sha256=expected_body_sha256,
                 body_sha256_matches=body_sha256_matches,
             )
@@ -230,7 +235,7 @@ class EffectOutcomeRecordContractTest(
             VerificationIdentity("api", "graph-desired", "root-response"),
             VerificationCapability.HTTP,
             verification_outcome,
-            1,
+            attempts,
             evidence,
         )
         if verification_outcome is VerificationOutcome.PASSED:
@@ -277,6 +282,75 @@ class EffectOutcomeRecordContractTest(
             intent_record=intent_record,
         )
         return records, intent_record, outcome, attempt
+
+    def test_http_verification_projection_rejects_original_policy_overruns(self) -> None:
+        policy = VerificationPolicy(maximum_attempts=2, maximum_evidence_bytes=1024)
+        for attempts, response_bytes in ((3, 1024), (2, 1025)):
+            with self.subTest(attempts=attempts, response_bytes=response_bytes):
+                with self.assertRaisesRegex(
+                    OperationsRecordError,
+                    "effect outcome observation projection is invalid",
+                ):
+                    self.http_verification_case(
+                        VerificationOutcome.PASSED,
+                        policy=policy,
+                        attempts=attempts,
+                        response_bytes=response_bytes,
+                    )
+
+    def test_http_verification_attempt_bound_applies_without_evidence(self) -> None:
+        with self.assertRaisesRegex(
+            OperationsRecordError,
+            "effect outcome observation projection is invalid",
+        ):
+            self.http_verification_case(
+                VerificationOutcome.FAILED,
+                policy=VerificationPolicy(maximum_attempts=2),
+                attempts=3,
+                include_evidence=False,
+            )
+
+    def test_http_verification_byte_bound_applies_to_failed_samples(self) -> None:
+        with self.assertRaisesRegex(
+            OperationsRecordError,
+            "effect outcome observation projection is invalid",
+        ):
+            self.http_verification_case(
+                VerificationOutcome.FAILED,
+                expected_body_sha256=None,
+                status_code=500,
+                policy=VerificationPolicy(maximum_attempts=2, maximum_evidence_bytes=1024),
+                attempts=2,
+                response_bytes=1025,
+            )
+
+    def test_http_verification_policy_equality_preserves_reported_outcome(self) -> None:
+        policy = VerificationPolicy(maximum_attempts=2, maximum_evidence_bytes=1024)
+        cases = (
+            (VerificationOutcome.PASSED, 200, True, ObservationStatus.VERIFIED, None),
+            (VerificationOutcome.FAILED, 500, True,
+             ObservationStatus.VERIFICATION_FAILED, "status-mismatch"),
+            (VerificationOutcome.FAILED, 200, False,
+             ObservationStatus.VERIFICATION_FAILED, "transport-unavailable"),
+            (VerificationOutcome.MALFORMED, 200, True,
+             ObservationStatus.MALFORMED, "response-oversized"),
+        )
+        for outcome, status_code, include_evidence, status, category in cases:
+            with self.subTest(outcome=outcome, include_evidence=include_evidence):
+                records, _, _, _ = self.http_verification_case(
+                    outcome,
+                    expected_body_sha256=None,
+                    status_code=status_code,
+                    include_evidence=include_evidence,
+                    policy=policy,
+                    attempts=2,
+                    response_bytes=1024,
+                )
+                self.assertEqual(records[0].status, status)
+                payload = records[0].evidence.descriptor()["http_verification"]
+                self.assertEqual(payload.get("category"), category)
+                self.assertEqual(payload["http_status"], status_code if include_evidence else None)
+                self.assertEqual(payload["response_bytes"], 1024 if include_evidence else None)
 
     def test_http_verification_projects_only_authoritative_intent_coordinates(
         self,
