@@ -156,6 +156,17 @@ class HttpSampleInstallationTests(unittest.TestCase):
             self.assertEqual(http_verification_check_digest(check),
                              self.configuration((check,)).checks[0].check_digest)
 
+    def test_installed_key_ids_must_be_addressable_by_sample_grants(self):
+        value = self.configuration()
+        codec = self.api.HttpVerificationSampleReceiverConfigurationCodec()
+        self.assertEqual(self.bind(codec.decode(codec.encode(value))).key(self.key.key_id), self.key)
+        # Generic key syntax permits this name; the sample wire grammar does not.
+        unaddressable = replace(self.key, key_id="localhost")
+        self.refusal(lambda: replace(value.verifier, public_keys=(unaddressable,)))
+        document = codec.encode(value)
+        document["verifier"]["public_keys"][0]["key_id"] = "localhost"
+        self.refusal(lambda: codec.decode(document))
+
     def test_product_owned_slot_and_effective_binding_are_both_required(self):
         select = self.api.select_http_verification_sample_configuration_slot
         name = self.api.HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT
