@@ -211,4 +211,3 @@ class HttpVerificationSampleTests(ReceiverHealthFixtures, unittest.TestCase):
                     request, VerificationOutcome.PASSED, HttpVerificationEvidence(status, 21))
                 self.refusal(lambda: result.descriptor(installed_check=check))
                 self.refusal(lambda: result.canonical_bytes(installed_check=check))
-
