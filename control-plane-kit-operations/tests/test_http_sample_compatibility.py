@@ -28,10 +28,13 @@ from control_plane_kit_operations.runtime_management_admission import runtime_ma
 from tests.health_receiver_trust_fixture import context, public_key
 
 MODULE = "control_plane_kit_operations.http_sample_compatibility"
+ROUTE_SLOT = ConfigurationArtifactRequirement("gateway-health-targets", "/etc/cpk/gateway/health-targets.json",
+    ConfigurationMediaType.JSON, ConfigurationFileMode.READ_ONLY)
 
 
 def case(test, *, socket="http-api", receiver_port=8080, check_socket=None, check_port=None,
-         interval=2, route_port=None, selected=("live", "ready"), sample_purpose=None):
+         interval=2, route_port=None, selected=("live", "ready"), sample_purpose=None,
+         route_changes=None, issuer="sample-controller", key_id=None, route_alias="api"):
     """Immutable owner records and real Core values; no database or execution fixture."""
     check_socket = socket if check_socket is None else check_socket
     check_port = receiver_port if check_port is None else check_port
@@ -78,12 +81,14 @@ def case(test, *, socket="http-api", receiver_port=8080, check_socket=None, chec
         own = receiver_codec.decode_bytes(artifact.content.encode())
         purpose = core.DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT if sample_purpose is None else sample_purpose
         trust = ConfigurationArtifact("sample-transit", "/etc/test/sample-transit.json", ConfigurationMediaType.JSON,
-            json.dumps(dict(target=own.target.descriptor(), purpose=purpose.value, issuer="sample-controller",
-                keys=[dict(key_id=public_key("transit").key_id, pem=public_key("transit").public_key_pem)])))
+            json.dumps(dict(target=own.target.descriptor(), purpose=purpose.value, issuer=issuer,
+                keys=[dict(key_id=public_key("transit").key_id if key_id is None else key_id,
+                    pem=public_key("transit").public_key_pem)])))
         routes = ConfigurationArtifact("gateway-health-targets", "/etc/cpk/gateway/health-targets.json", ConfigurationMediaType.JSON,
             ReceiverManagementRoutesCodec().encode_bytes(ReceiverManagementRoutes(own.target, (
-                ReceiverManagementRouteBinding("api", receiver.target, receiver.declaration, f"http://api:{route_port}"),
+                ReceiverManagementRouteBinding(route_alias, receiver.target, receiver.declaration, f"http://api:{route_port}"),
                 ReceiverManagementRouteBinding("gateway", own.target, own.declaration, "http://gateway:8000")))).decode())
+        routes = replace(routes, **(route_changes or {}))
         extras = (trust, routes)
         contract = documents["transit"].product.runtime_contract
         documents["transit"] = core.ProductDescriptorCodec().encode_document(replace(documents["transit"].product,
@@ -113,6 +118,36 @@ def case(test, *, socket="http-api", receiver_port=8080, check_socket=None, chec
 
 
 class HttpSampleCompatibilityTests(unittest.TestCase):
+    def test_http_sample_compatibility_requires_independent_route_slot_after_repins(self):
+        api = importlib.import_module(MODULE)
+        for changes in (dict(target_path="/etc/test/wrong-routes.json"), dict(artifact_id="other-routes"),
+                        dict(media_type=ConfigurationMediaType.TEXT), dict(file_mode=ConfigurationFileMode.OWNER_READ_ONLY)):
+            with self.subTest(changes=changes):
+                values, reference, slot = case(self, route_changes=changes)
+                self.assertTrue(values["plan"].plan.ready_for_execution)
+                # Both descriptor and graph agree and are re-pinned. The qualified
+                # product-owned expected slot remains independent of those bytes.
+                with self.assertRaises(api.HttpSampleCompatibilityUnavailable):
+                    self.bind(values, reference, slot)
+
+    def test_http_sample_compatibility_uses_sample_wire_issuer_keys_and_alias_unchanged(self):
+        from control_plane_kit_core._node_control_public_wire import reference_violation
+        api = importlib.import_module(MODULE)
+        for options in (dict(issuer="localhost"), dict(key_id="localhost"), dict(route_alias="localhost")):
+            with self.subTest(options=options):
+                values, reference, slot = case(self, **options)
+                with self.assertRaises(api.HttpSampleCompatibilityUnavailable):
+                    self.bind(values, reference, slot)
+        issuer = "issuer-" + "a" * 220
+        self.assertIsNone(reference_violation(issuer))
+        values, reference, slot = case(self, issuer=issuer, route_alias="child-route")
+        try:
+            result = self.bind(values, reference, slot)
+        except api.HttpSampleCompatibilityUnavailable:
+            self.fail("Core-valid issuer and unchanged route alias must remain supported")
+        self.assertEqual(result.gateway_trust.issuer, issuer)
+        self.assertEqual(result.route.target_id, "child-route")
+
     def bind(self, values, reference, slot):
         self.assertIsNotNone(importlib.util.find_spec(MODULE), "read-only sample compatibility is missing")
         api = importlib.import_module(MODULE)
