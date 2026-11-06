@@ -6,6 +6,7 @@ import json
 import unittest
 
 import control_plane_kit_core as core
+from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement, ConfigurationFileMode, ConfigurationMediaType
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.http_verification_sample_installation import (
@@ -16,8 +17,9 @@ from control_plane_kit_core.http_verification_sample_installation import (
 from control_plane_kit_core.http_verification_samples import http_verification_check_digest
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact
 from control_plane_kit_core.receiver_management_routes import ReceiverManagementRouteBinding, ReceiverManagementRoutes, ReceiverManagementRoutesCodec
-from control_plane_kit_core.topology import validate_graph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
+from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import HttpCheck, VerificationContract, VerificationPolicy
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
@@ -55,7 +57,7 @@ def case(test, *, socket="http-api", receiver_port=8080, check_socket=None, chec
         sample = ConfigurationArtifact("sample-checks", "/etc/test/samples.json", ConfigurationMediaType.JSON,
             HttpVerificationSampleReceiverConfigurationCodec().encode_canonical_bytes(samples).decode())
         names = tuple(dict.fromkeys((socket, check_socket)))
-        sockets = core.BlockSockets(providers=tuple(core.ProviderSocket(name, core.Protocol.HTTP) for name in names))
+        sockets = BlockSockets(providers=tuple(ProviderSocket(name, Protocol.HTTP) for name in names))
         ports = tuple(core.ProviderRuntimePort(name, receiver_port if name == socket else check_port) for name in names)
         contract = documents["workload"].product.runtime_contract
         default = receiver_codec.decode_bytes(contract.configuration_artifacts[0].content.encode())
@@ -66,7 +68,7 @@ def case(test, *, socket="http-api", receiver_port=8080, check_socket=None, chec
             control_surfaces=(surface,), public_environment=environment,
             configuration_artifacts=(replace(contract.configuration_artifacts[0], content=receiver_codec.encode_bytes(default).decode()), sample))
         nodes["api"] = replace(node, sockets=sockets, public_environment=environment,
-            endpoints={name: Endpoint(LiteralAddress(f"http://api:{receiver_port if name == socket else check_port}"), core.Protocol.HTTP) for name in names},
+            endpoints={name: Endpoint(LiteralAddress(f"http://api:{receiver_port if name == socket else check_port}"), Protocol.HTTP) for name in names},
             block_spec=replace(node.block_spec, verification=contract.verification, control_surfaces=(surface,)),
             configuration_artifacts=(chosen["workload"], sample))
         documents["workload"] = core.ProductDescriptorCodec().encode_document(replace(documents["workload"].product, runtime_contract=contract))
@@ -137,8 +139,8 @@ class HttpSampleCompatibilityTests(unittest.TestCase):
                 self.assertEqual(tuple(entry.check.check_id for entry in result.receiver.checks), ("live", "ready"))
                 self.assertEqual(tuple(dict(value.graph_descriptor) for value in (values["current"], values["desired"])), before)
                 self.assertTrue(runtime_management_execution_is_unsupported(
-                    core.DEFAULT_GRAPH_CODEC.decode(values["current"].graph_descriptor),
-                    core.DEFAULT_GRAPH_CODEC.decode(values["desired"].graph_descriptor), values["plan"].plan,
+                    DEFAULT_GRAPH_CODEC.decode(values["current"].graph_descriptor),
+                    DEFAULT_GRAPH_CODEC.decode(values["desired"].graph_descriptor), values["plan"].plan,
                     registered_products=values["products"], derivation_profile=values["plan"].derivation_profile))
 
     def test_http_sample_compatibility_refuses_misroute_partial_and_wrong_trust(self):
