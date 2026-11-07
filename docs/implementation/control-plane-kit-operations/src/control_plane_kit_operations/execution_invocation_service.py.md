@@ -15,6 +15,9 @@ commit/context exit. No transaction spans resolution, signing or transport.
 History independently reconstructs each check's original pair and validates the
 closed ordered invocation family, including both resolution roles before a
 whole-check admission. Resolution reuses the exact sample-specific command; the
+presence of authorization metadata alone advances only the sample frontier.
+Legacy eager password metadata remains valid before acquisition; its actual
+resolution/check invocation still requires the existing reached-check order. The
 final whole-check admission revalidates both original active signer/reference/
 provider chains after resolution. A sibling-check use cannot acquire a permit.
 Completion/inspection use exact historical registrations, including retired

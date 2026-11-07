@@ -782,7 +782,8 @@ class ExecutionInvocationService:
             row = checks.get(check.target_fingerprint)
             credentials = tuple(resolution(role) for role, _ in authorizations if role[0] == check)
             if (row is not None or any(value is not None for value in credentials)
-                    or any(value is not None for role, value in authorizations if role[0] == check)):
+                    or (check.http_sample and any(value is not None
+                        for role, value in authorizations if role[0] == check))):
                 _require(prefix_returned and self._returned(marker))
             credential_prefix = True
             for credential in credentials:
