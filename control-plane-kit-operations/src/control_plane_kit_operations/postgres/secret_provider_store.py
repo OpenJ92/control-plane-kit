@@ -38,6 +38,7 @@ from control_plane_kit_operations.secret_providers import (
     SecretProviderKind,
     SecretProviderNotFound,
     SecretProviderRegistrationConflict,
+    _require_identifier, _require_correlation_identifier,
 )
 
 
@@ -754,6 +755,20 @@ class SecretUseAuthorizationStore:
             self._connection,
             f"secret-use:{workspace_id}:{correlation_id}",
         )
+
+    def for_correlations(self, workspace_id, correlations):
+        """Observe two exact unique role identities in one statement snapshot."""
+        _require_identifier(workspace_id, "workspace_id")
+        if type(correlations) is not tuple or len(correlations) != 2 or len(set(correlations)) != 2:
+            raise SecretProviderRegistrationConflict("secret-use pair identity is malformed")
+        for correlation in correlations:
+            _require_correlation_identifier(correlation, "correlation_id")
+        rows = self._connection.execute(_SECRET_USE_SELECT
+            + " WHERE workspace_id=%s AND correlation_id IN (%s,%s) ORDER BY correlation_id LIMIT 3",
+            (workspace_id, *correlations)).fetchall()
+        if len(rows) > 2:
+            raise SecretProviderRegistrationConflict("secret-use pair identity is malformed")
+        return tuple(_row_to_authorized_use(row) for row in rows)
 
     def add(self, authorized: AuthorizedSecretUse | AuthorizedSecretVersionUse) -> None:
         validate_authorized_secret_use(authorized)

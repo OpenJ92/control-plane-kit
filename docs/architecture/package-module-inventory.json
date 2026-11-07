@@ -2,6 +2,22 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.http_sample_secret_uses",
+      "destination": "control_plane_kit_operations.http_sample_secret_uses",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/http_sample_secret_uses.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["authorization", "transactions", "validation"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["HttpSampleSecretUseConflict", "http_sample_authorization_command", "prepare_http_sample_uses_in_unit_of_work", "reauthorize_http_sample_use_in_unit_of_work"],
+      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.http_sample_sender_input", "control_plane_kit_operations.secret_providers"],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_postgres_http_sample_secret_uses.py"],
+      "motivation": "Atomic sample-use transaction suffix, not current run admission or external effects."
+    },
+    {
       "module": "control_plane_kit_operations.http_sample_sender_input",
       "destination": "control_plane_kit_operations.http_sample_sender_input",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/http_sample_sender_input.py",
@@ -10,7 +26,7 @@
       "semantic_roles": ["values", "validation", "transformations"],
       "movement": "remain",
       "migration_prerequisites": [],
-      "canonical_public_exports": ["HttpSampleSenderInputUnavailable", "HttpSampleSenderInput", "http_sample_signing_binding_for", "bind_http_sample_sender_input"],
+      "canonical_public_exports": ["HttpSampleSenderInputUnavailable", "HttpSampleSenderInput", "http_sample_signing_correlation_for", "http_sample_signing_binding_for", "bind_http_sample_sender_input"],
       "internal_dependencies": [
         "control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.delegation_keys",
         "control_plane_kit_core.http_verification_samples", "control_plane_kit_core.operations",

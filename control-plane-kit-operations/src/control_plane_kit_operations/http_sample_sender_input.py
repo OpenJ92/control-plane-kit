@@ -104,10 +104,9 @@ def _context(compatibility, plan, check_id, attempt, operation_id, session_id,
     return checks[0]
 
 
-def _binding(context, purpose, key_registration_id):
+def _role_identity(context, purpose):
     check = _context(**context)
-    _require(type(purpose) is DelegationKeyPurpose and purpose in (_TRANSIT, _WORKLOAD)
-        and type(key_registration_id) is str and re.fullmatch(r"dkey_[0-9a-f]{64}", key_registration_id) is not None)
+    _require(type(purpose) is DelegationKeyPurpose and purpose in (_TRANSIT, _WORKLOAD))
     compatibility = context["compatibility"]
     target = compatibility.gateway_trust.target if purpose is _TRANSIT else compatibility.receiver.configuration.target
     target_digest = sha256(rfc8785.dumps(dict(domain="cpk.http-sample-role-target.v1",
@@ -124,9 +123,22 @@ def _binding(context, purpose, key_registration_id):
         actor_subject=context["actor_subject"], effect_id=context["effect_id"],
         request_fingerprint=context["request_fingerprint"], target_digest=target_digest,
         purpose=purpose.value))).hexdigest()
-    # Stable lookup excludes replacement selection. The probe pins the original
-    # exact registration; neither identity depends on a volatile sample ordinal.
-    return "http-sample-use:" + correlation, "http-sample.v1:" + target_digest + ":" + key_registration_id
+    return "http-sample-use:" + correlation, target_digest
+
+
+def _binding(context, purpose, key_registration_id):
+    _require(type(key_registration_id) is str and re.fullmatch(r"dkey_[0-9a-f]{64}", key_registration_id) is not None)
+    correlation, target_digest = _role_identity(context, purpose)
+    return correlation, "http-sample.v1:" + target_digest + ":" + key_registration_id
+
+
+def http_sample_signing_correlation_for(*, compatibility, plan, check_id, attempt, operation_id,
+        session_id, actor_subject, effect_id, request_fingerprint, purpose):
+    """Locate original role evidence without selecting a current/replacement key."""
+    context = dict(compatibility=compatibility, plan=plan, check_id=check_id, attempt=attempt,
+        operation_id=operation_id, session_id=session_id, actor_subject=actor_subject,
+        effect_id=effect_id, request_fingerprint=request_fingerprint)
+    return _checked(lambda: _role_identity(context, purpose)[0])
 
 
 def http_sample_signing_binding_for(*, compatibility, plan, check_id, attempt, operation_id,
@@ -197,4 +209,4 @@ def bind_http_sample_sender_input(*, compatibility, plan, check_id, attempt, ope
 
 
 __all__ = ["HttpSampleSenderInputUnavailable", "HttpSampleSenderInput",
-    "http_sample_signing_binding_for", "bind_http_sample_sender_input"]
+    "http_sample_signing_correlation_for", "http_sample_signing_binding_for", "bind_http_sample_sender_input"]

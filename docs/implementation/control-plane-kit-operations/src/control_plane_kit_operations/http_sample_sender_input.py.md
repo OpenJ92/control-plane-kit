@@ -22,6 +22,8 @@ target. It excludes private-reference/key selection and volatile sample ordinals
 The bounded versioned probe commits the role target digest and exact original key
 registration. Replacing a key therefore keeps the lookup correlation but changes
 the probe, refusing substitution of a retained binding. Neither creates a row.
+The separate correlation function supports original-row lookup before key
+selection; no dummy registration identity is required.
 
 All inputs are **supplied facts**, not provenance. The calculation loads nothing,
 does not check current lifecycle or permission, and cannot establish that a plan

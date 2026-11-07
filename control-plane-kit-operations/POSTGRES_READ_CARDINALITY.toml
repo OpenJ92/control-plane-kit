@@ -1,6 +1,14 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretUseAuthorizationStore.for_correlations"
+category = "fixed-cardinality"
+sql = "two exact workspace/correlation unique identities in one statement; LIMIT three overflow witness"
+consumer_kind = "production"
+consumer = "http_sample_secret_uses atomic pair preparation and exact role reauthorization"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.product_store"
 selector = "RegisteredProductStore.directory_page"
 category = "public-paged"
