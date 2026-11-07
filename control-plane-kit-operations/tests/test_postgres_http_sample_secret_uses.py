@@ -182,3 +182,25 @@ class PostgresHttpSampleSecretUseTests(unittest.TestCase):
             pair = future.result(timeout=10)
         self.assertEqual(self.count(), 3)  # one ordinary use, plus the atomic pair
         self.assertNotEqual(pair.transit_grant.authorization_id, pair.workload_grant.authorization_id)
+
+    def test_same_key_sibling_check_rows_cannot_replace_reached_check_roles(self):
+        self.assertTrue(callable(getattr(self.api, "read_http_sample_uses", None)),
+            "original pair history reader is missing")
+        with self.unit_of_work() as unit:
+            ready = self.prepare(unit)
+            live_context = self.context | {"check_id": "live"}
+            live = self.api.prepare_http_sample_uses_in_unit_of_work(unit, context=live_context,
+                actor_scopes=SCOPES, requested_at=NOW)
+            unit.commit()
+        self.assertEqual(ready.workload_key, live.workload_key)
+        self.assertEqual(ready.workload_grant.effect_id, live.workload_grant.effect_id)
+        for context, wrong in ((self.context, live), (live_context, ready)):
+            with self.unit_of_work() as unit:
+                with self.assertRaises(self.api.HttpSampleSecretUseConflict):
+                    self.api.reauthorize_http_sample_use_in_unit_of_work(unit, context=context,
+                        actor_scopes=SCOPES, authorization_id=wrong.workload_grant.authorization_id)
+        with self.unit_of_work() as unit:
+            loaded, uses = self.api.read_http_sample_uses(unit.stores, context=self.context)
+            self.assertEqual(loaded, ready)
+            self.assertEqual(len(uses), 2)
+        self.assertEqual(self.count(), 4)
