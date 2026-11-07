@@ -6,6 +6,7 @@ import unittest
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+from control_plane_kit_core.planning import WaitForHealthy
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference, SecretProviderId, SecretReference,
     http_verification_sample_signing_intent_for,
@@ -35,9 +36,11 @@ def supplied_case(test, **changes):
     """Pure record constructors do not establish that a check was reached/committed."""
     values, reference, slot = compatible.case(test)
     binding = compatible.HttpSampleCompatibilityTests.bind(test, values, reference, slot)
-    context = dict(compatibility=binding, check_id="ready",
-        attempt=EffectAttemptIdentity(RunId("run-a"), values["plan"].plan.activities[-1].activity_id.value, 1),
-        operation_id="request-a", session_id="session-a", actor_subject="operator-a",
+    activity = next(item for item in values["plan"].plan.activities
+        if type(item.operation) is WaitForHealthy and item.operation.target.node_id == values["node_id"])
+    context = dict(compatibility=binding, plan=values["plan"], check_id="ready",
+        attempt=EffectAttemptIdentity(RunId("run-a"), activity.activity_id.value, 1),
+        operation_id="request-a", session_id=values["plan"].session_id, actor_subject="operator-a",
         effect_id="event-a", request_fingerprint="a" * 64)
     context.update(changes)
     roles = {}
@@ -97,13 +100,17 @@ class HttpSampleSenderInputTests(unittest.TestCase):
     def test_cross_check_effect_attempt_and_actor_context_refuse(self):
         context, roles = supplied_case(self)
         for changes in (dict(check_id="live"), dict(effect_id="event-b"), dict(actor_subject="operator-b"),
-                dict(session_id="session-b"), dict(operation_id="request-b"), dict(request_fingerprint="b" * 64),
+                dict(operation_id="request-b"), dict(request_fingerprint="b" * 64),
                 dict(attempt=replace(context["attempt"], attempt=2))):
             other, other_roles = supplied_case(self, **changes)
             with self.subTest(changes=tuple(changes)):
                 # Each role is independently well-formed for its own context.
                 self.refuses(context, roles | {name: value for name, value in other_roles.items() if name.startswith("workload")})
                 self.refuses(other, roles)
+        self.refuses(context | dict(session_id="session-b"), roles)
+        other_activity = next(item for item in context["plan"].plan.activities
+            if item.activity_id.value != context["attempt"].activity_id)
+        self.refuses(context | dict(attempt=replace(context["attempt"], activity_id=other_activity.activity_id.value)), roles)
 
     def test_original_registration_and_same_key_id_different_fingerprint_refuse(self):
         context, roles = supplied_case(self)
