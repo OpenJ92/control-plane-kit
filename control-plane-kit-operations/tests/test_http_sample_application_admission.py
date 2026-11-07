@@ -198,6 +198,7 @@ class HttpSampleApplicationAdmissionTests(_CurrentCoordinatorPermission, chain.M
             reference = ProductReference.from_document(document)
             self.documents[name] = document
             nodes[name] = replace(original, node_id=name, runtime_id="other", configuration_artifacts=selected,
+                block_spec=replace(original.block_spec, role_id=name),
                 metadata={"product_identity": reference.identity.key, "product_descriptor_digest": reference.descriptor_sha256.value})
         ingress = replace(graph.public_ingresses[0], ingress_id="management-other",
             target=replace(graph.public_ingresses[0].target, node_id="gateway-other"),
@@ -208,8 +209,36 @@ class HttpSampleApplicationAdmissionTests(_CurrentCoordinatorPermission, chain.M
                 gateway_node_id="gateway-other", management_ingress_id=ingress.ingress_id))
         self.graph = replace(graph, nodes=nodes, runtimes={**graph.runtimes, "other": other},
             public_ingresses=graph.public_ingresses + (ingress,))
+        # The older chain convenience method assumes one bootstrap runtime.
+        # Submit the same normal commands here without that local selection.
+        self.app = self.application()
+        created = await self.invoke("command.workspace.create", ControlPlaneServiceRole.PLANNING,
+            payload={"workspace_id": "workspace-a", "name": "Two runtimes", "idempotency_key": "workspace"})
+        workspace = created["workspace"]
+        self.register_prerequisites()
+        for name, document in self.documents.items():
+            await self.invoke("command.product.import", ControlPlaneServiceRole.PLANNING,
+                path={"workspace_id": "workspace-a"}, payload={"descriptor_document": json.loads(document.content),
+                    "imported_at": chain.now(), "idempotency_key": "product-" + name})
+        prepared = await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"}, payload={"desired_graph": chain.DEFAULT_GRAPH_CODEC.encode(self.graph),
+                "expected_current": {"authored_graph_id": workspace["current_graph_id"],
+                    "realized_projection_id": workspace["current_realized_projection_id"]},
+                "expected_desired": None, "expected_desired_graph_revision": workspace["desired_graph_revision"],
+                "title": "Two-runtime sample", "idempotency_key": "prepare"})
+        self.assertEqual(prepared["status"], "approval-required")
+        detail = await self.invoke("read.plan-detail", ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]})
+        session = detail["plan"]["session_id"]
+        await self.invoke("command.approval.decide", ControlPlaneServiceRole.APPROVAL,
+            path={"workspace_id": "workspace-a", "approval_id": prepared["approval_request_id"]},
+            payload={"session_id": session, "decision": "approved", "idempotency_key": "approve"},
+            principal=chain.operator_principal(subject_id="manager-a", scopes=(chain.PolicyScope.PLAN_APPROVE,)))
         with self.assertRaises(ExecutionAdmissionDenied):
-            await self.prepare_and_start()
+            await self.invoke("command.deployment.admit", ControlPlaneServiceRole.ADMISSION,
+                path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]}, payload={
+                    "session_id": session, "approval_request_id": prepared["approval_request_id"],
+                    "readiness": [], "idempotency_key": "admit"})
         self.assertEqual(self.rows("cpk_execution_requests"), ())
         self.assertEqual(self.effects(), ((), (), (), (), ()))
 
