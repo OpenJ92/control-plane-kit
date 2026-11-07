@@ -1854,7 +1854,7 @@ def _require_invocation_owners(store, record, *, fresh=False):
             runtime = RuntimeAuthorityStore(store._connection).get_registration(
                 record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
             profile = ordinary_verification_invocation_profile(intent.intent,
-                original_event_id=record.original_event_id, runtime_authority=runtime)
+                original_event_id=record.original_event_id, runtime_authority=runtime, plan=plan)
             targets = ((profile.target_fingerprint,) if original is record else
                 tuple(check.target_fingerprint for check in profile.checks))
             if record.target_fingerprint not in targets:
@@ -1883,18 +1883,25 @@ def _require_invocation_owners(store, record, *, fresh=False):
                     runtime = RuntimeAuthorityStore(store._connection).get_registration(
                         record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
                     profile = ordinary_verification_invocation_profile(intent.intent,
-                        original_event_id=record.original_event_id, runtime_authority=runtime)
+                        original_event_id=record.original_event_id, runtime_authority=runtime, plan=plan)
                     roles = tuple(role for role in profile.secret_roles
                         if role[1].reference == authorized.reference and role[1].intent == authorized.intent
                         and (None if role[0] is None else role[0].probe_id) == authorized.probe_id)
-                    if len(roles) != 1:
+                    if profile.http_sample:
+                        from .stores import PostgresStoreBundle
+                        from control_plane_kit_operations.http_sample_secret_uses import require_http_sample_use_owner
+                        require_http_sample_use_owner(PostgresStoreBundle(store._connection),
+                            authorized=authorized, marker=original, attempt=identity, request=request,
+                            actor_subject=parent.managed_intent.actor.subject_id)
+                    elif len(roles) != 1:
                         raise ExecutionInvocationConflict(record.invocation_id)
-                    command = ordinary_verification_authorization_command(
-                        runtime_effect_request_for_intent(intent.intent,
-                            effect_id=record.original_event_id, secret_resolution_grants=()), roles[0],
-                        actor_subject=parent.managed_intent.actor.subject_id, session_id=request.identity.session_id,
-                        requested_at=authorized.requested_at, actor_scopes=())
-                    require_ordinary_verification_authorization(authorized, command)
+                    else:
+                        command = ordinary_verification_authorization_command(
+                            runtime_effect_request_for_intent(intent.intent,
+                                effect_id=record.original_event_id, secret_resolution_grants=()), roles[0],
+                            actor_subject=parent.managed_intent.actor.subject_id, session_id=request.identity.session_id,
+                            requested_at=authorized.requested_at, actor_scopes=())
+                        require_ordinary_verification_authorization(authorized, command)
             if record.attempt is not None and authorized.effect_id == record.original_event_id:
                 original_marker = store.original_final_invocation(identity,
                     original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,

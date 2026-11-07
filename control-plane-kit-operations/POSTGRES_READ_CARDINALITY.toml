@@ -6,7 +6,7 @@ selector = "SecretUseAuthorizationStore.for_correlations"
 category = "fixed-cardinality"
 sql = "two exact workspace/correlation unique identities in one statement; LIMIT three overflow witness"
 consumer_kind = "production"
-consumer = "http_sample_secret_uses atomic pair preparation and exact role reauthorization"
+consumer = "http_sample_secret_uses atomic pair preparation, exact role reauthorization and coherent original history"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.product_store"
@@ -680,7 +680,7 @@ consumer = "Execution invocation storage and health marker/service tests consume
 module = "control_plane_kit_operations.postgres.execution"
 selector = "PostgresExecutionStore.ordinary_verification_invocations"
 category = "closed-finite"
-sql = "Exact command/activity/attempt and three allowed kinds; invocation_id COLLATE C order; LIMIT family_bound+1 with overflow refusal; family bound at most 204 from 100 checks plus connection and credential roles"
+sql = "Exact command/activity/attempt and three allowed kinds; invocation_id COLLATE C order; LIMIT family_bound+1 with overflow refusal; family bound at most 204 for ordinary checks/TLS or 301 for 100 HTTP sample checks with two role resolutions each and one acquisition"
 consumer_kind = "production"
 consumer = "ExecutionInvocationService._ordinary_history validates the complete finite per-check family and refuses an active configuration ledger"
 

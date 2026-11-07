@@ -12,6 +12,7 @@ from control_plane_kit_core.secrets import http_verification_sample_signing_inte
 from control_plane_kit_operations.delegation_signing_keys import RegisteredDelegationSigningKeyStatus
 from control_plane_kit_operations.http_sample_sender_input import (
     bind_http_sample_sender_input, http_sample_signing_binding_for, http_sample_signing_correlation_for,
+    http_sample_role_correlation,
 )
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse, AuthorizedSecretUse, authorize_secret_use_in_unit_of_work,
@@ -135,5 +136,53 @@ def reauthorize_http_sample_use_in_unit_of_work(unit, *, context, actor_scopes, 
     return _checked(reauthorize)
 
 
+def read_http_sample_uses(stores, *, context):
+    """Validate original references coherently without current lifecycle authority."""
+    def read():
+        workspace = context["compatibility"].workspace_id
+        correlations = {role: http_sample_signing_correlation_for(**context, purpose=purpose)
+            for role, purpose in _ROLES}
+        rows = stores.secret_use_authorizations.for_correlations(workspace, tuple(correlations.values()))
+        _require(len(rows) in (0, 2))
+        if not rows:
+            return None, ()
+        uses = {role: next(row for row in rows if row.correlation_id == correlation)
+            for role, correlation in correlations.items()}
+        supplied = {}
+        for role, purpose in _ROLES:
+            use = uses[role]
+            key = stores.delegation_signing_keys.get_by_registration(workspace, purpose, _registration_id(use))
+            reference = stores.secret_references.get_by_registration(workspace, use.reference_registration_id)
+            provider = stores.secret_providers.get_by_registration(workspace, use.provider_registration_id)
+            command = http_sample_authorization_command(context=context, key=key,
+                actor_scopes=(), requested_at=use.requested_at)
+            _require(authorized_secret_use_for(command, reference=reference, provider=provider) == use)
+            supplied.update({role + "_key": key, role + "_use": use, role + "_provider": provider})
+        return bind_http_sample_sender_input(**context, **supplied), tuple(uses[role] for role, _ in _ROLES)
+    return _checked(read)
+
+
+def require_http_sample_use_owner(stores, *, authorized, marker, attempt, request, actor_subject):
+    """Validate a recorded role's owner, never its check-level meaning or authority."""
+    registration_id = _registration_id(authorized)
+    purposes = tuple(purpose for _, purpose in _ROLES
+        if http_verification_sample_signing_intent_for(purpose) is authorized.intent)
+    _require(len(purposes) == 1)
+    purpose, = purposes
+    key = stores.delegation_signing_keys.get_by_registration(marker.workspace_id, purpose, registration_id)
+    target_digest = authorized.probe_id.split(":")[1]
+    correlation = http_sample_role_correlation(workspace_id=marker.workspace_id,
+        attempt=attempt, operation_id=request.identity.request_id, session_id=request.identity.session_id,
+        actor_subject=actor_subject, effect_id=marker.original_event_id,
+        request_fingerprint=marker.request_fingerprint, target_digest=target_digest, purpose=purpose)
+    _require((authorized.workspace_id, authorized.run_id, authorized.activity_id, authorized.effect_id,
+        authorized.operation_id, authorized.session_id, authorized.actor_subject, authorized.reference,
+        authorized.correlation_id, authorized.requested_at) == (
+        marker.workspace_id, attempt.run_id.value, attempt.activity_id, marker.original_event_id,
+        request.identity.request_id, request.identity.session_id, actor_subject, key.private_key_reference,
+        correlation, marker.created_at))
+
+
 __all__ = ["HttpSampleSecretUseConflict", "http_sample_authorization_command",
-    "prepare_http_sample_uses_in_unit_of_work", "reauthorize_http_sample_use_in_unit_of_work"]
+    "prepare_http_sample_uses_in_unit_of_work", "reauthorize_http_sample_use_in_unit_of_work",
+    "read_http_sample_uses"]

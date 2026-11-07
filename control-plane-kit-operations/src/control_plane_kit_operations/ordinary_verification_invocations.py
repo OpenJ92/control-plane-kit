@@ -12,7 +12,7 @@ from control_plane_kit_core.runtime_effect_observation import (
 )
 from control_plane_kit_core.secrets import SecretUseIntent
 from control_plane_kit_core.types import RuntimeKind
-from control_plane_kit_core.verification import PostgresQueryCheck
+from control_plane_kit_core.verification import HttpCheck, PostgresQueryCheck
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority, LocalDockerSocketAuthority, RemoteDockerTlsAuthority,
     runtime_authority_registration_id_for,
@@ -26,6 +26,7 @@ class OrdinaryVerificationCheck:
     check_id: str
     target_fingerprint: str
     credential_use: OperationalSecretUse | None
+    http_sample: bool = False
 
     @property
     def probe_id(self):
@@ -38,11 +39,12 @@ class OrdinaryVerificationInvocationProfile:
     target_fingerprint: str
     connection_uses: tuple
     checks: tuple[OrdinaryVerificationCheck, ...]
+    http_sample: bool = False
 
     @property
     def family_bound(self):
         return 1 + len(self.connection_uses) + len(self.checks) + sum(
-            check.credential_use is not None for check in self.checks)
+            2 if check.http_sample else int(check.credential_use is not None) for check in self.checks)
 
     def check(self, check_id):
         if type(check_id) is str:
@@ -79,7 +81,7 @@ def ordinary_verification_candidate(intent):
         and type(intent.operation) is WaitForHealthy)
 
 
-def ordinary_verification_invocation_profile(intent, *, original_event_id, runtime_authority):
+def ordinary_verification_invocation_profile(intent, *, original_event_id, runtime_authority, plan=None):
     if (not ordinary_verification_candidate(intent)
             or type(intent.operation.target) is not NodeTarget or len(intent.products) != 1
             or type(intent.products[0]) is not RuntimeProductMaterial
@@ -98,15 +100,25 @@ def ordinary_verification_invocation_profile(intent, *, original_event_id, runti
         raise ValueError("ordinary verification registration is incongruent")
     request = runtime_effect_request_for_intent(intent,
         effect_id=original_event_id, secret_resolution_grants=())
+    sample = False
+    if plan is not None:
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        if plan.plan_id != intent.source.plan_id:
+            raise ValueError("ordinary verification plan is incongruent")
+        sample = plan.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+        if sample and any(type(check) is not HttpCheck
+                for check in request.products[0].product.runtime_contract.verification.checks):
+            raise ValueError("HTTP sample check is unsupported")
     target = hashlib.sha256(rfc8785.dumps(dict(
         domain="cpk.ordinary-verification-acquisition-target.v1",
         request_fingerprint=runtime_effect_intent_fingerprint(intent),
         workspace_id=intent.source.workspace_id, runtime_kind=intent.runtime_kind.value,
         runtime_id=intent.products[0].runtime_id, authority_ref=intent.authority_ref.reference_id,
-        runtime_registration_id=runtime_authority.registration_id))).hexdigest()
+        runtime_registration_id=runtime_authority.registration_id,
+        **({"profile": "cpk.http-sample-execution.v1"} if sample else {})))).hexdigest()
     connection_uses = ()
     authority = runtime_authority.authority
-    if type(authority) is RemoteDockerTlsAuthority:
+    if not sample and type(authority) is RemoteDockerTlsAuthority:
         connection_uses = tuple(sorted((
             OperationalSecretUse(authority.ca_certificate, SecretUseIntent.DOCKER_REMOTE_TLS_CA_CERTIFICATE),
             OperationalSecretUse(authority.client_certificate, SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_CERTIFICATE),
@@ -116,6 +128,7 @@ def ordinary_verification_invocation_profile(intent, *, original_event_id, runti
         hashlib.sha256(rfc8785.dumps(dict(domain="cpk.ordinary-verification-check-target.v1",
             acquisition_target=target, check_id=check.check_id))).hexdigest(),
         OperationalSecretUse(check.authentication.password_reference, SecretUseIntent.POSTGRES_PASSWORD)
-            if isinstance(check, PostgresQueryCheck) and check.authentication is not None else None)
+            if isinstance(check, PostgresQueryCheck) and check.authentication is not None else None,
+        http_sample=sample)
         for check in request.products[0].product.runtime_contract.verification.checks)
-    return OrdinaryVerificationInvocationProfile(runtime_authority.registration_id, target, connection_uses, checks)
+    return OrdinaryVerificationInvocationProfile(runtime_authority.registration_id, target, connection_uses, checks, sample)

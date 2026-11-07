@@ -1,7 +1,11 @@
 """Explicit composition declarations, never inferred provider conformance."""
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from control_plane_kit_core.planning import StartNode, ReconcileNode
+
+if TYPE_CHECKING:
+    from control_plane_kit_operations.http_sample_execution import HttpSampleExecutionSupport
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,6 +17,7 @@ class RuntimeAdapterRegistration:
     invocation_profile: str | None = field(default=None, kw_only=True)
     ordinary_verification_invocations: bool = field(default=False, kw_only=True)
     original_runtime_observation_invocations: bool = field(default=False, kw_only=True)
+    http_sample_support: "HttpSampleExecutionSupport | None" = field(default=None, kw_only=True, repr=False)
 
     def __post_init__(self):
         if self.adapter is None or any(type(value) is not bool for value in (
@@ -22,6 +27,22 @@ class RuntimeAdapterRegistration:
         if self.invocation_profile is not None and (type(self.invocation_profile) is not str
                 or self.invocation_profile != "cpk.semantic-invocations.v1"):
             raise ValueError("runtime adapter invocation profile is malformed")
+        if self.http_sample_support is not None:
+            require_http_sample_execution_support(self.http_sample_support, self)
+
+
+def require_http_sample_execution_support(support, registration):
+    """One descriptor must be consumed by the actual registered native arm."""
+    from control_plane_kit_operations.http_sample_execution import HttpSampleExecutionSupport
+    if (type(support) is not HttpSampleExecutionSupport
+            or type(registration) is not RuntimeAdapterRegistration
+            or registration.invocation_profile != "cpk.semantic-invocations.v1"
+            or not registration.ordinary_verification_invocations
+            or registration.http_sample_support is not support
+            or getattr(registration.adapter, "http_sample_support", None) is not support
+            or not callable(getattr(registration.adapter, "execute_with_authority", None))):
+        raise ValueError("HTTP sample execution support is unavailable")
+    support.__post_init__()
 
 
 def adapter_accepts_invocations(registration, arm):

@@ -25,6 +25,14 @@ from control_plane_kit_operations.health_effect_attempt_start import (
 )
 from control_plane_kit_operations.health_effect_preparations import ReceiverHealthEffectPreparationRecord
 from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders
+from control_plane_kit_operations.http_sample_execution import (
+    PreparedHttpSampleCheck, load_http_sample_route,
+)
+from control_plane_kit_operations.runtime_adapter_registration import require_http_sample_execution_support
+from control_plane_kit_operations.http_sample_secret_uses import (
+    prepare_http_sample_uses_in_unit_of_work, reauthorize_http_sample_use_in_unit_of_work,
+    read_http_sample_uses,
+)
 from control_plane_kit_operations.health_signing_authority import (
     HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
     _lock_health_prefix, _observed_epoch,
@@ -119,6 +127,13 @@ class _BoundOrdinaryVerificationInvocations(_BoundRuntimeInvocations):
     # Per-call public grant metadata only; never resolved values or a UoW.
     check_grants: tuple = ()
 
+    @property
+    def http_sample_support(self):
+        return self.service._http_sample_support if self.profile.http_sample else None
+
+    def acquire_http_sample_route(self):
+        return self.service._acquire_http_sample_route(self)
+
     def record_outcome(self, permit, outcome):
         _require(type(permit) is _Permit and (
             permit.record.kind is Kind.ORDINARY_VERIFICATION_ACQUISITION
@@ -143,6 +158,9 @@ class _BoundOrdinaryVerificationCheck:
     credential_grant: object
     control_error = ExecutionInvocationControlError
 
+    def prepare_http_sample(self):
+        return self.parent.service._prepare_http_sample(self.parent, self.check)
+
     def admit(self, kind, *, authorization_id=None):
         return self.parent.service._admit_runtime(self.parent, kind, authorization_id, check=self.check)
 
@@ -150,8 +168,9 @@ class _BoundOrdinaryVerificationCheck:
         _require(type(permit) is _Permit and (
             (permit.record.kind is Kind.ORDINARY_VERIFICATION_CHECK
                 and permit.record.target_fingerprint == self.check.target_fingerprint)
-            or (permit.record.kind is Kind.SECRET_RESOLUTION and self.credential_grant is not None
-                and permit.record.authorization_id == self.credential_grant.authorization_id)))
+            or (permit.record.kind is Kind.SECRET_RESOLUTION and (self.check.http_sample
+                or (self.credential_grant is not None
+                    and permit.record.authorization_id == self.credential_grant.authorization_id)))))
         self.parent.service._record_outcome(self.parent, permit, outcome, check=self.check)
 
 
@@ -178,13 +197,15 @@ class _BoundReconciliationInvocations:
 
 class ExecutionInvocationService:
     def __init__(self, unit_of_work_factory, *, permission_policy, clock,
-            health_receiver_decoders=HealthReceiverDecoders(())):
+            health_receiver_decoders=HealthReceiverDecoders(()),
+            http_sample_support=None, http_sample_registration=None):
         _require(callable(unit_of_work_factory) and callable(clock)
             and type(permission_policy) is CurrentWorkspaceEffectPolicy
             and type(health_receiver_decoders) is HealthReceiverDecoders)
         permission_policy.__post_init__()
         self._unit_of_work_factory = unit_of_work_factory
         self._permission_policy, self._clock = permission_policy, clock
+        self._http_sample_support, self._http_sample_registration = http_sample_support, http_sample_registration
         self._health = HealthSigningAuthorityReloadService(unit_of_work_factory,
             health_receiver_decoders=health_receiver_decoders)
 
@@ -433,7 +454,9 @@ class ExecutionInvocationService:
         profile_builder = (ordinary_verification_invocation_profile if ordinary_verification_candidate(start.intent)
             else prepared_runtime_invocation_profile)
         profile = profile_builder(start.intent,
-            original_event_id=marker.original_event_id, runtime_authority=runtime)
+            original_event_id=marker.original_event_id, runtime_authority=runtime,
+            **({"plan": stores.activity_history.get_plan(start.intent.source.plan_id)}
+                if ordinary_verification_candidate(start.intent) else {}))
         _require(profile.target_fingerprint == marker.target_fingerprint)
         return marker, runtime, profile
 
@@ -446,6 +469,8 @@ class ExecutionInvocationService:
                 reference = command_context.receipt
                 uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
                 marker, runtime, profile = self._runtime_material(uow.stores, command_context, start, started)
+                if getattr(profile, "http_sample", False):
+                    require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
                 bound_type = (_BoundOrdinaryVerificationInvocations if ordinary_verification_candidate(start.intent)
                     else _BoundRuntimeInvocations)
                 bound = bound_type(self, command_context, start, started, marker, runtime, profile)
@@ -504,6 +529,97 @@ class ExecutionInvocationService:
             raise ExecutionInvocationConflict()
         return marker
 
+    def _current_runtime_guard(self, uow, bound, required_scopes):
+        """The original command/run prefix precedes current authority and role locks."""
+        stores, reference, marker = uow.stores, bound.context.receipt, bound.marker
+        guard = stores.graphs.lock_receiver_lifecycle(marker.workspace_id)
+        request = stores.execution.get_request_for_update(bound.start.request_id)
+        prefix = _lock_effect_run_prefix(uow, request, reference.run_id, latest_required=True)
+        stores.execution.command_receipt_for_idempotency(reference.run_id,
+            reference.idempotency_key, for_update=True)
+        attempt = stores.effect_attempts.get_for_update(bound.started.attempt.state.identity)
+        _require(attempt == bound.started.attempt and prefix.latest_run == prefix.requested_run
+            and prefix.requested_run.status is ActivityRunStatus.RUNNING)
+        _require_request_run(bound.start, request, prefix.requested_run)
+        _require_current_authority(bound.start, request)
+        session = stores.activity_history.get_session_for_update(request.identity.session_id)
+        _require(session.status is OperationSessionStatus.OPEN)
+        original = self._binding(stores, bound, fresh=True)
+        decision = self._permission_policy.evaluate_in_unit_of_work(uow, original, required_scopes=required_scopes)
+        _require_fresh_effect_receiver_permission(stores, request, guard, bound.start.intent, compensation=False)
+        if decision.allowed:
+            runtime = stores.runtime_authorities.get_registration_for_update(marker.workspace_id,
+                bound.start.intent.authority_ref, marker.runtime_registration_id)
+            _require(runtime.status.value == "active"
+                and replace(runtime, status=bound.runtime.status) == bound.runtime)
+        return request, original, decision
+
+    def _http_sample_context(self, stores, bound, check=None):
+        _require(type(bound) is _BoundOrdinaryVerificationInvocations and bound.service is self
+            and bound.profile.http_sample)
+        if check is not None:
+            _require(bound.profile.check(check.check_id) == check and check.http_sample)
+        plan = stores.activity_history.get_plan(bound.start.intent.source.plan_id)
+        route = load_http_sample_route(stores, workspace_id=bound.marker.workspace_id,
+            plan=plan, node_id=bound.start.intent.operation.target.node_id, support=self._http_sample_support)
+        request = stores.execution.get_request(bound.start.request_id)
+        context = dict(compatibility=route.compatibility, plan=plan,
+            check_id=None if check is None else check.check_id,
+            attempt=bound.started.attempt.state.identity, operation_id=request.identity.request_id,
+            session_id=request.identity.session_id, actor_subject=bound.context.original.actor_id,
+            effect_id=bound.marker.original_event_id, request_fingerprint=bound.marker.request_fingerprint)
+        return context, route
+
+    def _acquire_http_sample_route(self, bound):
+        """Only the admitted acquisition reads this pinned route; it grants no signing use."""
+        try:
+            require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+            with self._unit_of_work_factory() as uow:
+                reference = bound.context.receipt
+                uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, _, _, _, _ = self._ordinary_history(uow.stores, bound)
+                _require(marker.disposition is Disposition.ADMITTED and marker.outcome is Outcome.PENDING)
+                _, route = self._http_sample_context(uow.stores, bound)
+            return route
+        except Exception:
+            raise ExecutionInvocationConflict() from None
+
+    def _prepare_http_sample(self, bound, check):
+        """Create or reload both roles only at a fresh, reached original check."""
+        prepared, control = None, None
+        try:
+            require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+            with self._unit_of_work_factory() as uow:
+                stores, reference = uow.stores, bound.context.receipt
+                stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, checks, resolutions, authorizations, _ = self._ordinary_history(stores, bound)
+                _require(bound.profile.check(check.check_id) == check and check.http_sample
+                    and self._returned(marker) and check.target_fingerprint not in checks
+                    and not any(value is not None and value.authorization_id in resolutions
+                        for role, value in authorizations if role[0] == check))
+                for previous in bound.profile.checks:
+                    if previous == check:
+                        break
+                    _require(self._returned(checks.get(previous.target_fingerprint)))
+                request, _, decision = self._current_runtime_guard(uow, bound, _SCOPES)
+                if not decision.allowed:
+                    raise ExecutionInvocationDenied()
+                context, route = self._http_sample_context(stores, bound, check)
+                pair = prepare_http_sample_uses_in_unit_of_work(uow, context=context,
+                    actor_scopes=decision.effective_scopes, requested_at=marker.created_at)
+                observation = stores.execution.observe_request_lease_for_update(request.identity.request_id)
+                _require(observation.request == request and not observation.expired)
+                uow.commit()
+                prepared = PreparedHttpSampleCheck(pair, route.ingress, route.transit_provider_socket_name)
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        _require(prepared is not None)
+        return prepared
+
     def _admit_runtime(self, bound, kind, authorization_id, *, check=None):
         admitted, control = None, None
         try:
@@ -528,30 +644,25 @@ class ExecutionInvocationService:
                     control = (ExecutionInvocationDenied(marker.invocation_id)
                         if marker.disposition is Disposition.DENIED else ExecutionInvocationExisting(marker.invocation_id))
                 else:
-                    guard = stores.graphs.lock_receiver_lifecycle(marker.workspace_id)
-                    request = stores.execution.get_request_for_update(bound.start.request_id)
-                    prefix = _lock_effect_run_prefix(uow, request, reference.run_id, latest_required=True)
-                    stores.execution.command_receipt_for_idempotency(reference.run_id,
-                        reference.idempotency_key, for_update=True)
-                    attempt = stores.effect_attempts.get_for_update(bound.started.attempt.state.identity)
-                    _require(attempt == bound.started.attempt and prefix.latest_run == prefix.requested_run
-                        and prefix.requested_run.status is ActivityRunStatus.RUNNING)
-                    _require_request_run(bound.start, request, prefix.requested_run)
-                    _require_current_authority(bound.start, request)
-                    session = stores.activity_history.get_session_for_update(request.identity.session_id)
-                    _require(session.status is OperationSessionStatus.OPEN)
-                    original = self._binding(stores, bound, fresh=True)
                     scopes = (PolicyScope.EXECUTION_OPERATE,)
                     if kind is Kind.SECRET_RESOLUTION:
                         scopes += (PolicyScope.SECRET_PROVIDER_USE,)
-                    decision = self._permission_policy.evaluate_in_unit_of_work(uow, original, required_scopes=scopes)
-                    _require_fresh_effect_receiver_permission(stores, request, guard, bound.start.intent, compensation=False)
+                    if ordinary and bound.profile.http_sample:
+                        require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+                        scopes = _SCOPES
+                    request, original, decision = self._current_runtime_guard(uow, bound, scopes)
                     if decision.allowed:
-                        runtime = stores.runtime_authorities.get_registration_for_update(marker.workspace_id,
-                            bound.start.intent.authority_ref, marker.runtime_registration_id)
-                        _require(runtime.status.value == "active"
-                            and replace(runtime, status=bound.runtime.status) == bound.runtime)
-                        if authorized is not None:
+                        if ordinary and check is not None and check.http_sample:
+                            context, _ = self._http_sample_context(stores, bound, check)
+                            pair, _ = read_http_sample_uses(stores, context=context)
+                            _require(pair is not None)
+                            identities = ((authorization_id,) if kind is Kind.SECRET_RESOLUTION else
+                                (pair.transit_grant.authorization_id, pair.workload_grant.authorization_id))
+                            for identity in identities:
+                                retained = reauthorize_http_sample_use_in_unit_of_work(uow, context=context,
+                                    actor_scopes=decision.effective_scopes, authorization_id=identity)
+                                _require(retained.authorization_id == identity)
+                        elif authorized is not None:
                             runtime_request = runtime_effect_request_for_intent(bound.start.intent,
                                 effect_id=marker.original_event_id, secret_resolution_grants=())
                             versioned = type(authorized) is AuthorizedSecretVersionUse
@@ -634,6 +745,12 @@ class ExecutionInvocationService:
             if authorized is not None:
                 require_ordinary_verification_authorization(authorized, command)
             authorizations.append((role, authorized))
+        if profile.http_sample:
+            for check in profile.checks:
+                context, _ = self._http_sample_context(stores, bound, check)
+                _, uses = read_http_sample_uses(stores, context=context)
+                for use in uses:
+                    authorizations.append(((check, OperationalSecretUse(use.reference, use.intent)), use))
         records = stores.execution.ordinary_verification_invocations(marker, profile)
         _require(sum(row.invocation_id == marker.invocation_id for row in records) == 1)
         checks, resolutions = {}, {}
@@ -663,11 +780,19 @@ class ExecutionInvocationService:
         prefix_returned = True
         for check in profile.checks:
             row = checks.get(check.target_fingerprint)
-            credential = resolution((check, check.credential_use)) if check.credential_use is not None else None
-            if row is not None or credential is not None:
+            credentials = tuple(resolution(role) for role, _ in authorizations if role[0] == check)
+            if (row is not None or any(value is not None for value in credentials)
+                    or any(value is not None for role, value in authorizations if role[0] == check)):
                 _require(prefix_returned and self._returned(marker))
-            if row is not None and check.credential_use is not None:
-                _require(self._returned(credential))
+            credential_prefix = True
+            for credential in credentials:
+                if credential is not None:
+                    _require(credential_prefix)
+                credential_prefix = credential_prefix and self._returned(credential)
+            if row is not None:
+                _require(all(self._returned(credential) for credential in credentials))
+                if check.http_sample:
+                    _require(len(credentials) == 2)
             prefix_returned = prefix_returned and self._returned(row)
         return marker, checks, resolutions, tuple(authorizations), records
 
@@ -712,9 +837,16 @@ class ExecutionInvocationService:
                 _require(self._returned(checks.get(previous.target_fingerprint)))
             if kind is Kind.SECRET_RESOLUTION:
                 _require(check.target_fingerprint not in checks)
-            elif check.credential_use is not None:
-                value = next(value for role, value in authorizations if role[0] == check)
-                _require(value is not None and self._returned(resolutions.get(value.authorization_id)))
+                if check.http_sample:
+                    for role, value in authorizations:
+                        if role[0] == check:
+                            if value.authorization_id == authorization_id:
+                                break
+                            _require(self._returned(resolutions.get(value.authorization_id)))
+            elif check.credential_use is not None or check.http_sample:
+                values = tuple(value for role, value in authorizations if role[0] == check)
+                _require(len(values) == (2 if check.http_sample else 1)
+                    and all(value is not None and self._returned(resolutions.get(value.authorization_id)) for value in values))
         return marker, current, target, authorized
 
     def inspect_ordinary_verification(self, bound, result=None):

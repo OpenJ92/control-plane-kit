@@ -20,7 +20,13 @@ and each resolution's exact original use; reauthorization requires an existing
 complete pair and cannot create a generic third row. Static sender-input checks
 validate both public/ref/issuer/provider facts before any metadata return.
 
-This stage does not integrate the reached-check port or open either existing
-sample-profile denial. Independent PostgreSQL tests prove only the atomic-store
-suffix. Supported typed capability, original history/current permission/lease,
-normal plan admission and native signing/transport remain owning integration.
+The historical pair reader uses exact key/reference/provider registrations and
+the same original independently derived context without current active selection.
+The SQL invocation-owner helper checks only internal owner/correlation relations;
+a digest copied from a probe does not attest a particular check. The service
+must independently derive both expected correlations/probes on every check-level
+admission, completion and inspection. No SQL store decodes a gateway product.
+
+Independent PostgreSQL tests prove the atomic-store suffix and sibling-check
+refusal only. Normal plan admission and actual native/public API composition
+remain separate owning proofs; this module opens no profile denial.

@@ -1993,7 +1993,8 @@ class ExecutionCoordinator:
                         profile_builder = (ordinary_verification_invocation_profile if ordinary_verification
                             else prepared_runtime_invocation_profile)
                         profile = profile_builder(intent,
-                            original_event_id=attempt.original_start_event.event_id, runtime_authority=prepared_runtime)
+                            original_event_id=attempt.original_start_event.event_id, runtime_authority=prepared_runtime,
+                            **({"plan": context.plan_record} if ordinary_verification else {}))
                     except (ValueError, TypeError, AttributeError):
                         raise ExecutionInvocationConflict() from None
                     if (marker.runtime_registration_id != prepared_runtime.registration_id

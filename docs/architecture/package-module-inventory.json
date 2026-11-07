@@ -2,6 +2,22 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.http_sample_execution",
+      "destination": "control_plane_kit_operations.http_sample_execution",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/http_sample_execution.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "validation", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["HttpSampleExecutionSupport", "PreparedHttpSampleRoute", "PreparedHttpSampleCheck", "load_http_sample_route"],
+      "internal_dependencies": ["control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.public_ingress", "control_plane_kit_core.topology", "control_plane_kit_operations.graph_authoring", "control_plane_kit_operations.http_sample_compatibility", "control_plane_kit_operations.http_sample_sender_input"],
+      "known_package_consumers": ["control_plane_kit_operations.execution_invocation_service", "control_plane_kit_operations.runtime_adapter_registration"],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_http_sample_execution_composition.py", "tests/test_postgres_http_sample_secret_uses.py"],
+      "motivation": "Explicit native composition and original pinned route read; no signer, transport or current permission decision."
+    },
+    {
       "module": "control_plane_kit_operations.http_sample_secret_uses",
       "destination": "control_plane_kit_operations.http_sample_secret_uses",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/http_sample_secret_uses.py",
@@ -10,7 +26,7 @@
       "semantic_roles": ["authorization", "transactions", "validation"],
       "movement": "remain",
       "migration_prerequisites": [],
-      "canonical_public_exports": ["HttpSampleSecretUseConflict", "http_sample_authorization_command", "prepare_http_sample_uses_in_unit_of_work", "reauthorize_http_sample_use_in_unit_of_work"],
+      "canonical_public_exports": ["HttpSampleSecretUseConflict", "http_sample_authorization_command", "prepare_http_sample_uses_in_unit_of_work", "reauthorize_http_sample_use_in_unit_of_work", "read_http_sample_uses"],
       "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.policies", "control_plane_kit_core.secrets", "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.http_sample_sender_input", "control_plane_kit_operations.secret_providers"],
       "known_package_consumers": [],
       "optional_external_dependencies": [],

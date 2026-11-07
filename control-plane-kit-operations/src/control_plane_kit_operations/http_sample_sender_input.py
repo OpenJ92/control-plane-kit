@@ -117,13 +117,21 @@ def _role_identity(context, purpose):
         route_id=compatibility.route.target_id, plan_id=compatibility.plan_id,
         authored_graph_id=compatibility.desired_graph_id, projection_id=compatibility.projection_id,
         check_id=check.check_id, check_digest=http_verification_check_digest(check)))).hexdigest()
-    correlation = sha256(rfc8785.dumps(dict(domain="cpk.http-sample-role-use.v1",
-        workspace_id=compatibility.workspace_id, attempt=context["attempt"].descriptor(),
-        operation_id=context["operation_id"], session_id=context["session_id"],
+    return http_sample_role_correlation(workspace_id=compatibility.workspace_id,
+        attempt=context["attempt"], operation_id=context["operation_id"], session_id=context["session_id"],
         actor_subject=context["actor_subject"], effect_id=context["effect_id"],
         request_fingerprint=context["request_fingerprint"], target_digest=target_digest,
-        purpose=purpose.value))).hexdigest()
-    return "http-sample-use:" + correlation, target_digest
+        purpose=purpose), target_digest
+
+
+def http_sample_role_correlation(*, workspace_id, attempt, operation_id, session_id,
+        actor_subject, effect_id, request_fingerprint, target_digest, purpose):
+    """Internal correlation relation; a supplied digest does not attest a check."""
+    correlation = sha256(rfc8785.dumps(dict(domain="cpk.http-sample-role-use.v1",
+        workspace_id=workspace_id, attempt=attempt.descriptor(), operation_id=operation_id,
+        session_id=session_id, actor_subject=actor_subject, effect_id=effect_id,
+        request_fingerprint=request_fingerprint, target_digest=target_digest, purpose=purpose.value))).hexdigest()
+    return "http-sample-use:" + correlation
 
 
 def _binding(context, purpose, key_registration_id):

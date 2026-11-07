@@ -218,11 +218,14 @@ class ExecutionAdmissionCommandService:
         clock: Callable[[], str],
         id_factory: Callable[[], str],
         policy: ApprovalPolicy | None = None,
+        http_sample_support=None,
+        http_sample_registration=None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
         self._id_factory = id_factory
         self._policy = policy or ApprovalPolicy()
+        self._http_sample_support, self._http_sample_registration = http_sample_support, http_sample_registration
 
     def execute(self, command: RequestPlanExecution) -> ExecutionAdmissionResult:
         fingerprint = _fingerprint(command)
