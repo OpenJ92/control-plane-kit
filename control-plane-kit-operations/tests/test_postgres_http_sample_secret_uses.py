@@ -12,6 +12,7 @@ from control_plane_kit_core.secrets import http_verification_sample_signing_inte
 from control_plane_kit_operations.delegation_signing_keys import (
     ActivateDelegationSigningKeyCommand, DelegationSigningKeyRegistrationService,
     RegisterDelegationSigningKeyCommand, RetireDelegationSigningKeyCommand,
+    RegisteredDelegationSigningKeyStatus,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.secret_providers import (
@@ -21,6 +22,7 @@ from control_plane_kit_operations.secret_providers import (
 )
 from tests import test_secret_providers as providers
 from tests.test_http_sample_sender_input import supplied_case, PURPOSES, NOW
+from tests.health_receiver_trust_fixture import public_key
 
 MODULE = "control_plane_kit_operations.http_sample_secret_uses"
 SCOPES = (PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE,
@@ -129,12 +131,30 @@ class PostgresHttpSampleSecretUseTests(unittest.TestCase):
             pair = self.prepare(unit)
             unit.commit()
         key = self.keys["workload"]
-        retired = DelegationSigningKeyRegistrationService(self.unit_of_work).retire(
+        service = DelegationSigningKeyRegistrationService(self.unit_of_work)
+        replacement = service.register(RegisterDelegationSigningKeyCommand(
+            workspace_id=key.workspace_id, purpose=key.purpose, issuer=key.issuer,
+            public_key=public_key("other"),
+            private_key_reference=key.private_key_reference,
+            admitted_by="operator-a", admitted_at=NOW,
+            actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,)))
+        replacement = service.activate(ActivateDelegationSigningKeyCommand(
+            key.workspace_id, key.purpose, key.issuer, replacement.key_id,
+            "operator-a", NOW, (PolicyScope.DELEGATION_KEY_ACTIVATE,)))
+        with self.unit_of_work() as unit:
+            original = unit.stores.delegation_signing_keys.get_by_registration(
+                key.workspace_id, key.purpose, key.registration_id)
+            self.assertIs(original.status, RegisteredDelegationSigningKeyStatus.VERIFY_ONLY)
+        retired = service.retire(
             RetireDelegationSigningKeyCommand(key.workspace_id, key.purpose, key.issuer, key.key_id,
                 "operator-a", NOW, (PolicyScope.DELEGATION_KEY_RETIRE,)))
         with self.unit_of_work() as unit:
             self.assertEqual(unit.stores.delegation_signing_keys.get_by_registration(
                 key.workspace_id, key.purpose, key.registration_id), retired)
+            self.assertEqual(unit.stores.delegation_signing_keys.require_active(
+                key.workspace_id, key.purpose, key.issuer), replacement)
+            with self.assertRaises(self.api.HttpSampleSecretUseConflict):
+                self.prepare(unit)
             with self.assertRaises(self.api.HttpSampleSecretUseConflict):
                 self.api.reauthorize_http_sample_use_in_unit_of_work(unit, context=self.context,
                     actor_scopes=SCOPES, authorization_id=pair.workload_grant.authorization_id)
