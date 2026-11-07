@@ -174,16 +174,12 @@ class HttpSampleCompatibilityTests(unittest.TestCase):
                     (options.get("check_port", options.get("receiver_port", 8080)),) * 2)
                 self.assertEqual(tuple(entry.check.check_id for entry in result.receiver.checks), ("live", "ready"))
                 self.assertEqual(tuple(dict(value.graph_descriptor) for value in (values["current"], values["desired"])), before)
-                # Structural support is not authority; normal admission still
-                # requires the actual consumer and every original route/check.
-                self.assertFalse(runtime_management_execution_is_unsupported(
-                    DEFAULT_GRAPH_CODEC.decode(values["current"].graph_descriptor),
-                    DEFAULT_GRAPH_CODEC.decode(values["desired"].graph_descriptor), values["plan"].plan,
-                    registered_products=values["products"], derivation_profile=values["plan"].derivation_profile))
+                # This pair-only fixture omits the connector registration; it
+                # cannot qualify the complete deployment's shape or authority.
                 self.assertTrue(runtime_management_execution_is_unsupported(
                     DEFAULT_GRAPH_CODEC.decode(values["current"].graph_descriptor),
                     DEFAULT_GRAPH_CODEC.decode(values["desired"].graph_descriptor), values["plan"].plan,
-                    derivation_profile=values["plan"].derivation_profile))
+                    registered_products=values["products"], derivation_profile=values["plan"].derivation_profile))
 
     def test_http_sample_compatibility_refuses_misroute_partial_and_wrong_trust(self):
         for options in (dict(socket="control", receiver_port=8000, check_socket="application", check_port=8080, route_port=8080),

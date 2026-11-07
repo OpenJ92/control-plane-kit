@@ -393,14 +393,24 @@ class ExecutionAdmissionCommandService:
                 from control_plane_kit_operations.http_sample_execution import require_http_sample_plan_support
                 from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
                 try:
-                    products = stores.registered_products.list_active(command.workspace_id)
+                    from control_plane_kit_operations.graph_authoring import product_references_in_graph
+                    references = sorted(set(product_references_in_graph(current)) | set(product_references_in_graph(desired)),
+                        key=lambda reference: reference.descriptor_sha256.value)
+                    products = tuple(stores.registered_products.get_for_update(command.workspace_id, reference)
+                        for reference in references)
+                    if any(product.status.value != "active" for product in products):
+                        raise ValueError
+                    runtime_refs = sorted({runtime.authority_ref for runtime in desired.runtimes.values()
+                        if runtime.authority_ref is not None}, key=lambda reference: reference.reference_id)
+                    authorities = tuple(stores.runtime_authorities.get_active_for_update(command.workspace_id, reference)
+                        for reference in runtime_refs)
                     if runtime_management_execution_is_unsupported(current, desired, plan.plan,
                             registered_products=products, derivation_profile=plan.derivation_profile):
                         raise ValueError
                     require_http_sample_plan_support(workspace_id=command.workspace_id, plan=plan,
                         current=stores.realized_graphs.get(base_projection_id),
                         desired=stores.realized_graphs.get(desired_projection_id), products=products,
-                        runtime_authorities=stores.runtime_authorities.list_active(command.workspace_id),
+                        runtime_authorities=authorities,
                         support=self._http_sample_support)
                 except Exception:
                     raise ExecutionAdmissionDenied("HTTP sample execution admission is unavailable") from None

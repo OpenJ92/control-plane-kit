@@ -9,3 +9,9 @@ request. A fully described registration admits the request; changing the actual
 dispatcher registration before its first gateway effect stops the current-policy
 coordinator with zero provider calls. Rowan's normal-driver/native composition
 owns actual child verification and post-completion history acceptance.
+
+The placement negative keeps the first sample workload qualified and separately
+pins a second managed runtime with only gateway/connector bootstrap activities.
+Its AWS kind names the existing Docker authority reference. The same normal
+prepare/approve/admit commands must refuse before any execution request or effect;
+checking only runtimes that happen to have sample waits cannot prove this law.

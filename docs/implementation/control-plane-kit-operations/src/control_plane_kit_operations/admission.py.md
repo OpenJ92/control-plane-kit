@@ -8,6 +8,11 @@ registered Docker placement, and the route/trust/named ingress covering every
 original workload wait and all its original HTTP checks. Compatibility errors
 remain fixed refusals. There are no signing-use rows, secret reads or provider
 effects in this admission; the reached-check owner establishes current authority.
+Only distinct exact product and runtime-authority identities referenced by the
+pinned graph are loaded and fenced with the existing point lookups. Active
+status is required; unrelated workspace catalogs are not materialized. Every
+runtime started by the fresh plan, including bootstrap-only runtimes without
+sample checks, must match its exact authority's kind/reference and Docker dispatch.
 Existing session/workspace/plan ownership checks precede the profile-specific
 refusal, so unrelated plan IDs do not disclose their profile through that denial.
 

@@ -3,7 +3,7 @@ from dataclasses import dataclass, replace
 
 from control_plane_kit_core._node_control_public_wire import reference_violation
 from control_plane_kit_core.public_ingress import NamedPublicIngress, PublicIngressExposure
-from control_plane_kit_core.planning import NodeTarget, WaitForHealthy
+from control_plane_kit_core.planning import NodeTarget, StartRuntime, WaitForHealthy
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.graph_authoring import product_reference_in_node
@@ -86,6 +86,15 @@ def require_http_sample_plan_support(*, workspace_id, plan, current, desired, pr
         raise ValueError("HTTP sample execution support is unavailable")
     support.__post_init__()
     graph = DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor)
+    starts = tuple(activity.operation.target.runtime_id for activity in plan.plan.activities
+        if type(activity.operation) is StartRuntime)
+    for identity in starts:
+        runtime = graph.runtimes[identity]
+        authorities = tuple(value for value in runtime_authorities
+            if value.workspace_id == workspace_id and value.authority_ref == runtime.authority_ref
+            and value.runtime_kind is runtime.kind and value.status.value == "active")
+        if runtime.kind is not RuntimeKind.DOCKER or runtime.authority_ref is None or len(authorities) != 1:
+            raise ValueError("HTTP sample execution runtime is unavailable")
     waits = tuple(activity for activity in plan.plan.activities if type(activity.operation) is WaitForHealthy)
     if not waits:
         raise ValueError("HTTP sample execution checks are unavailable")
@@ -97,7 +106,7 @@ def require_http_sample_plan_support(*, workspace_id, plan, current, desired, pr
         authorities = tuple(value for value in runtime_authorities
             if value.workspace_id == workspace_id and value.authority_ref == runtime.authority_ref
             and value.runtime_kind is RuntimeKind.DOCKER and value.status.value == "active")
-        if len(authorities) != 1:
+        if node.runtime_id not in starts or len(authorities) != 1:
             raise ValueError("HTTP sample execution runtime is unavailable")
         route = select_http_sample_route(workspace_id=workspace_id, plan=plan, current=current,
             desired=desired, products=products, node_id=node.node_id, support=support)

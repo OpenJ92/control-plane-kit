@@ -13,5 +13,7 @@ acquisition state, current admission, physical commit and truthful history.
 The complete-plan predicate reuses the same pure route selector for every
 original workload wait, requires its active registered Docker placement and
 complete original HTTP-check coverage, and refuses a later uncovered workload.
+It also validates every original StartRuntime, including those with only
+bootstrap activities, against the declared kind and exact active authority.
 It grants no authority. Admission and coordinator separately qualify the actual
 registration/executor identity; no global support flag can replace that check.
