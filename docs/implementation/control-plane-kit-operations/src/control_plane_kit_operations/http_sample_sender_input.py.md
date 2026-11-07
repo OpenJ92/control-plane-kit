@@ -6,6 +6,12 @@ named sets of registered signing key, AuthorizedSecretUse and registered provide
 It checks the exact wait activity's workload and the original installed HttpCheck,
 matching plan/projection/session, sample purpose/issuer/key ID/fingerprint/private
 reference, deterministic key/provider/use identities, and original role binding.
+The supplied provider policy must include the role's intent and cover its private
+reference using the owner's provider-ID/path-segment prefix law. This is static
+consistency, not a current policy lookup. Sample-bound run/activity/effect/check
+IDs use Core wire reference rules; selected authored/projection IDs construct the
+existing NodeControlAuthorityContext. Actor/session/operation keep their existing
+Operations domains, since they are not those sample request fields.
 It projects existing Core SecretResolutionGrants only after both roles validate.
 The immutable handoff retains exact registration/public identity and original
 check policy, receiver, gateway and route. No partial handoff is returned.

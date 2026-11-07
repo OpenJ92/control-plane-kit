@@ -15,6 +15,7 @@ from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.http_verification_samples import http_verification_check_digest
 from control_plane_kit_core.operations import EffectAttemptIdentity
 from control_plane_kit_core.planning import NodeTarget, WaitForHealthy
+from control_plane_kit_core.receiver_identity import NodeControlAuthorityContext
 from control_plane_kit_core.secrets import SecretResolutionGrant, http_verification_sample_signing_intent_for
 from control_plane_kit_core.verification import HttpCheck
 from control_plane_kit_operations.delegation_signing_keys import (
@@ -26,6 +27,7 @@ from control_plane_kit_operations.records import ActivityPlanRecord, ActivityPla
 from control_plane_kit_operations.secret_providers import (
     AuthorizedSecretUse, RegisteredSecretProvider, secret_provider_registration_id_for,
     secret_resolution_grant_for, validate_authorized_secret_use,
+    _reference_is_within, _require_identifier, _require_correlation_identifier,
 )
 
 _TRANSIT = DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT
@@ -77,8 +79,12 @@ def _context(compatibility, plan, check_id, attempt, operation_id, session_id,
         and plan.plan.ready_for_execution
         and (plan.plan_id, plan.desired_graph_id, plan.desired_realized_projection_id, plan.session_id)
             == (compatibility.plan_id, compatibility.desired_graph_id, compatibility.projection_id, session_id))
-    for value in (operation_id, session_id, actor_subject, effect_id, check_id):
+    _require_identifier(actor_subject, "actor_subject")
+    _require_correlation_identifier(operation_id, "operation_id")
+    _require_correlation_identifier(session_id, "session_id")
+    for value in (attempt.run_id.value, attempt.activity_id, effect_id, check_id):
         _require(type(value) is str and reference_violation(value) is None)
+    NodeControlAuthorityContext(compatibility.desired_graph_id, compatibility.projection_id)
     _require(type(request_fingerprint) is str and digest_violation(request_fingerprint) is None)
     receiver = compatibility.receiver
     _require(replace(receiver) == receiver)
@@ -157,6 +163,8 @@ def _role(context, key, use, provider, purpose, verifier):
         endpoint_reference=provider.endpoint_reference, credential_reference=provider.credential_reference,
         allowed_reference_prefixes=provider.allowed_reference_prefixes, allowed_intents=provider.allowed_intents,
         supersedes_registration_id=provider.supersedes_registration_id, metadata=provider.metadata))
+    _require(use.intent in provider.allowed_intents
+        and any(_reference_is_within(use.reference, prefix) for prefix in provider.allowed_reference_prefixes))
     # Existing projection checks provider-registration identity. Its grant keeps
     # reference-registration identity; no reference row or current lifecycle is loaded.
     return secret_resolution_grant_for(use, provider=provider)

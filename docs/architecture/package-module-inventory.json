@@ -14,7 +14,8 @@
       "internal_dependencies": [
         "control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.delegation_keys",
         "control_plane_kit_core.http_verification_samples", "control_plane_kit_core.operations",
-        "control_plane_kit_core.planning", "control_plane_kit_core.secrets", "control_plane_kit_core.verification",
+        "control_plane_kit_core.planning", "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.secrets", "control_plane_kit_core.verification",
         "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.http_sample_compatibility",
         "control_plane_kit_operations.plan_derivation", "control_plane_kit_operations.records",
         "control_plane_kit_operations.secret_providers"
