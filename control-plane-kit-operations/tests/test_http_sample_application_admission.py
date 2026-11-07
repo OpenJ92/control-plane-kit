@@ -17,6 +17,7 @@ from control_plane_kit_core.http_verification_samples import http_verification_c
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose, DelegationKeyAlgorithm, DelegationPublicKey
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductReference
+from control_plane_kit_core.receiver_management_routes import ReceiverManagementRouteBinding, ReceiverManagementRoutes, ReceiverManagementRoutesCodec
 from control_plane_kit_core.receiver_identity import NodeControlReceiverTargetCodec
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.types import RuntimeKind
@@ -55,6 +56,10 @@ class _NoDispatch:
     def execute_with_authority(self, request, authority, *, invocations):
         self.calls.append(request)
         raise AssertionError("admission/preflight tests must never dispatch provider effects")
+
+    def execute(self, request, *, invocations=None):
+        self.calls.append(request)
+        raise AssertionError("admission/preflight tests must never use a private fallback")
 
 
 class HttpSampleApplicationAdmissionTests(_CurrentCoordinatorPermission, chain.ManagedApplicationFixture):
@@ -151,6 +156,58 @@ class HttpSampleApplicationAdmissionTests(_CurrentCoordinatorPermission, chain.M
             slot=replace(self.support.gateway_binding.slot, target_path="/etc/test/other-trust.json")))
         self.sample_adapter = _NoDispatch(self.support)
         self.registration = self.registered(self.sample_adapter)
+        with self.assertRaises(ExecutionAdmissionDenied):
+            await self.prepare_and_start()
+        self.assertEqual(self.rows("cpk_execution_requests"), ())
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+
+    async def test_bootstrap_only_wrong_kind_same_authority_ref_refuses_before_request(self):
+        # Keep the first managed workload qualified. The second managed runtime
+        # starts only its gateway/connector, so checking waits alone misses it.
+        graph, nodes = self.graph, dict(self.graph.nodes)
+        codec = ReceiverNodeControlConfigurationCodec()
+        gateway = graph.node("gateway")
+        own = codec.decode_bytes(next(value for value in gateway.configuration_artifacts
+            if value.artifact_id == "gateway-control").content.encode())
+        target = replace(own.target, runtime_id=replace(own.target.runtime_id, value="other"),
+            node_id=replace(own.target.node_id, value="gateway-other"), receiver_id="d" * 32)
+        own = replace(own, target=target)
+        artifacts = []
+        for artifact in gateway.configuration_artifacts:
+            if artifact.artifact_id == "gateway-control":
+                artifact = replace(artifact, content=codec.encode_bytes(own).decode())
+            elif artifact.artifact_id == "gateway-health-targets":
+                routes = ReceiverManagementRoutes(target, (ReceiverManagementRouteBinding(
+                    "self", target, own.declaration, "http://gateway-other:8000"),))
+                artifact = replace(artifact, content=ReceiverManagementRoutesCodec().encode_bytes(routes).decode())
+            elif artifact.artifact_id == "gateway-health-transit":
+                value = json.loads(artifact.content)
+                value.update(node="gateway-other", runtime="other")
+                artifact = replace(artifact, content=json.dumps(value))
+            elif artifact.artifact_id == "sample-transit":
+                value = json.loads(artifact.content)
+                value["target"] = target.descriptor()
+                artifact = replace(artifact, content=json.dumps(value))
+            artifacts.append(artifact)
+        for original, name, selected in ((gateway, "gateway-other", tuple(artifacts)),
+                (graph.node("connector"), "connector-other", graph.node("connector").configuration_artifacts)):
+            base = self.documents[original.node_id].product
+            product = replace(base, identity=replace(base.identity, name="chain-" + name),
+                runtime_contract=replace(base.runtime_contract, configuration_artifacts=selected))
+            document = ProductDescriptorCodec().encode_document(product)
+            reference = ProductReference.from_document(document)
+            self.documents[name] = document
+            nodes[name] = replace(original, node_id=name, runtime_id="other", configuration_artifacts=selected,
+                metadata={"product_identity": reference.identity.key, "product_descriptor_digest": reference.descriptor_sha256.value})
+        ingress = replace(graph.public_ingresses[0], ingress_id="management-other",
+            target=replace(graph.public_ingresses[0].target, node_id="gateway-other"),
+            connector_node_id="connector-other", hostname="cpk-gateway-other.openj92.dev")
+        first = graph.runtimes["docker"]
+        other = replace(first, runtime_id="other", kind=RuntimeKind.AWS,
+            children=("gateway-other", "connector-other"), management=replace(first.management,
+                gateway_node_id="gateway-other", management_ingress_id=ingress.ingress_id))
+        self.graph = replace(graph, nodes=nodes, runtimes={**graph.runtimes, "other": other},
+            public_ingresses=graph.public_ingresses + (ingress,))
         with self.assertRaises(ExecutionAdmissionDenied):
             await self.prepare_and_start()
         self.assertEqual(self.rows("cpk_execution_requests"), ())
