@@ -32,7 +32,7 @@ def api(test):
     return importlib.import_module(MODULE)
 
 
-def supplied_case(test, **changes):
+def supplied_case(test, *, provider_overrides=None, key_overrides=None, **changes):
     """Pure record constructors do not establish that a check was reached/committed."""
     values, reference, slot = compatible.case(test)
     binding = compatible.HttpSampleCompatibilityTests.bind(test, values, reference, slot)
@@ -46,16 +46,16 @@ def supplied_case(test, **changes):
     roles = {}
     for role, purpose in PURPOSES.items():
         private = SecretReference("secret://workspace-secrets/workspace-a/" + role)
-        key = RegisterDelegationSigningKeyCommand(workspace_id="workspace-a", purpose=purpose,
+        key = RegisterDelegationSigningKeyCommand(**(dict(workspace_id="workspace-a", purpose=purpose,
             issuer="sample-controller", public_key=public_key(role), private_key_reference=private,
-            admitted_by="operator-a", admitted_at=NOW, actor_scopes=()).candidate()
-        provider = RegisterSecretProviderCommand(workspace_id="workspace-a",
+            admitted_by="operator-a", admitted_at=NOW, actor_scopes=()) | (key_overrides or {}).get(role, {}))).candidate()
+        provider = RegisterSecretProviderCommand(**(dict(workspace_id="workspace-a",
             provider_id=SecretProviderId("workspace-secrets"), provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
             display_name="Workspace secrets", endpoint_reference=SecretProviderEndpointReference("workspace-secrets"),
             credential_reference=SecretReference("secret://workspace-secrets/workspace-a/provider-credential"),
             allowed_reference_prefixes=(SecretReference("secret://workspace-secrets/workspace-a"),),
             allowed_intents=tuple(http_verification_sample_signing_intent_for(p) for p in PURPOSES.values()),
-            admitted_by="operator-a", admitted_at=NOW, actor_scopes=()).candidate()
+            admitted_by="operator-a", admitted_at=NOW, actor_scopes=()) | (provider_overrides or {}).get(role, {}))).candidate()
         ref = RegisterSecretReferenceCommand(workspace_id="workspace-a", reference=private,
             provider_registration_id=provider.registration_id,
             allowed_intents=(http_verification_sample_signing_intent_for(purpose),),
@@ -74,6 +74,39 @@ def supplied_case(test, **changes):
 
 
 class HttpSampleSenderInputTests(unittest.TestCase):
+    def test_internally_consistent_provider_policy_still_must_cover_its_use(self):
+        for role, purpose in PURPOSES.items():
+            other = next(value for value in PURPOSES.values() if value is not purpose)
+            for policy in (dict(allowed_intents=(http_verification_sample_signing_intent_for(other),)),
+                    dict(allowed_reference_prefixes=(SecretReference("secret://workspace-secrets/foreign"),))):
+                with self.subTest(role=role, policy=tuple(policy)):
+                    context, roles = supplied_case(self, provider_overrides={role: policy})
+                    # Candidate provider/reference/use identities are all rebuilt;
+                    # the pure constructors do not check this policy consistency.
+                    self.refuses(context, roles)
+
+    def test_sender_wire_context_refuses_operations_valid_unaddressable_ids(self):
+        context, _ = supplied_case(self)
+        cases = [dict(attempt=replace(context["attempt"], run_id=RunId("localhost"))),
+            dict(effect_id="localhost")]
+        for field, plan_field in (("desired_graph_id", "desired_graph_id"),
+                ("projection_id", "desired_realized_projection_id")):
+            cases.append(dict(compatibility=replace(context["compatibility"], **{field: "localhost"}),
+                plan=replace(context["plan"], **{plan_field: "localhost"})))
+        for changes in cases:
+            with self.subTest(changes=tuple(changes)), self.assertRaises(api(self).HttpSampleSenderInputUnavailable):
+                supplied, roles = supplied_case(self, **changes)
+                api(self).bind_http_sample_sender_input(**supplied, **roles)
+
+    def test_operations_only_actor_identity_need_not_fit_sample_wire(self):
+        try:
+            context, roles = supplied_case(self, actor_subject="localhost")
+            result = api(self).bind_http_sample_sender_input(**context, **roles)
+        except api(self).HttpSampleSenderInputUnavailable:
+            self.fail("Operations-owned actor identity must retain its existing domain")
+        self.assertEqual(result.actor_subject, "localhost")
+        self.assertEqual(result.workload_grant.actor_subject, "localhost")
+
     def test_supplied_matching_roles_project_existing_grants_for_original_check(self):
         context, roles = supplied_case(self)
         result = api(self).bind_http_sample_sender_input(**context, **roles)
@@ -133,6 +166,11 @@ class HttpSampleSenderInputTests(unittest.TestCase):
             purpose=key.purpose, key_registration_id=replacement.registration_id)
         self.assertEqual(original_binding[0], replacement_binding[0])
         self.assertNotEqual(original_binding[1], replacement_binding[1])
+        # Rebuild the key registration, probe and use consistently as well: an
+        # uninstalled fingerprint must still refuse despite the same key ID.
+        other_context, other_roles = supplied_case(self, key_overrides={"workload": dict(
+            public_key=public_key("other", key_id=key.public_key.key_id))})
+        self.refuses(other_context, other_roles)
 
     def test_provider_substitution_and_inconsistent_authorization_identity_refuse(self):
         context, roles = supplied_case(self)

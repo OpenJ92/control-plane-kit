@@ -8,3 +8,9 @@ provider substitutions refuse. VERIFY_ONLY registration inputs make explicit tha
 this join is not current eligibility, committed provenance, or reached-check proof.
 Stable lookup correlation excludes replacement selection; the probe still commits
 the original registration. Real atomic issuance and admission remain separate.
+
+Review regressions rebuild provider/reference/use identities consistently for a
+disallowed intent and an outside path-segment prefix, and rebuild a same-key-ID
+different-fingerprint registration/use. Operations-valid but sample-wire-invalid
+run/effect and authored/projection IDs refuse, while the Operations-only actor
+domain remains supported. No test claims these constructed rows were committed.
