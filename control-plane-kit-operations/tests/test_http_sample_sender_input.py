@@ -53,7 +53,7 @@ def supplied_case(test, **changes):
             provider_id=SecretProviderId("workspace-secrets"), provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
             display_name="Workspace secrets", endpoint_reference=SecretProviderEndpointReference("workspace-secrets"),
             credential_reference=SecretReference("secret://workspace-secrets/workspace-a/provider-credential"),
-            allowed_reference_prefixes=(SecretReference("secret://workspace-secrets/workspace-a/"),),
+            allowed_reference_prefixes=(SecretReference("secret://workspace-secrets/workspace-a"),),
             allowed_intents=tuple(http_verification_sample_signing_intent_for(p) for p in PURPOSES.values()),
             admitted_by="operator-a", admitted_at=NOW, actor_scopes=()).candidate()
         ref = RegisterSecretReferenceCommand(workspace_id="workspace-a", reference=private,
