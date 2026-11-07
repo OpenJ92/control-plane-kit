@@ -2,6 +2,29 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.http_sample_sender_input",
+      "destination": "control_plane_kit_operations.http_sample_sender_input",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/http_sample_sender_input.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "validation", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["HttpSampleSenderInputUnavailable", "HttpSampleSenderInput", "http_sample_signing_binding_for", "bind_http_sample_sender_input"],
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.http_verification_samples", "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning", "control_plane_kit_core.secrets", "control_plane_kit_core.verification",
+        "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.http_sample_compatibility",
+        "control_plane_kit_operations.plan_derivation", "control_plane_kit_operations.records",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [],
+      "optional_external_dependencies": ["rfc8785"],
+      "protecting_tests": ["tests/test_http_sample_sender_input.py"],
+      "motivation": "Pure one-check congruence over supplied signing evidence; no provenance, current admission, resolution or execution."
+    },
+    {
       "module": "control_plane_kit_operations.http_sample_compatibility",
       "destination": "control_plane_kit_operations.http_sample_compatibility",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/http_sample_compatibility.py",
