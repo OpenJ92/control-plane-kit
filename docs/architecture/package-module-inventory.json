@@ -10,9 +10,9 @@
       "semantic_roles": ["values", "validation", "transformations"],
       "movement": "remain",
       "migration_prerequisites": [],
-      "canonical_public_exports": ["HttpSampleExecutionSupport", "PreparedHttpSampleRoute", "PreparedHttpSampleCheck", "load_http_sample_route"],
-      "internal_dependencies": ["control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.public_ingress", "control_plane_kit_core.topology", "control_plane_kit_operations.graph_authoring", "control_plane_kit_operations.http_sample_compatibility", "control_plane_kit_operations.http_sample_sender_input"],
-      "known_package_consumers": ["control_plane_kit_operations.execution_invocation_service", "control_plane_kit_operations.runtime_adapter_registration"],
+      "canonical_public_exports": ["HttpSampleExecutionSupport", "PreparedHttpSampleRoute", "PreparedHttpSampleCheck", "load_http_sample_route", "select_http_sample_route", "require_http_sample_plan_support"],
+      "internal_dependencies": ["control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.public_ingress", "control_plane_kit_core.planning", "control_plane_kit_core.topology", "control_plane_kit_core.types", "control_plane_kit_operations.graph_authoring", "control_plane_kit_operations.http_sample_compatibility", "control_plane_kit_operations.http_sample_sender_input"],
+      "known_package_consumers": ["control_plane_kit_operations.execution_invocation_service", "control_plane_kit_operations.runtime_adapter_registration", "control_plane_kit_operations.admission", "control_plane_kit_operations.coordinator"],
       "optional_external_dependencies": [],
       "protecting_tests": ["tests/test_http_sample_execution_composition.py", "tests/test_postgres_http_sample_secret_uses.py"],
       "motivation": "Explicit native composition and original pinned route read; no signer, transport or current permission decision."

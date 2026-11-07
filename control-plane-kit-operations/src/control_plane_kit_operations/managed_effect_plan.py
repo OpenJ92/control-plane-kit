@@ -26,6 +26,7 @@ def require_managed_effect_plan(stores, intent, request):
                     PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
                     PlanDerivationProfile.MANAGED_UPDATE_V1,
                     PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1,
+                    PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
                 )
                 or plan.status is not ActivityPlanStatus.PLANNED
                 or plan.session_id != request.identity.session_id

@@ -1,10 +1,13 @@
 Source: [admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/admission.py).
 Maintain this companion alongside its source.
 
-#2088 explicitly denies new admission of the sample-bootstrap profile before
-empty/ready-plan shortcuts or execution-request creation. An otherwise approved
-ready plan does not grant the missing sampler/product compatibility authority.
-This hold remains until the separately accepted admission and sender composition.
+The sample-bootstrap profile refuses by default before request creation. Its
+explicit composed arm requires the same actual registration/adapter support,
+the exact canonical fresh-owned original plan and registered products, an active
+registered Docker placement, and the route/trust/named ingress covering every
+original workload wait and all its original HTTP checks. Compatibility errors
+remain fixed refusals. There are no signing-use rows, secret reads or provider
+effects in this admission; the reached-check owner establishes current authority.
 Existing session/workspace/plan ownership checks precede the profile-specific
 refusal, so unrelated plan IDs do not disclose their profile through that denial.
 

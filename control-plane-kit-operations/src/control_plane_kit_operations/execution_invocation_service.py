@@ -213,6 +213,14 @@ class ExecutionInvocationService:
     def permission_policy(self) -> CurrentWorkspaceEffectPolicy:
         return self._permission_policy
 
+    @property
+    def http_sample_support(self):
+        return self._http_sample_support
+
+    @property
+    def http_sample_registration(self):
+        return self._http_sample_registration
+
     def bind_health(self, *, command_context, start, started, managed_target):
         failed = False
         try:

@@ -1169,6 +1169,10 @@ class ExecutionCoordinator:
         guarded = self._guard_runtime_management(context, 0, managed_execution=True)
         if guarded is not None:
             return guarded
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        if (context.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+                and context.run.status is not ActivityRunStatus.RUNNING):
+            return None
         expected = tuple(activity.activity_id for activity in context.plan.activities
             if type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth))
         if not expected:
@@ -2314,12 +2318,34 @@ class ExecutionCoordinator:
     ) -> ExecutionCoordinatorResult | None:
         if type(context) is _ConfigurationReplayContext:
             return None
-        # Existing authoritative lifecycle states retain their classification.
-        # The ordinary classifier can write completion/failure for RUNNING, so
-        # unsupported material must be intercepted before calling it.
+        # A changed current capability cannot relabel a completed original run.
         if context.run.status is not ActivityRunStatus.RUNNING:
             return None
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        sample_supported = True
+        if context.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
+            try:
+                from control_plane_kit_operations.http_sample_execution import require_http_sample_plan_support
+                from control_plane_kit_operations.runtime_adapter_registration import require_http_sample_execution_support
+                dispatcher = self._adapter.runtime if type(self._adapter) is ActivityExecutionDispatcher else self._adapter
+                if (not managed_execution or self._permission_policy is None
+                        or type(self._invocation_service) is not ExecutionInvocationService
+                        or type(dispatcher) is not RuntimeInterpreterDispatcher):
+                    raise ValueError
+                registration = dispatcher.interpreters.get(RuntimeKind.DOCKER)
+                if registration is not self._invocation_service.http_sample_registration:
+                    raise ValueError
+                support = self._invocation_service.http_sample_support
+                require_http_sample_execution_support(support, registration)
+                require_http_sample_plan_support(workspace_id=context.request.identity.workspace_id,
+                    plan=context.plan_record, current=context.base_graph, desired=context.desired_graph,
+                    products=context.registered_products, runtime_authorities=context.runtime_authorities,
+                    support=support)
+            except Exception:
+                sample_supported = False
+        # Existing authoritative lifecycle states retain their classification.
+        # The ordinary classifier can write completion/failure for RUNNING, so
+        # unsupported material must be intercepted before calling it.
         unsupported_cleanup = (context.plan_record.derivation_profile not in (
             PlanDerivationProfile.CONFIGURATION_CLEANUP_V1, PlanDerivationProfile.CONFIGURATION_CLEANUP_V2)
             and any(type(activity.operation) is CleanupConfigurationInstances for activity in context.plan.activities))
@@ -2335,7 +2361,7 @@ class ExecutionCoordinator:
             type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth)
             for activity in context.plan.activities
         )
-        if not unsupported_cleanup and (managed_execution or not has_health) and not runtime_management_execution_is_unsupported(
+        if sample_supported and not unsupported_cleanup and (managed_execution or not has_health) and not runtime_management_execution_is_unsupported(
             DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
             DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
             context.plan,

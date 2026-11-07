@@ -1,10 +1,12 @@
 Source: [runtime_management_admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_admission.py).
 Maintain this companion alongside its source.
 
-#2088 refuses the new sample-bootstrap profile before legacy no-management/empty
-exemptions. Pure plan readiness and profile recording cannot grant execution.
-Existing profile policy is unchanged; normal effect preparation/fold/coordinator
-callers retain this refusal until the supported admission/sender boundary exists.
+The sample-bootstrap profile is checked before legacy no-management/empty
+exemptions. Only its nonempty, ready, canonical fresh-owned initial shape with
+exact registered product declarations is structurally supported. This pure
+predicate never supplies authority: admission and coordinator separately require
+the actual registered sample consumer and full original route/check coverage.
+Other recorded profiles preserve their prior interpretation and guard path.
 
 The fresh planning predicate accepts a validated deployment transition, with no
 supplied plan, profile, or ready flag. It first parses every node in both snapshots

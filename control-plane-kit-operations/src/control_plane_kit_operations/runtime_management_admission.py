@@ -168,7 +168,24 @@ def runtime_management_execution_is_unsupported(
     # Parse independently of catalog contents. A malformed selected reference
     # cannot acquire a no-op exemption or leak its parser error into a receipt.
     if derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
-        return True
+        # Shape only: the admission/coordinator owners independently require
+        # the actual registered sample consumer and every original route.
+        if plan is None or not plan.activities:
+            return True
+        try:
+            first, second = validate_graph(current, codec=codec), validate_graph(desired, codec=codec)
+            first.require_valid()
+            second.require_valid()
+            transition = Deploy(first, second)
+            canonical = derive_activity_plan(transition, profile=derivation_profile)
+            return (type(transition) is not InitialDeployment or not canonical.ready_for_execution
+                or canonical != plan or not _fresh_owned_shape(desired, canonical)
+                or runtime_management_planning_is_unsupported(transition, registered_products=registered_products)
+                or any(not any(product.reference == product_reference_in_node(node)
+                    and _node_matches_product(node, product) for product in registered_products)
+                    for node in desired.nodes.values()))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return True
     try:
         references = set(product_references_in_graph(current)) | set(
             product_references_in_graph(desired)
