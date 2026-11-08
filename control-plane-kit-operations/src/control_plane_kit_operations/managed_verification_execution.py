@@ -5,6 +5,7 @@ identity or a successful SQL read. Only the original reached-check owner may
 issue this value after committing its current guards and authorization uses.
 """
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 
 from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.configuration import ConfigurationArtifactRequirement
@@ -19,6 +20,8 @@ from control_plane_kit_core.receiver_management_routes import ReceiverManagement
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.receiver_health_reads import DelegatedWorkloadReceiverHealthReadGrant
+from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResultCodec
+from control_plane_kit_core.postgres_readiness import postgres_readiness_result_matches
 from control_plane_kit_core.receiver_health_transit import DelegatedGatewayReceiverHealthReadTransitGrant
 from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant
 from control_plane_kit_operations.health_effect_preparations import health_effect_attempt_wire_id
@@ -30,7 +33,7 @@ from control_plane_kit_operations.http_sample_execution import HttpSampleExecuti
 from control_plane_kit_operations.http_sample_compatibility import _registered, _receiver, _qualified_artifact
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
 from control_plane_kit_operations.deployment_transitions import Deploy
-from control_plane_kit_operations.records import ActivityPlanRecord, RealizedGraphProjectionRecord
+from control_plane_kit_operations.records import ActivityPlanRecord, RealizedGraphProjectionRecord, _canonical_timestamp_instant
 
 
 class ManagedVerificationSupportUnavailable(ValueError):
@@ -266,5 +269,25 @@ def select_postgres_readiness_route(*, workspace_id, plan, current, desired, pro
     return _checked(select)
 
 
+def require_postgres_readiness_evidence(binding, evidence, *, admitted_at, completed_at):
+    """Decode an original-bound receipt; this is not provider or invocation proof."""
+    def validate():
+        _require(type(binding) is PostgresReadinessBinding and type(evidence) is dict
+            and set(evidence) == {"profile", "check_id", "result", "observed_at_epoch_ms"}
+            and evidence["profile"] == "cpk.original-postgres-readiness.v1"
+            and evidence["check_id"] == binding.check_id)
+        binding.__post_init__()
+        result = ReceiverHealthReadResultCodec(binding.request(), binding.receiver.declaration).decode(evidence["result"])
+        _require(postgres_readiness_result_matches(binding, result,
+            observed_at_epoch_ms=evidence["observed_at_epoch_ms"]))
+        def epoch_ms(timestamp):
+            instant = _canonical_timestamp_instant(timestamp, "original SQL invocation time")
+            delta = instant - datetime(1970, 1, 1, tzinfo=timezone.utc)
+            return (delta.days * 86400 + delta.seconds) * 1000 + delta.microseconds // 1000
+        _require(epoch_ms(admitted_at) <= evidence["observed_at_epoch_ms"] <= epoch_ms(completed_at))
+        return result
+    return _checked(validate)
+
+
 __all__ = ["ManagedVerificationSupportUnavailable", "ManagedVerificationExecutionSupport", "PreparedPostgresReadinessCheck",
-    "PreparedPostgresReadinessRoute", "select_postgres_readiness_route"]
+    "PreparedPostgresReadinessRoute", "select_postgres_readiness_route", "require_postgres_readiness_evidence"]

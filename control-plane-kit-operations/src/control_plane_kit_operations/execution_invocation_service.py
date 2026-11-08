@@ -1,6 +1,7 @@
 """Command-owned semantic admission; capability IO belongs to the caller."""
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 import hashlib
 from typing import Protocol
 
@@ -29,6 +30,14 @@ from control_plane_kit_operations.http_sample_execution import (
     PreparedHttpSampleCheck, load_http_sample_route,
 )
 from control_plane_kit_operations.runtime_adapter_registration import require_http_sample_execution_support
+from control_plane_kit_operations.runtime_adapter_registration import require_managed_verification_execution_support
+from control_plane_kit_operations.managed_verification_execution import select_postgres_readiness_route, require_postgres_readiness_evidence
+from control_plane_kit_operations.postgres_readiness import load_original_postgres_readiness
+from control_plane_kit_operations.postgres_readiness_uses import (
+    prepare_postgres_readiness_uses_in_unit_of_work, read_postgres_readiness_uses,
+)
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+from control_plane_kit_operations.graph_authoring import product_reference_in_node
 from control_plane_kit_operations.http_sample_secret_uses import (
     prepare_http_sample_uses_in_unit_of_work, reauthorize_http_sample_use_in_unit_of_work,
     read_http_sample_uses,
@@ -60,7 +69,7 @@ from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_pref
 from control_plane_kit_operations.effect_attempt_start_interpreter import (
     _require_request_run, _require_current_authority, _require_fresh_effect_receiver_permission,
 )
-from control_plane_kit_operations.records import ActivityRunStatus, OperationSessionStatus
+from control_plane_kit_operations.records import ActivityRunStatus, OperationSessionStatus, _canonical_timestamp_instant
 
 
 _KINDS = (Kind.ENDPOINT_OBSERVATION, Kind.SECRET_RESOLUTION, Kind.SIGNED_HEALTH_TRANSPORT)
@@ -78,6 +87,13 @@ class BoundExecutionInvocations(Protocol):
 def _require(condition):
     if not condition:
         raise ExecutionInvocationConflict()
+
+
+def _require_postgres_window(binding, timestamp):
+    instant = _canonical_timestamp_instant(timestamp, "original SQL window")
+    delta = instant - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    current = (delta.days * 86400 + delta.seconds) * 1000 + delta.microseconds // 1000
+    _require(binding.started_at_epoch_ms <= current < binding.deadline_epoch_ms)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -134,6 +150,13 @@ class _BoundOrdinaryVerificationInvocations(_BoundRuntimeInvocations):
     def acquire_http_sample_route(self):
         return self.service._acquire_http_sample_route(self)
 
+    @property
+    def managed_verification_support(self):
+        return self.service._managed_verification_support if self.profile.managed_verification else None
+
+    def acquire_managed_verification_route(self):
+        return self.service._acquire_postgres_readiness_route(self)
+
     def record_outcome(self, permit, outcome):
         _require(type(permit) is _Permit and (
             permit.record.kind is Kind.ORDINARY_VERIFICATION_ACQUISITION
@@ -161,6 +184,9 @@ class _BoundOrdinaryVerificationCheck:
     def prepare_http_sample(self):
         return self.parent.service._prepare_http_sample(self.parent, self.check)
 
+    def prepare_postgres_readiness(self):
+        return self.parent.service._prepare_postgres_readiness(self.parent, self.check)
+
     def admit(self, kind, *, authorization_id=None):
         return self.parent.service._admit_runtime(self.parent, kind, authorization_id, check=self.check)
 
@@ -168,7 +194,7 @@ class _BoundOrdinaryVerificationCheck:
         _require(type(permit) is _Permit and (
             (permit.record.kind is Kind.ORDINARY_VERIFICATION_CHECK
                 and permit.record.target_fingerprint == self.check.target_fingerprint)
-            or (permit.record.kind is Kind.SECRET_RESOLUTION and (self.check.http_sample
+            or (permit.record.kind is Kind.SECRET_RESOLUTION and (self.check.http_sample or self.check.postgres_readiness
                 or (self.credential_grant is not None
                     and permit.record.authorization_id == self.credential_grant.authorization_id)))))
         self.parent.service._record_outcome(self.parent, permit, outcome, check=self.check)
@@ -198,7 +224,8 @@ class _BoundReconciliationInvocations:
 class ExecutionInvocationService:
     def __init__(self, unit_of_work_factory, *, permission_policy, clock,
             health_receiver_decoders=HealthReceiverDecoders(()),
-            http_sample_support=None, http_sample_registration=None):
+            http_sample_support=None, http_sample_registration=None,
+            managed_verification_support=None, managed_verification_registration=None):
         _require(callable(unit_of_work_factory) and callable(clock)
             and type(permission_policy) is CurrentWorkspaceEffectPolicy
             and type(health_receiver_decoders) is HealthReceiverDecoders)
@@ -206,6 +233,12 @@ class ExecutionInvocationService:
         self._unit_of_work_factory = unit_of_work_factory
         self._permission_policy, self._clock = permission_policy, clock
         self._http_sample_support, self._http_sample_registration = http_sample_support, http_sample_registration
+        self._managed_verification_support = managed_verification_support
+        self._managed_verification_registration = managed_verification_registration
+        if managed_verification_support is not None:
+            require_managed_verification_execution_support(managed_verification_support, managed_verification_registration)
+            _require(http_sample_support is None or http_sample_support is managed_verification_support.http_samples)
+            self._http_sample_support = managed_verification_support.http_samples
         self._health = HealthSigningAuthorityReloadService(unit_of_work_factory,
             health_receiver_decoders=health_receiver_decoders)
 
@@ -477,7 +510,10 @@ class ExecutionInvocationService:
                 reference = command_context.receipt
                 uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
                 marker, runtime, profile = self._runtime_material(uow.stores, command_context, start, started)
-                if getattr(profile, "http_sample", False):
+                if getattr(profile, "managed_verification", False):
+                    require_managed_verification_execution_support(self._managed_verification_support,
+                        self._managed_verification_registration)
+                elif getattr(profile, "http_sample", False):
                     require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
                 bound_type = (_BoundOrdinaryVerificationInvocations if ordinary_verification_candidate(start.intent)
                     else _BoundRuntimeInvocations)
@@ -578,10 +614,95 @@ class ExecutionInvocationService:
             effect_id=bound.marker.original_event_id, request_fingerprint=bound.marker.request_fingerprint)
         return context, route
 
+    def _require_ordinary_support(self, bound):
+        if bound.profile.managed_verification:
+            require_managed_verification_execution_support(self._managed_verification_support,
+                self._managed_verification_registration)
+        else:
+            require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+
+    def _postgres_readiness_context(self, stores, bound, check):
+        _require(type(bound) is _BoundOrdinaryVerificationInvocations and bound.service is self
+            and bound.profile.managed_verification and bound.profile.check(check.check_id) == check
+            and check.postgres_readiness)
+        support = self._managed_verification_support
+        self._require_ordinary_support(bound)
+        plan = stores.activity_history.get_plan(bound.start.intent.source.plan_id)
+        material, = bound.start.intent.products
+        observer = support.observer_for(material.reference)
+        binding = load_original_postgres_readiness(stores, identity=bound.started.attempt.state.identity,
+            observer=observer, check_id=check.check_id)
+        current = stores.realized_graphs.get(plan.base_realized_projection_id)
+        desired = stores.realized_graphs.get(plan.desired_realized_projection_id)
+        graph = DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor)
+        node = graph.node(material.node_id)
+        gateway = graph.node(graph.runtimes[node.runtime_id].management.gateway_node_id)
+        products = tuple(stores.registered_products.get(bound.marker.workspace_id, reference)
+            for reference in dict.fromkeys(product_reference_in_node(value) for value in (node, gateway)))
+        route = select_postgres_readiness_route(workspace_id=bound.marker.workspace_id, plan=plan,
+            current=current, desired=desired, products=products, node_id=node.node_id, support=support)
+        request = stores.execution.get_request(bound.start.request_id)
+        original = stores.effect_attempt_intents.get(bound.started.attempt.state.identity)
+        return dict(binding=binding, route=route, original=original, execution_request=request,
+            actor_subject=bound.context.original.actor_id, session_id=request.identity.session_id,
+            requested_at=original.original_start_event.occurred_at), route
+
+    def _acquire_postgres_readiness_route(self, bound):
+        """Only the already-admitted original acquisition selects this route."""
+        try:
+            self._require_ordinary_support(bound)
+            with self._unit_of_work_factory() as uow:
+                reference = bound.context.receipt
+                uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, _, _, _, _ = self._ordinary_history(uow.stores, bound)
+                _require(marker.disposition is Disposition.ADMITTED and marker.outcome is Outcome.PENDING)
+                checks = tuple(check for check in bound.profile.checks if check.postgres_readiness)
+                _require(len(checks) == 1)
+                _, route = self._postgres_readiness_context(uow.stores, bound, checks[0])
+            return route
+        except Exception:
+            raise ExecutionInvocationConflict() from None
+
+    def _prepare_postgres_readiness(self, bound, check):
+        """Commit exact roles only at a fresh, reached, currently allowed check."""
+        prepared, control = None, None
+        try:
+            self._require_ordinary_support(bound)
+            with self._unit_of_work_factory() as uow:
+                stores, reference = uow.stores, bound.context.receipt
+                stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
+                marker, checks, resolutions, authorizations, _ = self._ordinary_history(stores, bound)
+                _require(bound.profile.check(check.check_id) == check and check.postgres_readiness
+                    and self._returned(marker) and check.target_fingerprint not in checks
+                    and not any(value is not None and value.authorization_id in resolutions
+                        for role, value in authorizations if role[0] == check))
+                for previous in bound.profile.checks:
+                    if previous == check:
+                        break
+                    _require(self._returned(checks.get(previous.target_fingerprint)))
+                request, _, decision = self._current_runtime_guard(uow, bound, _SCOPES)
+                if not decision.allowed:
+                    raise ExecutionInvocationDenied()
+                context, _ = self._postgres_readiness_context(stores, bound, check)
+                prepared = prepare_postgres_readiness_uses_in_unit_of_work(uow, context=context,
+                    actor_scopes=decision.effective_scopes)
+                observation = stores.execution.observe_request_lease_for_update(request.identity.request_id)
+                _require(observation.request == request and not observation.expired)
+                _require_postgres_window(context["binding"], observation.observed_at)
+                uow.commit()
+        except ExecutionInvocationControlError as error:
+            control = error
+        except Exception:
+            control = ExecutionInvocationConflict()
+        if control is not None:
+            raise control
+        _require(prepared is not None)
+        return prepared
+
     def _acquire_http_sample_route(self, bound):
         """Only the admitted acquisition reads this pinned route; it grants no signing use."""
         try:
-            require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+            self._require_ordinary_support(bound)
             with self._unit_of_work_factory() as uow:
                 reference = bound.context.receipt
                 uow.stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
@@ -596,7 +717,7 @@ class ExecutionInvocationService:
         """Create or reload both roles only at a fresh, reached original check."""
         prepared, control = None, None
         try:
-            require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+            self._require_ordinary_support(bound)
             with self._unit_of_work_factory() as uow:
                 stores, reference = uow.stores, bound.context.receipt
                 stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
@@ -655,12 +776,19 @@ class ExecutionInvocationService:
                     scopes = (PolicyScope.EXECUTION_OPERATE,)
                     if kind is Kind.SECRET_RESOLUTION:
                         scopes += (PolicyScope.SECRET_PROVIDER_USE,)
-                    if ordinary and bound.profile.http_sample:
-                        require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+                    if ordinary and (bound.profile.http_sample or bound.profile.managed_verification):
+                        self._require_ordinary_support(bound)
                         scopes = _SCOPES
                     request, original, decision = self._current_runtime_guard(uow, bound, scopes)
                     if decision.allowed:
-                        if ordinary and check is not None and check.http_sample:
+                        if ordinary and check is not None and check.postgres_readiness:
+                            context, _ = self._postgres_readiness_context(stores, bound, check)
+                            prepared = prepare_postgres_readiness_uses_in_unit_of_work(uow, context=context,
+                                actor_scopes=decision.effective_scopes, allow_create=False)
+                            if authorized is not None:
+                                _require(authorization_id in (prepared.password_grant.authorization_id,
+                                    prepared.transit.resolution_grant.authorization_id, prepared.workload.resolution_grant.authorization_id))
+                        elif ordinary and check is not None and check.http_sample:
                             context, _ = self._http_sample_context(stores, bound, check)
                             pair, _ = read_http_sample_uses(stores, context=context)
                             _require(pair is not None)
@@ -686,6 +814,8 @@ class ExecutionInvocationService:
                             _require(retained == authorized)
                     observation = stores.execution.observe_request_lease_for_update(request.identity.request_id)
                     _require(observation.request == request and not observation.expired)
+                    if decision.allowed and ordinary and check is not None and check.postgres_readiness:
+                        _require_postgres_window(context["binding"], observation.observed_at)
                     evidence = ExecutionInvocationDecision(decision.permission_revision, denial_code=decision.denial_code)
                     if kind in (Kind.PREPARED_RUNTIME_DISPATCH, Kind.ORDINARY_VERIFICATION_ACQUISITION):
                         record = marker.decided(evidence, observation.observed_at)
@@ -759,6 +889,16 @@ class ExecutionInvocationService:
                 _, uses = read_http_sample_uses(stores, context=context)
                 for use in uses:
                     authorizations.append(((check, OperationalSecretUse(use.reference, use.intent)), use))
+        if profile.managed_verification:
+            for check in profile.checks:
+                if not check.postgres_readiness:
+                    continue
+                context, _ = self._postgres_readiness_context(stores, bound, check)
+                _, uses = read_postgres_readiness_uses(stores, context=context)
+                for use in uses:
+                    secret = (use.selection if type(use) is AuthorizedSecretVersionUse
+                        else OperationalSecretUse(use.reference, use.intent))
+                    authorizations.append(((check, secret), use))
         records = stores.execution.ordinary_verification_invocations(marker, profile)
         _require(sum(row.invocation_id == marker.invocation_id for row in records) == 1)
         checks, resolutions = {}, {}
@@ -790,7 +930,7 @@ class ExecutionInvocationService:
             row = checks.get(check.target_fingerprint)
             credentials = tuple(resolution(role) for role, _ in authorizations if role[0] == check)
             if (row is not None or any(value is not None for value in credentials)
-                    or (check.http_sample and any(value is not None
+                    or ((check.http_sample or check.postgres_readiness) and any(value is not None
                         for role, value in authorizations if role[0] == check))):
                 _require(prefix_returned and self._returned(marker))
             credential_prefix = True
@@ -802,6 +942,8 @@ class ExecutionInvocationService:
                 _require(all(self._returned(credential) for credential in credentials))
                 if check.http_sample:
                     _require(len(credentials) == 2)
+                if check.postgres_readiness:
+                    _require(len(credentials) == 3)
             prefix_returned = prefix_returned and self._returned(row)
         return marker, checks, resolutions, tuple(authorizations), records
 
@@ -846,15 +988,15 @@ class ExecutionInvocationService:
                 _require(self._returned(checks.get(previous.target_fingerprint)))
             if kind is Kind.SECRET_RESOLUTION:
                 _require(check.target_fingerprint not in checks)
-                if check.http_sample:
+                if check.http_sample or check.postgres_readiness:
                     for role, value in authorizations:
                         if role[0] == check:
                             if value.authorization_id == authorization_id:
                                 break
                             _require(self._returned(resolutions.get(value.authorization_id)))
-            elif check.credential_use is not None or check.http_sample:
+            elif check.credential_use is not None or check.http_sample or check.postgres_readiness:
                 values = tuple(value for role, value in authorizations if role[0] == check)
-                _require(len(values) == (2 if check.http_sample else 1)
+                _require(len(values) == (3 if check.postgres_readiness else 2 if check.http_sample else 1)
                     and all(value is not None and self._returned(resolutions.get(value.authorization_id)) for value in values))
         return marker, current, target, authorized
 
@@ -880,6 +1022,22 @@ class ExecutionInvocationService:
                         and all(self._returned(checks.get(check.target_fingerprint)) for check in bound.profile.checks)
                         and all(value is not None and self._returned(resolutions.get(value.authorization_id))
                             for _, value in authorizations))
+                    sql = tuple(check for check in bound.profile.checks if check.postgres_readiness)
+                    if sql:
+                        _require(result.effect_id == marker.original_event_id)
+                        evidence = result.evidence.get("postgres_readiness_checks")
+                        _require(type(evidence) in (list, tuple) and len(evidence) == len(sql) <= 16)
+                        _require(all(type(item) is dict and set(item) == {
+                            "profile", "check_id", "result", "observed_at_epoch_ms"} for item in evidence))
+                        _require(len({item["check_id"] for item in evidence}) == len(sql))
+                        for check in sql:
+                            matches = tuple(item for item in evidence if item["check_id"] == check.check_id)
+                            _require(len(matches) == 1 and matches[0]["profile"] == "cpk.original-postgres-readiness.v1")
+                            item, = matches
+                            context, _ = self._postgres_readiness_context(uow.stores, bound, check)
+                            invocation = checks[check.target_fingerprint]
+                            require_postgres_readiness_evidence(context["binding"], item,
+                                admitted_at=invocation.decision_at, completed_at=invocation.completed_at)
         except ExecutionInvocationControlError as error:
             control = error
         except Exception:

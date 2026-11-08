@@ -1,5 +1,22 @@
 Source: [execution_invocation_service.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/execution_invocation_service.py).
 
+#2089 adds original SQL reached-check preparation under the actual native support,
+original command/run/attempt prefix, check order, current permission and lease.
+Same-run installation and selected route remain Operations reads. Three exact
+uses commit before the prepared value leaves the physical transaction. Each
+resolution/final check reauthorizes retained roles without filling missing rows,
+and checks the original deadline. Existing invocation history prevents resend.
+
+Successful SQL effect evidence must decode against the original request and
+declaration, name the check, and fall within its recorded decision/completion
+interval and original Wait window. UTC comparisons have millisecond precision;
+the native observation uses the same worker/control clock. ExecutionEffectOutcome
+remains the durable owner; SQL is not an HTTP VerificationCompleted observation.
+
+Compiler SQL review and the unsupported-execution guard remain closed. This
+caller checkpoint and legacy/supplied-value tests cannot establish a normal
+new-profile positive; actual static/native composition and run evidence remain.
+
 For an original sample plan, the bound parent exposes the exact configured
 support and a reference-only route read. The existing acquisition invocation
 must already be ADMITTED/PENDING before this read; the native caller validates

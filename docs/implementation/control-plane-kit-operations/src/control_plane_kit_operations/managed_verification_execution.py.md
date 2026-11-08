@@ -1,5 +1,11 @@
 Source: [managed_verification_execution.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/managed_verification_execution.py).
 
+SQL receipts decode against the exact original request/declaration and check.
+Only HEALTHY within the original deadline and exact check decision/completion
+interval is congruent. Supplied values prove no invocation or provider history.
+The service supplies recorded UTC interval fields; the native owner uses the
+same control/worker clock at millisecond precision. Health wire is unchanged.
+
 #2089 keeps the original SQL obligation and uses the existing registered gateway
 route slot and health transit decoder. Selection joins pinned plan/projections,
 registered workload/gateway descriptors, declared/actual route and transit slots,

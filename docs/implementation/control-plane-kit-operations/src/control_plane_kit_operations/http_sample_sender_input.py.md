@@ -1,5 +1,8 @@
 Source: [http_sample_sender_input.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/http_sample_sender_input.py).
 
+#2089's separate managed profile may reuse this HTTP-only join for a ready
+canonical plan. No SQL obligation becomes an HTTP sample; old semantics remain.
+
 This internal pure join accepts supplied compatibility, the existing plan and
 attempt identity, explicit original actor/session/request/effect context, and two
 named sets of registered signing key, AuthorizedSecretUse and registered provider.

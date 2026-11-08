@@ -26,6 +26,7 @@ from control_plane_kit_operations.http_sample_execution import HttpSampleExecuti
 from control_plane_kit_operations.managed_verification_execution import (
     ManagedVerificationExecutionSupport, ManagedVerificationSupportUnavailable,
     PreparedPostgresReadinessCheck, PreparedPostgresReadinessRoute, select_postgres_readiness_route,
+    require_postgres_readiness_evidence,
 )
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
 from control_plane_kit_operations.records import RealizedGraphProjectionRecord
@@ -64,6 +65,26 @@ def with_desired(values, graph):
 
 
 class ManagedVerificationRouteTests(unittest.TestCase):
+    def test_original_result_codec_accepts_exact_receipt_and_refuses_crosswired_late_or_unknown(self):
+        from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
+        from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
+        prepared = self.prepared()
+        binding = prepared.binding
+        result = ReceiverHealthReadResult(binding.request(), binding.receiver.declaration, NodeHealthReadOutcome.HEALTHY)
+        evidence = dict(profile="cpk.original-postgres-readiness.v1", check_id=binding.check_id,
+            result=result.descriptor(), observed_at_epoch_ms=binding.started_at_epoch_ms + 2)
+        interval = dict(admitted_at="2026-11-08T12:00:00.001Z", completed_at="2026-11-08T12:00:00.003Z")
+        self.assertEqual(require_postgres_readiness_evidence(binding, evidence, **interval), result)
+        for change in (dict(result={**result.descriptor(), "request_id": "other-request"}),
+                dict(result=replace(result, outcome=NodeHealthReadOutcome.UNKNOWN).descriptor()),
+                dict(observed_at_epoch_ms=binding.deadline_epoch_ms), dict(check_id="another-check")):
+            with self.subTest(fields=tuple(change)), self.assertRaises(ManagedVerificationSupportUnavailable):
+                require_postgres_readiness_evidence(binding, evidence | change, **interval)
+        for interval in (dict(admitted_at="2026-11-08T12:00:02Z", completed_at="2026-11-08T12:00:03Z"),
+                dict(admitted_at="2026-11-08T12:00:00Z", completed_at="2026-11-08T12:00:00.001Z")):
+            with self.subTest(interval=interval), self.assertRaises(ManagedVerificationSupportUnavailable):
+                require_postgres_readiness_evidence(binding, evidence, **interval)
+
     def inputs(self, **options):
         values, reference, slot = case(self, **options)
         graph = DEFAULT_GRAPH_CODEC.decode(values["desired"].graph_descriptor)

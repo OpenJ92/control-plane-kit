@@ -6,6 +6,7 @@ from control_plane_kit_core.planning import StartNode, ReconcileNode
 
 if TYPE_CHECKING:
     from control_plane_kit_operations.http_sample_execution import HttpSampleExecutionSupport
+    from control_plane_kit_operations.managed_verification_execution import ManagedVerificationExecutionSupport
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,7 @@ class RuntimeAdapterRegistration:
     ordinary_verification_invocations: bool = field(default=False, kw_only=True)
     original_runtime_observation_invocations: bool = field(default=False, kw_only=True)
     http_sample_support: "HttpSampleExecutionSupport | None" = field(default=None, kw_only=True, repr=False)
+    managed_verification_support: "ManagedVerificationExecutionSupport | None" = field(default=None, kw_only=True, repr=False)
 
     def __post_init__(self):
         if self.adapter is None or any(type(value) is not bool for value in (
@@ -29,6 +31,23 @@ class RuntimeAdapterRegistration:
             raise ValueError("runtime adapter invocation profile is malformed")
         if self.http_sample_support is not None:
             require_http_sample_execution_support(self.http_sample_support, self)
+        if self.managed_verification_support is not None:
+            require_managed_verification_execution_support(self.managed_verification_support, self)
+
+
+def require_managed_verification_execution_support(support, registration):
+    """The registered native arm must consume this exact qualified descriptor."""
+    from control_plane_kit_operations.managed_verification_execution import ManagedVerificationExecutionSupport
+    if (type(support) is not ManagedVerificationExecutionSupport
+            or type(registration) is not RuntimeAdapterRegistration
+            or registration.invocation_profile != "cpk.semantic-invocations.v1"
+            or not registration.ordinary_verification_invocations
+            or registration.managed_verification_support is not support
+            or getattr(registration.adapter, "managed_verification_support", None) is not support
+            or getattr(registration.adapter, "http_sample_support", None) is not support.http_samples
+            or not callable(getattr(registration.adapter, "execute_with_authority", None))):
+        raise ValueError("managed verification execution support is unavailable")
+    support.__post_init__()
 
 
 def require_http_sample_execution_support(support, registration):

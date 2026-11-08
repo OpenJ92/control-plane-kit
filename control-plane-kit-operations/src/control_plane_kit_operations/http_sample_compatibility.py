@@ -128,7 +128,8 @@ def bind_http_sample_compatibility(*, workspace_id, plan, current, desired, prod
 def _bind(workspace, plan, current, desired, products, node_id, gateway_binding):
     _require(type(workspace) is str and type(node_id) is str and type(plan) is ActivityPlanRecord
         and plan.status is ActivityPlanStatus.PLANNED
-        and plan.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+        and plan.derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
+            PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1)
         and type(products) is tuple and all(type(product) is RegisteredProduct for product in products)
         and type(gateway_binding) is GatewayHttpSampleBinding)
     _require(replace(plan) == plan)

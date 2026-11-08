@@ -1,5 +1,9 @@
 Source: [http_sample_compatibility.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/http_sample_compatibility.py).
 
+#2089 reuses this HTTP-node interpretation for the separate managed SQL/HTTP
+profile only with its exact ready canonical plan. It does not qualify SQL or
+clear the current compiler/execution refusal. The old HTTP profile stays literal.
+
 This internal pure calculation joins already loaded owner records. It pins plan,
 workspace, authored graph IDs and projection IDs, reproduces the recorded Core
 interpretation, and reuses registered product equality and Core receiver/sample

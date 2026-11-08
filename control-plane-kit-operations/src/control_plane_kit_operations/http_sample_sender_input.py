@@ -75,7 +75,8 @@ def _context(compatibility, plan, check_id, attempt, operation_id, session_id,
     _require(type(compatibility) is HttpSampleCompatibility and type(plan) is ActivityPlanRecord
         and replace(plan) == plan and type(attempt) is EffectAttemptIdentity and replace(attempt) == attempt)
     _require(plan.status is ActivityPlanStatus.PLANNED
-        and plan.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+        and plan.derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
+            PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1)
         and plan.plan.ready_for_execution
         and (plan.plan_id, plan.desired_graph_id, plan.desired_realized_projection_id, plan.session_id)
             == (compatibility.plan_id, compatibility.desired_graph_id, compatibility.projection_id, session_id))
