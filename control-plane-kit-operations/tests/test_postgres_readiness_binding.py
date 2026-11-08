@@ -1,5 +1,6 @@
 """Original record provenance only; no authority, private resolution or dispatch."""
 from dataclasses import replace
+from types import SimpleNamespace
 import unittest
 
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime, BlockSockets, ProviderSocket
@@ -26,8 +27,8 @@ from control_plane_kit_core.verification import PostgresQueryCheck, PostgresPass
 from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT
 from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
-from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome
-from control_plane_kit_operations.postgres_readiness import bind_original_postgres_readiness, PostgresReadinessProvenanceUnavailable
+from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, EffectAttemptOutcomeRecord
+from control_plane_kit_operations.postgres_readiness import bind_original_postgres_readiness, load_original_postgres_readiness, PostgresReadinessProvenanceUnavailable
 from tests.effect_attempt_record_fixture import EffectAttemptRecordFixture
 from tests.health_receiver_trust_fixture import artifact
 from tests.runtime_management_fixtures import bootstrap_management_graph
@@ -119,7 +120,8 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
             "sql", "cpk", "cpk", delivery.target_path, "POSTGRES_PASSWORD_FILE")
         return dict(plan=plan, request=context.request, current=current, desired=desired, product=product,
             wait_original=wait_original, wait_attempt=wait_attempt, install_original=install_original,
-            install_attempt=install_attempt, install_outcome=outcome, observer=observer, check_id=check.check_id)
+            install_attempt=install_attempt, install_outcome=EffectAttemptOutcomeRecord("workspace-a", outcome, install_attempt, ()),
+            observer=observer, check_id=check.check_id)
 
     def test_original_record_join_reconstructs_one_request_and_original_window(self):
         values = self.supplied_records()
@@ -135,14 +137,19 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
         changes = (
             dict(plan=replace(values["plan"], plan=ActivityPlan((values["plan"].plan.activities[0], replace(waiter, dependencies=()))))),
             dict(current=values["desired"]),
-            dict(install_outcome=replace(values["install_outcome"], result=replace(values["install_outcome"].result,
-                evidence={**values["install_outcome"].result.evidence, "different-outcome": True}))),
+            dict(install_outcome=replace(values["install_outcome"], workspace_id="other-workspace")),
         )
         for change in changes:
             with self.subTest(fields=tuple(change)), self.assertRaises(PostgresReadinessProvenanceUnavailable) as caught:
                 bind_original_postgres_readiness(**(values | change))
             self.assertEqual(str(caught.exception), "original PostgreSQL readiness evidence is unavailable")
             self.assertIsNone(caught.exception.__context__)
+
+        retained = values["install_outcome"]
+        changed = replace(retained.outcome, result=replace(retained.outcome.result,
+            evidence={**retained.outcome.result.evidence, "different-outcome": True}))
+        with self.assertRaises(ValueError):
+            replace(retained, outcome=changed)
 
     def test_pinned_graph_product_identity_cannot_be_substituted_by_matching_contract(self):
         values = self.supplied_records()
@@ -153,6 +160,31 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
         plan = replace(values["plan"], desired_realized_projection_id=desired.projection_id)
         with self.assertRaises(PostgresReadinessProvenanceUnavailable):
             bind_original_postgres_readiness(**(values | dict(desired=desired, plan=plan)))
+
+    def test_read_only_loader_uses_the_retained_original_records(self):
+        values = self.supplied_records()
+        originals = {value.identity: value for value in (values["wait_original"], values["install_original"])}
+        attempts = {value.state.identity: value for value in (values["wait_attempt"], values["install_attempt"])}
+        retained = values["install_outcome"]
+        outcomes = {(retained.attempt.state.identity, retained.attempt.latest_transition_event.event_id): retained}
+        projections = {value.projection_id: value for value in (values["current"], values["desired"])}
+        products = {(values["product"].workspace_id, values["product"].reference): values["product"]}
+        # Immutable row-returning point ports; no authorization/store mutation
+        # or provider state machine is implemented by this test double.
+        stores = SimpleNamespace(
+            effect_attempt_intents=SimpleNamespace(get=originals.__getitem__),
+            effect_attempts=SimpleNamespace(get=attempts.__getitem__),
+            effect_outcomes=SimpleNamespace(get=lambda identity, event: outcomes[(identity, event)]),
+            activity_history=SimpleNamespace(get_plan={values["plan"].plan_id: values["plan"]}.__getitem__),
+            execution=SimpleNamespace(get_request={values["request"].identity.request_id: values["request"]}.__getitem__),
+            realized_graphs=SimpleNamespace(get=projections.__getitem__),
+            registered_products=SimpleNamespace(get=lambda workspace, reference: products[(workspace, reference)]))
+        loaded = load_original_postgres_readiness(stores, identity=values["wait_original"].identity,
+            observer=values["observer"], check_id=values["check_id"])
+        self.assertEqual(loaded.request(), bind_original_postgres_readiness(**values).request())
+        with self.assertRaises(PostgresReadinessProvenanceUnavailable):
+            load_original_postgres_readiness(stores, identity=values["install_original"].identity,
+                observer=values["observer"], check_id=values["check_id"])
 
 
 if __name__ == "__main__":

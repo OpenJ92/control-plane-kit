@@ -16,8 +16,9 @@ from control_plane_kit_core.runtime_effect_observation import runtime_effect_req
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
-from control_plane_kit_operations.effect_outcome_evidence import _require_original_installation_outcome
+from control_plane_kit_operations.effect_outcome_evidence import EffectAttemptOutcomeRecord, _require_original_installation_outcome
 from control_plane_kit_operations.products import RegisteredProduct
+from control_plane_kit_operations.graph_authoring import product_reference_in_node
 from control_plane_kit_operations.records import (
     ActivityPlanRecord, ActivityPlanStatus, RealizedGraphProjectionRecord, ExecutionRequestRecord,
     _canonical_timestamp_instant,
@@ -69,10 +70,13 @@ def _bind(plan, request, current, desired, product, wait_original, wait_attempt,
     start = _start_activity(plan, wait_original)
     _require(type(request) is ExecutionRequestRecord and type(product) is RegisteredProduct
         and type(wait_attempt) is type(install_attempt) is EffectAttemptRecord
-        and type(install_original) is EffectAttemptIntentRecord)
-    for value in (request, product, wait_attempt, install_attempt, install_original):
+        and type(install_original) is EffectAttemptIntentRecord
+        and type(install_outcome) is EffectAttemptOutcomeRecord)
+    for value in (request, product, wait_attempt, install_attempt, install_original, install_outcome):
         type(value).__post_init__(value)
     source = wait_original.intent.source
+    _require(install_outcome.attempt == install_attempt and install_outcome.workspace_id == source.workspace_id)
+    outcome = install_outcome.outcome
     _require(plan.status is ActivityPlanStatus.PLANNED
         and (plan.plan_id, plan.base_graph_id, plan.desired_graph_id, plan.session_id)
             == (source.plan_id, source.base_graph_id, source.desired_graph_id, request.identity.session_id)
@@ -87,11 +91,11 @@ def _bind(plan, request, current, desired, product, wait_original, wait_attempt,
     _require(install_original.identity == EffectAttemptIdentity(wait_original.identity.run_id, start.activity_id.value, 1)
         and install_original.intent.operation == start.operation
         and install_attempt.state.status is EffectAttemptStatus.SUCCEEDED
-        and install_outcome.status is EffectAttemptStatus.SUCCEEDED
-        and install_outcome.outcome_fingerprint == install_attempt.state.outcome_fingerprint
+        and outcome.status is EffectAttemptStatus.SUCCEEDED
+        and outcome.outcome_fingerprint == install_attempt.state.outcome_fingerprint
         and install_attempt.state.prior_attempt is None
         and install_attempt.latest_transition_event.ordinal < wait_attempt.original_start_event.ordinal)
-    receipt = _require_original_installation_outcome(install_original, install_attempt, install_outcome,
+    receipt = _require_original_installation_outcome(install_original, install_attempt, outcome,
         original_plan=plan, request=request)
     _require(receipt is not None)
     graphs = []
@@ -108,6 +112,7 @@ def _bind(plan, request, current, desired, product, wait_original, wait_attempt,
     node = graphs[1].node(wait_original.intent.operation.target.node_id)
     material, = wait_original.intent.products
     _require(product.workspace_id == source.workspace_id and product.reference == material.reference
+        and product_reference_in_node(node) == material.reference
         and product.descriptor_document.product == material.product
         and _node_matches_product(node, product)
         and node.secret_selections == material.secret_selections
@@ -152,7 +157,7 @@ def load_original_postgres_readiness(stores, *, identity, observer, check_id):
             product=stores.registered_products.get(original.workspace_id, original.intent.products[0].reference),
             wait_original=original, wait_attempt=stores.effect_attempts.get(identity),
             install_original=stores.effect_attempt_intents.get(predecessor), install_attempt=installed,
-            install_outcome=retained.outcome, observer=observer, check_id=check_id)
+            install_outcome=retained, observer=observer, check_id=check_id)
     return _checked(load)
 
 
