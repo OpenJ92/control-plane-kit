@@ -8,14 +8,14 @@ from control_plane_kit_core.configuration_installation import ConfigurationInsta
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.configuration_invocation import configuration_invocation_selection_fingerprint
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
-from control_plane_kit_core.operations import ActivityEventKind
+from control_plane_kit_core.operations import ActivityEventKind, RunId
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, ActivityDependency, NodeTarget, PlannedActivity, StartNode, WaitForHealthy
 from control_plane_kit_core.postgres_readiness import PostgresReadinessObserver
 from control_plane_kit_core.products import ProductDescriptorCodec, ProviderRuntimePort, ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_for_request, runtime_effect_intent_fingerprint
-from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind, RuntimeEffectResult, RuntimeEffectRequest, RuntimeEffectSource, RuntimeProductMaterial
 from control_plane_kit_core.secret_installation import SecretInstallationReceipt, SecretResolutionReceipt, secret_material_selection_fingerprint
 from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.secrets import SecretFileDelivery, SecretFilePathBinding, SecretUseIntent, SecretReference
@@ -27,7 +27,6 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAt
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome
 from control_plane_kit_operations.postgres_readiness import bind_original_postgres_readiness, PostgresReadinessProvenanceUnavailable
-from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context
 from tests.effect_attempt_record_fixture import EffectAttemptRecordFixture
 from tests.health_receiver_trust_fixture import artifact
 from tests.runtime_management_fixtures import bootstrap_management_graph
@@ -82,8 +81,15 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
             base_realized_projection_id=current.projection_id, desired_realized_projection_id=desired.projection_id)
         context = replace(context, activity=start, plan_record=plan, base_graph=current, desired_graph=desired,
             registered_products=(product,), intent_event=replace(context.intent_event, activity_id=start_id.value))
-        install = runtime_effect_request_for_context(context)
-        install = replace(install, activity_id=start_id, kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
+        # Supplied original records do not claim that today's unsupported SQL
+        # plan was admitted by the normal runtime translator or dispatched.
+        install = RuntimeEffectRequest(effect_id="install-start", kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
+            runtime_kind=graph.runtimes["runtime-a"].kind,
+            source=RuntimeEffectSource("workspace-a", context.request.identity.request_id, RunId(context.run.run_id),
+                plan.plan_id, plan.base_graph_id, plan.desired_graph_id, "install-start"),
+            activity_id=start_id, operation=start.operation,
+            products=(RuntimeProductMaterial("api", "runtime-a", product.reference, document.product,
+                public_environment=contract.public_environment, secret_selections=(selection,)),),
             configuration_instances=ConfigurationInstanceSelection((ConfigurationInstanceRef(
                 "config-allocation", "workspace-a", "runtime-a", "api", control.artifact_id, control.target_path,
                 control.media_type, control.file_mode, control.content_digest),)))
