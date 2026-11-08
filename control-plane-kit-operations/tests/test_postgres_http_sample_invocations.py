@@ -243,8 +243,9 @@ class _HttpSampleFixture(_ManagedPermissionStartFixture):
         self.assertIsNotNone(marker)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_secret_use_authorizations").fetchone()[0], 0)
         support, registration = self.sample_support()
+        from tests.test_managed_application_chain import now
         service = operations.ExecutionInvocationService(self.unit_of_work, permission_policy=self.policy,
-            clock=self.clock, http_sample_support=support, http_sample_registration=registration)
+            clock=now, http_sample_support=support, http_sample_registration=registration)
         port = service.bind_runtime(command_context=self.bound, start=self.sample_start, started=started)
         permit = port.admit("ordinary-verification-acquisition")
         port.record_outcome(permit, "returned")
