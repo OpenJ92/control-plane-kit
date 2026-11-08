@@ -150,7 +150,7 @@ def _document(value):
         and check.authentication.database == value.observer.database
         and check.authentication.username == value.observer.username
         and check.policy.maximum_attempts == 1 and 0 < check.policy.timeout_seconds <= 5)
-    _require(contract.sockets.provider(check.provider_socket).protocol is Protocol.POSTGRES
+    _require(contract.sockets.provider(check.provider_socket).protocol == Protocol.POSTGRES
         and any(port.provider_socket == check.provider_socket and port.container_port == 5432
             for port in contract.provider_ports))
     deliveries = tuple(delivery for delivery in contract.secret_deliveries

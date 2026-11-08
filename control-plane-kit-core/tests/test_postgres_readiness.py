@@ -22,6 +22,7 @@ from control_plane_kit_core.secret_selections import SecretVersionSelection, Uns
 from control_plane_kit_core.secrets import SecretFileDelivery, SecretFilePathBinding, SecretReference, SecretUseIntent, SecretValue
 from control_plane_kit_core.verification import PostgresPasswordAuthentication, PostgresQueryCheck, VerificationContract
 from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT
+from control_plane_kit_core.types import Protocol
 from tests.test_receiver_configuration import ReceiverConfigurationTests
 from tests.test_runtime_effect_intent import _request
 from tests.test_configuration_instances import instance
@@ -154,6 +155,19 @@ class OriginalPostgresReadinessTests(unittest.TestCase):
             with self.assertRaises(PostgresReadinessUnavailable) as caught:
                 replace(binding, **changes)
             self.assertEqual(str(caught.exception), "PostgreSQL readiness binding is unavailable")
+
+    def test_equal_protocol_values_do_not_depend_on_python_object_identity(self):
+        binding = supplied_binding()
+        material = binding.wait.products[0]
+        contract = material.product.runtime_contract
+        same_protocol = Protocol(Protocol.POSTGRES.transport, Protocol.POSTGRES.application)
+        providers = tuple(replace(port, protocol=same_protocol) if port.name == "sql" else port
+            for port in contract.sockets.providers)
+        candidate = replace(material, product=replace(material.product,
+            runtime_contract=replace(contract, sockets=replace(contract.sockets, providers=providers))))
+        copied = replace(binding, wait=replace(binding.wait, products=(candidate,)),
+            installation=replace(binding.installation, products=(candidate,)))
+        self.assertEqual(copied.request(), binding.request())
 
     def test_password_domain_is_private_and_never_normalizes_original_bytes(self):
         self.assertTrue(postgres_readiness_password_supported(SecretValue("synthetic-exact-password")))
