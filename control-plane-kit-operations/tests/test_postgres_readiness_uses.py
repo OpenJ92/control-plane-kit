@@ -4,7 +4,7 @@ import unittest
 import psycopg
 
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.secrets import SecretReference, SecretUseIntent, health_signing_intent_for
+from control_plane_kit_core.secrets import SecretProviderId, SecretReference, SecretUseIntent, health_signing_intent_for
 from control_plane_kit_operations.delegation_signing_keys import (
     ActivateDelegationSigningKeyCommand, RegisterDelegationSigningKeyCommand,
     DelegationSigningKeyRegistrationService,
@@ -48,6 +48,7 @@ class PostgresReadinessUseTests(unittest.TestCase):
         intents = (SecretUseIntent.POSTGRES_PASSWORD, supplied.transit.resolution_grant.intent,
             supplied.workload.resolution_grant.intent)
         self.provider = registration.register_provider(replace(self.provider_command(),
+            provider_id=SecretProviderId("local"),
             allowed_reference_prefixes=(SecretReference("secret://local/workspace-a"),
                 SecretReference("secret://local/signing")), allowed_intents=intents))
         service = DelegationSigningKeyRegistrationService(self.unit_of_work)
