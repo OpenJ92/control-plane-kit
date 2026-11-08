@@ -15,10 +15,16 @@ from control_plane_kit_operations.runtime_management_admission import runtime_ma
 from control_plane_kit_core.secrets import SecretReference
 from tests import test_managed_verification_execution as fixtures
 from tests import test_postgres_readiness_binding as original_fixtures
+from tests import test_http_sample_application_admission as http_fixtures
 
 
 def mixed_plan(test):
     values, support = fixtures.ManagedVerificationRouteTests().inputs()
+    # Route-only SQL fixtures intentionally omit an HTTP trust parser. Full
+    # mixed coverage uses the existing parser over the same pinned trust bytes.
+    support = replace(support, http_samples=replace(support.http_samples,
+        gateway_binding=replace(support.http_samples.gateway_binding,
+            decoder=http_fixtures._GatewayDecoder())))
     graph = DEFAULT_GRAPH_CODEC.decode(values["desired"].graph_descriptor)
     original = original_fixtures.OriginalPostgresReadinessRecordTests().supplied_records()
     source = original["product"]
