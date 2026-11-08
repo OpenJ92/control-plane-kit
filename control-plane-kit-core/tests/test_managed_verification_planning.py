@@ -30,7 +30,7 @@ def mixed_graph():
     old = receiver_fixtures.ReceiverConfigurationTests()
     old.setUp()
     document = old.document(replace(old.declaration, surface=surface))
-    document["target"].update(runtime_id=template.runtime_id, node_id="postgres",
+    document["target"].update(runtime_id=template.runtime_id, node_id="postgres", receiver_id="c" * 32,
         provider_socket_name=surface.provider_socket_name.value)
     receiver = old.codec.decode(document)
     artifact = ConfigurationArtifact("receiver", "/etc/test/postgres-control.json", ConfigurationMediaType.JSON,
@@ -38,7 +38,7 @@ def mixed_graph():
     control = surface.provider_socket_name.value
     delivery = SecretFileDelivery("/run/secrets/postgres/password", reference, SecretUseIntent.POSTGRES_PASSWORD,
         path_binding=SecretFilePathBinding("POSTGRES_PASSWORD_FILE"))
-    node = replace(template, node_id="postgres", block_spec=replace(template.block_spec,
+    node = replace(template, node_id="postgres", kind="container-server", block_spec=replace(template.block_spec, role_id="postgres",
         control_surfaces=(surface,), verification=VerificationContract((check,))),
         sockets=BlockSockets(providers=(ProviderSocket(control, Protocol.HTTP), ProviderSocket("sql", Protocol.POSTGRES))),
         endpoints={control: Endpoint(LiteralAddress("http://postgres:8080"), Protocol.HTTP),
