@@ -86,6 +86,8 @@ class PlanDerivationTests(unittest.TestCase):
         from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
         self.assertTrue(runtime_management_execution_is_unsupported(DeploymentGraph("empty"), DeploymentGraph("empty"),
             plan, derivation_profile=profile))
+        empty = validate_graph(DeploymentGraph("empty"))
+        self.assertFalse(module.derive_activity_plan(Deploy(empty, empty), profile=profile).ready_for_execution)
 
     def test_inline_and_saved_prepare_keep_one_managed_intent_and_refuse_mixed(self):
         from control_plane_kit_operations import deployment_program as program

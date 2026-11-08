@@ -88,6 +88,17 @@ class RecordingService:
 
 
 class DeploymentProgramInterpreterTests(unittest.TestCase):
+    def test_prepare_forwards_one_typed_managed_intent_to_planning(self):
+        from control_plane_kit_operations.plan_derivation import ManagedVerificationPlanningIntent
+        intent = ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP
+        command = replace(self.command(), managed_verification=intent)
+        program, trace = self.program()
+        program.prepare(command)
+        child = next(value for stage, value in trace if stage == "planning")
+        self.assertIs(child.managed_verification, intent)
+        self.assertIsNone(child.http_verification_intent)
+        self.assertEqual(command.descriptor()["managed_verification"], intent.value)
+
     def test_prepare_forwards_one_typed_http_sample_intent_to_planning(self):
         from control_plane_kit_operations import planning
         intent = getattr(planning, "HttpVerificationPlanningIntent", None)
