@@ -185,6 +185,8 @@ def _document(value):
         and NodeHealthReadKind.READINESS in value.receiver.declaration.surface.health_reads)
     for projection in (value.base_projection_id, value.desired_projection_id):
         _require(type(projection) is str and reference_violation(projection) is None)
+    NodeControlAuthorityContext(wait.source.base_graph_id, value.base_projection_id)
+    NodeControlAuthorityContext(wait.source.desired_graph_id, value.desired_projection_id)
     _require(type(value.started_at_epoch_ms) is int and 0 <= value.started_at_epoch_ms <= 9007199254735000)
     deadline = value.started_at_epoch_ms + int(check.policy.timeout_seconds * 1000)
     _require(deadline > value.started_at_epoch_ms)

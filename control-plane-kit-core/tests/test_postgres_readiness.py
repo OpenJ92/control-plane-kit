@@ -125,12 +125,27 @@ class OriginalPostgresReadinessTests(unittest.TestCase):
     def test_actual_runtime_environment_cannot_redirect_config_or_password_delivery(self):
         binding = supplied_binding()
         material = binding.wait.products[0]
-        for environment in ((), (PublicStaticEnvironmentBinding(WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT, "/etc/missing"),),
-                material.public_environment + (PublicStaticEnvironmentBinding("POSTGRES_PASSWORD_FILE", "/run/secrets/other"),)):
+        for environment in ((), (PublicStaticEnvironmentBinding(WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT, "/etc/missing"),)):
             candidate = replace(material, public_environment=environment)
+            install = replace(binding.installation, products=(candidate,))
+            receipt = replace(binding.receipt,
+                request_fingerprint=secret_installation_correlation_for_request(install).request_fingerprint,
+                selection_fingerprint=secret_material_selection_fingerprint(install))
             with self.assertRaises(PostgresReadinessUnavailable):
                 replace(binding, wait=replace(binding.wait, products=(candidate,)),
-                    installation=replace(binding.installation, products=(candidate,)))
+                    installation=install, receipt=receipt)
+        # The existing public environment owner rejects even constructing this
+        # secret-shaped override; no malformed env value is invented here.
+        with self.assertRaises(ValueError):
+            PublicStaticEnvironmentBinding("POSTGRES_PASSWORD_FILE", "/run/secrets/other")
+
+    def test_authority_context_is_validated_before_a_binding_can_be_returned(self):
+        binding = supplied_binding()
+        for changes in (dict(desired_projection_id="projection:alternate"),
+                dict(base_projection_id="projection:alternate")):
+            with self.assertRaises(PostgresReadinessUnavailable) as caught:
+                replace(binding, **changes)
+            self.assertEqual(str(caught.exception), "PostgreSQL readiness binding is unavailable")
 
     def test_password_domain_is_private_and_never_normalizes_original_bytes(self):
         self.assertTrue(postgres_readiness_password_supported(SecretValue("synthetic-exact-password")))
