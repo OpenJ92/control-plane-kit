@@ -69,8 +69,8 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
         document = ProductDescriptorCodec().encode_document(replace(source_product, runtime_contract=contract))
         product = type(base_product).from_document(workspace_id="workspace-a", descriptor_document=document,
             source=base_product.source, imported_by=base_product.imported_by, imported_at=base_product.imported_at)
-        block = instantiate_product(document, ProductInstanceConfiguration("api"))
-        graph = compile_topology(DeploymentTopology((DockerRuntime("runtime-a", (block,)),)))
+        block = instantiate_product(document.product, "api", ProductInstanceConfiguration.from_contract(contract))
+        graph = compile_topology(DeploymentTopology("original-sql", DockerRuntime(runtime_id="runtime-a", children=(block,))))
         selection = SecretVersionSelection(reference, SecretUseIntent.POSTGRES_PASSWORD, "selected-version-1")
         graph = graph.update_node(replace(graph.node("api"), secret_selections=(selection,)))
         current = projection_record_from_graph("graph-current", DeploymentGraph("empty"))
@@ -81,7 +81,7 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
         plan = replace(context.plan_record, plan=ActivityPlan((start, wait)),
             base_realized_projection_id=current.projection_id, desired_realized_projection_id=desired.projection_id)
         context = replace(context, activity=start, plan_record=plan, base_graph=current, desired_graph=desired,
-            registered_products=(product,))
+            registered_products=(product,), intent_event=replace(context.intent_event, activity_id=start_id.value))
         install = runtime_effect_request_for_context(context)
         install = replace(install, activity_id=start_id, kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
             configuration_instances=ConfigurationInstanceSelection((ConfigurationInstanceRef(
