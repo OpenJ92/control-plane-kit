@@ -770,6 +770,20 @@ class SecretUseAuthorizationStore:
             raise SecretProviderRegistrationConflict("secret-use pair identity is malformed")
         return tuple(_row_to_authorized_use(row) for row in rows)
 
+    def for_three_correlations(self, workspace_id, correlations):
+        """Observe three exact unique roles in one statement snapshot."""
+        _require_identifier(workspace_id, "workspace_id")
+        if type(correlations) is not tuple or len(correlations) != 3 or len(set(correlations)) != 3:
+            raise SecretProviderRegistrationConflict("secret-use role identities are malformed")
+        for correlation in correlations:
+            _require_correlation_identifier(correlation, "correlation_id")
+        rows = self._connection.execute(_SECRET_USE_SELECT
+            + " WHERE workspace_id=%s AND correlation_id IN (%s,%s,%s) ORDER BY correlation_id LIMIT 4",
+            (workspace_id, *correlations)).fetchall()
+        if len(rows) > 3:
+            raise SecretProviderRegistrationConflict("secret-use role identities are malformed")
+        return tuple(_row_to_authorized_use(row) for row in rows)
+
     def add(self, authorized: AuthorizedSecretUse | AuthorizedSecretVersionUse) -> None:
         validate_authorized_secret_use(authorized)
         consumer = type(authorized) is AuthorizedSecretVersionUse

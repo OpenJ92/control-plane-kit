@@ -2,6 +2,14 @@ version = 1
 
 [[read]]
 module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretUseAuthorizationStore.for_three_correlations"
+category = "fixed-cardinality"
+sql = "three exact workspace/correlation unique identities in one statement; LIMIT four overflow witness"
+consumer_kind = "production"
+consumer = "postgres_readiness_uses original SQL password/transit/workload authorization preparation and coherent history"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
 selector = "SecretUseAuthorizationStore.for_correlations"
 category = "fixed-cardinality"
 sql = "two exact workspace/correlation unique identities in one statement; LIMIT three overflow witness"

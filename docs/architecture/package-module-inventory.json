@@ -2,6 +2,22 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.postgres_readiness_uses",
+      "destination": "control_plane_kit_operations.postgres_readiness_uses",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres_readiness_uses.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["validation", "transformations", "effects"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["PostgresReadinessUseConflict", "postgres_readiness_use_correlations", "read_postgres_readiness_uses", "prepare_postgres_readiness_uses_in_unit_of_work"],
+      "internal_dependencies": ["control_plane_kit_core.delegation_keys", "control_plane_kit_core.node_control", "control_plane_kit_core.policies", "control_plane_kit_core.receiver_health_reads", "control_plane_kit_core.receiver_health_transit", "control_plane_kit_core.receiver_identity", "control_plane_kit_core.secret_version_grants", "control_plane_kit_core.secret_selections", "control_plane_kit_core.secrets", "control_plane_kit_core.runtime_effect_observation", "control_plane_kit_operations.delegation_signing_keys", "control_plane_kit_operations.health_effect_preparations", "control_plane_kit_operations.health_signing_authority", "control_plane_kit_operations.managed_verification_execution", "control_plane_kit_operations.secret_providers", "control_plane_kit_operations.effect_attempt_intent_evidence", "control_plane_kit_operations.records"],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_postgres_readiness_uses.py"],
+      "motivation": "Three original SQL authorization roles in the existing caller-owned metadata transaction, with exact retained identity and no provider IO or commit."
+    },
+    {
       "module": "control_plane_kit_operations.managed_verification_execution",
       "destination": "control_plane_kit_operations.managed_verification_execution",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/managed_verification_execution.py",
