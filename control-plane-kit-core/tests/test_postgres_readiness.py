@@ -19,7 +19,7 @@ from control_plane_kit_core.secret_installation import (
     SecretInstallationReceipt, secret_installation_correlation_for_request, secret_material_selection_fingerprint,
 )
 from control_plane_kit_core.secret_selections import SecretVersionSelection, UnselectedSecretUse
-from control_plane_kit_core.secrets import SecretFileDelivery, SecretReference, SecretUseIntent, SecretValue
+from control_plane_kit_core.secrets import SecretFileDelivery, SecretFilePathBinding, SecretReference, SecretUseIntent, SecretValue
 from control_plane_kit_core.verification import PostgresPasswordAuthentication, PostgresQueryCheck, VerificationContract
 from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT
 from tests.test_receiver_configuration import ReceiverConfigurationTests
@@ -35,7 +35,8 @@ def supplied_binding(**changes):
     artifact = fixture.artifact(document=document)
     receiver = fixture.codec.decode(document)
     reference = SecretReference("secret://local/workspace-a/postgres/password")
-    delivery = SecretFileDelivery("/run/secrets/postgres/password", reference, SecretUseIntent.POSTGRES_PASSWORD)
+    delivery = SecretFileDelivery("/run/secrets/postgres/password", reference, SecretUseIntent.POSTGRES_PASSWORD,
+        path_binding=SecretFilePathBinding("POSTGRES_PASSWORD_FILE"))
     check = PostgresQueryCheck(check_id="installation-postgres-ready", provider_socket="sql",
         authentication=PostgresPasswordAuthentication("cpk", "cpk", reference))
     product = replace(fixture.product, runtime_contract=replace(fixture.product.runtime_contract,
@@ -45,7 +46,7 @@ def supplied_binding(**changes):
     expected = ProductReference.from_document(ProductDescriptorCodec().encode_document(product))
     install = _request(complete=False)
     material = replace(install.products[0], product=product, reference=expected,
-        public_environment=(), socket_environment=(), pull_authority=None,
+        public_environment=product.runtime_contract.public_environment, socket_environment=(), pull_authority=None,
         secret_selections=(SecretVersionSelection(reference, SecretUseIntent.POSTGRES_PASSWORD, "version-1"),))
     allocation = instance(artifact_id=artifact.artifact_id, target_path=artifact.target_path,
         media_type=artifact.media_type, file_mode=artifact.file_mode, content_digest=artifact.content_digest)
@@ -57,7 +58,7 @@ def supplied_binding(**changes):
     context = secret_installation_correlation_for_request(install)
     receipt = SecretInstallationReceipt(context.request_fingerprint, secret_material_selection_fingerprint(install),
         ConfigurationInstallationDisposition.CREATED, None, "a" * 64)
-    observer = PostgresReadinessObserver(expected, product.image, "sql", "cpk", "cpk", delivery.target_path)
+    observer = PostgresReadinessObserver(expected, product.image, "sql", "cpk", "cpk", delivery.target_path, "POSTGRES_PASSWORD_FILE")
     values = dict(wait=wait, attempt=EffectAttemptIdentity(wait.source.run_id, wait.activity_id.value, 1),
         installation=install, receipt=receipt, observer=observer, receiver=receiver,
         base_projection_id="projection-base", desired_projection_id="projection-desired",
@@ -82,6 +83,9 @@ class OriginalPostgresReadinessTests(unittest.TestCase):
             selection_fingerprint=secret_material_selection_fingerprint(install))
         other_policy = replace(binding, wait=replace(binding.wait, products=(material,)), installation=install, receipt=receipt)
         self.assertNotEqual(binding.request(), other_policy.request())
+        other_wait = replace(binding.wait, effect_id="another-original-event",
+            source=replace(binding.wait.source, intent_event_id="another-original-event"))
+        self.assertNotEqual(binding.request(), replace(binding, wait=other_wait).request())
 
     def test_late_cross_wired_or_nonhealthy_is_never_a_positive(self):
         binding = supplied_binding()
@@ -118,9 +122,19 @@ class OriginalPostgresReadinessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             replace(binding.installation, products=(unselected,))
 
+    def test_actual_runtime_environment_cannot_redirect_config_or_password_delivery(self):
+        binding = supplied_binding()
+        material = binding.wait.products[0]
+        for environment in ((), (PublicStaticEnvironmentBinding(WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT, "/etc/missing"),),
+                material.public_environment + (PublicStaticEnvironmentBinding("POSTGRES_PASSWORD_FILE", "/run/secrets/other"),)):
+            candidate = replace(material, public_environment=environment)
+            with self.assertRaises(PostgresReadinessUnavailable):
+                replace(binding, wait=replace(binding.wait, products=(candidate,)),
+                    installation=replace(binding.installation, products=(candidate,)))
+
     def test_password_domain_is_private_and_never_normalizes_original_bytes(self):
         self.assertTrue(postgres_readiness_password_supported(SecretValue("synthetic-exact-password")))
-        for text in ("synthetic-exact-password\n", "embedded\nline", "carriage\rreturn", "nul\x00value", "é", "x" * 4097):
+        for text in ("synthetic-exact-password\n", "embedded\nline", "carriage\rreturn", "nul\x00value", "é", "\ud800", "x" * 4097):
             self.assertFalse(postgres_readiness_password_supported(SecretValue(text)))
         self.assertNotIn("synthetic-exact-password", repr(supplied_binding()))
 

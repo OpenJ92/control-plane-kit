@@ -27,7 +27,7 @@ from control_plane_kit_core.secret_installation import (
     SecretInstallationReceipt, secret_installation_correlation_for_request, secret_material_selection_fingerprint,
 )
 from control_plane_kit_core.secret_selections import SecretVersionSelection
-from control_plane_kit_core.secrets import SecretFileDelivery, SecretUseIntent, SecretValue
+from control_plane_kit_core.secrets import SecretFileDelivery, SecretFileMode, SecretFilePathBinding, SecretUseIntent, SecretValue
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import PostgresQueryCheck, PostgresVerificationOperation, verification_check_from_descriptor
 
@@ -60,6 +60,7 @@ class PostgresReadinessObserver:
     database: str
     username: str
     password_path: str
+    password_environment_name: str
 
     def __post_init__(self):
         self.descriptor()
@@ -72,8 +73,10 @@ class PostgresReadinessObserver:
             for value in (self.provider_socket, self.database, self.username):
                 _require(type(value) is str and reference_violation(value) is None)
             _require(type(self.password_path) is str and self.password_path.startswith("/"))
+            SecretFilePathBinding(self.password_environment_name)
             return dict(product=product, image=image, provider_socket=self.provider_socket,
-                database=self.database, username=self.username, password_path=self.password_path)
+                database=self.database, username=self.username, password_path=self.password_path,
+                password_environment_name=self.password_environment_name)
         return _checked(document)
 
 
@@ -108,8 +111,7 @@ class PostgresReadinessBinding:
 
     def request(self):
         document = self.descriptor()
-        # Targeted red: the generic receiver nonce alone does not bind SQL.
-        identity = self.wait.effect_id
+        identity = "sql-" + sha256(canonical_json_bytes(document)).hexdigest()
         return ReceiverHealthReadRequest(self.receiver.target,
             NodeControlAuthorityContext(self.wait.source.desired_graph_id, self.desired_projection_id),
             NodeHealthReadKind.READINESS, self.receiver.declaration.identity(), identity)
@@ -158,6 +160,11 @@ def _document(value):
     selections = tuple(selection for selection in material.secret_selections
         if selection.reference == check.authentication.password_reference and selection.intent is SecretUseIntent.POSTGRES_PASSWORD)
     _require(len(deliveries) == len(selections) == 1 and type(selections[0]) is SecretVersionSelection)
+    _require(deliveries[0].file_mode is SecretFileMode.OWNER_READ_ONLY
+        and type(deliveries[0].path_binding) is SecretFilePathBinding
+        and deliveries[0].path_binding.environment_name == value.observer.password_environment_name)
+    actual_environment = material.public_environment + material.socket_environment
+    _require(not any(item.name == value.observer.password_environment_name for item in actual_environment))
     context = secret_installation_correlation_for_request(install)
     _require(type(value.receipt) is SecretInstallationReceipt)
     SecretInstallationReceipt.__post_init__(value.receipt)
@@ -166,8 +173,11 @@ def _document(value):
         and value.receipt.selection_fingerprint == secret_material_selection_fingerprint(install))
     _require(type(value.receiver) is ReceiverNodeControlConfiguration)
     ReceiverNodeControlConfigurationCodec().encode(value.receiver)
-    artifact = select_receiver_node_control_configuration_artifact(artifacts=contract.configuration_artifacts,
+    declared = select_receiver_node_control_configuration_artifact(artifacts=contract.configuration_artifacts,
         environment=contract.public_environment, control_surfaces=contract.control_surfaces)
+    artifact = select_receiver_node_control_configuration_artifact(artifacts=contract.configuration_artifacts,
+        environment=actual_environment, control_surfaces=contract.control_surfaces)
+    _require(artifact == declared)
     _require(ReceiverNodeControlConfigurationCodec().decode_bytes(artifact.content.encode()) == value.receiver)
     target = value.receiver.target
     _require((target.workspace_id.value, target.runtime_id.value, target.node_id.value)

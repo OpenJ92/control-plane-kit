@@ -31,6 +31,7 @@ EXPECTED_MODULES = {
     "gateway_delegation",
     "identity",
     "http_verification_samples",
+    "postgres_readiness",
     "http_verification_sample_installation",
     "lifecycle",
     "node_control",
