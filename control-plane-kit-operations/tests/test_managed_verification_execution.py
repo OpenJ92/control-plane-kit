@@ -9,6 +9,7 @@ from control_plane_kit_core.node_control import NodeControlCanonicalization
 from control_plane_kit_core.planning import PlanGraphSide
 from control_plane_kit_core.receiver_identity import receiver_node_control_audience
 from control_plane_kit_core.receiver_identity import NodeControlReceiverTargetCodec
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact
 from control_plane_kit_core.receiver_health_reads import DelegatedWorkloadReceiverHealthReadGrant, DelegatedWorkloadReceiverHealthReadGrantProfile
 from control_plane_kit_core.receiver_health_transit import DelegatedGatewayReceiverHealthReadTransitGrant, DelegatedGatewayReceiverHealthReadTransitGrantProfile
@@ -35,11 +36,16 @@ from tests.test_postgres_readiness_binding import OriginalPostgresReadinessRecor
 
 
 class ReceiverDecoder:
+    def __init__(self):
+        self.targets = []
+
     def decode(self, selection):
         trust = ByteDecoder(__import__("control_plane_kit_operations.health_receiver_trust", fromlist=["*"])).decode(selection)
         raw = json.loads(selection.artifact.content)
         target = raw.get("gateway_target")
-        return replace(trust, gateway_target=None if target is None else NodeControlReceiverTargetCodec().decode(target))
+        target = None if target is None else NodeControlReceiverTargetCodec().decode(target)
+        self.targets.append(target)
+        return replace(trust, gateway_target=target)
 
 
 def reproject(original, graph):
@@ -49,10 +55,20 @@ def reproject(original, graph):
         graph=graph, created_by=original.created_by, created_at=original.created_at)
 
 
+def with_desired(values, graph):
+    desired = reproject(values["desired"], graph)
+    graphs = (validate_graph(DEFAULT_GRAPH_CODEC.decode(values["current"].graph_descriptor)), validate_graph(graph))
+    plan = replace(values["plan"], desired_realized_projection_id=desired.projection_id,
+        plan=derive_activity_plan(Deploy(*graphs), profile=values["plan"].derivation_profile))
+    return values | dict(desired=desired, plan=plan)
+
+
 class ManagedVerificationRouteTests(unittest.TestCase):
     def inputs(self, **options):
         values, reference, slot = case(self, **options)
         graph = DEFAULT_GRAPH_CODEC.decode(values["desired"].graph_descriptor)
+        graph = replace(graph, runtimes={identity: replace(runtime,
+            authority_ref=RuntimeAuthorityReference("local-docker")) for identity, runtime in graph.runtimes.items()})
         gateway = graph.node("gateway")
         configured = ReceiverNodeControlConfigurationCodec().decode_bytes(select_receiver_node_control_configuration_artifact(
             artifacts=gateway.configuration_artifacts, environment=gateway.public_environment,
@@ -110,9 +126,8 @@ class ManagedVerificationRouteTests(unittest.TestCase):
         gateway = graph.node("gateway")
         changed = graph.update_node(replace(gateway, metadata={**gateway.metadata,
             "product_descriptor_digest": "f" * 64}))
-        desired = reproject(values["desired"], changed)
         with self.assertRaises(ManagedVerificationSupportUnavailable):
-            select_postgres_readiness_route(**(values | {"desired": desired}), support=support)
+            select_postgres_readiness_route(**with_desired(values, changed), support=support)
 
     def prepared(self):
         """Supplied public records only; none claim current admission or signing."""
@@ -140,7 +155,7 @@ class ManagedVerificationRouteTests(unittest.TestCase):
             selected.transit_decoder, trust, gateway, binding.receiver, route,
             selected.ingress, selected.transit_provider_socket_name)
         common = dict(workspace_id=binding.wait.source.workspace_id, reference_registration_id="reference",
-            provider_registration_id="provider", endpoint_reference=SecretProviderEndpointReference("provider://local/secrets"),
+            provider_registration_id="provider", endpoint_reference=SecretProviderEndpointReference("workspace-secrets"),
             credential_reference=SecretReference("secret://local/provider/credential"), actor_subject="operator-a",
             session_id="session-a", run_id=binding.attempt.run_id.value, activity_id=binding.attempt.activity_id,
             intent_fingerprint="a" * 64)
@@ -192,6 +207,10 @@ class ManagedVerificationRouteTests(unittest.TestCase):
                 dict(password_grant=replace(prepared.password_grant, effect_id="other-effect"))):
             with self.subTest(fields=tuple(change)), self.assertRaises(ManagedVerificationSupportUnavailable):
                 replace(prepared, **change)
+        same_correlation = replace(prepared.workload, resolution_grant=replace(prepared.workload.resolution_grant,
+            correlation_id=prepared.transit.resolution_grant.correlation_id))
+        with self.assertRaises(ManagedVerificationSupportUnavailable):
+            replace(prepared, workload=same_correlation)
 
     def test_legacy_decoder_is_compatible_but_cannot_qualify_sql_receiver_join(self):
         values, support = self.inputs()
@@ -220,6 +239,10 @@ class ManagedVerificationRouteTests(unittest.TestCase):
                 artifact = replace(artifact, content=json.dumps(raw))
             artifacts.append(artifact)
         graph = graph.update_node(replace(gateway, configuration_artifacts=tuple(artifacts)))
-        desired = reproject(values["desired"], graph)
+        changed_values = with_desired(values, graph)
+        decoder = support.health_receiver_decoders.bindings[0].decoder
+        self.assertEqual(decoder.targets, [])
         with self.assertRaises(ManagedVerificationSupportUnavailable):
-            select_postgres_readiness_route(**(values | {"desired": desired}), support=support)
+            select_postgres_readiness_route(**changed_values, support=support)
+        self.assertEqual(len(decoder.targets), 1)
+        self.assertEqual(decoder.targets[0].receiver_id, "f" * 32)
