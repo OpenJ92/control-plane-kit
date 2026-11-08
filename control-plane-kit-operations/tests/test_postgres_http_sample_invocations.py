@@ -187,6 +187,7 @@ class _HttpSampleFixture(_ManagedPermissionStartFixture):
             template = context_for(activity.operation)
             context = replace(template, activity=activity,
                 intent_event=replace(template.intent_event, activity_id=activity.activity_id.value),
+                authority=value.authority, fence=value.fence,
                 request=unit.stores.execution.get_request("request-a"), run=unit.stores.execution.get_run("run-a"),
                 plan_record=plan, base_graph=self.projections["health-base"], desired_graph=self.projections["health-desired"],
                 registered_products=tuple(self.receiver_products.values()), runtime_authorities=(self.sample_runtime,))
