@@ -4,7 +4,7 @@ import unittest
 
 from control_plane_kit_core.configuration_installation import ConfigurationInstallationDisposition
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceSelection
-from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding
 from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
 from control_plane_kit_core.operations import EffectAttemptIdentity
 from control_plane_kit_core.planning import ActivityId, NodeTarget, WaitForHealthy
@@ -138,6 +138,14 @@ class OriginalPostgresReadinessTests(unittest.TestCase):
         # secret-shaped override; no malformed env value is invented here.
         with self.assertRaises(ValueError):
             PublicStaticEnvironmentBinding("POSTGRES_PASSWORD_FILE", "/run/secrets/other")
+        candidate = replace(material, socket_environment=(SocketDerivedEnvironmentBinding(
+            "POSTGRES_PASSWORD_FILE", "/run/secrets/other", "api.control->api.other"),))
+        install = replace(binding.installation, products=(candidate,))
+        receipt = replace(binding.receipt,
+            request_fingerprint=secret_installation_correlation_for_request(install).request_fingerprint,
+            selection_fingerprint=secret_material_selection_fingerprint(install))
+        with self.assertRaises(PostgresReadinessUnavailable):
+            replace(binding, wait=replace(binding.wait, products=(candidate,)), installation=install, receipt=receipt)
 
     def test_authority_context_is_validated_before_a_binding_can_be_returned(self):
         binding = supplied_binding()
