@@ -186,6 +186,7 @@ class DeploymentProgram:
                 ),
                 idempotency_key=keys["plan"],
                 http_verification_intent=command.http_verification_intent,
+                managed_verification=command.managed_verification,
             ),
             ActivityPlanningError,
         )
@@ -293,6 +294,8 @@ def _intent_digest(command: PrepareDeploymentProgram) -> str:
         intent["proposed_graph_id"] = command.proposed_graph_id
     if command.http_verification_intent is not None:
         intent["http_verification_intent"] = command.http_verification_intent.value
+    if command.managed_verification is not None:
+        intent["managed_verification"] = command.managed_verification.value
     return _sha256(intent)
 
 

@@ -167,6 +167,7 @@ from control_plane_kit_operations.lifecycle import (
 )
 from control_plane_kit_operations.planning import (
     HttpVerificationPlanningIntent,
+    ManagedVerificationPlanningIntent,
     ActivityPlanningCommandService,
     RequestActivityPlan,
     DesiredGraphCommandService,
@@ -1163,6 +1164,7 @@ class CpkServerPlanningService:
                 expected_desired_graph_id=_text(payload, "expected_desired_graph_id"),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 http_verification_intent=_http_verification_planning_intent(payload),
+                managed_verification=_managed_verification_planning_intent(payload),
                 expected_current_realized_projection_id=_optional_text(
                     payload,
                     "expected_current_realized_projection_id",
@@ -1213,6 +1215,7 @@ def _prepare_deployment(
                 approval_comment=_optional_text(payload, "approval_comment"),
                 proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
                 http_verification_intent=_http_verification_planning_intent(payload),
+                managed_verification=_managed_verification_planning_intent(payload),
             )
         )
     except DeploymentProgramAuthorizationDenied:
@@ -1237,6 +1240,15 @@ def _prepare_deployment(
             "deployment preparation request is malformed",
         ) from None
     return _deployment_preparation_response(result)
+
+
+def _managed_verification_planning_intent(payload):
+    if "managed_verification" not in payload:
+        return None
+    if ("http_verification_intent" in payload or type(payload["managed_verification"]) is not str
+            or payload["managed_verification"] != ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP.value):
+        raise CpkServerApplicationError(400, "managed verification planning intent is invalid")
+    return ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP
 
 
 def _http_verification_planning_intent(payload):

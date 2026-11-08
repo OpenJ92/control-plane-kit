@@ -309,3 +309,9 @@ existing generic image pair, reverse transition and complete secret selection.
 The pure plan supplies no authority, original connector installation proof,
 successful observation or execution history. Core/Operations provenance review
 and Interpreters214/Servers291 adoption remain downstream.
+#2089 introduces an explicit managed SQL+HTTP interpretation entrypoint while
+preserving the historical HTTP compiler. Its initial source checkpoint retains
+the original SQL review and all dependency/observation activities. Only after
+qualified whole-plan admission and the original SQL execution arm are connected
+may supported SQL coverage remove that review; V2 readiness alone is insufficient.
+

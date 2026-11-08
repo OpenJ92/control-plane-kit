@@ -167,6 +167,10 @@ def runtime_management_execution_is_unsupported(
 
     # Parse independently of catalog contents. A malformed selected reference
     # cannot acquire a no-op exemption or leak its parser error into a receipt.
+    if derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1:
+        # The explicit interpretation must not enter a legacy no-op exemption
+        # before its qualified original-SQL execution arm is connected.
+        return True
     if derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
         # Shape only: the admission/coordinator owners independently require
         # the actual registered sample consumer and every original route.

@@ -400,6 +400,8 @@ class DeploymentProgramCommandTests(unittest.TestCase):
                 "idempotency_key",
                 "approval_comment",
                 "proposed_graph_id",
+                "http_verification_intent",
+                "managed_verification",
             ),
         )
         self.assertEqual(

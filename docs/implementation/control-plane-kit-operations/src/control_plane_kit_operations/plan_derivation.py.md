@@ -66,3 +66,10 @@ old-reader rollback after those writes requires separate reviewed work. Removing
 markers or rewriting historical rows is not rollback. No schema change, backfill,
 reset or live rollout occurs here. Historical #1837 introduced the structural
 profile; current fresh selection belongs to runtime-management admission.
+#2089 adds a distinct managed SQL+HTTP intent/profile. The caller value is
+`managed_verification=authenticated-local-postgres-and-http`, stored profile
+`managed-sql-http-bootstrap-v1`; mixed/missing/mismatched markers refuse.
+Omitted and existing HTTP-only descriptors/fingerprints/replay stay unchanged.
+The initial plumbing checkpoint preserves SQL review and refuses execution
+until the qualified normal original-Wait arm is connected; it is not a release.
+

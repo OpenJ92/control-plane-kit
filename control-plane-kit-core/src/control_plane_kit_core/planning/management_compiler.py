@@ -45,7 +45,7 @@ from control_plane_kit_core.topology.validation import (
     GraphSubject, NodeSubject, RuntimeSubject, ValidatedGraph, management_ingress_for_health_read,
 )
 from control_plane_kit_core.types import Protocol
-from control_plane_kit_core.verification import HttpCheck
+from control_plane_kit_core.verification import HttpCheck, PostgresQueryCheck
 
 
 _GRAPH_DOMAIN = b"control-plane-kit.management-graph.v1\0"
@@ -820,6 +820,21 @@ def compile_http_sample_bootstrap_activity_plan(current: ValidatedGraph, desired
 
 
 _HTTP_SAMPLE_PATH = re.compile(r"/(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%[0-9A-Fa-f]{2})*")
+
+
+def compile_managed_verification_bootstrap_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
+    """Opt-in interpretation; SQL remains review-blocked until its arm is qualified.
+
+    This explicit entrypoint preserves the historical HTTP interpretation and
+    never treats V2 readiness alone as coverage of an original SQL obligation.
+    """
+    plan = compile_http_sample_bootstrap_activity_plan(current, desired)
+    if not any(any(type(check) is PostgresQueryCheck for check in node.block_spec.verification.checks)
+            for node in desired.graph.nodes.values()):
+        review = _review_activity(GraphSubject(), ReviewReason.UNSUPPORTED_CHANGE)
+        if all(activity.activity_id != review.activity_id for activity in plan.activities):
+            return ActivityPlan((*plan.activities, review))
+    return plan
 
 
 def _full_http_sample_coverage(node):

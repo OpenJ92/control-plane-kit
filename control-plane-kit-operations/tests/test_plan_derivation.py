@@ -56,6 +56,65 @@ def managed_update_pair(test):
 
 
 class PlanDerivationTests(unittest.TestCase):
+    def test_managed_intent_is_distinct_typed_and_never_an_arbitrary_profile(self):
+        from control_plane_kit_operations import planning
+        from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
+        module = require_derivation(self)
+        command = planning.RequestActivityPlan("session", "workspace", "actor", "current", "desired", IdempotencyKey("key"))
+        value = module.ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP
+        selected = replace(command, managed_verification=value)
+        self.assertEqual(selected.descriptor(), {**command.descriptor(), "managed_verification": "authenticated-local-postgres-and-http"})
+        for bad in ("authenticated-local-postgres-and-http", True, "managed-sql-http-bootstrap-v1"):
+            with self.assertRaises(InvalidOperationCommand):
+                replace(command, managed_verification=bad)
+        with self.assertRaises(InvalidOperationCommand):
+            replace(selected, http_verification_intent=module.HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES)
+
+    def test_managed_profile_action_markers_are_exact_and_old_profiles_do_not_upgrade(self):
+        module = require_derivation(self)
+        profile = module.PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+        evidence = dict(derivation_profile=profile.value, managed_verification="authenticated-local-postgres-and-http")
+        self.assertTrue(module.planning_derivation_matches_action(profile, evidence))
+        for changed in ({"derivation_profile": profile.value}, {**evidence, "managed_verification": None},
+                {**evidence, "http_verification_intent": "authenticated-samples"},
+                {**evidence, "managed_verification": "authenticated-samples"}):
+            self.assertFalse(module.planning_derivation_matches_action(profile, changed))
+        for old in (None, module.PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1):
+            self.assertFalse(module.planning_derivation_matches_action(old, evidence))
+        plan = ActivityPlan(())
+        self.assertEqual(module.decode_stored_activity_plan(module.encode_stored_activity_plan(plan, profile=profile)), (plan, profile))
+        from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
+        self.assertTrue(runtime_management_execution_is_unsupported(DeploymentGraph("empty"), DeploymentGraph("empty"),
+            plan, derivation_profile=profile))
+
+    def test_inline_and_saved_prepare_keep_one_managed_intent_and_refuse_mixed(self):
+        from control_plane_kit_operations import deployment_program as program
+        from tests.test_deployment_program import _prepare, _lineage
+        module = require_derivation(self)
+        value = module.ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP
+        inline = _prepare(program, managed_verification=value)
+        saved = _prepare(program, managed_verification=value, desired=program.SavedDesiredTopologyRevision("draft-a", 1),
+            expected_desired=_lineage("desired"), expected_desired_graph_revision=1)
+        for command in (inline, saved):
+            self.assertEqual(command.descriptor()["managed_verification"], value.value)
+            self.assertNotIn("http_verification_intent", command.descriptor())
+            with self.assertRaises(ValueError):
+                replace(command, http_verification_intent=module.HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES)
+
+    def test_wire_managed_selector_refuses_null_mixed_and_free_profile(self):
+        from control_plane_kit_operations.cpk_server import _managed_verification_planning_intent, _http_verification_planning_intent, CpkServerApplicationError
+        module = require_derivation(self)
+        self.assertIsNone(_managed_verification_planning_intent({}))
+        self.assertIs(_managed_verification_planning_intent({"managed_verification": "authenticated-local-postgres-and-http"}),
+            module.ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP)
+        for payload in ({"managed_verification": None}, {"managed_verification": True},
+                {"managed_verification": "managed-sql-http-bootstrap-v1"},
+                {"managed_verification": "authenticated-local-postgres-and-http", "http_verification_intent": "authenticated-samples"}):
+            with self.assertRaises(CpkServerApplicationError):
+                _managed_verification_planning_intent(payload)
+        with self.assertRaises(CpkServerApplicationError):
+            _http_verification_planning_intent({"derivation_profile": "managed-sql-http-bootstrap-v1"})
+
     def test_http_sample_intent_is_typed_and_omission_preserves_old_descriptor(self):
         import hashlib
         import json

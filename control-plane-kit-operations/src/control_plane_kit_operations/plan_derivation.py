@@ -13,6 +13,7 @@ from control_plane_kit_core.planning import (
     compile_activity_plan,
     compile_graph_activity_plan,
     compile_http_sample_bootstrap_activity_plan,
+    compile_managed_verification_bootstrap_activity_plan,
     compile_managed_update_activity_plan,
     compile_retained_image_ingress_activity_plan,
 )
@@ -38,6 +39,7 @@ class PlanDerivationProfile(StrEnum):
     STRUCTURAL_V1 = "structural-v1"
     MANAGEMENT_GRAPH_PAIR_V1 = "management-graph-pair-v1"
     MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1 = "managed-http-sample-bootstrap-v1"
+    MANAGED_SQL_HTTP_BOOTSTRAP_V1 = "managed-sql-http-bootstrap-v1"
     MANAGED_UPDATE_V1 = "managed-update-v1"
     RETAINED_IMAGE_INGRESS_V1 = "retained-image-ingress-v1"
     CONFIGURATION_CLEANUP_V1 = "configuration-cleanup-v1"
@@ -47,6 +49,11 @@ class PlanDerivationProfile(StrEnum):
 class HttpVerificationPlanningIntent(StrEnum):
     """Caller intent, not an arbitrary compiler-profile override."""
     AUTHENTICATED_SAMPLES = "authenticated-samples"
+
+
+class ManagedVerificationPlanningIntent(StrEnum):
+    """Explicit managed SQL+HTTP interpretation, never a free profile selector."""
+    AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP = "authenticated-local-postgres-and-http"
 
 
 class PlanDerivationError(ValueError):
@@ -83,6 +90,8 @@ def derive_activity_plan(
         return compile_graph_activity_plan(transition.current, transition.desired)
     if profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
         return compile_http_sample_bootstrap_activity_plan(transition.current, transition.desired)
+    if profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1:
+        return compile_managed_verification_bootstrap_activity_plan(transition.current, transition.desired)
     if profile is PlanDerivationProfile.MANAGED_UPDATE_V1:
         return compile_managed_update_activity_plan(
             transition.current, transition.desired,
@@ -100,6 +109,12 @@ def planning_derivation_matches_action(
 ) -> bool:
     """Absence is legacy; explicit null or a one-sided marker is a conflict."""
     sample_profile = profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+    managed_profile = profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+    if ("managed_verification" in evidence) != managed_profile:
+        return False
+    if managed_profile and (type(evidence["managed_verification"]) is not str
+            or evidence["managed_verification"] != ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP.value):
+        return False
     if ("http_verification_intent" in evidence) != sample_profile:
         return False
     if sample_profile and (type(evidence["http_verification_intent"]) is not str

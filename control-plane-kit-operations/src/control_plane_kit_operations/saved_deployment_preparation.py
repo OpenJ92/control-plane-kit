@@ -94,6 +94,8 @@ def _metadata(command):
               "title": command.title, "approval_comment": command.approval_comment}
     if command.http_verification_intent is not None:
         intent["http_verification_intent"] = command.http_verification_intent.value
+    if command.managed_verification is not None:
+        intent["managed_verification"] = command.managed_verification.value
     digest = hashlib.sha256(json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     return {"deployment_prepare_source": "saved-revision.v1", "deployment_prepare_intent_sha256": digest,
             "deployment_prepare_saved_draft_id": command.desired.draft_id,

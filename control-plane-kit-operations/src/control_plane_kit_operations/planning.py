@@ -70,6 +70,7 @@ from control_plane_kit_operations.runtime_management_admission import (
 )
 from control_plane_kit_operations.plan_derivation import (
     HttpVerificationPlanningIntent,
+    ManagedVerificationPlanningIntent,
     PlanDerivationError,
     PlanDerivationProfile,
     derive_activity_plan,
@@ -289,10 +290,14 @@ class RequestActivityPlan:
     expected_desired_realized_projection_id: str | None = None
     expected_desired_graph_revision: int | None = None
     http_verification_intent: HttpVerificationPlanningIntent | None = field(default=None, kw_only=True)
+    managed_verification: ManagedVerificationPlanningIntent | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         if self.http_verification_intent is not None and type(self.http_verification_intent) is not HttpVerificationPlanningIntent:
             raise InvalidOperationCommand("HTTP verification planning intent is invalid")
+        if ((self.managed_verification is not None and type(self.managed_verification) is not ManagedVerificationPlanningIntent)
+                or (self.managed_verification is not None and self.http_verification_intent is not None)):
+            raise InvalidOperationCommand("managed verification planning intent is invalid")
         _required_text(self.session_id, "session_id")
         _required_text(self.workspace_id, "workspace_id")
         _required_text(self.actor_id, "actor_id")
@@ -341,6 +346,8 @@ class RequestActivityPlan:
         }
         if self.http_verification_intent is not None:
             result["http_verification_intent"] = self.http_verification_intent.value
+        if self.managed_verification is not None:
+            result["managed_verification"] = self.managed_verification.value
         return result
 
 
@@ -704,7 +711,9 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningGraphStateConflict(
                     "workspace graph pointers changed"
                 )
-            profile = (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+            profile = (PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+                if command.managed_verification is ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP
+                else PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
                 if command.http_verification_intent is HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES
                 else PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)
             invalid_plan = False
@@ -719,7 +728,7 @@ class ActivityPlanningCommandService:
                     graph_codec=self._graph_codec,
                     profile=profile,
                 )
-                selected_profile = profile if command.http_verification_intent is not None else runtime_management_plan_profile(
+                selected_profile = profile if (command.http_verification_intent is not None or command.managed_verification is not None) else runtime_management_plan_profile(
                     transition,
                     registered_products=unit_of_work.stores.registered_products.list_active(
                         command.workspace_id,
@@ -823,6 +832,8 @@ class ActivityPlanningCommandService:
                     "derivation_profile": profile.value,
                     **({"http_verification_intent": command.http_verification_intent.value}
                         if command.http_verification_intent is not None else {}),
+                    **({"managed_verification": command.managed_verification.value}
+                        if command.managed_verification is not None else {}),
                 },
                 created_at=created_at,
                 idempotency_key=command.idempotency_key.value,
