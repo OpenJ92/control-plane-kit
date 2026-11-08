@@ -106,3 +106,14 @@ class ManagedVerificationPlanningTests(unittest.TestCase):
         desired = mixed_graph()
         _, selected = self.plans(desired, desired)
         self.assertFalse(selected.ready_for_execution)
+
+    def test_qualified_sql_cannot_clear_another_nodes_original_review(self):
+        desired = mixed_graph()
+        node = desired.node("workload")
+        checks = node.block_spec.verification.checks
+        changed = replace(node, block_spec=replace(node.block_spec, verification=VerificationContract((
+            replace(checks[0], path="/not-configured"), *checks[1:]))))
+        _, selected = self.plans(desired.update_node(changed))
+        self.assertFalse(selected.ready_for_execution)
+        self.assertTrue(any(type(item.operation) is ReviewChange
+            and item.operation.target.subject == NodeSubject("workload") for item in selected.activities))
