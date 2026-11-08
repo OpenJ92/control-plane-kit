@@ -9,6 +9,7 @@ from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.configuration_invocation import configuration_invocation_selection_fingerprint
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import ActivityEventKind, RunId
+from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, ActivityDependency, NodeTarget, PlannedActivity, StartNode, WaitForHealthy
 from control_plane_kit_core.postgres_readiness import PostgresReadinessObserver
 from control_plane_kit_core.products import ProductDescriptorCodec, ProviderRuntimePort, ProductInstanceConfiguration, instantiate_product
@@ -49,7 +50,8 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
     def supplied_records(self):
         context = context_for(StartNode(NodeTarget("api")))
         base_product = context.registered_products[0]
-        surface = bootstrap_management_graph(self).node("api").block_spec.control_surfaces[0]
+        surface = replace(bootstrap_management_graph(self).node("api").block_spec.control_surfaces[0],
+            health_reads=(NodeHealthReadKind.READINESS,))
         declaration = WorkloadNodeControlSurfaceDeclaration(surface, WorkloadNodeControlSurfaceDeclarationProfile.V2)
         control = artifact("workload", declaration, receiver=True, runtime="runtime-a")
         reference = SecretReference("secret://local/workspace-a/postgres/password")
@@ -121,10 +123,7 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
 
     def test_original_record_join_reconstructs_one_request_and_original_window(self):
         values = self.supplied_records()
-        # Temporary owner-local diagnostic: expose the refusal location for the
-        # supplied positive without changing production error redaction.
-        from control_plane_kit_operations.postgres_readiness import _bind
-        binding = _bind(**values)
+        binding = bind_original_postgres_readiness(**values)
         self.assertEqual(binding.request(), bind_original_postgres_readiness(**values).request())
         self.assertEqual(binding.deadline_epoch_ms - binding.started_at_epoch_ms, 5000)
         self.assertEqual(binding.descriptor()["credential_selection"]["version_id"], "selected-version-1")
