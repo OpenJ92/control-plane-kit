@@ -121,7 +121,10 @@ class OriginalPostgresReadinessRecordTests(EffectAttemptRecordFixture, unittest.
 
     def test_original_record_join_reconstructs_one_request_and_original_window(self):
         values = self.supplied_records()
-        binding = bind_original_postgres_readiness(**values)
+        # Temporary owner-local diagnostic: expose the refusal location for the
+        # supplied positive without changing production error redaction.
+        from control_plane_kit_operations.postgres_readiness import _bind
+        binding = _bind(**values)
         self.assertEqual(binding.request(), bind_original_postgres_readiness(**values).request())
         self.assertEqual(binding.deadline_epoch_ms - binding.started_at_epoch_ms, 5000)
         self.assertEqual(binding.descriptor()["credential_selection"]["version_id"], "selected-version-1")
