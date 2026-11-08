@@ -126,8 +126,10 @@ class ManagedVerificationPlanningTests(unittest.TestCase):
         def copied(protocol):
             return Protocol(protocol.transport, protocol.application)
         changed = replace(node, sockets=replace(node.sockets, providers=tuple(
-            replace(provider, protocol=copied(provider.protocol)) for provider in node.sockets.providers)),
-            endpoints={name: replace(endpoint, protocol=copied(endpoint.protocol)) for name, endpoint in node.endpoints.items()})
+            replace(provider, protocol=copied(provider.protocol)) if provider.name == "sql" else provider
+            for provider in node.sockets.providers)),
+            endpoints={name: replace(endpoint, protocol=copied(endpoint.protocol)) if name == "sql" else endpoint
+                for name, endpoint in node.endpoints.items()})
         _, equivalent = self.plans(desired.update_node(changed))
         self.assertEqual(equivalent, original)
         self.assertTrue(equivalent.ready_for_execution)
