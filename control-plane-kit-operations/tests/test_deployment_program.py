@@ -432,6 +432,7 @@ class DeploymentProgramCommandTests(unittest.TestCase):
                     "ExternalReadinessAttestation"
                 },
                 "control_plane_kit_operations.records": {"GraphProjectionLineage"},
+                "control_plane_kit_operations.plan_derivation": {"HttpVerificationPlanningIntent", "ManagedVerificationPlanningIntent"},
                 "control_plane_kit_operations.graph_authoring": {
                     "GraphAuthoringError", "validate_proposed_graph_id"
                 },
