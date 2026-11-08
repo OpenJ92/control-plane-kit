@@ -314,4 +314,3 @@ preserving the historical HTTP compiler. Its initial source checkpoint retains
 the original SQL review and all dependency/observation activities. Only after
 qualified whole-plan admission and the original SQL execution arm are connected
 may supported SQL coverage remove that review; V2 readiness alone is insufficient.
-

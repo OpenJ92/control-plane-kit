@@ -72,4 +72,3 @@ profile; current fresh selection belongs to runtime-management admission.
 Omitted and existing HTTP-only descriptors/fingerprints/replay stay unchanged.
 The initial plumbing checkpoint preserves SQL review and refuses execution
 until the qualified normal original-Wait arm is connected; it is not a release.
-
