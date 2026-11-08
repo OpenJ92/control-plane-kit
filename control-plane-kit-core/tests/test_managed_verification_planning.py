@@ -50,7 +50,7 @@ def mixed_graph():
         metadata={"product_identity": "test/postgres/1", "product_descriptor_digest": "b" * 64})
     runtime = graph.runtimes[node.runtime_id]
     return replace(graph, nodes={**graph.nodes, node.node_id: node}, runtimes={**graph.runtimes,
-        runtime.runtime_id: replace(runtime, node_ids=tuple(sorted((*runtime.node_ids, node.node_id))))})
+        runtime.runtime_id: replace(runtime, children=tuple(sorted((*runtime.children, node.node_id))))})
 
 
 class ManagedVerificationPlanningTests(unittest.TestCase):
