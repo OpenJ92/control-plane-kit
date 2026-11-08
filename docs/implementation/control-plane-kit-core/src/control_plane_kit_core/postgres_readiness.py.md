@@ -1,5 +1,9 @@
 Source: [postgres_readiness.py](../../../../../control-plane-kit-core/src/control_plane_kit_core/postgres_readiness.py).
 
+Private password-domain validation checks bounded text length before scanning
+printable ASCII, avoiding a full extra encoded secret copy. The accepted domain
+and refusal of normalization/non-ASCII/CR/LF/NUL remain unchanged.
+
 #2089 supplied-value congruence joins an original SQL Wait, same-run fresh
 installation, selected immutable credential, receiver/declaration and realization.
 It reuses the V2 health envelope without adding a protocol or asserting that

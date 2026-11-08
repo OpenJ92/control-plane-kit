@@ -1,6 +1,20 @@
 Source: [management_compiler.py](../../../../../../control-plane-kit-core/src/control_plane_kit_core/planning/management_compiler.py).
 Maintain this companion with source and imported contract changes.
 
+#2089 completes the separate managed SQL/HTTP fresh profile before durable
+adoption. Only its independent-check branch admits graph-known SQL coverage:
+owned fresh Docker node, one bounded authenticated SELECT1, explicit version,
+matching protected file/path binding and selected V2 readiness control. Protocol
+values compare by value. Original Wait, Start, SDK health and authenticated-path
+edges remain; a qualifying SQL node never removes another cause of review.
+Existing generic, HTTP-only and retained interpretations remain literal.
+
+Core supplies no product/image qualification or future installation receipt.
+Operations must require every registered product/slot/version/route and the actual
+native consumer at admission and coordinator preflight. Actual delivery, private
+bytes, current process/route and original attempt remain reached-check evidence.
+Plan-ready is not executable or deployed proof. No new permission is inferred.
+
 compile_graph_activity_plan accepts two ValidatedGraph values, derives their diff
 and preserves the structural compiler's operations before refining managed health
 obligations. Empty/name-only plans remain empty; retained-runtime management

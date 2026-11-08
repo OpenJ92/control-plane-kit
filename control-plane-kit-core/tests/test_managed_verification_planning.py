@@ -5,15 +5,15 @@ import unittest
 import control_plane_kit_core as core
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
-from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding
 from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.planning import ActivityPlan, StartNode, WaitForHealthy, ReviewChange, ObserveNodeHealth, ObserveManagementBootstrap, ManagementBootstrapStage
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
-from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secret_selections import SecretVersionSelection, UnselectedSecretUse
 from control_plane_kit_core.secrets import SecretFileDelivery, SecretFilePathBinding, SecretReference, SecretUseIntent
 from control_plane_kit_core.topology import GraphDescriptorCodec, validate_graph, NodeSubject
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
-from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import PostgresQueryCheck, PostgresPasswordAuthentication, VerificationContract
 from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT
 from tests.test_management_bootstrap_planning import http_sample_bootstrap_graph, empty
@@ -87,7 +87,8 @@ class ManagedVerificationPlanningTests(unittest.TestCase):
         desired = mixed_graph()
         node = desired.node("postgres")
         check, = node.block_spec.verification.checks
-        for changed in (replace(node, secret_selections=()),
+        selection, = node.secret_selections
+        for changed in (replace(node, secret_selections=(UnselectedSecretUse(selection.reference, selection.intent),)),
                 replace(node, secret_deliveries=(replace(node.secret_deliveries[0], path_binding=None),)),
                 replace(node, block_spec=replace(node.block_spec,
                     verification=VerificationContract((replace(check, authentication=None),)))),
@@ -117,3 +118,28 @@ class ManagedVerificationPlanningTests(unittest.TestCase):
         self.assertFalse(selected.ready_for_execution)
         self.assertTrue(any(type(item.operation) is ReviewChange
             and item.operation.target.subject == NodeSubject("workload") for item in selected.activities))
+
+    def test_equal_protocol_values_keep_the_same_plan(self):
+        desired = mixed_graph()
+        _, original = self.plans(desired)
+        node = desired.node("postgres")
+        def copied(protocol):
+            return Protocol(protocol.transport, protocol.application)
+        changed = replace(node, sockets=replace(node.sockets, providers=tuple(
+            replace(provider, protocol=copied(provider.protocol)) for provider in node.sockets.providers)),
+            endpoints={name: replace(endpoint, protocol=copied(endpoint.protocol)) for name, endpoint in node.endpoints.items()})
+        _, equivalent = self.plans(desired.update_node(changed))
+        self.assertEqual(equivalent, original)
+        self.assertTrue(equivalent.ready_for_execution)
+
+    def test_graph_owner_refuses_password_path_shadow_and_non_docker_stays_reviewed(self):
+        desired = mixed_graph()
+        node = desired.node("postgres")
+        with self.assertRaises(ValueError):
+            replace(node, socket_environment=(SocketDerivedEnvironmentBinding(
+                "POSTGRES_PASSWORD_FILE", "/run/secrets/other", "postgres.http-api->postgres.sql"),))
+        runtime = desired.runtimes[node.runtime_id]
+        changed = replace(desired, runtimes={**desired.runtimes,
+            runtime.runtime_id: replace(runtime, kind=RuntimeKind.KUBERNETES)})
+        _, selected = self.plans(changed)
+        self.assertFalse(selected.ready_for_execution)

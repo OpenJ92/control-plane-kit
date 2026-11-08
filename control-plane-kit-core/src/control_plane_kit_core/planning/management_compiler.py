@@ -35,6 +35,7 @@ from control_plane_kit_core.receiver_configuration import (
 )
 from control_plane_kit_core.receiver_management_routes import ReceiverManagementRoutesCodec, ReceiverManagementRoutesError
 from control_plane_kit_core.secret_selections import SecretVersionSelection, normalize_secret_selections
+from control_plane_kit_core.secrets import SecretFileDelivery, SecretUseIntent
 from control_plane_kit_core.topology.changes import (
     AddedChange, FieldSubject, ModifiedChange, RemovedChange, StructuralField,
 )
@@ -44,8 +45,8 @@ from control_plane_kit_core.topology.graph import Node
 from control_plane_kit_core.topology.validation import (
     GraphSubject, NodeSubject, RuntimeSubject, ValidatedGraph, management_ingress_for_health_read,
 )
-from control_plane_kit_core.types import Protocol
-from control_plane_kit_core.verification import HttpCheck, PostgresQueryCheck
+from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.verification import HttpCheck, PostgresQueryCheck, PostgresPasswordAuthentication, PostgresVerificationOperation
 
 
 _GRAPH_DOMAIN = b"control-plane-kit.management-graph.v1\0"
@@ -823,18 +824,60 @@ _HTTP_SAMPLE_PATH = re.compile(r"/(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%[0-9A-Fa-f]{
 
 
 def compile_managed_verification_bootstrap_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
-    """Opt-in interpretation; SQL remains review-blocked until its arm is qualified.
-
-    This explicit entrypoint preserves the historical HTTP interpretation and
-    never treats V2 readiness alone as coverage of an original SQL obligation.
-    """
-    plan = compile_http_sample_bootstrap_activity_plan(current, desired)
-    if not any(any(type(check) is PostgresQueryCheck for check in node.block_spec.verification.checks)
-            for node in desired.graph.nodes.values()):
+    """Fresh graph coverage; actual product/native/authority coverage is admission."""
+    _require_pair(current, desired)
+    fresh_owned = (not current.graph.nodes and not current.graph.runtimes and not current.graph.public_ingresses
+        and bool(desired.graph.runtimes)
+        and all(runtime.management is not None and runtime.lifecycle.ownership is ResourceOwnership.OWNED
+            for runtime in desired.graph.runtimes.values())
+        and all(node.lifecycle.ownership is ResourceOwnership.OWNED for node in desired.graph.nodes.values()))
+    plan = _compile_graph_activity_plan(current, desired, http_samples=fresh_owned, postgres_readiness=fresh_owned)
+    if not (fresh_owned and any(desired.graph.runtimes[node.runtime_id].kind is RuntimeKind.DOCKER
+            and _full_postgres_readiness_coverage(node) for node in desired.graph.nodes.values())):
         review = _review_activity(GraphSubject(), ReviewReason.UNSUPPORTED_CHANGE)
         if all(activity.activity_id != review.activity_id for activity in plan.activities):
             return ActivityPlan((*plan.activities, review))
     return plan
+
+
+def _full_postgres_readiness_coverage(node):
+    """Authored SQL, selected delivery and V2 readiness facts; no future receipt."""
+    checks = node.block_spec.verification.checks
+    if (node.lifecycle.ownership is not ResourceOwnership.OWNED or node.block_spec.health_path is not None
+            or len(checks) != 1 or type(checks[0]) is not PostgresQueryCheck):
+        return False
+    check, = checks
+    if (type(check.authentication) is not PostgresPasswordAuthentication
+            or check.operation is not PostgresVerificationOperation.SELECT_ONE
+            or not 0 < check.policy.timeout_seconds <= 5 or check.policy.maximum_attempts != 1):
+        return False
+    try:
+        namespace, name, revision = node.metadata["product_identity"].split("/")
+        identity = ProductIdentity(namespace, name, int(revision))
+        if identity.key != node.metadata["product_identity"]:
+            return False
+        ProductDescriptorDigest(node.metadata["product_descriptor_digest"])
+        surface, _ = _selected_surface(node)
+        if surface is None or NodeHealthReadKind.READINESS not in surface.health_reads:
+            return False
+        wrapper = select_receiver_node_control_configuration_artifact(artifacts=node.configuration_artifacts,
+            environment=node.public_environment + node.socket_environment, control_surfaces=node.block_spec.control_surfaces)
+        receiver = ReceiverNodeControlConfigurationCodec().decode_bytes(wrapper.content.encode("utf-8"))
+        deliveries = tuple(value for value in node.secret_deliveries if type(value) is SecretFileDelivery
+            and value.reference == check.authentication.password_reference and value.intent is SecretUseIntent.POSTGRES_PASSWORD)
+        selections = tuple(value for value in node.secret_selections if type(value) is SecretVersionSelection
+            and value.reference == check.authentication.password_reference and value.intent is SecretUseIntent.POSTGRES_PASSWORD)
+        return (len(deliveries) == len(selections) == 1 and deliveries[0].path_binding is not None
+            and not any(value.name == deliveries[0].path_binding.environment_name
+                for value in node.public_environment + node.socket_environment)
+            and receiver.target.node_id.value == node.node_id and receiver.target.runtime_id.value == node.runtime_id
+            and receiver.target.provider_socket_name == surface.provider_socket_name
+            and receiver.declaration.surface == surface
+            and node.sockets.provider(surface.provider_socket_name.value).protocol == Protocol.HTTP
+            and node.sockets.provider(check.provider_socket).protocol == Protocol.POSTGRES
+            and node.endpoint(check.provider_socket).protocol == Protocol.POSTGRES)
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return False
 
 
 def _full_http_sample_coverage(node):
@@ -886,7 +929,7 @@ def _full_http_sample_coverage(node):
         return False
 
 
-def _compile_graph_activity_plan(current, desired, *, http_samples=False):
+def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgres_readiness=False):
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
     structural = compile_activity_plan(diff)
@@ -934,7 +977,9 @@ def _compile_graph_activity_plan(current, desired, *, http_samples=False):
             node = graph.nodes[node_id]
             sample_covered = (http_samples and fresh and node_id not in (gateway_id, connector_id)
                 and node_id in node_starts and _full_http_sample_coverage(node))
-            if _independent_verification(node) and not sample_covered:
+            sql_covered = (postgres_readiness and fresh and runtime.kind is RuntimeKind.DOCKER and node_id not in (gateway_id, connector_id)
+                and node_id in node_starts and _full_postgres_readiness_coverage(node))
+            if _independent_verification(node) and not (sample_covered or sql_covered):
                 refuse(NodeSubject(node_id))
             if node_id == gateway_id:
                 continue

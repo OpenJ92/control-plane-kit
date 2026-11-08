@@ -210,11 +210,8 @@ def postgres_readiness_password_supported(value):
     """
     if type(value) is not SecretValue:
         return False
-    try:
-        raw = value.reveal().encode("utf-8")
-    except UnicodeError:
-        return False
-    return 1 <= len(raw) <= 4096 and all(32 <= byte <= 126 for byte in raw)
+    text = value.reveal()
+    return type(text) is str and 1 <= len(text) <= 4096 and all(32 <= ord(character) <= 126 for character in text)
 
 
 def postgres_readiness_result_matches(binding, result, *, observed_at_epoch_ms):
