@@ -33,7 +33,7 @@ from control_plane_kit_operations.records import RealizedGraphProjectionRecord
 from control_plane_kit_operations.postgres_readiness import bind_original_postgres_readiness
 from tests.health_receiver_trust_fixture import public_key, ByteDecoder, PROFILE
 from tests.test_http_sample_compatibility import case, ROUTE_SLOT
-from tests.test_postgres_readiness_binding import OriginalPostgresReadinessRecordTests
+from tests import test_postgres_readiness_binding as original_records
 
 
 class ReceiverDecoder:
@@ -73,7 +73,7 @@ class ManagedVerificationRouteTests(unittest.TestCase):
         result = ReceiverHealthReadResult(binding.request(), binding.receiver.declaration, NodeHealthReadOutcome.HEALTHY)
         evidence = dict(profile="cpk.original-postgres-readiness.v1", check_id=binding.check_id,
             result=result.descriptor(), observed_at_epoch_ms=binding.started_at_epoch_ms + 2)
-        interval = dict(admitted_at="2026-11-08T12:00:00.001Z", completed_at="2026-11-08T12:00:00.003Z")
+        interval = dict(admitted_at="2026-11-08T12:00:00.001000Z", completed_at="2026-11-08T12:00:00.003000Z")
         self.assertEqual(require_postgres_readiness_evidence(binding, evidence, **interval), result)
         for change in (dict(result={**result.descriptor(), "request_id": "other-request"}),
                 dict(result=replace(result, outcome=NodeHealthReadOutcome.UNKNOWN).descriptor()),
@@ -81,7 +81,7 @@ class ManagedVerificationRouteTests(unittest.TestCase):
             with self.subTest(fields=tuple(change)), self.assertRaises(ManagedVerificationSupportUnavailable):
                 require_postgres_readiness_evidence(binding, evidence | change, **interval)
         for interval in (dict(admitted_at="2026-11-08T12:00:02Z", completed_at="2026-11-08T12:00:03Z"),
-                dict(admitted_at="2026-11-08T12:00:00Z", completed_at="2026-11-08T12:00:00.001Z")):
+                dict(admitted_at="2026-11-08T12:00:00Z", completed_at="2026-11-08T12:00:00.001000Z")):
             with self.subTest(interval=interval), self.assertRaises(ManagedVerificationSupportUnavailable):
                 require_postgres_readiness_evidence(binding, evidence, **interval)
 
@@ -104,7 +104,7 @@ class ManagedVerificationRouteTests(unittest.TestCase):
         profile = PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
         values["plan"] = replace(values["plan"], derivation_profile=profile,
             plan=derive_activity_plan(Deploy(*graphs), profile=profile))
-        original = OriginalPostgresReadinessRecordTests().supplied_records()
+        original = original_records.OriginalPostgresReadinessRecordTests().supplied_records()
         # This decoder is not invoked by route selection. Transit public trust
         # uses the separate existing health decoder owner, not HTTP sample keys.
         decoder = type("UnusedDecoder", (), {"decode": lambda *_: None})()
@@ -152,7 +152,7 @@ class ManagedVerificationRouteTests(unittest.TestCase):
 
     def prepared(self):
         """Supplied public records only; none claim current admission or signing."""
-        original = OriginalPostgresReadinessRecordTests().supplied_records()
+        original = original_records.OriginalPostgresReadinessRecordTests().supplied_records()
         binding = bind_original_postgres_readiness(**original)
         request = binding.request()
         values, support = self.inputs()

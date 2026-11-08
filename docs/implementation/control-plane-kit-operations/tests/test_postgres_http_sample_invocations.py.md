@@ -1,6 +1,13 @@
 Source: [test_postgres_http_sample_invocations.py](../../../../control-plane-kit-operations/tests/test_postgres_http_sample_invocations.py).
 Maintain this companion alongside its source.
 
+#2089 migrates the two preserved target-red laws through the current HTTP
+compiler/profile, declared registered consumer, connector/local-runtime records,
+actual admission owner, original Wait translation and reached-check preparation.
+The real rows retain exact role registration/reference/provider and replay;
+foreign checks create none. Existing fixture predecessor history is explicit,
+not provider delivery or SQL acceptance. Obsolete optional signing APIs are gone.
+
 The fixture reuses the existing real workspace introduction, registered products,
 compiled plan/approval, canonical predecessor journal, runtime authority and
 permission owners. It stops before the ordinary API WaitForHealthy step instead

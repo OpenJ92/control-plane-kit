@@ -19,9 +19,9 @@ from control_plane_kit_operations.secret_providers import (
     SecretUseAuthorizationService,
     SecretProviderRegistrationConflict,
 )
-from tests.test_secret_providers import SecretProviderStoreTests
-from tests.test_managed_verification_execution import ManagedVerificationRouteTests
-from tests.test_postgres_readiness_binding import OriginalPostgresReadinessRecordTests
+from tests import test_secret_providers as providers
+from tests import test_managed_verification_execution as managed_fixtures
+from tests import test_postgres_readiness_binding as original_fixtures
 from tests.test_postgres_http_sample_secret_uses import _SecondInsertFails
 from tests.health_receiver_trust_fixture import public_key
 
@@ -31,15 +31,15 @@ NOW = "2026-11-08T12:00:00Z"
 
 
 class PostgresReadinessUseTests(unittest.TestCase):
-    setUpDatabase = SecretProviderStoreTests.setUp
-    tearDown = SecretProviderStoreTests.tearDown
-    unit_of_work = SecretProviderStoreTests.unit_of_work
-    provider_command = SecretProviderStoreTests.provider_command
+    setUpDatabase = providers.SecretProviderStoreTests.setUp
+    tearDown = providers.SecretProviderStoreTests.tearDown
+    unit_of_work = providers.SecretProviderStoreTests.unit_of_work
+    provider_command = providers.SecretProviderStoreTests.provider_command
 
     def setUp(self):
         self.setUpDatabase()
-        supplied = ManagedVerificationRouteTests().prepared()
-        records = OriginalPostgresReadinessRecordTests().supplied_records()
+        supplied = managed_fixtures.ManagedVerificationRouteTests().prepared()
+        records = original_fixtures.OriginalPostgresReadinessRecordTests().supplied_records()
         self.context = dict(binding=supplied.binding, route=supplied.route,
             actor_subject="operator-a", session_id=records["request"].identity.session_id,
             requested_at=records["wait_original"].original_start_event.occurred_at,

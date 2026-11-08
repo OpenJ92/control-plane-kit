@@ -1,5 +1,9 @@
 Source: [postgres_health_effect_start_fixture.py](../../../../control-plane-kit-operations/tests/postgres_health_effect_start_fixture.py).
 
+#2089 allows a fixture to specify its actual recorded planning profile. The
+default management profile is unchanged; the HTTP fixture uses its real opt-in
+compiler/profile and public admission path rather than a ready-plan override.
+
 The shared first-start fixture now uses the receiver-trust helper to attach
 explicit pinned products and selected artifacts before graph validation and
 plan compilation, registers their descriptors through ProductRegistrationService,

@@ -44,7 +44,8 @@ class _ManagedPermissionStartFixture(PostgresHealthEffectStartFixture, Lifecycle
             runtime_id: replace(graph.runtimes[runtime_id],
                 authority_ref=RuntimeAuthorityReference("managed-docker"))}))
         desired.require_valid()
-        plan = compile_graph_activity_plan(current, desired)
+        compiler = getattr(self, "health_plan_compiler", compile_graph_activity_plan)
+        plan = compiler(current, desired)
         selected, = (item for item in plan.activities
             if type(item.operation) is type(original.operation)
             and item.operation.target.runtime_id == runtime_id
