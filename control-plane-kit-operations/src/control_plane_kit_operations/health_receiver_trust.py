@@ -13,6 +13,7 @@ from control_plane_kit_core.node_control import NodeControlGraphReference, NodeC
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationCodec
 from control_plane_kit_core.planning import PlanGraphSide
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductDescriptorDocument, ProductReference, ProductReferenceCodec
+from control_plane_kit_core.receiver_identity import NodeControlReceiverTarget, NodeControlReceiverTargetCodec
 
 
 class HealthReceiverTrustError(ValueError):
@@ -74,6 +75,7 @@ class GatewayHealthReceiverTrust:
     issuer: str
     audience: str
     public_keys: tuple[DelegationPublicKey, ...]
+    gateway_target: NodeControlReceiverTarget | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         try:
@@ -83,6 +85,11 @@ class GatewayHealthReceiverTrust:
             _reference(self.gateway_node_id, NodeControlGraphReferenceRole.NODE)
             _require(self.audience == f"gateway:{self.workspace_id.value}:{self.gateway_node_id.value}"
                      and len(self.audience) <= 265)
+            if self.gateway_target is not None:
+                _require(type(self.gateway_target) is NodeControlReceiverTarget)
+                NodeControlReceiverTargetCodec().encode(self.gateway_target)
+                _require((self.gateway_target.workspace_id, self.gateway_target.runtime_id, self.gateway_target.node_id)
+                    == (self.workspace_id, self.runtime_id, self.gateway_node_id))
             return
         except _INPUT_ERRORS:
             failure = HealthReceiverTrustError(_UNAVAILABLE)

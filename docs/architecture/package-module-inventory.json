@@ -2,6 +2,22 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.managed_verification_execution",
+      "destination": "control_plane_kit_operations.managed_verification_execution",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/managed_verification_execution.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "validation", "transformations"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": ["ManagedVerificationSupportUnavailable", "ManagedVerificationExecutionSupport", "PreparedPostgresReadinessCheck", "PreparedPostgresReadinessRoute", "select_postgres_readiness_route"],
+      "internal_dependencies": ["control_plane_kit_core.node_control", "control_plane_kit_core.configuration", "control_plane_kit_core.delegation_keys", "control_plane_kit_core.planning", "control_plane_kit_core.postgres_readiness", "control_plane_kit_core.products", "control_plane_kit_core.public_ingress", "control_plane_kit_core.receiver_configuration", "control_plane_kit_core.receiver_identity", "control_plane_kit_core.receiver_management_routes", "control_plane_kit_core.topology", "control_plane_kit_core.types", "control_plane_kit_core.receiver_health_reads", "control_plane_kit_core.receiver_health_transit", "control_plane_kit_core.secret_version_grants", "control_plane_kit_operations.health_effect_preparations", "control_plane_kit_operations.health_receiver_trust", "control_plane_kit_operations.health_signing_authority", "control_plane_kit_operations.http_sample_execution", "control_plane_kit_operations.http_sample_compatibility", "control_plane_kit_operations.plan_derivation", "control_plane_kit_operations.deployment_transitions", "control_plane_kit_operations.records"],
+      "known_package_consumers": [],
+      "optional_external_dependencies": [],
+      "protecting_tests": ["tests/test_managed_verification_execution.py"],
+      "motivation": "Original SQL route and supplied role congruence, with existing pinned registered route/transit owners; no issuance, dispatch or live SQL result."
+    },
+    {
       "module": "control_plane_kit_operations.postgres_readiness",
       "destination": "control_plane_kit_operations.postgres_readiness",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres_readiness.py",
@@ -13378,6 +13394,7 @@
         "control_plane_kit_core.delegation_keys",
         "control_plane_kit_core.node_control",
         "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.receiver_identity",
         "control_plane_kit_core.planning",
         "control_plane_kit_core.products"
       ],
