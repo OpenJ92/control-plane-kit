@@ -254,6 +254,14 @@ class ExecutionInvocationService:
     def http_sample_registration(self):
         return self._http_sample_registration
 
+    @property
+    def managed_verification_support(self):
+        return self._managed_verification_support
+
+    @property
+    def managed_verification_registration(self):
+        return self._managed_verification_registration
+
     def bind_health(self, *, command_context, start, started, managed_target):
         failed = False
         try:

@@ -13,9 +13,10 @@ interval and original Wait window. UTC comparisons have millisecond precision;
 the native observation uses the same worker/control clock. ExecutionEffectOutcome
 remains the durable owner; SQL is not an HTTP VerificationCompleted observation.
 
-Compiler SQL review and the unsupported-execution guard remain closed. This
-caller checkpoint and legacy/supplied-value tests cannot establish a normal
-new-profile positive; actual static/native composition and run evidence remain.
+The service exposes its exact managed support and registration for coordinator
+preflight. Static plan qualification cannot establish a normal new-profile
+positive or a committed SQL outcome; actual native composition and normal run
+evidence remain separately required.
 
 For an original sample plan, the bound parent exposes the exact configured
 support and a reference-only route read. The existing acquisition invocation

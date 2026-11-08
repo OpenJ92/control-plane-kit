@@ -220,12 +220,16 @@ class ExecutionAdmissionCommandService:
         policy: ApprovalPolicy | None = None,
         http_sample_support=None,
         http_sample_registration=None,
+        managed_verification_support=None,
+        managed_verification_registration=None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
         self._id_factory = id_factory
         self._policy = policy or ApprovalPolicy()
         self._http_sample_support, self._http_sample_registration = http_sample_support, http_sample_registration
+        self._managed_verification_support = managed_verification_support
+        self._managed_verification_registration = managed_verification_registration
 
     def execute(self, command: RequestPlanExecution) -> ExecutionAdmissionResult:
         fingerprint = _fingerprint(command)
@@ -289,6 +293,13 @@ class ExecutionAdmissionCommandService:
                     require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
                 except Exception:
                     raise ExecutionAdmissionDenied("HTTP sample execution admission is unavailable") from None
+            if plan.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1:
+                from control_plane_kit_operations.runtime_adapter_registration import require_managed_verification_execution_support
+                try:
+                    require_managed_verification_execution_support(self._managed_verification_support,
+                        self._managed_verification_registration)
+                except Exception:
+                    raise ExecutionAdmissionDenied("managed verification execution admission is unavailable") from None
             if not plan.plan.activities:
                 raise ExecutionAdmissionConflict(
                     "activity plan contains no executable changes"
@@ -389,8 +400,10 @@ class ExecutionAdmissionCommandService:
             )
             _require_receiver_execution_provenance(stores, workspace,
                 plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
-            if plan.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
+            if plan.derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
+                    PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1):
                 from control_plane_kit_operations.http_sample_execution import require_http_sample_plan_support
+                from control_plane_kit_operations.managed_verification_execution import require_managed_verification_plan_support
                 from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
                 try:
                     from control_plane_kit_operations.graph_authoring import product_references_in_graph
@@ -407,13 +420,18 @@ class ExecutionAdmissionCommandService:
                     if runtime_management_execution_is_unsupported(current, desired, plan.plan,
                             registered_products=products, derivation_profile=plan.derivation_profile):
                         raise ValueError
-                    require_http_sample_plan_support(workspace_id=command.workspace_id, plan=plan,
+                    mixed = plan.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+                    require_support = require_managed_verification_plan_support if mixed else require_http_sample_plan_support
+                    require_support(workspace_id=command.workspace_id, plan=plan,
                         current=stores.realized_graphs.get(base_projection_id),
                         desired=stores.realized_graphs.get(desired_projection_id), products=products,
                         runtime_authorities=authorities,
-                        support=self._http_sample_support)
+                        support=self._managed_verification_support if mixed else self._http_sample_support)
                 except Exception:
-                    raise ExecutionAdmissionDenied("HTTP sample execution admission is unavailable") from None
+                    message = ("managed verification execution admission is unavailable" if
+                        plan.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+                        else "HTTP sample execution admission is unavailable")
+                    raise ExecutionAdmissionDenied(message) from None
             if cleanup:
                 from control_plane_kit_operations.configuration_cleanup_planning import revalidate_cleanup_proposal
                 try:

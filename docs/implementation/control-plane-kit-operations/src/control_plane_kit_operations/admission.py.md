@@ -1,6 +1,12 @@
 Source: [admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/admission.py).
 Maintain this companion alongside its source.
 
+The separate SQL/HTTP bootstrap profile requires its actual shared native
+registration before request creation, then complete static qualification of
+every original Wait, registered runtime and selected product/route. Missing
+support refuses with bounded text before creating execution or secret-use rows.
+This is admission, not a successful SQL check or provider observation.
+
 The sample-bootstrap profile refuses by default before request creation. Its
 explicit composed arm requires the same actual registration/adapter support,
 the exact canonical fresh-owned original plan and registered products, an active

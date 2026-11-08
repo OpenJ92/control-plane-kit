@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.configuration import ConfigurationArtifactRequirement
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
-from control_plane_kit_core.planning import PlanGraphSide, WaitForHealthy
+from control_plane_kit_core.planning import PlanGraphSide, WaitForHealthy, StartNode, StartRuntime, NodeTarget
 from control_plane_kit_core.postgres_readiness import PostgresReadinessBinding, PostgresReadinessObserver
 from control_plane_kit_core.products import ProductReference
 from control_plane_kit_core.public_ingress import NamedPublicIngress, PublicIngressExposure
@@ -24,16 +24,20 @@ from control_plane_kit_core.receiver_health_read_results import ReceiverHealthRe
 from control_plane_kit_core.postgres_readiness import postgres_readiness_result_matches
 from control_plane_kit_core.receiver_health_transit import DelegatedGatewayReceiverHealthReadTransitGrant
 from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant
+from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secrets import SecretFileDelivery, SecretUseIntent
+from control_plane_kit_core.verification import HttpCheck, PostgresQueryCheck
 from control_plane_kit_operations.health_effect_preparations import health_effect_attempt_wire_id
 from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders, HealthReceiverDecoderBinding, HealthReceiverSelection, GatewayHealthReceiverTrust
 from control_plane_kit_operations.health_signing_authority import (
     GatewayNodeHealthReadTransitSigningAuthority, WorkloadNodeHealthReadSigningAuthority,
 )
-from control_plane_kit_operations.http_sample_execution import HttpSampleExecutionSupport
+from control_plane_kit_operations.http_sample_execution import HttpSampleExecutionSupport, select_http_sample_route
 from control_plane_kit_operations.http_sample_compatibility import _registered, _receiver, _qualified_artifact
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
 from control_plane_kit_operations.deployment_transitions import Deploy
-from control_plane_kit_operations.records import ActivityPlanRecord, RealizedGraphProjectionRecord, _canonical_timestamp_instant
+from control_plane_kit_operations.records import ActivityPlanRecord, ActivityPlanStatus, RealizedGraphProjectionRecord, _canonical_timestamp_instant
+from control_plane_kit_operations.runtime_authorities import RegisteredRuntimeAuthority, LocalDockerSocketAuthority
 
 
 class ManagedVerificationSupportUnavailable(ValueError):
@@ -289,5 +293,74 @@ def require_postgres_readiness_evidence(binding, evidence, *, admitted_at, compl
     return _checked(validate)
 
 
+def require_managed_verification_plan_support(*, workspace_id, plan, current, desired, products,
+        runtime_authorities, support):
+    """Every original Wait needs exact registered static coverage before execution.
+
+    Caller separately qualifies its actual registered consumer and current
+    permissions. Future installation receipts and secret bytes are not inputs.
+    """
+    def validate():
+        _require(type(support) is ManagedVerificationExecutionSupport and type(plan) is ActivityPlanRecord
+            and plan.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+            and plan.status is ActivityPlanStatus.PLANNED and plan.plan.ready_for_execution and type(runtime_authorities) is tuple
+            and all(type(value) is RegisteredRuntimeAuthority for value in runtime_authorities))
+        support.__post_init__()
+        graph = DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor)
+        starts = tuple(item.operation.target.runtime_id for item in plan.plan.activities if type(item.operation) is StartRuntime)
+        nodes = tuple(item.operation.target.node_id for item in plan.plan.activities if type(item.operation) is StartNode)
+        def authority_for(runtime_id):
+            runtime = graph.runtimes[runtime_id]
+            matches = tuple(value for value in runtime_authorities if value.workspace_id == workspace_id
+                and value.authority_ref == runtime.authority_ref and value.runtime_kind is RuntimeKind.DOCKER
+                and value.status.value == "active")
+            _require(runtime.kind is RuntimeKind.DOCKER and runtime.authority_ref is not None and len(matches) == 1)
+            return matches[0]
+        for runtime_id in starts:
+            authority_for(runtime_id)
+        waits = tuple(item for item in plan.plan.activities if type(item.operation) is WaitForHealthy)
+        _require(bool(waits))
+        sql = 0
+        for activity in waits:
+            _require(type(activity.operation.target) is NodeTarget)
+            node = graph.node(activity.operation.target.node_id)
+            _require(node.node_id in nodes and node.runtime_id in starts)
+            authority = authority_for(node.runtime_id)
+            checks = node.block_spec.verification.checks
+            if checks and all(type(check) is HttpCheck for check in checks):
+                route = select_http_sample_route(workspace_id=workspace_id, plan=plan, current=current,
+                    desired=desired, products=products, node_id=node.node_id, support=support.http_samples)
+                original = route.compatibility.receiver.verification_contract.checks
+                selected = tuple(item.check for item in route.compatibility.receiver.checks)
+                _require(len(selected) == len(original) and all(check in selected for check in original))
+            elif len(checks) == 1 and type(checks[0]) is PostgresQueryCheck:
+                _require(type(authority.authority) is LocalDockerSocketAuthority)
+                product = _registered(node, products, workspace_id)
+                observer = support.observer_for(product.reference)
+                contract = product.descriptor_document.product.runtime_contract
+                check, = checks
+                _require(product.descriptor_document.product.image == observer.image
+                    and check.provider_socket == observer.provider_socket and check.authentication is not None
+                    and (check.authentication.database, check.authentication.username) == (observer.database, observer.username)
+                    and tuple(port.container_port for port in contract.provider_ports
+                        if port.provider_socket == check.provider_socket) == (5432,))
+                deliveries = tuple(value for value in node.secret_deliveries if type(value) is SecretFileDelivery
+                    and value.reference == check.authentication.password_reference and value.intent is SecretUseIntent.POSTGRES_PASSWORD)
+                selections = tuple(value for value in node.secret_selections if type(value) is SecretVersionSelection
+                    and value.reference == check.authentication.password_reference and value.intent is SecretUseIntent.POSTGRES_PASSWORD)
+                _require(len(deliveries) == len(selections) == 1
+                    and deliveries[0] in contract.secret_deliveries and deliveries[0].target_path == observer.password_path
+                    and deliveries[0].path_binding is not None
+                    and deliveries[0].path_binding.environment_name == observer.password_environment_name)
+                select_postgres_readiness_route(workspace_id=workspace_id, plan=plan, current=current,
+                    desired=desired, products=products, node_id=node.node_id, support=support)
+                sql += 1
+            else:
+                raise ValueError
+        _require(sql > 0)
+    return _checked(validate)
+
+
 __all__ = ["ManagedVerificationSupportUnavailable", "ManagedVerificationExecutionSupport", "PreparedPostgresReadinessCheck",
-    "PreparedPostgresReadinessRoute", "select_postgres_readiness_route", "require_postgres_readiness_evidence"]
+    "PreparedPostgresReadinessRoute", "select_postgres_readiness_route", "require_postgres_readiness_evidence",
+    "require_managed_verification_plan_support"]

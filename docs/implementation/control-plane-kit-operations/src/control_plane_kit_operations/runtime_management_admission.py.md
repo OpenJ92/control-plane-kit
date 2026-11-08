@@ -1,6 +1,10 @@
 Source: [runtime_management_admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_admission.py).
 Maintain this companion alongside its source.
 
+The SQL/HTTP profile shares the canonical fresh-owned shape classifier, while
+admission/coordinator separately require full registered native support. The
+classifier alone grants no execution or successful check evidence.
+
 The sample-bootstrap profile is checked before legacy no-management/empty
 exemptions. Only its nonempty, ready, canonical fresh-owned initial shape with
 exact registered product declarations is structurally supported. This pure

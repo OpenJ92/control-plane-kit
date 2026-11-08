@@ -1170,7 +1170,8 @@ class ExecutionCoordinator:
         if guarded is not None:
             return guarded
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
-        if (context.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1
+        if (context.plan_record.derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
+                    PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1)
                 and context.run.status is not ActivityRunStatus.RUNNING):
             return None
         expected = tuple(activity.activity_id for activity in context.plan.activities
@@ -2323,21 +2324,30 @@ class ExecutionCoordinator:
             return None
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
         sample_supported = True
-        if context.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
+        if context.plan_record.derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
+                PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1):
             try:
                 from control_plane_kit_operations.http_sample_execution import require_http_sample_plan_support
                 from control_plane_kit_operations.runtime_adapter_registration import require_http_sample_execution_support
+                from control_plane_kit_operations.managed_verification_execution import require_managed_verification_plan_support
+                from control_plane_kit_operations.runtime_adapter_registration import require_managed_verification_execution_support
                 dispatcher = self._adapter.runtime if type(self._adapter) is ActivityExecutionDispatcher else self._adapter
                 if (not managed_execution or self._permission_policy is None
                         or type(self._invocation_service) is not ExecutionInvocationService
                         or type(dispatcher) is not RuntimeInterpreterDispatcher):
                     raise ValueError
                 registration = dispatcher.interpreters.get(RuntimeKind.DOCKER)
-                if registration is not self._invocation_service.http_sample_registration:
+                mixed = context.plan_record.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+                expected_registration = (self._invocation_service.managed_verification_registration if mixed
+                    else self._invocation_service.http_sample_registration)
+                if registration is not expected_registration:
                     raise ValueError
-                support = self._invocation_service.http_sample_support
-                require_http_sample_execution_support(support, registration)
-                require_http_sample_plan_support(workspace_id=context.request.identity.workspace_id,
+                support = (self._invocation_service.managed_verification_support if mixed
+                    else self._invocation_service.http_sample_support)
+                require_execution = require_managed_verification_execution_support if mixed else require_http_sample_execution_support
+                require_execution(support, registration)
+                require_plan = require_managed_verification_plan_support if mixed else require_http_sample_plan_support
+                require_plan(workspace_id=context.request.identity.workspace_id,
                     plan=context.plan_record, current=context.base_graph, desired=context.desired_graph,
                     products=context.registered_products, runtime_authorities=context.runtime_authorities,
                     support=support)
