@@ -1,6 +1,15 @@
 Source: [cpk_server.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py).
 Maintain this companion alongside its source.
 
+#2091 routes the bounded public pinned-product preview to its Operations owner
+under workspace read. Existing draft-create accepts either `graph` or
+`product_recipe` plus `expected_proposal_commitment`; recipe input is closed,
+edit-authorized and compiled owner-side before passing to the unchanged draft
+transaction. Recipe revision is excluded from this first slice. Composition
+wires the resolver, while explicit older service construction remains valid
+for existing raw graph callers. The save result remains workspace/draft/revision/
+graph coordinates, without implied selection, deployment or a full graph hash.
+
 #2041 treats only the canonical `read.workspaces`/READS pair as an inventory
 entrance. It requires an operator and explicitly selected exact durable-only
 resolver; static/intersection/unsupported compositions return 503. Each public

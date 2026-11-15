@@ -173,6 +173,7 @@ class AdapterParityContractTests(unittest.TestCase):
                     "PlanRunsReadResponse",
                 ),
                 ("read.product-detail", "read.product-detail", "get_registered_product", "RegisteredProductDetailReadResponse"),
+                ("read.product-topology-preview", "read.product-topology-preview", "preview_product_topology", "ProductTopologyPreviewResponse"),
                 ("read.products", "read.products", "list_registered_products", "RegisteredProductsReadResponse"),
                 (
                     "read.receiver-authoring-context",

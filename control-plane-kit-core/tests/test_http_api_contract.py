@@ -102,6 +102,7 @@ class HttpApiContractTests(unittest.TestCase):
                     "GET",
                     "/workspaces/{workspace_id}/sessions/{session_id}/plans",
                 ),
+                ("POST", "/workspaces/{workspace_id}/topology-authoring/preview"),
                 ("GET", "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}"),
             ],
         )
@@ -214,6 +215,7 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/sessions/{session_id}/actions",
                 "/workspaces/{workspace_id}/sessions/{session_id}/approvals",
                 "/workspaces/{workspace_id}/sessions/{session_id}/plans",
+                "/workspaces/{workspace_id}/topology-authoring/preview",
                 "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}",
             ],
         )
@@ -251,12 +253,19 @@ class HttpApiContractTests(unittest.TestCase):
         with self.assertRaises(InvalidHttpApiContract):
             HttpApiRouteContract(
                 route_id="read.bad",
-                method=HttpMethod.POST,
+                method=HttpMethod.DELETE,
                 path_template="/workspaces/{workspace_id}",
                 service_role=ControlPlaneServiceRole.READS,
                 auth_scope=HttpAuthScope.READ,
                 safety=HttpOperationSafety.READ_ONLY,
             )
+
+        preview = next(route for route in operator_read_http_routes()
+            if route.route_id == "read.product-topology-preview")
+        self.assertEqual(HttpApiRouteContract.from_descriptor(preview.descriptor()), preview)
+        with self.assertRaises(InvalidHttpApiContract):
+            HttpApiRouteContract.from_descriptor({**preview.descriptor(),
+                "service_role": "authorization", "auth_scope": "admin"})
 
         with self.assertRaises(InvalidHttpApiContract):
             HttpApiRouteContract(

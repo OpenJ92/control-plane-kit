@@ -289,6 +289,25 @@ compatibility surfaces.
 
 ## Saved topology catalogue (#1762–#1763)
 
+#2091 adds source-level `read.product-topology-preview`: read-only POST
+`/workspaces/{workspace_id}/topology-authoring/preview` and MCP
+`preview_product_topology`. The public recipe pins registered product documents;
+Operations compiles and validates without saving a graph, session or identity.
+The bounded response exposes a normalized public recipe and graph allowlist plus
+a versioned public proposal commitment, not canonical graph bytes. Fixed
+verification values are excluded from both the preview and commitment preimage.
+Graph projections, including saved revisions, expose only verification kind,
+check ID and provider socket. Directory lists and user-defined node IDs retain
+their existing interpretation.
+
+Draft create also accepts `product_recipe` and `expected_proposal_commitment`
+as an alternative to `graph`; raw graph callers and the four-coordinate receipt
+remain supported. A current editor saves the owner-compiled graph through the
+existing draft transaction. Selection and deployment remain separate. The first
+MCP caller sends session start and save once; lost replies remain unknown, with
+no automatic replay or new recovery endpoint. Actual Servers transport, SDK
+exposure and installed adoption require their owning qualification.
+
 Authenticated workspace operators can save alternative desired-topology designs
 without changing either workspace graph pointer. Operations owns the named draft
 and append-only revision catalogue; each revision references an immutable Core

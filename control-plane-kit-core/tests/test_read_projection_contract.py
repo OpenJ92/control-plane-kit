@@ -335,6 +335,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 ("read.product-detail", ReadProjectionKind.REGISTERED_PRODUCT_DETAIL, "RegisteredProductDetailReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, True, False),
+                ("read.product-topology-preview", ReadProjectionKind.PRODUCT_TOPOLOGY_PREVIEW, "ProductTopologyPreviewResponse", ReadProjectionPolicy.PUBLIC_PRODUCT_TOPOLOGY_PROPOSAL, True, False),
                 ("read.products", ReadProjectionKind.REGISTERED_PRODUCTS, "RegisteredProductsReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, True, True),
                 (
                     "read.receiver-authoring-context",

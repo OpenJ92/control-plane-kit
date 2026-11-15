@@ -156,8 +156,8 @@ class HttpApiRouteContract:
             raise InvalidHttpApiContract("errors must be HttpErrorContract")
 
         if self.safety is HttpOperationSafety.READ_ONLY:
-            if self.method is not HttpMethod.GET:
-                raise InvalidHttpApiContract("read-only routes must use GET")
+            if self.method not in {HttpMethod.GET, HttpMethod.POST}:
+                raise InvalidHttpApiContract("read-only routes must use GET or an explicit POST query")
             if (self.service_role, self.auth_scope) not in {
                 (ControlPlaneServiceRole.READS, HttpAuthScope.READ),
                 (ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN),
@@ -165,6 +165,9 @@ class HttpApiRouteContract:
                 raise InvalidHttpApiContract(
                     "read-only routes require reads/read or authorization/admin"
                 )
+            if self.method is HttpMethod.POST and (self.service_role, self.auth_scope) != (
+                    ControlPlaneServiceRole.READS, HttpAuthScope.READ):
+                raise InvalidHttpApiContract("read-only POST queries require reads/read")
         elif self.safety is HttpOperationSafety.COMMAND:
             if self.method is HttpMethod.GET:
                 raise InvalidHttpApiContract("command routes must not use GET")
@@ -494,6 +497,7 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
             ),
             ("read.products", "/workspaces/{workspace_id}/products", "RegisteredProductsReadResponse"),
             ("read.product-detail", "/workspaces/{workspace_id}/products/{descriptor_sha256}", "RegisteredProductDetailReadResponse"),
+            ("read.product-topology-preview", "/workspaces/{workspace_id}/topology-authoring/preview", "ProductTopologyPreviewResponse"),
             (
                 "read.secret-providers",
                 "/workspaces/{workspace_id}/secret-providers",
@@ -1014,16 +1018,18 @@ def _read_route(
 ) -> HttpApiRouteContract:
     return HttpApiRouteContract(
         route_id=route_id,
-        method=HttpMethod.GET,
+        method=HttpMethod.POST if route_id == "read.product-topology-preview" else HttpMethod.GET,
         path_template=path_template,
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
-        request_schema=HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384)
+        request_schema=HttpSchemaRef("ProductTopologyPreviewRequest", max_bytes=1048576)
+        if route_id == "read.product-topology-preview" else HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384)
         if route_id == "read.workspaces" else HttpSchemaRef("ReceiverAuthoringContextReadRequest", max_bytes=16384)
         if route_id == "read.receiver-authoring-context" else HttpSchemaRef("EmptyRequest", max_bytes=1024),
         response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
             "read.receiver-authoring-context",
+            "read.product-topology-preview",
             "read.workspaces",
             "read.products", "read.product-detail",
             "read.desired-topology-draft-revision-preparations",
@@ -1049,7 +1055,8 @@ def _command_route(
         service_role=service_role,
         auth_scope=auth_scope,
         safety=safety,
-        request_schema=HttpSchemaRef(request_schema, max_bytes=98304
+        request_schema=HttpSchemaRef(request_schema, max_bytes=1048576
+            if route_id == "command.desired-topology-draft.create" else 98304
             if route_id == "command.secret-material.provision" else 65536),
         response_schema=HttpSchemaRef(response_schema),
         errors=HttpErrorContract(statuses=(400, 401, 403, 404, 409, 413, 503))

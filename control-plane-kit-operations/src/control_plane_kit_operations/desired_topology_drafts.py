@@ -34,6 +34,19 @@ class DesiredTopologyDraftConflict(DesiredTopologyDraftError):
     """Saved intent conflicts with existing action evidence or draft head."""
 
 
+def bounded_draft_graph_descriptor(graph: DeploymentGraph) -> dict[str, object]:
+    """The draft owner's exact codec and JSONB transport-size admission."""
+    try:
+        descriptor = DEFAULT_GRAPH_CODEC.encode(graph)
+        encoded = json.dumps(descriptor, ensure_ascii=False, allow_nan=False)
+        # JSONB transport uses spaces after separators; reject before storage.
+        if len(encoded.encode("utf-8")) > 1_048_576:
+            raise ValueError
+        return descriptor
+    except (TypeError, ValueError, AttributeError, RecursionError, OverflowError):
+        raise DesiredTopologyDraftError("draft graph must be a bounded graph descriptor") from None
+
+
 def _text(value: object, name: str) -> None:
     if (type(value) is not str or not value.strip() or len(value) > 512
             or any(unicodedata.category(c).startswith("C") for c in value)):
@@ -221,14 +234,7 @@ class DesiredTopologyDraftCommandService:
             _text(command.draft_id, "draft_id")
             if type(command.expected_head_revision) is not int or not 1 <= command.expected_head_revision < 9_223_372_036_854_775_807:
                 raise DesiredTopologyDraftError("expected head revision must be positive and bounded")
-        try:
-            descriptor = DEFAULT_GRAPH_CODEC.encode(command.graph)
-            encoded = json.dumps(descriptor, ensure_ascii=False, allow_nan=False)
-            # JSONB transport uses spaces after separators; reject before storage.
-            if len(encoded.encode("utf-8")) > 1_048_576:
-                raise ValueError
-        except (TypeError, ValueError, AttributeError):
-            raise DesiredTopologyDraftError("draft graph must be a bounded graph descriptor") from None
+        descriptor = bounded_draft_graph_descriptor(command.graph)
         kind = (OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT if creating
                 else OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT)
         intent = {"kind": kind.value, "context": context.descriptor(), "session_id": command.session_id,

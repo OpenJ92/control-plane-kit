@@ -12,7 +12,7 @@ from control_plane_kit_core.topology import (
 )
 from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
 
-from ._redaction import _redact_descriptor_value
+from ._redaction import _redact_descriptor_value, public_verification_shape
 from .errors import ReadModelError
 from .protocols import GraphTopologyStore, WorkspaceStore
 
@@ -434,7 +434,24 @@ def _list(value: object) -> list[object]:
 
 
 def _redact_graph_descriptor(descriptor: Mapping[str, object]) -> dict[str, object]:
+    # Verification contracts are graph fields, not arbitrary keys in directory
+    # projections, history, metadata, or the user-defined nodes mapping.
+    value = dict(descriptor)
+    if isinstance(value.get("nodes"), Mapping):
+        nodes = {}
+        for role, original in value["nodes"].items():
+            node = dict(original) if isinstance(original, Mapping) else original
+            if isinstance(node, dict):
+                if "verification" in node:
+                    node["verification"] = public_verification_shape(node["verification"])
+                if isinstance(node.get("block_spec"), Mapping):
+                    block = dict(node["block_spec"])
+                    if "verification" in block:
+                        block["verification"] = public_verification_shape(block["verification"])
+                    node["block_spec"] = block
+            nodes[role] = node
+        value["nodes"] = nodes
     return {
         str(key): _redact_descriptor_value(str(key), value)
-        for key, value in sorted(descriptor.items())
+        for key, value in sorted(value.items())
     }

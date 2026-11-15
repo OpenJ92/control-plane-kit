@@ -1066,6 +1066,7 @@ _OPERATOR_READ_PROJECTIONS = (
     ),
     ("read.products", "read.products", "list_registered_products", "RegisteredProductsReadResponse"),
     ("read.product-detail", "read.product-detail", "get_registered_product", "RegisteredProductDetailReadResponse"),
+    ("read.product-topology-preview", "read.product-topology-preview", "preview_product_topology", "ProductTopologyPreviewResponse"),
     (
         "read.secret-providers",
         "read.secret-providers",
