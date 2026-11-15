@@ -1,6 +1,14 @@
 Source: [health_receiver_trust.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/health_receiver_trust.py).
 Maintain this companion alongside its source.
 
+#2089 appends an optional keyword-only full `gateway_target` to transient gateway
+trust. Legacy seven-argument construction and decoders remain valid. When supplied,
+its exact receiver type and workspace/runtime/node must match the existing fields.
+SQL route selection additionally requires equality with the selected relay and
+own-control receiver, including provider socket and receiver ID. No stored codec
+or replay fingerprint is changed. A newer Servers decoder supplying this keyword
+must be composed with this updated Operations type.
+
 The two immutable, redacted results describe configured receiver acceptance. Gateway transit facts contain workspace/gateway/runtime/issuer/purpose/audience/public keys; workload own-health instead carries the complete target and surface declaration. Both retain exact nominal Core identity, reconstructed nested values, exact-string key scalars,1–16 distinct Ed25519 key IDs/material and derived audience. A receiver may accept rotation overlap while Operations independently selects its current active signer. Repr omits configured material and no public serializer is added.
 
 HealthReceiverSelection retains original authored/realized pins, graph side, receiver/runtime/socket, canonical registered descriptor/reference and actual selected artifact. Reconstruction validates fields whose normal equality omits content, including artifact bytes/digest. Descriptor defaults establish slot provenance, not deployed receiver identity or key material.

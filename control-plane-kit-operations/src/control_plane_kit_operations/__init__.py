@@ -448,6 +448,7 @@ from .planning import (
     DesiredGraphSessionConflict,
     DesiredGraphWorkspaceNotFound,
     RequestActivityPlan,
+    HttpVerificationPlanningIntent,
     SetDesiredGraph,
     StaleDesiredGraph,
 )
@@ -1186,6 +1187,7 @@ __all__ = [
     "RequestApproval",
     "RequestGatewayKeyRotationApproval",
     "RequestActivityPlan",
+    "HttpVerificationPlanningIntent",
     "RequestPlanExecution",
     "RecoveryAuthority",
     "RequestGatewayProbe",

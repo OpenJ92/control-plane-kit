@@ -1,6 +1,13 @@
 Source: [current_schema_contract.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema_contract.py).
 Maintain this companion alongside its source.
 
+#1815 changes only the exact expressions for signing-purpose and secret-use
+intent constraints to admit the two HTTP-sample families. Relation, column,
+constraint, index and foreign-key counts do not change. The prospective metadata
+and SQL byte fingerprints are pinned together and independently checked against
+actual PostgreSQL by the owning schema suite. Installation policy stays
+fresh/exact-only; no schema migration or historical authorization rewrite occurs.
+
 The frozen semantic contract mirrors the complete fresh SQL, including health
 preparations, managed command receipt provenance and graph receiver storage:
 43 relations, 549 columns, 440 constraints, 142 indexes and 110 foreign keys.

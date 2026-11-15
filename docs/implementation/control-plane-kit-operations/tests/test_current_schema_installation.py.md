@@ -1,5 +1,13 @@
 Source: [test_current_schema_installation.py](../../../../control-plane-kit-operations/tests/test_current_schema_installation.py).
 
+#1815 extends the existing owner witnesses to both HTTP-sample signing families:
+fresh-row admission and query-only exact reentry; prior constraint definitions
+refused with rows, catalogue and object identities intact and no installer DDL;
+unknown vocabulary and unchanged rotation restrictions. The prospective hash
+test substitutes exactly two expressions; it is source-authoring evidence until
+the independent actual catalogue/SQL fingerprint tests pass. Only the suite's
+isolated owned databases are changed by these tests.
+
 #2057 adds seven focused fresh-only methods to the existing schema owner suite.
 They require exact-boolean options before connection access, empty creation,
 occupied-current and representative table/sequence/view/function refusal without

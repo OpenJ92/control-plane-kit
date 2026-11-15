@@ -18,6 +18,7 @@ from control_plane_kit_core.secrets import (
     SecretReference,
     SecretUseIntent,
     health_signing_intent_for,
+    http_verification_sample_signing_intent_for,
 )
 from control_plane_kit_operations.secret_providers import SecretProviderNotFound
 
@@ -319,6 +320,11 @@ class DelegationSigningKeyRegistrationService:
 
 def _registration_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
     if type(purpose) is DelegationKeyPurpose:
+        if purpose in (
+            DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE,
+            DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT,
+        ):
+            return http_verification_sample_signing_intent_for(purpose)
         if purpose in (
             DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
             DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT,

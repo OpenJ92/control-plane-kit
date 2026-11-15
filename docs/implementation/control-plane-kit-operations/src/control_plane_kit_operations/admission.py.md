@@ -1,6 +1,27 @@
 Source: [admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/admission.py).
 Maintain this companion alongside its source.
 
+The separate SQL/HTTP bootstrap profile requires its actual shared native
+registration before request creation, then complete static qualification of
+every original Wait, registered runtime and selected product/route. Missing
+support refuses with bounded text before creating execution or secret-use rows.
+This is admission, not a successful SQL check or provider observation.
+
+The sample-bootstrap profile refuses by default before request creation. Its
+explicit composed arm requires the same actual registration/adapter support,
+the exact canonical fresh-owned original plan and registered products, an active
+registered Docker placement, and the route/trust/named ingress covering every
+original workload wait and all its original HTTP checks. Compatibility errors
+remain fixed refusals. There are no signing-use rows, secret reads or provider
+effects in this admission; the reached-check owner establishes current authority.
+Only distinct exact product and runtime-authority identities referenced by the
+pinned graph are loaded and fenced with the existing point lookups. Active
+status is required; unrelated workspace catalogs are not materialized. Every
+runtime started by the fresh plan, including bootstrap-only runtimes without
+sample checks, must match its exact authority's kind/reference and Docker dispatch.
+Existing session/workspace/plan ownership checks precede the profile-specific
+refusal, so unrelated plan IDs do not disclose their profile through that denial.
+
 Execution admission retains its existing plan/session/workspace lineage,
 permission, approval, risk and readiness checks inside the caller-owned
 transaction. Recording a plan derivation profile grants no new authority.

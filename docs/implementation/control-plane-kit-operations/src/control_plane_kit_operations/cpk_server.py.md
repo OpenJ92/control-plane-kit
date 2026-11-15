@@ -1,6 +1,11 @@
 Source: [cpk_server.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py).
 Maintain this companion alongside its source.
 
+#2093 integrates the selected SQL/HTTP sampling and managed-verification
+entrances with #2091 authoring. Direct planning and composed preparation retain
+both typed verification intent mappers; preview/save retain their existing
+workspace read/edit checks. No new installation or execution authority follows.
+
 #2091 routes the bounded public pinned-product preview to its Operations owner
 under workspace read. Existing draft-create accepts either `graph` or
 `product_recipe` plus `expected_proposal_commitment`; recipe input is closed,
@@ -9,6 +14,12 @@ transaction. Recipe revision is excluded from this first slice. Composition
 wires the resolver, while explicit older service construction remains valid
 for existing raw graph callers. The save result remains workspace/draft/revision/
 graph coordinates, without implied selection, deployment or a full graph hash.
+
+#2088 maps one canonical optional `http_verification_intent` at both direct plan
+and composed prepare entrances. Absence is preserved; present null/unknown/raw
+profile override refuses with bounded 400 before the service call. The mapper
+produces the typed intent and leaves profile/history selection to Operations.
+Servers client/journal and public composition qualification remain separate.
 
 #2041 treats only the canonical `read.workspaces`/READS pair as an inventory
 entrance. It requires an operator and explicitly selected exact durable-only

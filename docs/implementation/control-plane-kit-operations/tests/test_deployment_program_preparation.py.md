@@ -1,6 +1,13 @@
 Source: [test_deployment_program_preparation.py](../../../../control-plane-kit-operations/tests/test_deployment_program_preparation.py).
 Maintain this companion alongside its source.
 
+#2088 binds an optional typed HTTP sample planning intent into parent preparation
+identity and the forwarded plan. Omitted/explicit same-key changes conflict in
+both directions, with exact replay and no extra durable rows. This is planning
+only and does not grant execution or prove Servers client/journal propagation.
+An explicit same-graph sample request is review-blocked, while omitted same-graph
+preparation retains no-changes; neither requests approval.
+
 Existing tests use real PostgreSQL services to protect composed preparation,
 plan/approval/no-change results, interruption/replay and bounded failures. #1875
 adds exact caller-proposed graph identity through persisted graph, plan and

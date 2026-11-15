@@ -1,6 +1,20 @@
 Source: [coordinator.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py).
 Maintain this companion alongside its source.
 
+The SQL/HTTP bootstrap preflight compares the actual Docker dispatcher
+registration by identity with the invocation service's managed registration,
+then rechecks complete static plan coverage. A mismatch refuses before provider
+dispatch. The original reached-check owner still governs per-check authority,
+receipt provenance and completion; static support grants none of those facts.
+
+Original sample plans require the actual dispatcher Docker registration to be
+the same one held by ExecutionInvocationService, with the exact same support
+consumed by the native adapter. Every original wait/route/check and registered
+runtime placement is revalidated before any fresh gateway or ingress effect.
+Plain worker execution without the managed current-authority path refuses.
+Missing capability preserves original terminal, uncertain and in-flight state;
+it cannot relabel completed history or permit a fresh private fallback.
+
 The coordinator composes persisted execution intent, scheduling, effect-attempt
 services, and existing lifecycle services. `_classify_current` is effectful: a
 finished schedule can write run completion or failure. Runtime-management

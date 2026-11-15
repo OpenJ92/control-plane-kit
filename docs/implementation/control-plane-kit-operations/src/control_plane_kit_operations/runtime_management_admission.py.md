@@ -1,6 +1,17 @@
 Source: [runtime_management_admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_admission.py).
 Maintain this companion alongside its source.
 
+The SQL/HTTP profile shares the canonical fresh-owned shape classifier, while
+admission/coordinator separately require full registered native support. The
+classifier alone grants no execution or successful check evidence.
+
+The sample-bootstrap profile is checked before legacy no-management/empty
+exemptions. Only its nonempty, ready, canonical fresh-owned initial shape with
+exact registered product declarations is structurally supported. This pure
+predicate never supplies authority: admission and coordinator separately require
+the actual registered sample consumer and full original route/check coverage.
+Other recorded profiles preserve their prior interpretation and guard path.
+
 The fresh planning predicate accepts a validated deployment transition, with no
 supplied plan, profile, or ready flag. It first parses every node in both snapshots
 using graph_authoring's authoritative per-node extractor. A second pure call to
