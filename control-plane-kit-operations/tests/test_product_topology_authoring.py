@@ -161,6 +161,8 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         product = replace(self.documents["hello"].product, display_name="A different registered revision")
         document = ProductDescriptorCodec().encode_document(product)
         with self.unit_of_work() as uow:
+            uow.stores.registered_products.revoke("workspace-a",
+                ProductTopologyRecipe.decode(original["recipe"]).instances[0].reference)
             registered = uow.stores.registered_products.register(workspace_id="workspace-a", descriptor_document=document,
                 source=InlineDescriptorSource(), imported_by="operator-a", imported_at=NOW)
             uow.commit()
@@ -307,7 +309,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         # Size the real canonical graph, not a fixture estimate. Fixed checks
         # enlarge compiled bytes without expanding the public input recipe.
         for count in range(10, 101, 10):
-            product = replace(self.documents["hello"].product, runtime_contract=replace(
+            product = replace(self.documents["hello"].product, identity=ProductIdentity("authoring-example", "large", 1), runtime_contract=replace(
                 self.documents["hello"].product.runtime_contract,
                 verification=VerificationContract(checks=tuple(HttpCheck(check_id="check-" + str(i),
                     provider_socket="internal", path="/" + "x" * 254) for i in range(count)))))
@@ -386,3 +388,19 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         self.assertEqual(node["verification"], node["block_spec"]["verification"])
         self.assertEqual(node["metadata"]["verification"], "ordinary-value")
         self.assertIn(PRIVATE_PATH, json.dumps(descriptor))
+
+    def test_neighboring_current_and_desired_graph_reads_hide_the_same_verification_canary(self):
+        # Independent disposable fixture: these pointer assignments are setup
+        # for read projection evidence, not part of save-only behavior.
+        saved = self.save(self.preview())
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.set_current_graph("workspace-a", saved["graph_id"])
+            uow.stores.workspaces.set_desired_graph("workspace-a", saved["graph_id"])
+            uow.commit()
+        for route in ("read.current-graph", "read.desired-graph"):
+            response = self.read(route)
+            self.assertEqual(response["graph_id"], saved["graph_id"])
+            self.assertNotIn(PRIVATE_PATH, json.dumps(response))
+            node = response["graph_descriptor"]["nodes"]["hello"]
+            self.assertEqual(node["block_spec"]["verification"],
+                {"checks": [{"kind": "http", "check_id": "live", "provider_socket": "internal"}]})
