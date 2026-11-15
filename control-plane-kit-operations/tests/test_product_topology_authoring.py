@@ -25,6 +25,7 @@ from control_plane_kit_operations.product_topology_authoring import (
     public_product_topology_graph, public_proposal_commitment,
 )
 from control_plane_kit_operations.products import InlineDescriptorSource
+from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftError, bounded_draft_graph_descriptor
 from control_plane_kit_operations.read_services.workspace_graph import _redact_graph_descriptor
 from control_plane_kit_operations.workflows import CloseOperationSession, IdempotencyKey, OperationCommandService
 
@@ -154,6 +155,21 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         self.assertNotEqual(DEFAULT_GRAPH_CODEC.encode(graph), DEFAULT_GRAPH_CODEC.encode(changed))
         self.assertEqual(public_product_topology_graph(graph), public_product_topology_graph(changed))
         self.assertEqual(public_proposal_commitment(recipe, graph), public_proposal_commitment(recipe, changed))
+
+    def test_changed_registered_pin_is_part_of_the_public_commitment(self):
+        original = self.preview()
+        product = replace(self.documents["hello"].product, display_name="A different registered revision")
+        document = ProductDescriptorCodec().encode_document(product)
+        with self.unit_of_work() as uow:
+            registered = uow.stores.registered_products.register(workspace_id="workspace-a", descriptor_document=document,
+                source=InlineDescriptorSource(), imported_by="operator-a", imported_at=NOW)
+            uow.commit()
+        recipe = self.recipe()
+        recipe["nodes"][0]["product"] = registered.reference.descriptor()
+        changed = self.preview(recipe)
+        self.assertNotEqual(changed["proposal_commitment"], original["proposal_commitment"])
+        self.assertEqual(changed["graph_descriptor"]["nodes"]["hello"]["metadata"]["product_descriptor_digest"],
+            registered.reference.descriptor()["descriptor_sha256"])
 
     def test_save_returns_exact_revision_and_preserves_runtime_pins_edge_and_history(self):
         preview = self.preview()
@@ -285,15 +301,58 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 self.assertLessEqual(len(str(error.exception)), 512)
                 self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
 
-    def test_compiled_graph_has_its_own_bound(self):
+    def test_preview_and_save_share_exact_owner_graph_bound_beyond_compact_json(self):
         recipe = self.recipe()
-        node = recipe["nodes"][0]
-        node["configuration"]["public_environment"][0]["value"] = "x" * 16384
-        recipe["nodes"] = [{**deepcopy(node), "role_id": "hello-" + str(i)} for i in range(32)]
         recipe["connections"] = []
+        # Size the real canonical graph, not a fixture estimate. Fixed checks
+        # enlarge compiled bytes without expanding the public input recipe.
+        for count in range(10, 101, 10):
+            product = replace(self.documents["hello"].product, runtime_contract=replace(
+                self.documents["hello"].product.runtime_contract,
+                verification=VerificationContract(checks=tuple(HttpCheck(check_id="check-" + str(i),
+                    provider_socket="internal", path="/" + "x" * 254) for i in range(count)))))
+            document = ProductDescriptorCodec().encode_document(product)
+            def compile_value(value):
+                blocks = tuple(instantiate_catalog_product(ProductCatalog.from_documents((document,)), product.identity,
+                    role_id="hello-" + str(i), configuration=ProductInstanceConfiguration(public_environment=(
+                        PublicStaticEnvironmentBinding("HELLO_MESSAGE", value),))) for i in range(32))
+                return compile_topology(DeploymentTopology(recipe["name"], DockerRuntime(
+                    runtime_id="demo-docker", network_name="demo-net", children=blocks)))
+            graph = compile_value("")
+            compact = len(json.dumps(DEFAULT_GRAPH_CODEC.encode(graph), sort_keys=True,
+                separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode("ascii"))
+            if compact >= 650000:
+                break
+        self.assertLess(compact, 1048576)
+        descriptor = DEFAULT_GRAPH_CODEC.encode(graph)
+        storage = len(json.dumps(descriptor, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+        padding = (1048576 - (storage - compact) // 2 - compact) // 32
+        self.assertTrue(0 < padding <= 16384)
+        graph = compile_value("x" * padding)
+        descriptor = DEFAULT_GRAPH_CODEC.encode(graph)
+        compact = len(json.dumps(descriptor, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=True, allow_nan=False).encode("ascii"))
+        storage = len(json.dumps(descriptor, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+        self.assertLess(compact, 1048576)
+        self.assertGreater(storage, 1048576)
+        with self.assertRaisesRegex(DesiredTopologyDraftError, "bounded graph descriptor"):
+            bounded_draft_graph_descriptor(graph)
+        with self.unit_of_work() as uow:
+            registered = uow.stores.registered_products.register(workspace_id="workspace-a", descriptor_document=document,
+                source=InlineDescriptorSource(), imported_by="operator-a", imported_at=NOW)
+            uow.commit()
+        node = recipe["nodes"][0]
+        node["product"] = registered.reference.descriptor()
+        node["configuration"]["public_environment"][0]["value"] = "x" * padding
+        recipe["nodes"] = [{**deepcopy(node), "role_id": "hello-" + str(i)} for i in range(32)]
         self.assertLess(len(json.dumps(recipe).encode()), 1048576)
+        commitment = public_proposal_commitment(ProductTopologyRecipe.decode(recipe), graph)
+        before = self.catalogue_truth()
         with self.assertRaises(CpkServerApplicationError):
             self.preview(recipe)
+        with self.assertRaises(CpkServerApplicationError):
+            self.save({"recipe": recipe, "proposal_commitment": commitment})
+        self.assertEqual(self.catalogue_truth(), before)
 
     def test_exact_saved_revision_hides_fixed_verification_and_keeps_role_named_verification(self):
         document = self.documents["hello"]
@@ -309,7 +368,9 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         self.assertNotIn("verification", node)
         self.assertEqual(node["block_spec"]["verification"],
             {"checks": [{"kind": "http", "check_id": "live", "provider_socket": "internal"}]})
-        directory = self.read("read.product-detail", descriptor_sha256=self.references["hello"]["descriptor_sha256"])
+        directory = CpkServerReadService(self.unit_of_work).handle(CatalogueRequest("http", "read.product-detail",
+            ControlPlaneServiceRole.READS, {"workspace_id": "workspace-a",
+                "descriptor_sha256": self.references["hello"]["descriptor_sha256"]}, {}, principal()))
         self.assertEqual(directory["product"]["contract"]["verification"],
             [{"kind": "http", "check_id": "live", "provider_socket": "internal"}])
         with self.unit_of_work() as uow:

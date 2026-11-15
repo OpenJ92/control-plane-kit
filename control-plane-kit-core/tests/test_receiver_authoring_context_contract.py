@@ -37,6 +37,7 @@ class ReceiverAuthoringContextContractTests(unittest.TestCase):
         for other in routes:
             if (other.route_id != route.route_id
                     and other.service_role is ControlPlaneServiceRole.READS):
-                expected = (HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384)
+                expected = (HttpSchemaRef("ProductTopologyPreviewRequest", max_bytes=1048576)
+                    if other.route_id == "read.product-topology-preview" else HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384)
                     if other.route_id == "read.workspaces" else HttpSchemaRef("EmptyRequest", max_bytes=1024))
                 self.assertEqual(other.request_schema, expected)

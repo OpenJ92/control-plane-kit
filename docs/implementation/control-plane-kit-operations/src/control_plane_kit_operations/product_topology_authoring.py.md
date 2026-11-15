@@ -18,7 +18,10 @@ existing draft owner's historical replay remains first; new publication still
 requires active pins, current edit authority, session and receiver admission
 inside that owner's transaction. Nothing is selected or deployed here.
 
-Request, compiled graph, and preview response are each capped at 1 MiB. The
+Request, compiled graph, and preview response are each capped at 1 MiB. Compiled
+graph admission calls the existing draft owner's `bounded_draft_graph_descriptor`,
+whose UTF-8 JSONB transport encoding includes separator spaces; it is deliberately
+distinct from the public commitment encoding. The
 public proposal preimage is `{profile, recipe, graph_descriptor}`. `recipe` is
 normalized by role, edge and environment name; the graph is an explicit public
 allowlist of topology/runtime identities, product/image pins, socket shape,

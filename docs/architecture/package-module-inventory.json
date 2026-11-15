@@ -35,6 +35,7 @@
         "control_plane_kit_core.types",
         "control_plane_kit_core.verification",
         "control_plane_kit_operations.products",
+      "control_plane_kit_operations.desired_topology_drafts",
         "control_plane_kit_operations.read_services._redaction"
       ],
       "known_package_consumers": [

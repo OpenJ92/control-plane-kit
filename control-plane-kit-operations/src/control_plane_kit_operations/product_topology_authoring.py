@@ -15,10 +15,11 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
     ProductCatalog, ProductInstanceConfiguration, ProductReferenceCodec, instantiate_catalog_product,
 )
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology, validate_graph
+from control_plane_kit_core.topology import compile_topology, validate_graph
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import HttpCheck
 from .products import RegisteredProductStatus
+from .desired_topology_drafts import bounded_draft_graph_descriptor
 from .read_services._redaction import public_verification_shape
 
 
@@ -210,7 +211,7 @@ class ProductTopologyAuthoringService:
             graph = compile_topology(DeploymentTopology(recipe.name, DockerRuntime(runtime_id=recipe.runtime_id,
                 network_name=recipe.network_name, children=tuple(blocks) + recipe.connections)))
             validate_graph(graph).require_valid()
-            public_json_bytes(DEFAULT_GRAPH_CODEC.encode(graph))
+            bounded_draft_graph_descriptor(graph)
             for instance in recipe.instances:
                 node = graph.node(instance.role_id)
                 if (node.metadata.get("product_identity") != instance.reference.identity.key
