@@ -94,7 +94,7 @@ class PostgresManagedRuntimeUpgradeTests(unittest.TestCase):
         resolved = operations.WorkspaceContextResolver(self.unit_of_work, installation_id="installation-a").resolve(
             AuthenticatedPrincipal(self.member), "workspace-a")
         self.assertEqual(resolved.granted_scopes, (PolicyScope.INSTANCE_WORKSPACE_READ,))
-        postgres.install_schema(self.connection)
+        upgrade_fixtures.assert_historical_target_refuses_current_startup(self)
 
     def test_combined_replay_with_removed_identity_and_capability_cannot_restore_either_grant(self):
         plan = self.plan()

@@ -34,6 +34,10 @@ from control_plane_kit_operations.postgres import (
 )
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.lifecycle_lock_fixture import LifecycleLockFixture
+from tests.historical_schema_fixture import (
+    PROVIDER_SOURCE_SHA256, HISTORICAL_TARGET_SHA256, FRESH_CURRENT_SHA256,
+    historical_sql, catalog_sha256, namespace_state,
+)
 
 
 NOW = "2026-10-28T18:00:00Z"
@@ -348,13 +352,8 @@ class ProviderPolicyCommandTests(LifecycleLockFixture, unittest.TestCase):
         self.connection.execute(f'CREATE SCHEMA "{prior_schema}"')
         self.addCleanup(self.connection.execute, f'DROP SCHEMA "{prior_schema}" CASCADE')
         self.connection.execute(f'SET search_path TO "{prior_schema}"')
-        package = files("control_plane_kit_operations.postgres")
-        current_sql = package.joinpath("current_schema.sql").read_text(encoding="utf-8")
-        additive_sql = package.joinpath(
-            "provider_policy_command_schema.sql"
-        ).read_text(encoding="utf-8")
-        self.assertTrue(current_sql.endswith(additive_sql))
-        self.connection.execute(current_sql[: -len(additive_sql)])
+        self.connection.execute(self.prior_sql())
+        self.assertEqual(catalog_sha256(self.connection), PROVIDER_SOURCE_SHA256)
         self.connection.execute(
             "INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) "
             "VALUES ('retained-workspace','Retained','created')"
@@ -376,6 +375,12 @@ class ProviderPolicyCommandTests(LifecycleLockFixture, unittest.TestCase):
         self.assertEqual(self.connection.execute(
             "SELECT name FROM cpk_workspaces WHERE workspace_id='retained-workspace'"
         ).fetchone(), ("Retained",))
+        self.assertEqual(catalog_sha256(self.connection), HISTORICAL_TARGET_SHA256)
+        before = namespace_state(self.connection)
+        from control_plane_kit_operations.postgres import SchemaInstallationError
+        with self.assertRaises(SchemaInstallationError):
+            install_schema(self.connection)
+        self.assertEqual(namespace_state(self.connection), before)
 
     def observation(self, record, evidence, source):
         payload = (
@@ -742,13 +747,31 @@ class ProviderPolicyCommandTests(LifecycleLockFixture, unittest.TestCase):
         self.assertEqual(after.state.value, "evidence-mismatch-unresolved")
 
     def prior_sql(self):
+        return historical_sql("pre_provider_policy_commands")
+
+    def test_upgrade_refuses_fresh_sampling_schema_without_changes(self):
+        self.assertEqual(catalog_sha256(self.connection), FRESH_CURRENT_SHA256)
+        before = namespace_state(self.connection)
+        with self.assertRaises(ProviderPolicyCommandUpgradeError):
+            upgrade_provider_policy_commands(
+                self.connection, self.context(), administration_policy=self.policy())
+        self.assertEqual(namespace_state(self.connection), before)
+
+    def test_upgrade_refuses_sampling_expanded_pseudo_prior_without_changes(self):
+        prior = "provider_policy_pseudo_prior_" + uuid4().hex
+        self.connection.execute(f'CREATE SCHEMA "{prior}"')
+        self.addCleanup(self.connection.execute, f'DROP SCHEMA "{prior}" CASCADE')
+        self.connection.execute(f'SET search_path TO "{prior}"')
         package = files("control_plane_kit_operations.postgres")
         current = package.joinpath("current_schema.sql").read_text(encoding="utf-8")
-        additive = package.joinpath(
-            "provider_policy_command_schema.sql"
-        ).read_text(encoding="utf-8")
+        additive = package.joinpath("provider_policy_command_schema.sql").read_text(encoding="utf-8")
         self.assertTrue(current.endswith(additive))
-        return current[: -len(additive)]
+        self.connection.execute(current[:-len(additive)])
+        before = namespace_state(self.connection)
+        with self.assertRaises(ProviderPolicyCommandUpgradeError):
+            upgrade_provider_policy_commands(
+                self.connection, self.context(), administration_policy=self.policy())
+        self.assertEqual(namespace_state(self.connection), before)
 
     def test_upgrade_refuses_drift_without_partial_schema(self):
         schema = "provider_policy_drift_" + uuid4().hex

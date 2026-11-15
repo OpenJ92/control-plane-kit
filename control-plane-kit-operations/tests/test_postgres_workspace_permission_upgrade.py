@@ -2,7 +2,6 @@
 
 from dataclasses import replace
 from contextlib import contextmanager
-from hashlib import sha256
 import os
 import unittest
 from uuid import uuid4
@@ -20,6 +19,10 @@ from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
 from tests.lifecycle_lock_fixture import LifecycleLockFixture
 from tests import test_postgres_schema as schema_fixtures
+from tests.historical_schema_fixture import (
+    WORKSPACE_SOURCE_SHA256, HISTORICAL_TARGET_SHA256, FRESH_CURRENT_SHA256,
+    historical_sql, catalog_sha256, namespace_state,
+)
 
 
 class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.TestCase):
@@ -33,11 +36,8 @@ class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.Tes
         self.connection.execute(f'CREATE SCHEMA "{self.schema}"')
         self.addCleanup(self.connection.execute, f'DROP SCHEMA "{self.schema}" CASCADE')
         self.connection.execute(f'SET search_path TO "{self.schema}"')
-        old_sql = schema._CURRENT_SCHEMA_SQL.split("CREATE TABLE cpk_workspace_permission_installation (", 1)[0]
-        old_sql = old_sql.rstrip() + "\n"
-        self.assertEqual(sha256(old_sql.encode()).hexdigest(),
-                         "a38cb3590078ab33454ff26c14a9e1a3f3705aff01834533209aada14aa03dc1")
-        self.connection.execute(old_sql)
+        self.connection.execute(historical_sql("pre_workspace_permissions"))
+        self.assertEqual(catalog_sha256(self.connection), WORKSPACE_SOURCE_SHA256)
         schema_fixtures.PostgresSchemaFoundationTests._seed_minimal_execution_truth(self)
         validate_current_rows(self.connection)
         self.admin = PrincipalIdentity("issuer-a", "admin", PrincipalKind.OPERATOR)
@@ -102,7 +102,9 @@ class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.Tes
         self.assertFalse(result.replayed)
         self.assertEqual(self.old_rows(), before)
         self.assertEqual(self.old_objects(), objects)
-        postgres.install_schema(self.connection)
+        self.assertEqual(plan.target_contract_sha256, HISTORICAL_TARGET_SHA256)
+        self.assertEqual(result.receipt.target_contract_sha256, HISTORICAL_TARGET_SHA256)
+        assert_historical_target_refuses_current_startup(self)
         context = operations.WorkspaceContextResolver(self.unit_of_work, installation_id="installation-a").resolve(
             AuthenticatedPrincipal(self.member), "workspace-a")
         self.assertEqual(context.granted_scopes, (PolicyScope.INSTANCE_WORKSPACE_READ,))
@@ -115,6 +117,39 @@ class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.Tes
             administration_policy=self.policy, clock=self.clock, id_factory=lambda: uuid4().hex)
         with self.assertRaises(operations.WorkspacePermissionConflict):
             commands.initialize(self.context, idempotency_key=plan.idempotency_key)
+
+    def test_fresh_sampling_schema_is_not_a_historical_upgrade_or_inspection_match(self):
+        fresh = "permission_fresh_" + uuid4().hex
+        self.connection.execute(f'CREATE SCHEMA "{fresh}"')
+        self.addCleanup(self.connection.execute, f'DROP SCHEMA "{fresh}" CASCADE')
+        self.connection.execute(f'SET search_path TO "{fresh}"')
+        postgres.install_schema(self.connection)
+        self.assertEqual(catalog_sha256(self.connection), FRESH_CURRENT_SHA256)
+        before = namespace_state(self.connection)
+        with self.assertRaises(self.public("WorkspacePermissionUpgradeError")):
+            self.upgrade()
+        inspection = self.public("inspect_workspace_permission_upgrade")(
+            self.connection, self.plan(), administration_policy=self.policy)
+        self.assertEqual(inspection.status, "unknown")
+        self.assertEqual(namespace_state(self.connection), before)
+
+    def test_sampling_expanded_pseudo_prior_is_refused_without_changes(self):
+        # This was the silently shifted fixture: historical tables with today's
+        # two CHECK domains. It is neither supported historical source nor target.
+        for constraint in schema._CURRENT_SCHEMA_SQL.splitlines():
+            if any(name in constraint for name in (
+                "cpk_delegation_signing_keys_purpose_check",
+                "cpk_secret_use_authorizations_intent_check",
+            )):
+                name = constraint.strip().split()[1]
+                table = ("cpk_delegation_signing_keys" if "purpose_check" in name
+                         else "cpk_secret_use_authorizations")
+                self.connection.execute(f'ALTER TABLE "{table}" DROP CONSTRAINT "{name}"')
+                self.connection.execute(f'ALTER TABLE "{table}" ADD ' + constraint.strip().rstrip(','))
+        before = namespace_state(self.connection)
+        with self.assertRaises(self.public("WorkspacePermissionUpgradeError")):
+            self.upgrade()
+        self.assertEqual(namespace_state(self.connection), before)
 
     def test_exact_seed_replay_after_revoke_and_identity_removal_does_not_restore_grants(self):
         plan = self.plan()
@@ -293,6 +328,14 @@ class PostgresWorkspacePermissionUpgradeTests(LifecycleLockFixture, unittest.Tes
                 self.connection, plan, administration_policy=removed_admin)
         self.assertEqual(self.old_rows(), before)
         self.assert_no_policy_tables()
+
+
+def assert_historical_target_refuses_current_startup(test):
+    test.assertEqual(catalog_sha256(test.connection), HISTORICAL_TARGET_SHA256)
+    before = namespace_state(test.connection)
+    with test.assertRaises(postgres.SchemaInstallationError):
+        postgres.install_schema(test.connection)
+    test.assertEqual(namespace_state(test.connection), before)
 
 
 if __name__ == "__main__":
