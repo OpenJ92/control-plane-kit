@@ -1,0 +1,266 @@
+"""Normal plan/approval/admission, with provider dispatch forbidden by the fixture.
+
+No execution history is seeded and no native conformance is inferred from this
+declared recording port. Rowan's normal-driver/native proof owns that join.
+"""
+from dataclasses import replace
+import json
+
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement, ConfigurationMediaType
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.http_verification_sample_installation import (
+    HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT, HttpVerificationSampleCheckBinding,
+    HttpVerificationSampleReceiverConfiguration, HttpVerificationSampleReceiverConfigurationCodec,
+    HttpVerificationSampleVerifierConfiguration,
+)
+from control_plane_kit_core.http_verification_samples import http_verification_check_digest
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose, DelegationKeyAlgorithm, DelegationPublicKey
+from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.products import ProductDescriptorCodec, ProductReference
+from control_plane_kit_core.receiver_management_routes import ReceiverManagementRouteBinding, ReceiverManagementRoutes, ReceiverManagementRoutesCodec
+from control_plane_kit_core.receiver_identity import NodeControlReceiverTargetCodec
+from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.verification import HttpCheck, VerificationContract
+from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, ExecutionAdmissionDenied
+from control_plane_kit_operations.cpk_server import CpkServerAdmissionService
+from control_plane_kit_operations.coordinator import ExecutionCoordinator, ExecuteActivityRun, ExecuteManagedActivityRun, RuntimeInterpreterDispatcher
+from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
+from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
+from control_plane_kit_operations.execution_invocation_service import ExecutionInvocationService
+from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders
+from control_plane_kit_operations.http_sample_compatibility import GatewayHttpSampleBinding, GatewayHttpSampleTrust
+from control_plane_kit_operations.http_sample_execution import HttpSampleExecutionSupport
+from control_plane_kit_operations.lifecycle import RunLifecycleCommandService, ExecutionWorkerAuthority
+from control_plane_kit_operations.runtime_adapter_registration import RuntimeAdapterRegistration
+from control_plane_kit_operations.workflows import IdempotencyKey
+from tests import test_managed_application_chain as chain
+from tests.test_postgres_coordinator_permissions import _CurrentCoordinatorPermission
+from tests.health_receiver_trust_fixture import public_key
+
+
+class _GatewayDecoder:
+    def decode(self, artifact):
+        value = json.loads(artifact.content)
+        return GatewayHttpSampleTrust(NodeControlReceiverTargetCodec().decode(value["target"]),
+            DelegationKeyPurpose(value["purpose"]), value["issuer"], tuple(
+                DelegationPublicKey(key["key_id"], DelegationKeyAlgorithm.ED25519, key["pem"])
+                for key in value["keys"]))
+
+
+class _NoDispatch:
+    def __init__(self, support):
+        self.http_sample_support, self.calls = support, []
+
+    def execute_with_authority(self, request, authority, *, invocations):
+        self.calls.append(request)
+        raise AssertionError("admission/preflight tests must never dispatch provider effects")
+
+    def execute(self, request, *, invocations=None):
+        self.calls.append(request)
+        raise AssertionError("admission/preflight tests must never use a private fallback")
+
+
+class HttpSampleApplicationAdmissionTests(_CurrentCoordinatorPermission, chain.ManagedApplicationFixture):
+    def authored_graph(self):
+        graph, documents, registry = super().authored_graph()
+        codec = ReceiverNodeControlConfigurationCodec()
+        api, gateway = graph.node("api"), graph.node("gateway")
+        receiver = codec.decode_bytes(next(value for value in api.configuration_artifacts
+            if value.artifact_id == "test-workload").content.encode())
+        own = codec.decode_bytes(next(value for value in gateway.configuration_artifacts
+            if value.artifact_id == "gateway-control").content.encode())
+        checks = tuple(HttpCheck(check_id=name, provider_socket="http", path="/health/" + name)
+            for name in ("live", "ready"))
+        sample = HttpVerificationSampleReceiverConfiguration(receiver.target, receiver.declaration.identity().value,
+            HttpVerificationSampleVerifierConfiguration(DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE,
+                "sample-controller", (public_key("workload"),)), tuple(
+                    HttpVerificationSampleCheckBinding(check.check_id, http_verification_check_digest(check)) for check in checks))
+        artifact = ConfigurationArtifact("http-samples", "/etc/test/http-samples.json", ConfigurationMediaType.JSON,
+            HttpVerificationSampleReceiverConfigurationCodec().encode_canonical_bytes(sample).decode())
+        transit = ConfigurationArtifact("sample-transit", "/etc/test/sample-transit.json", ConfigurationMediaType.JSON,
+            json.dumps(dict(target=own.target.descriptor(),
+                purpose=DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT.value,
+                issuer="sample-controller", keys=[dict(key_id=public_key("transit").key_id,
+                    pem=public_key("transit").public_key_pem)])))
+        nodes, replacements = dict(graph.nodes), {}
+        for name, extra in (("api", artifact), ("gateway", transit)):
+            node, document = nodes[name], documents[name]
+            contract = document.product.runtime_contract
+            if name == "api":
+                contract = replace(contract, verification=VerificationContract(checks),
+                    public_environment=contract.public_environment + (PublicStaticEnvironmentBinding(
+                        HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT, artifact.target_path),))
+            contract = replace(contract, configuration_artifacts=contract.configuration_artifacts + (extra,))
+            updated = ProductDescriptorCodec().encode_document(replace(document.product, runtime_contract=contract))
+            reference = ProductReference.from_document(updated)
+            replacements[ProductReference.from_document(document)] = reference
+            documents[name] = updated
+            nodes[name] = replace(node, configuration_artifacts=node.configuration_artifacts + (extra,),
+                public_environment=contract.public_environment, block_spec=replace(node.block_spec, verification=contract.verification),
+                metadata={"product_identity": reference.identity.key, "product_descriptor_digest": reference.descriptor_sha256.value})
+        self.support = HttpSampleExecutionSupport(GatewayHttpSampleBinding(ProductReference.from_document(documents["gateway"]),
+            ConfigurationArtifactRequirement(transit.artifact_id, transit.target_path, transit.media_type, transit.file_mode),
+            _GatewayDecoder(), route_slot=ConfigurationArtifactRequirement("gateway-health-targets",
+                "/etc/cpk/gateway/health-targets.json", ConfigurationMediaType.JSON, transit.file_mode)), "http")
+        return replace(graph, nodes=nodes), documents, HealthReceiverDecoders(tuple(replace(binding,
+            product_reference=replacements.get(binding.product_reference, binding.product_reference)) for binding in registry.bindings))
+
+    def setUp(self):
+        super().setUp()
+        self.enabled = True
+        self.sample_adapter = _NoDispatch(self.support)
+        self.registration = self.registered(self.sample_adapter)
+
+    def registered(self, adapter):
+        return RuntimeAdapterRegistration(adapter, exact_version_execute_with_authority=True,
+            invocation_profile="cpk.semantic-invocations.v1", ordinary_verification_invocations=True,
+            http_sample_support=adapter.http_sample_support)
+
+    def application(self, **options):
+        app = super().application(**options)
+        services = dict(app.services)
+        services[ControlPlaneServiceRole.ADMISSION] = CpkServerAdmissionService(ExecutionAdmissionCommandService(
+            self.unit_of_work, clock=chain.now, id_factory=self.ids["admission"],
+            http_sample_support=self.support if self.enabled else None,
+            http_sample_registration=self.registration if self.enabled else None))
+        return replace(app, services=services)
+
+    async def invoke(self, route, role, **options):
+        if route == "command.deployment.prepare":
+            options["payload"] = dict(options.get("payload", {}), http_verification_intent="authenticated-samples")
+        return await super().invoke(route, role, **options)
+
+    async def prepared(self):
+        try:
+            await self.prepare_and_start()
+        except ExecutionAdmissionDenied:
+            self.fail("normally approved fully registered sample admission is unavailable")
+
+    async def test_registered_sample_plan_admits_without_provider_dispatch(self):
+        await self.prepared()
+        self.assertEqual(len(self.rows("cpk_execution_requests")), 1)
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+        self.assertEqual(self.rows("cpk_secret_use_authorizations"), ())
+
+    async def test_missing_registered_sender_refuses_before_creating_request(self):
+        self.enabled = False
+        with self.assertRaises(ExecutionAdmissionDenied):
+            await self.prepare_and_start()
+        self.assertEqual(self.rows("cpk_execution_requests"), ())
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+
+    async def test_incompatible_registered_route_refuses_before_creating_request(self):
+        self.support = replace(self.support, gateway_binding=replace(self.support.gateway_binding,
+            slot=replace(self.support.gateway_binding.slot, target_path="/etc/test/other-trust.json")))
+        self.sample_adapter = _NoDispatch(self.support)
+        self.registration = self.registered(self.sample_adapter)
+        with self.assertRaises(ExecutionAdmissionDenied):
+            await self.prepare_and_start()
+        self.assertEqual(self.rows("cpk_execution_requests"), ())
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+
+    async def test_bootstrap_only_wrong_kind_same_authority_ref_refuses_before_request(self):
+        # Keep the first managed workload qualified. The second managed runtime
+        # starts only its gateway/connector, so checking waits alone misses it.
+        graph, nodes = self.graph, dict(self.graph.nodes)
+        codec = ReceiverNodeControlConfigurationCodec()
+        gateway = graph.node("gateway")
+        own = codec.decode_bytes(next(value for value in gateway.configuration_artifacts
+            if value.artifact_id == "gateway-control").content.encode())
+        target = replace(own.target, runtime_id=replace(own.target.runtime_id, value="other"),
+            node_id=replace(own.target.node_id, value="gateway-other"), receiver_id="d" * 32)
+        own = replace(own, target=target)
+        artifacts = []
+        for artifact in gateway.configuration_artifacts:
+            if artifact.artifact_id == "gateway-control":
+                artifact = replace(artifact, content=codec.encode_bytes(own).decode())
+            elif artifact.artifact_id == "gateway-health-targets":
+                routes = ReceiverManagementRoutes(target, (ReceiverManagementRouteBinding(
+                    "self", target, own.declaration, "http://gateway-other:8000"),))
+                artifact = replace(artifact, content=ReceiverManagementRoutesCodec().encode_bytes(routes).decode())
+            elif artifact.artifact_id == "gateway-health-transit":
+                value = json.loads(artifact.content)
+                value.update(node="gateway-other", runtime="other")
+                artifact = replace(artifact, content=json.dumps(value))
+            elif artifact.artifact_id == "sample-transit":
+                value = json.loads(artifact.content)
+                value["target"] = target.descriptor()
+                artifact = replace(artifact, content=json.dumps(value))
+            artifacts.append(artifact)
+        for original, name, selected in ((gateway, "gateway-other", tuple(artifacts)),
+                (graph.node("connector"), "connector-other", graph.node("connector").configuration_artifacts)):
+            base = self.documents[original.node_id].product
+            product = replace(base, identity=replace(base.identity, name="chain-" + name),
+                runtime_contract=replace(base.runtime_contract, configuration_artifacts=selected))
+            document = ProductDescriptorCodec().encode_document(product)
+            reference = ProductReference.from_document(document)
+            self.documents[name] = document
+            nodes[name] = replace(original, node_id=name, runtime_id="other", configuration_artifacts=selected,
+                block_spec=replace(original.block_spec, role_id=name),
+                metadata={"product_identity": reference.identity.key, "product_descriptor_digest": reference.descriptor_sha256.value})
+        ingress = replace(graph.public_ingresses[0], ingress_id="management-other",
+            target=replace(graph.public_ingresses[0].target, node_id="gateway-other"),
+            connector_node_id="connector-other", hostname="cpk-gateway-other.openj92.dev")
+        first = graph.runtimes["docker"]
+        other = replace(first, runtime_id="other", kind=RuntimeKind.AWS,
+            children=("gateway-other", "connector-other"), management=replace(first.management,
+                gateway_node_id="gateway-other", management_ingress_id=ingress.ingress_id))
+        self.graph = replace(graph, nodes=nodes, runtimes={**graph.runtimes, "other": other},
+            public_ingresses=graph.public_ingresses + (ingress,))
+        # The older chain convenience method assumes one bootstrap runtime.
+        # Submit the same normal commands here without that local selection.
+        self.app = self.application()
+        created = await self.invoke("command.workspace.create", ControlPlaneServiceRole.PLANNING,
+            payload={"workspace_id": "workspace-a", "name": "Two runtimes", "idempotency_key": "workspace"})
+        workspace = created["workspace"]
+        self.register_prerequisites()
+        for name, document in self.documents.items():
+            await self.invoke("command.product.import", ControlPlaneServiceRole.PLANNING,
+                path={"workspace_id": "workspace-a"}, payload={"descriptor_document": json.loads(document.content),
+                    "imported_at": chain.now(), "idempotency_key": "product-" + name})
+        prepared = await self.invoke("command.deployment.prepare", ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"}, payload={"desired_graph": chain.DEFAULT_GRAPH_CODEC.encode(self.graph),
+                "expected_current": {"authored_graph_id": workspace["current_graph_id"],
+                    "realized_projection_id": workspace["current_realized_projection_id"]},
+                "expected_desired": None, "expected_desired_graph_revision": workspace["desired_graph_revision"],
+                "title": "Two-runtime sample", "idempotency_key": "prepare"})
+        self.assertEqual(prepared["status"], "approval-required")
+        detail = await self.invoke("read.plan-detail", ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]})
+        session = detail["plan"]["session_id"]
+        await self.invoke("command.approval.decide", ControlPlaneServiceRole.APPROVAL,
+            path={"workspace_id": "workspace-a", "approval_id": prepared["approval_request_id"]},
+            payload={"session_id": session, "decision": "approved", "idempotency_key": "approve"},
+            principal=chain.operator_principal(subject_id="manager-a", scopes=(chain.PolicyScope.PLAN_APPROVE,)))
+        with self.assertRaises(ExecutionAdmissionDenied):
+            await self.invoke("command.deployment.admit", ControlPlaneServiceRole.ADMISSION,
+                path={"workspace_id": "workspace-a", "plan_id": prepared["plan_id"]}, payload={
+                    "session_id": session, "approval_request_id": prepared["approval_request_id"],
+                    "readiness": [], "idempotency_key": "admit"})
+        self.assertEqual(self.rows("cpk_execution_requests"), ())
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+
+    async def test_registration_changed_after_admission_refuses_before_gateway_effect(self):
+        await self.prepared()
+        self.configure_permissions(self.worker.identity, installation="sample-preflight")
+        fold = EffectAttemptFoldService(self.unit_of_work, id_factory=self.ids["effect-fold"])
+        changed = _NoDispatch(replace(self.support))
+        owner = ExecutionCoordinator(self.unit_of_work,
+            lifecycle=RunLifecycleCommandService(self.unit_of_work, clock=chain.now, id_factory=self.ids["lifecycle"]),
+            adapter=RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: self.registered(changed)}),
+            start_service=EffectAttemptStartService(self.unit_of_work, id_factory=self.ids["effect-start"],
+                health_receiver_decoders=self.registry, permission_policy=self.policy), fold_service=fold,
+            reconciliation_service=EffectAttemptReconciliationService(self.unit_of_work, chain.ForbiddenRecovery(), fold),
+            clock=chain.now, id_factory=self.ids["execution"], permission_policy=self.policy,
+            invocation_service=ExecutionInvocationService(self.unit_of_work, permission_policy=self.policy, clock=chain.now,
+                http_sample_support=self.support, http_sample_registration=self.registration))
+        with self.unit_of_work() as unit:
+            request = unit.stores.execution.get_request(self.request_id)
+        execution = ExecuteActivityRun(self.run_id, ExecutionWorkerAuthority(request.claim.worker_id,
+            self.original.granted_scopes), request.claim.fence, IdempotencyKey("changed-registration"))
+        result = await owner.execute_managed(ExecuteManagedActivityRun(execution, self.original))
+        self.assertEqual((result.status.value, result.effects_attempted), ("unsupported", 0))
+        self.assertEqual(changed.calls, [])
+        self.assertEqual(self.effects(), ((), (), (), (), ()))

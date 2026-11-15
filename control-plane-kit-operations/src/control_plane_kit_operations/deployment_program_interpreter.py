@@ -185,6 +185,8 @@ class DeploymentProgram:
                     desired_generation
                 ),
                 idempotency_key=keys["plan"],
+                http_verification_intent=command.http_verification_intent,
+                managed_verification=command.managed_verification,
             ),
             ActivityPlanningError,
         )
@@ -192,10 +194,10 @@ class DeploymentProgram:
             command.context.workspace_id,
             planning_result.plan_record.plan_id,
         )
-        if isinstance(planning_result.transition, NoOpDeployment):
-            return DeploymentNoChanges(reference)
         if not planning_result.plan_record.plan.ready_for_execution:
             return DeploymentReviewBlocked(reference)
+        if isinstance(planning_result.transition, NoOpDeployment):
+            return DeploymentNoChanges(reference)
         approval_result = _execute_approval(
             self._approvals,
             RequestApproval(
@@ -290,6 +292,10 @@ def _intent_digest(command: PrepareDeploymentProgram) -> str:
     }
     if command.proposed_graph_id is not None:
         intent["proposed_graph_id"] = command.proposed_graph_id
+    if command.http_verification_intent is not None:
+        intent["http_verification_intent"] = command.http_verification_intent.value
+    if command.managed_verification is not None:
+        intent["managed_verification"] = command.managed_verification.value
     return _sha256(intent)
 
 

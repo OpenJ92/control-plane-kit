@@ -115,7 +115,7 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
                 base_realized_projection_id=self.projections["health-base"].projection_id,
                 desired_realized_projection_id=self.projections["health-desired"].projection_id,
                 desired_graph_revision=workspace.desired_graph_revision,
-                derivation_profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1))
+                derivation_profile=getattr(self, "health_plan_profile", PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)))
             uow.stores.activity_history.add_approval_request(replace(approval,
                 required_scope=requirement.required_scope, max_risk=requirement.max_risk,
                 destructive=requirement.destructive))

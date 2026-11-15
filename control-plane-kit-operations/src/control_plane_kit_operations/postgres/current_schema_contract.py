@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +83,9 @@ class CurrentSchemaContract:
     constraints: tuple[ConstraintContract, ...]
     indexes: tuple[IndexContract, ...]
 
-CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
+# Frozen historical literals and additive layers. Keep sampling/current changes
+# after both predecessor captures and the complete historical target below.
+_HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
     relations=(
         RelationContract(kind='r', name='cpk_activity_events', policies=0, user_rules=0, persistence='p', is_partition=False, row_security=False, access_method='heap', replica_identity='d', force_row_security=False, non_internal_triggers=0),
         RelationContract(kind='r', name='cpk_activity_plans', policies=0, user_rules=0, persistence='p', is_partition=False, row_security=False, access_method='heap', replica_identity='d', force_row_security=False, non_internal_triggers=0),
@@ -1764,7 +1766,7 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
 
 
 # The only accepted retained pre-permission shape; it is not a migration registry.
-PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT = CURRENT_POSTGRES_SCHEMA_CONTRACT
+PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT = _HISTORICAL_SCHEMA_CONTRACT
 WORKSPACE_PERMISSION_SCHEMA_CONTRACT = CurrentSchemaContract(
     relations=(
         RelationContract(name="cpk_workspace_permission_installation", kind="r", persistence="p", access_method="heap", replica_identity="d", is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
@@ -1850,7 +1852,7 @@ WORKSPACE_PERMISSION_SCHEMA_CONTRACT = CurrentSchemaContract(
         IndexContract(relation="cpk_workspace_administration_receipts", name="cpk_workspace_administration_receipts_pkey", owning_constraint="cpk_workspace_administration_receipts_pkey", access_method="btree", unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=("installation_id", "issuer", "subject_id", "kind", "idempotency_key"), include_entries=(), opclasses=("pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.text_ops"), collations=("pg_catalog.default", "pg_catalog.default", "pg_catalog.default", "pg_catalog.default", "pg_catalog.default"), options=(0, 0, 0, 0, 0), predicate=None, expressions=None),
     ),
 )
-CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
+_HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
     relations=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.relations + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
     # Stable relation ordering retains each table's physical column order.
     columns=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.columns + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
@@ -1858,7 +1860,6 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
     indexes=tuple(sorted(PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes + WORKSPACE_PERMISSION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
-CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = '7288fee837b51ffd6e470ed33395159aa143804665e7e9aac0f219cc57fb43de'
 
 MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT = CurrentSchemaContract(
     relations=(
@@ -1913,11 +1914,11 @@ MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT = CurrentSchemaContract(
         IndexContract(relation="cpk_managed_runtime_assignment_receipts", name="cpk_managed_runtime_assignment_receipts_command_key", owning_constraint="cpk_managed_runtime_assignment_receipts_command_key", access_method="btree", unique=True, primary=False, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=("assignment_id", "idempotency_key"), include_entries=(), opclasses=("pg_catalog.text_ops", "pg_catalog.text_ops"), collations=("pg_catalog.default", "pg_catalog.default"), options=(0, 0), predicate=None, expressions=None),
     ),
 )
-CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
-    relations=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
-    columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
-    constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
-    indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+_HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.relations + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
+    columns=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.columns + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.constraints + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.indexes + MANAGED_RUNTIME_ASSIGNMENT_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
 EXECUTION_INVOCATION_SCHEMA_CONTRACT = CurrentSchemaContract(
@@ -1968,11 +1969,11 @@ EXECUTION_INVOCATION_SCHEMA_CONTRACT = CurrentSchemaContract(
         IndexContract(relation="cpk_execution_command_invocations", name="cpk_invocations_command_page", owning_constraint=None, access_method="btree", unique=False, primary=False, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=("run_id", "command_key", "invocation_id"), include_entries=(), opclasses=("pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.text_ops"), collations=("pg_catalog.default", "pg_catalog.default", "pg_catalog.default"), options=(0, 0, 0), predicate=None, expressions=None),
     ),
 )
-CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
-    relations=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations + EXECUTION_INVOCATION_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
-    columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + EXECUTION_INVOCATION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
-    constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + EXECUTION_INVOCATION_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
-    indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + EXECUTION_INVOCATION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+_HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.relations + EXECUTION_INVOCATION_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
+    columns=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.columns + EXECUTION_INVOCATION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.constraints + EXECUTION_INVOCATION_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.indexes + EXECUTION_INVOCATION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
 RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT = CurrentSchemaContract(
@@ -2005,11 +2006,11 @@ RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT = CurrentSchemaContract(
         IndexContract(relation="cpk_runtime_effect_origins", name="cpk_runtime_effect_origins_pkey", owning_constraint="cpk_runtime_effect_origins_pkey", access_method="btree", unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=("run_id", "activity_id", "attempt"), include_entries=(), opclasses=("pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.int4_ops"), collations=("pg_catalog.default", "pg_catalog.default", None), options=(0, 0, 0), predicate=None, expressions=None),
     ),
 )
-CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
-    relations=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
-    columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
-    constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
-    indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+_HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.relations + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
+    columns=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.columns + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.constraints + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.indexes + RUNTIME_EFFECT_ORIGIN_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
 INGRESS_INVOCATION_SCHEMA_CONTRACT = CurrentSchemaContract(
@@ -2060,11 +2061,11 @@ INGRESS_INVOCATION_SCHEMA_CONTRACT = CurrentSchemaContract(
         IndexContract(relation="cpk_ingress_invocation_results", name="cpk_ingress_results_context_page", owning_constraint=None, access_method="btree", unique=False, primary=False, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=("context_id", "invocation_id"), include_entries=(), opclasses=("pg_catalog.text_ops", "pg_catalog.text_ops"), collations=("pg_catalog.default", "pg_catalog.default"), options=(0, 0), predicate=None, expressions=None),
     ),
 )
-CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
-    relations=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations + INGRESS_INVOCATION_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
-    columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + INGRESS_INVOCATION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
-    constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + INGRESS_INVOCATION_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
-    indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + INGRESS_INVOCATION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+_HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.relations + INGRESS_INVOCATION_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
+    columns=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.columns + INGRESS_INVOCATION_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.constraints + INGRESS_INVOCATION_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.indexes + INGRESS_INVOCATION_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
 )
 
 def _provider_text_column(relation: str, name: str) -> ColumnContract:
@@ -2137,10 +2138,35 @@ PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT = CurrentSchemaContract(
     ),
 )
 
-PRE_PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT = CURRENT_POSTGRES_SCHEMA_CONTRACT
-CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
-    relations=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
-    columns=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
-    constraints=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
-    indexes=tuple(sorted(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+PRE_PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT = _HISTORICAL_SCHEMA_CONTRACT
+_HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
+    relations=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.relations + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.relations, key=lambda value: value.name)),
+    columns=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.columns + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.columns, key=lambda value: value.relation)),
+    constraints=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.constraints + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.constraints, key=lambda value: (value.relation, value.name))),
+    indexes=tuple(sorted(_HISTORICAL_SCHEMA_CONTRACT.indexes + PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.indexes, key=lambda value: (value.relation, value.name))),
+)
+
+
+# Both retained upgrade owners end at this original pre-sampling target.
+HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT = _HISTORICAL_SCHEMA_CONTRACT
+HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT_SHA256 = (
+    "7288fee837b51ffd6e470ed33395159aa143804665e7e9aac0f219cc57fb43de"
+)
+
+# Fresh installation separately admits #1815's two sampling CHECK domains.
+# No historical SQL transition changes either domain.
+_FRESH_CHECK_EXPRESSIONS = {
+    "cpk_delegation_signing_keys_purpose_check": "(purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text, 'workload-node-health-read'::text, 'gateway-node-health-read-transit'::text, 'workload-http-verification-sample'::text, 'gateway-http-verification-sample-transit'::text]))",
+    "cpk_secret_use_authorizations_intent_check": "(use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text, 'secrets.custody-root-key'::text, 'secrets.provider-credentials-document'::text, 'workload.node-health-read-signing-key'::text, 'gateway.node-health-read-transit-signing-key'::text, 'workload.http-verification-sample-signing-key'::text, 'gateway.http-verification-sample-transit-signing-key'::text]))",
+}
+CURRENT_POSTGRES_SCHEMA_CONTRACT = replace(
+    HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT,
+    constraints=tuple(
+        replace(item, check_expression=_FRESH_CHECK_EXPRESSIONS[item.name])
+        if item.name in _FRESH_CHECK_EXPRESSIONS else item
+        for item in HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT.constraints
+    ),
+)
+CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = (
+    "75b6b900f70a170376c1133af7a066df11b27a147c29075230c26a94ab219d25"
 )

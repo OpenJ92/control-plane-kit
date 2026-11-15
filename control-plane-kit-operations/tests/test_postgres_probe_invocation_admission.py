@@ -123,6 +123,16 @@ class _ProbeAdmissionFixture(_ProbeInvocationFixture):
 
 
 class PostgresProbeInvocationAdmissionTests(_ProbeAdmissionFixture, unittest.TestCase):
+    def test_new_sql_arm_refuses_legacy_profile_without_new_authorization_history(self):
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationConflict
+        service, port, request = self.prepared_port()
+        self.returned_acquisition(port)
+        count = self.connection.execute("SELECT count(*) FROM cpk_secret_use_authorizations").fetchone()[0]
+        child = port.for_check(port.profile.checks[0].check_id)
+        with self.assertRaises(ExecutionInvocationConflict):
+            child.prepare_postgres_readiness()
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_secret_use_authorizations").fetchone()[0], count)
+
     def test_descriptor_equivalent_postgres_subclass_preserves_credential_role(self):
         from tests.effect_attempt_intent_fixture import subclass_copy
         from control_plane_kit_operations.ordinary_verification_invocations import ordinary_verification_invocation_profile

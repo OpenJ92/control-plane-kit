@@ -1,6 +1,15 @@
 Source: [plan_derivation.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/plan_derivation.py).
 Maintain this companion alongside its source.
 
+#2088 adds `MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1`, dispatched only to the new pure Core
+entrypoint. `HttpVerificationPlanningIntent.AUTHENTICATED_SAMPLES` is caller intent,
+not a raw profile override. The existing strict version1 stored envelope carries
+the new closed profile without a schema migration. Old and absent profiles keep
+their exact derivation. Recording the profile grants no execution authority.
+One shared action-evidence predicate enforces exact sample intent/profile
+congruence for both public result construction and persisted replay. Legacy
+profiles cannot carry sample intent and the sample profile cannot omit it.
+
 This pure Operations module declares which interpretation defines a stored plan.
 `PlanDerivationProfile.STRUCTURAL_V1` calls Core's existing structural compiler on
 `transition.diff`; `MANAGEMENT_GRAPH_PAIR_V1` calls Core's accepted compiler on
@@ -57,3 +66,9 @@ old-reader rollback after those writes requires separate reviewed work. Removing
 markers or rewriting historical rows is not rollback. No schema change, backfill,
 reset or live rollout occurs here. Historical #1837 introduced the structural
 profile; current fresh selection belongs to runtime-management admission.
+#2089 adds a distinct managed SQL+HTTP intent/profile. The caller value is
+`managed_verification=authenticated-local-postgres-and-http`, stored profile
+`managed-sql-http-bootstrap-v1`; mixed/missing/mismatched markers refuse.
+Omitted and existing HTTP-only descriptors/fingerprints/replay stay unchanged.
+The initial plumbing checkpoint preserves SQL review and refuses execution
+until the qualified normal original-Wait arm is connected; it is not a release.

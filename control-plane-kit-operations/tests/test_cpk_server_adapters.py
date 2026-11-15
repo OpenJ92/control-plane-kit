@@ -653,6 +653,35 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
 
 
 class CpkServerOperationsAdapterTests(unittest.TestCase):
+    def test_http_sample_intent_maps_both_operations_routes_and_rejects_malformed_presence(self):
+        from control_plane_kit_operations import planning
+        intent = getattr(planning, "HttpVerificationPlanningIntent", None)
+        self.assertIsNotNone(intent, "typed sample planning intent is missing")
+        for route in ("command.deployment.plan", "command.deployment.prepare"):
+            if route.endswith(".plan"):
+                payload = dict(session_id="session-a", expected_current_graph_id="current",
+                    expected_desired_graph_id="desired", idempotency_key="key")
+            else:
+                payload = dict(desired_graph=DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("desired")),
+                    expected_current=dict(authored_graph_id="current", realized_projection_id="projection"),
+                    expected_desired=None, expected_desired_graph_revision=0, title="prepare", idempotency_key="key")
+            for surface in ("http", "mcp"):
+                recording = RecordingService()
+                program = RecordingDeploymentProgram(DeploymentNoChanges(DeploymentProgramReference("workspace-a", "plan-a")))
+                service = CpkServerPlanningService(recording, deployment_program=program)
+                def request(values):
+                    return RouteRequest(surface=surface, route_id=route,
+                        service_role=ControlPlaneServiceRole.PLANNING,
+                        path_parameters={"workspace_id": "workspace-a"}, payload=values)
+                service.handle(request({**payload, "http_verification_intent": "authenticated-samples"}))
+                command = (recording.commands if route.endswith(".plan") else program.commands)[0]
+                self.assertIs(command.http_verification_intent, intent.AUTHENTICATED_SAMPLES)
+                for value in (None, False, "unknown", "managed-http-sample-bootstrap-v1"):
+                    with self.subTest(route=route, surface=surface, value=value), self.assertRaises(CpkServerApplicationError):
+                        service.handle(request({**payload, "http_verification_intent": value}))
+                with self.assertRaises(CpkServerApplicationError):
+                    service.handle(request({**payload, "derivation_profile": "managed-http-sample-bootstrap-v1"}))
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:

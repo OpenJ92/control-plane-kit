@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import re
 
 from control_plane_kit_core.delegation_keys import (
     DelegationKeyAlgorithm,
@@ -113,6 +114,20 @@ class DelegationSigningKeyStore:
         if value is None:
             raise DelegationSigningKeyNotFound("delegation signing key was not found")
         return value
+
+    def get_by_registration(self, workspace_id, purpose, registration_id, *, for_share=False):
+        """Exact original identity; historical reads do not require active status."""
+        if (type(purpose) is not DelegationKeyPurpose or type(for_share) is not bool
+                or type(registration_id) is not str or re.fullmatch(r"dkey_[0-9a-f]{64}", registration_id) is None):
+            raise DelegationSigningKeyNotFound("delegation signing registration is unavailable")
+        if for_share:
+            self._lock_purpose(workspace_id, purpose, shared=True)
+        row = self._connection.execute(_SELECT
+            + " WHERE workspace_id=%s AND purpose=%s AND registration_id=%s"
+            + (" FOR SHARE" if for_share else ""), (workspace_id, purpose.value, registration_id)).fetchone()
+        if row is None:
+            raise DelegationSigningKeyNotFound("delegation signing registration is unavailable")
+        return _row(row)
 
     def require_active(
         self,

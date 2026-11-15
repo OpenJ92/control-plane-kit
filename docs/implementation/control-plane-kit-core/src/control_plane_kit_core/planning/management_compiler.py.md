@@ -1,11 +1,38 @@
 Source: [management_compiler.py](../../../../../../control-plane-kit-core/src/control_plane_kit_core/planning/management_compiler.py).
 Maintain this companion with source and imported contract changes.
 
+#2089 completes the separate managed SQL/HTTP fresh profile before durable
+adoption. Only its independent-check branch admits graph-known SQL coverage:
+owned fresh Docker node, one bounded authenticated SELECT1, explicit version,
+matching protected file/path binding and selected V2 readiness control. Protocol
+values compare by value. Original Wait, Start, SDK health and authenticated-path
+edges remain; a qualifying SQL node never removes another cause of review.
+Existing generic, HTTP-only and retained interpretations remain literal.
+
+Core supplies no product/image qualification or future installation receipt.
+Operations must require every registered product/slot/version/route and the actual
+native consumer at admission and coordinator preflight. Actual delivery, private
+bytes, current process/route and original attempt remain reached-check evidence.
+Plan-ready is not executable or deployed proof. No new permission is inferred.
+
 compile_graph_activity_plan accepts two ValidatedGraph values, derives their diff
 and preserves the structural compiler's operations before refining managed health
 obligations. Empty/name-only plans remain empty; retained-runtime management
 cutover remains ReviewChange. It supplies no infrastructure, provider effects or
 Operations Deploy object. ActivityPlan still owns dependency/cycle validation.
+
+`compile_http_sample_bootstrap_activity_plan` is #2088's explicit separate
+interpretation. It requires an empty source and fresh owned management relation;
+unsupported/no-op/update/teardown inputs retain an explicit review. Only a workload
+with complete original HTTP check ID+digest coverage, canonical sample companion
+and independently selected V2 receiver can avoid the producing independent-check
+refusal. The initial sampler subset is unchanged safe ASCII origin-form paths,
+200-only, no body hash and at most five seconds. Original waits, policy, semantic
+health and ordering remain unchanged. The graph's product pin is only a claim;
+registered descriptor/slot/port/route and sampler admission before effects, actual
+loaded configuration after startup, and current credentials belong outside Core.
+The old compiler still selects the original interpretation. No report or plan
+result grants execution or converts credential expiry into application timeout.
 
 The submitted topology has an ordinary gateway node and connector, plus a named
 ingress. RuntimeManagement selects those values. For example:
@@ -296,3 +323,8 @@ existing generic image pair, reverse transition and complete secret selection.
 The pure plan supplies no authority, original connector installation proof,
 successful observation or execution history. Core/Operations provenance review
 and Interpreters214/Servers291 adoption remain downstream.
+#2089 introduces an explicit managed SQL+HTTP interpretation entrypoint while
+preserving the historical HTTP compiler. Its initial source checkpoint retains
+the original SQL review and all dependency/observation activities. Only after
+qualified whole-plan admission and the original SQL execution arm are connected
+may supported SQL coverage remove that review; V2 readiness alone is insufficient.

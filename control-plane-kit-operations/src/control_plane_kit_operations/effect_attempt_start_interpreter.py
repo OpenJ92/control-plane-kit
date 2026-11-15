@@ -437,7 +437,9 @@ class EffectAttemptStartService:
                     profile_builder = (ordinary_verification_invocation_profile if ordinary_verification
                         else prepared_runtime_invocation_profile)
                     profile = profile_builder(command.intent,
-                        original_event_id=event.event_id, runtime_authority=prepared_runtime)
+                        original_event_id=event.event_id, runtime_authority=prepared_runtime,
+                        **({"plan": stores.activity_history.get_plan(command.intent.source.plan_id)}
+                            if ordinary_verification else {}))
                     final_invocation = ExecutionInvocationRecord(command_context.receipt,
                         request.identity.workspace_id, expected_attempt.state.identity.activity_id,
                         (ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION if ordinary_verification

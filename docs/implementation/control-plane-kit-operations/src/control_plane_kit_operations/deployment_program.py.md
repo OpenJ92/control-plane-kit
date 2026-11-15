@@ -1,6 +1,10 @@
 Source: [deployment_program.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/deployment_program.py).
 Maintain this companion alongside its source.
 
+#2088's keyword-only optional HTTP verification intent is nominally typed and
+appears in the descriptor only when supplied. It applies to inline or saved
+preparation; it does not accept arbitrary derivation profiles or grant execution.
+
 Pure typed commands and references describe resumable deployment intent.
 Preparation accepts an optional `proposed_graph_id` only with an inline graph.
 The shared graph-authoring validator applies Core's public graph-revision name

@@ -71,6 +71,12 @@ class SecretUseIntent(StrEnum):
     GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY = (
         "gateway.node-health-read-transit-signing-key"
     )
+    WORKLOAD_HTTP_VERIFICATION_SAMPLE_SIGNING_KEY = (
+        "workload.http-verification-sample-signing-key"
+    )
+    GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT_SIGNING_KEY = (
+        "gateway.http-verification-sample-transit-signing-key"
+    )
 
 
 def health_signing_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
@@ -82,6 +88,17 @@ def health_signing_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
         if purpose is DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT:
             return SecretUseIntent.GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY
     raise SecretProviderContractError("health signing purpose is unsupported")
+
+
+def http_verification_sample_signing_intent_for(purpose: DelegationKeyPurpose) -> SecretUseIntent:
+    """Name an exact sample signing use; grant no resolution or signing authority."""
+
+    if type(purpose) is DelegationKeyPurpose:
+        if purpose is DelegationKeyPurpose.WORKLOAD_HTTP_VERIFICATION_SAMPLE:
+            return SecretUseIntent.WORKLOAD_HTTP_VERIFICATION_SAMPLE_SIGNING_KEY
+        if purpose is DelegationKeyPurpose.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT:
+            return SecretUseIntent.GATEWAY_HTTP_VERIFICATION_SAMPLE_TRANSIT_SIGNING_KEY
+    raise SecretProviderContractError("HTTP sample signing purpose is unsupported")
 
 
 class SecretCustodyStatus(StrEnum):
