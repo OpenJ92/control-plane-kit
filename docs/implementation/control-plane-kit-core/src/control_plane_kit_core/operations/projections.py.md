@@ -1,6 +1,10 @@
 Source: [projections.py](../../../../../../control-plane-kit-core/src/control_plane_kit_core/operations/projections.py).
 Maintain this companion alongside its source.
 
+#2091 adds nonpaged `product-topology-preview` with the explicit
+`public-product-topology-proposal` policy. This public allowlist and commitment
+are implemented by Operations; fixed canonical graph data remain internal.
+
 #2041 declares `workspaces` / `authorized-workspace-inventory`, paged to 100,
 with no single target-workspace requirement. This is transport metadata;
 Operations filters every row under the current exact durable read grant.

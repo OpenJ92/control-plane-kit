@@ -1,6 +1,10 @@
 Source: [parity.py](../../../../../../control-plane-kit-core/src/control_plane_kit_core/operations/parity.py).
 Maintain this companion alongside its source.
 
+#2091 binds `read.product-topology-preview` to MCP `preview_product_topology`
+and the HTTP read-only POST, both returning `ProductTopologyPreviewResponse`.
+Owner metadata alone does not qualify Servers transport or installed exposure.
+
 #2041 binds `read.workspaces` to HTTP GET `/workspaces` and MCP
 `list_workspaces`, returning the same bounded `WorkspaceInventoryPage`.
 

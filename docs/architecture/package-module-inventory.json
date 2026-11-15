@@ -2,6 +2,53 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.product_topology_authoring",
+      "destination": "control_plane_kit_operations.product_topology_authoring",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/product_topology_authoring.py",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "authorization",
+        "validation",
+        "projections"
+      ],
+      "movement": "remain",
+      "migration_prerequisites": [
+
+      ],
+      "canonical_public_exports": [
+        "ProductTopologyRecipe",
+        "ProductTopologyAuthoringService",
+        "ProductTopologyAuthoringError",
+        "public_product_topology_graph",
+        "public_proposal_commitment"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.algebra",
+        "control_plane_kit_core.environment",
+        "control_plane_kit_core.identity",
+        "control_plane_kit_core.lifecycle",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.products",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.types",
+        "control_plane_kit_core.verification",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.read_services._redaction"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.cpk_server"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_product_topology_authoring.py"
+      ],
+      "motivation": "Resolve workspace-pinned retained documents into a public bounded preview and owner-compiled graph for the existing draft transaction, without allocating preview identities or runtime effects."
+    },
+    {
       "module": "control_plane_kit_core.http_verification_sample_installation",
       "destination": "control_plane_kit_core.http_verification_sample_installation",
       "source": "control-plane-kit-core/src/control_plane_kit_core/http_verification_sample_installation.py",

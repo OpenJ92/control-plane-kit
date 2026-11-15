@@ -66,6 +66,9 @@ from control_plane_kit_operations.admission import (
     ExternalReadinessAttestation,
     RequestPlanExecution,
 )
+from control_plane_kit_operations.product_topology_authoring import (
+    ProductTopologyAuthoringError, ProductTopologyAuthoringService, public_json_bytes,
+)
 from control_plane_kit_operations.advancement import (
     AdvanceCurrentGraph,
     CurrentGraphAdvancementCommandService,
@@ -434,6 +437,7 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     ),
     "read.products": _WORKSPACE_READ,
     "read.product-detail": _WORKSPACE_READ,
+    "read.product-topology-preview": _WORKSPACE_READ,
     "read.secret-providers": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
     ),
@@ -713,6 +717,19 @@ class CpkServerReadService:
             except WorkspaceInventoryError as error:
                 failure = (error.status, str(error))
             raise CpkServerApplicationError(*failure)
+        if request.route_id == "read.product-topology-preview":
+            context = _trusted_context(request)
+            values = _arguments(request)
+            try:
+                public_json_bytes(values)
+                framed = (request.surface == "http" and set(request.path_parameters) == {"workspace_id"}
+                    and set(request.payload) == {"recipe"}) or (request.surface == "mcp"
+                    and not request.path_parameters and set(request.payload) == {"workspace_id", "recipe"})
+                if not framed:
+                    raise ProductTopologyAuthoringError()
+                return ProductTopologyAuthoringService(self._unit_of_work_factory).preview(context, values["recipe"])
+            except ProductTopologyAuthoringError as error:
+                raise CpkServerApplicationError(error.status, str(error)) from None
         if request.route_id == "read.receiver-authoring-context":
             context = _trusted_context(request)
             arguments = _closed_read_arguments(request)
@@ -829,6 +846,7 @@ class CpkServerPlanningService:
         secret_providers: SecretProviderRegistrationService | None = None,
         delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
         desired_topology_drafts: DesiredTopologyDraftCommandService | None = None,
+        product_topologies: ProductTopologyAuthoringService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
         deployment_program: DeploymentProgram | None = None,
     ) -> None:
@@ -841,6 +859,7 @@ class CpkServerPlanningService:
         self._secret_providers = secret_providers
         self._delegation_signing_keys = delegation_signing_keys
         self._desired_topology_drafts = desired_topology_drafts
+        self._product_topologies = product_topologies
         self._desired_graphs = desired_graphs
         self._deployment_program = deployment_program
 
@@ -875,7 +894,26 @@ class CpkServerPlanningService:
                 raise _service_not_configured(request)
             values = _arguments(request)
             try:
-                graph = DEFAULT_GRAPH_CODEC.decode(_mapping(values, "graph"))
+                if "product_recipe" in values:
+                    if (not request.route_id.endswith(".create") or "graph" in values
+                            or (request.surface == "http" and (set(request.path_parameters) != {"workspace_id"}
+                                or "workspace_id" in request.payload))
+                            or (request.surface == "mcp" and request.path_parameters)
+                            or request.surface not in {"http", "mcp"}
+                            or set(values) - {"workspace_id", "session_id", "title", "idempotency_key",
+                                "receiver_lifecycle", "product_recipe", "expected_proposal_commitment"}):
+                        raise ProductTopologyAuthoringError()
+                    public_json_bytes(values)
+                    if self._product_topologies is None:
+                        raise _service_not_configured(request)
+                    graph = self._product_topologies.prepare_saved_graph(context, values["product_recipe"],
+                        values.get("expected_proposal_commitment"))
+                else:
+                    if "expected_proposal_commitment" in values:
+                        raise ProductTopologyAuthoringError()
+                    graph = DEFAULT_GRAPH_CODEC.decode(_mapping(values, "graph"))
+            except ProductTopologyAuthoringError as error:
+                raise CpkServerApplicationError(error.status, str(error)) from None
             except (ValueError, TypeError, KeyError):
                 raise CpkServerApplicationError(400, "draft graph is malformed") from None
             arguments = dict(context=context, session_id=_text(values, "session_id"), graph=graph,
@@ -2463,6 +2501,7 @@ def cpk_server_services(
             secret_providers=secret_providers,
             delegation_signing_keys=delegation_signing_keys,
             desired_topology_drafts=desired_topology_drafts,
+            product_topologies=ProductTopologyAuthoringService(unit_of_work_factory),
             desired_graphs=desired_graphs,
             deployment_program=deployment_program,
         ),

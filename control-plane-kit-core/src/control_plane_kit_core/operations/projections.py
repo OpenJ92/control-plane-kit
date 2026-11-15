@@ -59,6 +59,7 @@ class ReadProjectionKind(StrEnum):
     INGRESS_AUTHORITY_DETAIL = "ingress-authority-detail"
     REGISTERED_PRODUCTS = "registered-products"
     REGISTERED_PRODUCT_DETAIL = "registered-product-detail"
+    PRODUCT_TOPOLOGY_PREVIEW = "product-topology-preview"
     SECRET_PROVIDERS = "secret-providers"
     SECRET_PROVIDER_DETAIL = "secret-provider-detail"
     SECRET_REFERENCES = "secret-references"
@@ -76,6 +77,7 @@ class ReadProjectionPolicy(StrEnum):
     """Closed projection redaction and evidence policy."""
 
     REDACTED_PRODUCT_DIRECTORY = "redacted-product-directory"
+    PUBLIC_PRODUCT_TOPOLOGY_PROPOSAL = "public-product-topology-proposal"
     REDACTED_WORKSPACE = "redacted-workspace"
     AUTHORIZED_WORKSPACE_INVENTORY = "authorized-workspace-inventory"
     AUTHORIZED_WORKSPACE_ADMINISTRATION = "authorized-workspace-administration"
@@ -388,6 +390,8 @@ _CANONICAL_PROJECTIONS = (
     ),
     _ProjectionDefinition("read.products", ReadProjectionKind.REGISTERED_PRODUCTS, "RegisteredProductsReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, paged=True, max_page_size=100),
     _ProjectionDefinition("read.product-detail", ReadProjectionKind.REGISTERED_PRODUCT_DETAIL, "RegisteredProductDetailReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY),
+    _ProjectionDefinition("read.product-topology-preview", ReadProjectionKind.PRODUCT_TOPOLOGY_PREVIEW,
+        "ProductTopologyPreviewResponse", ReadProjectionPolicy.PUBLIC_PRODUCT_TOPOLOGY_PROPOSAL),
     _ProjectionDefinition(
         "read.receiver-authoring-context",
         ReadProjectionKind.RECEIVER_AUTHORING_CONTEXT,
