@@ -851,6 +851,57 @@ class ProviderPolicyCommandTests(LifecycleLockFixture, unittest.TestCase):
             results = tuple(pool.map(lambda _: run(), range(2)))
         self.assertEqual(sorted(value.replayed for value in results), [False, True])
 
+    def test_upgrade_failure_after_additive_ddl_preserves_old_objects_and_rows(self):
+        prior = "provider_policy_ddl_failure_" + uuid4().hex
+        self.connection.execute(f'CREATE SCHEMA "{prior}"')
+        self.addCleanup(self.connection.execute, f'DROP SCHEMA "{prior}" CASCADE')
+        self.connection.execute(f'SET search_path TO "{prior}"')
+        self.connection.execute(self.prior_sql())
+        self.connection.execute("INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) "
+                                "VALUES ('retained','Retained','created')")
+        before = namespace_state(self.connection)
+        connection = self.connection
+
+        class FailAfterDdl:
+            info = connection.info
+            transaction = connection.transaction
+
+            def execute(self, query, params=()):
+                result = connection.execute(query, params)
+                if "CREATE TABLE cpk_provider_policy_commands (" in query:
+                    raise RuntimeError("injected after additive DDL")
+                return result
+
+        with self.assertRaises(ProviderPolicyCommandUpgradeError):
+            upgrade_provider_policy_commands(
+                FailAfterDdl(), self.context(), administration_policy=self.policy())
+        self.assertEqual(namespace_state(self.connection), before)
+
+    def test_upgrade_lost_commit_acknowledgement_is_uncertain_not_rolled_back(self):
+        from control_plane_kit_operations.postgres import ProviderPolicyCommandUpgradeUncertain
+
+        prior = "provider_policy_ack_loss_" + uuid4().hex
+        self.connection.execute(f'CREATE SCHEMA "{prior}"')
+        self.addCleanup(self.connection.execute, f'DROP SCHEMA "{prior}" CASCADE')
+        self.connection.execute(f'SET search_path TO "{prior}"')
+        self.connection.execute(self.prior_sql())
+        connection = self.connection
+
+        class LostAcknowledgement:
+            info = connection.info
+            execute = connection.execute
+
+            @contextmanager
+            def transaction(self):
+                with connection.transaction():
+                    yield
+                raise RuntimeError("injected lost acknowledgement")
+
+        with self.assertRaises(ProviderPolicyCommandUpgradeUncertain):
+            upgrade_provider_policy_commands(
+                LostAcknowledgement(), self.context(), administration_policy=self.policy())
+        self.assertEqual(catalog_sha256(self.connection), HISTORICAL_TARGET_SHA256)
+
 
 if __name__ == "__main__":
     unittest.main()

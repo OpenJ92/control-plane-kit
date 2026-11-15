@@ -18,7 +18,7 @@ from control_plane_kit_operations.workspace_permissions import (
 )
 from .current_data_validation import validate_current_rows
 from .current_schema_contract import (
-    CURRENT_POSTGRES_SCHEMA_CONTRACT, CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256,
+    HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT, HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT_SHA256,
     PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT,
 )
 from .current_schema_verification import (
@@ -56,7 +56,7 @@ class WorkspacePermissionUpgradePlan:
     grants: tuple[GrantWorkspacePermissions, ...]
     idempotency_key: IdempotencyKey
     source_contract_sha256: str = _SOURCE_SHA256
-    target_contract_sha256: str = CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256
+    target_contract_sha256: str = HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT_SHA256
     managed_runtime_grants: tuple[GrantManagedRuntimeAccess, ...] = ()
 
     def __post_init__(self):
@@ -136,7 +136,7 @@ def _require_plan(plan, policy):
         raise WorkspacePermissionUpgradeError("upgrade authority or plan is malformed")
     policy.require(plan.context)
     if (plan.source_contract_sha256 != _SOURCE_SHA256
-            or plan.target_contract_sha256 != CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256):
+            or plan.target_contract_sha256 != HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT_SHA256):
         raise WorkspacePermissionUpgradeError("upgrade plan does not match the supported transition")
 
 
@@ -146,9 +146,9 @@ def _recognized_contract(connection):
     rows = connection.execute(
         "SELECT relname,relkind FROM pg_class WHERE relnamespace=current_schema()::regnamespace "
         "AND relkind NOT IN ('i','I') ORDER BY relname LIMIT %s",
-        (len(CURRENT_POSTGRES_SCHEMA_CONTRACT.relations) + 1,),
+        (len(HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT.relations) + 1,),
     ).fetchall()
-    for contract in (PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT, CURRENT_POSTGRES_SCHEMA_CONTRACT):
+    for contract in (PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT, HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT):
         if rows == [(relation.name, relation.kind) for relation in contract.relations]:
             return contract
     raise WorkspacePermissionUpgradeError("retained schema is not a supported transition state")
@@ -161,7 +161,7 @@ def _lock_and_validate(connection, contract):
             or not current_namespace_adjuncts_are_exact(connection)):
         raise WorkspacePermissionUpgradeError("retained schema does not match its accepted contract")
     validate_current_rows(connection)
-    if contract is CURRENT_POSTGRES_SCHEMA_CONTRACT:
+    if contract is HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT:
         validate_workspace_permission_rows(connection)
         from .managed_runtime_assignment_store import validate_managed_runtime_assignment_rows
         validate_managed_runtime_assignment_rows(connection)
@@ -208,7 +208,7 @@ def upgrade_workspace_permissions(connection, plan, *, administration_policy, cl
             contract = _recognized_contract(connection)
             _lock_and_validate(connection, contract)
             store = WorkspacePermissionStore(connection)
-            if contract is CURRENT_POSTGRES_SCHEMA_CONTRACT:
+            if contract is HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT:
                 receipt = store.installation_receipt()
                 if not _matches(receipt, plan):
                     raise WorkspacePermissionUpgradeError("upgrade receipt conflicts with the plan")
@@ -240,7 +240,7 @@ def upgrade_workspace_permissions(connection, plan, *, administration_policy, cl
                 for grant in plan.managed_runtime_grants:
                     assignments.change(grant, "grant", capability_policy=capability_policy,
                                        clock=clock, id_factory=id_factory)
-                _lock_and_validate(connection, CURRENT_POSTGRES_SCHEMA_CONTRACT)
+                _lock_and_validate(connection, HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT)
                 result = WorkspacePermissionUpgradeResult(receipt, False, provisional)
             verified = True
         return result

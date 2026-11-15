@@ -583,12 +583,16 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
     def test_historical_upgrade_sources_keep_their_original_semantic_fingerprints(self):
         from control_plane_kit_operations.postgres import current_schema_contract
         from tests.historical_schema_fixture import (
-            contract_sha256, WORKSPACE_SOURCE_SHA256, PROVIDER_SOURCE_SHA256,
+            contract_sha256, WORKSPACE_SOURCE_SHA256, PROVIDER_SOURCE_SHA256, HISTORICAL_TARGET_SHA256,
         )
         self.assertEqual(contract_sha256(current_schema_contract.PRE_WORKSPACE_PERMISSION_SCHEMA_CONTRACT),
                          WORKSPACE_SOURCE_SHA256)
         self.assertEqual(contract_sha256(current_schema_contract.PRE_PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT),
                          PROVIDER_SOURCE_SHA256)
+        self.assertEqual(contract_sha256(current_schema_contract.HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT),
+                         HISTORICAL_TARGET_SHA256)
+        self.assertEqual(current_schema_contract.HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT_SHA256,
+                         HISTORICAL_TARGET_SHA256)
 
     def test_current_contract_identifies_exact_node_control_vocabulary(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract

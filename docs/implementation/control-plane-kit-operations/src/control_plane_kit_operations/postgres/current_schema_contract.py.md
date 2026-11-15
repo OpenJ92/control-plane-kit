@@ -1,6 +1,17 @@
 Source: [current_schema_contract.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema_contract.py).
 Maintain this companion alongside its source.
 
+#2095 separates immutable historical contracts from the fresh sampling schema.
+The literal base and original additive layers retain the workspace predecessor
+`c8cc4205`, provider-policy predecessor `7505500a` and complete historical target
+`7288fee8`. Both retained upgrade owners consume that historical target explicitly.
+Only after capturing those contracts does the fresh contract apply #1815's two
+CHECK expressions; its full `75b6b900` identity and current SQL bytes stay unchanged.
+Historical fixture bytes and PostgreSQL catalog fingerprints are independently
+pinned in the owning tests. Historical upgrades do not convert to sampling:
+ordinary current startup refuses their older result intact. A future bridge
+requires a separate reviewed migration decision.
+
 #1815 changes only the exact expressions for signing-purpose and secret-use
 intent constraints to admit the two HTTP-sample families. Relation, column,
 constraint, index and foreign-key counts do not change. The prospective metadata
