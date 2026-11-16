@@ -522,7 +522,7 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
         from control_plane_kit_operations.workflows import IdempotencyKey
         from control_plane_kit_core.types import RuntimeKind
 
-        _CurrentCoordinatorPermission.configure_permissions(self, self.worker.identity, installation="worker-evidence")
+        _CurrentCoordinatorPermission.configure_permissions(self, self.worker.identity, installation="coordinator-permission")
         factory = self.unit_of_work
         fold = managed.EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
         registration = RuntimeAdapterRegistration(self.runtime, exact_version_execute_with_authority=True,
