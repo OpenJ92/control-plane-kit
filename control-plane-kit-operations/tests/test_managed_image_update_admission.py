@@ -235,3 +235,17 @@ class RetainedImageIngressAdmissionTests(unittest.TestCase):
                         replace(canonical, activities=canonical.activities[:-1])):
                     self.assertTrue(runtime_management_execution_is_unsupported(current, desired, candidate,
                         registered_products=products, derivation_profile=recorded))
+
+
+class ExistingRuntimeBootstrapExecutionBoundaryTests(unittest.TestCase):
+    def test_approval_profile_never_admits_a_substituted_or_empty_worker_plan(self):
+        current, desired, _, products = managed_update_graphs(self)
+        profile = PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1
+        transition = Deploy(validate_graph(current), validate_graph(desired))
+        supported = derive_activity_plan(transition, profile=PlanDerivationProfile.MANAGED_UPDATE_V1)
+        self.assertTrue(supported.ready_for_execution)
+        for first, second, plan in ((current, desired, supported), (current, current, ActivityPlan(())),
+                                    (DeploymentGraph("empty"), DeploymentGraph("empty"), None)):
+            with self.subTest(activities=len(plan.activities) if plan else None):
+                self.assertTrue(runtime_management_execution_is_unsupported(
+                    first, second, plan, registered_products=products, derivation_profile=profile))

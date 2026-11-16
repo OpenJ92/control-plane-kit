@@ -115,6 +115,15 @@ def runtime_management_plan_profile(
     """
 
     if type(transition) is UpdateDeployment:
+        before, after = transition.current.graph, transition.desired.graph
+        if any(runtime.management is not None and runtime_id in before.runtimes
+               and before.runtimes[runtime_id].management is None for runtime_id, runtime in after.runtimes.items()):
+            candidate = derive_activity_plan(transition, profile=PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1)
+            if candidate.activities and candidate.ready_for_execution:
+                if (_registered_bootstrap_products(before, after, registered_products)
+                        and not runtime_management_planning_is_unsupported(transition, registered_products=registered_products)):
+                    return PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1
+                return None
         retained = derive_activity_plan(
             transition, profile=PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1,
         )
@@ -165,6 +174,10 @@ def runtime_management_execution_is_unsupported(
     to the supplied pinned plan; callers with no such plan receive no exception.
     """
 
+    # The native connector reader has no qualified bootstrap on a retained
+    # runtime yet. Persist the approval subject without admitting any execution.
+    if derivation_profile is PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1:
+        return True
     # Parse independently of catalog contents. A malformed selected reference
     # cannot acquire a no-op exemption or leak its parser error into a receipt.
     if derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
@@ -458,6 +471,38 @@ def _managed_selection_nodes(current, desired):
         and any(runtime is not None and runtime.management is not None
             for runtime in (current.runtimes.get(current.nodes[name].runtime_id),
                 desired.runtimes.get(node.runtime_id))))
+
+
+def _registered_bootstrap_products(current, desired, registered_products):
+    """Bind new installations and both ingress targets to active catalog entries."""
+    try:
+        runtime, = desired.runtimes.values()
+        gateway = runtime.management.gateway_node_id
+        products = {key: _selected_product(node, registered_products) for key, node in desired.nodes.items()}
+        if any(product is None for product in products.values()):
+            return False
+        for key in desired.nodes.keys() - current.nodes.keys():
+            node, product = desired.nodes[key], products[key]
+            declared = product.descriptor_document.product
+            if (not _node_matches_product(node, product) or declared.runtime_contract.retained_data_mounts
+                    or node.metadata.get("oci_image") != declared.image.execution_reference):
+                return False
+        connectors = [products[item.connector_node_id].reference for item in desired.public_ingresses]
+        if connectors[0] != connectors[1]:
+            return False
+        for ingress in desired.public_ingresses:
+            key, socket = ingress.target.node_id, ingress.target.provider_socket
+            contract = products[key].descriptor_document.product.runtime_contract
+            ports = [port.container_port for port in contract.provider_ports if port.provider_socket == socket]
+            endpoint = desired.node(key).endpoint(socket)
+            if (not any(v.name == socket and v.protocol == Protocol.HTTP for v in contract.sockets.providers)
+                    or len(ports) != 1 or endpoint.protocol != Protocol.HTTP
+                    or endpoint.url != f"http://{key}:{ports[0]}"):
+                return False
+        return _management_routes_are_exact(_configured_management_routes(desired, gateway),
+            _expected_management_routes(desired, products, gateway, runtime_id=runtime.runtime_id))
+    except (TypeError, AttributeError, KeyError, ValueError):
+        return False
 
 
 def _registered_retained_image_shape(current, desired, registered_products):
