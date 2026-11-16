@@ -573,6 +573,145 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
             self.fail("connector start did not succeed")
         return read, runtime, start, claim
 
+    def configure_retained_bootstrap(self):
+        """Keep the ordinary API running and add two managed connector roles."""
+        from control_plane_kit_core.public_ingress import IngressAuthorityReference
+
+        api = self.graph.node("api")
+        original = self.documents["api"].product
+        contract = replace(original.runtime_contract, configuration_artifacts=(), public_environment=(),
+            capabilities=(), control_surfaces=())
+        ordinary = ProductDescriptorCodec().encode_document(replace(original,
+            identity=replace(original.identity, contract_revision=2), runtime_contract=contract))
+        self.documents["api"] = ordinary
+        # Both connector roles use the same registered image with distinct receiver configurations.
+        self.documents.pop("application-connector")
+        nodes = dict(self.graph.nodes)
+        nodes["api"] = replace(api, configuration_artifacts=(), public_environment=(),
+            block_spec=replace(api.block_spec, capabilities=(), control_surfaces=()))
+        for key, node in tuple(nodes.items()):
+            doc = self.documents["connector" if key == "application-connector" else key]
+            ref = ProductReference.from_document(doc)
+            nodes[key] = replace(node, metadata={**node.metadata, "product_identity": ref.identity.key,
+                "product_descriptor_digest": ref.descriptor_sha256.value, "oci_image": doc.product.image.execution_reference})
+        gateway = nodes["gateway"]
+        routes = ReceiverManagementRoutesCodec().encode_bytes(management_routes(nodes)).decode()
+        nodes["gateway"] = replace(gateway, configuration_artifacts=tuple(
+            replace(item, content=routes, source_digest=None) if item.artifact_id == "gateway-health-targets" else item
+            for item in gateway.configuration_artifacts))
+        management, public = self.graph.public_ingresses
+        self.graph = replace(self.graph, nodes=nodes, public_ingresses=(management,
+            replace(public, authority_ref=IngressAuthorityReference("application-authority"))))
+        self.author_initial_desired = self.accept_retained_workload
+
+    async def accept_retained_workload(self):
+        from control_plane_kit_core.policies import PolicyScope
+        from control_plane_kit_core.planning import compile_graph_activity_plan
+        from control_plane_kit_core.topology import DeploymentGraph
+        from control_plane_kit_operations.records import GraphVersionRecord
+        from tests.accepted_graph_origin_fixture import accept_selected_fixture_origin
+        from tests.test_managed_application_chain import now
+
+        runtime = replace(self.graph.runtimes["docker"], children=("api",), management=None)
+        base = replace(self.graph, public_ingresses=(), runtimes={"docker": runtime},
+            nodes={"api": self.graph.node("api")})
+        with self.unit_of_work() as uow:
+            stores = uow.stores
+            graph = GraphVersionRecord.from_graph(graph_id="retained-app", workspace_id="workspace-a",
+                version=stores.graphs.next_version_for_workspace("workspace-a"), graph=base, created_by="operator-a", created_at=now())
+            stores.graphs.save(graph)
+            stores.workspaces.set_desired_graph("workspace-a", graph.graph_id)
+            management, public = self.graph.public_ingresses
+            registration = stores.ingress_authorities.get("workspace-a", management.authority_ref)
+            stores.ingress_authorities.register(workspace_id="workspace-a", authority_ref=public.authority_ref,
+                authority=registration.authority, admitted_by="operator-a", admitted_at=now())
+            uow.commit()
+        plan = compile_graph_activity_plan(validate_graph(DeploymentGraph("empty")), validate_graph(base))
+        self.database_url = self.tracker.database_url
+        accept_selected_fixture_origin(self, plan, prefix="accepted-retained", timestamp=now(),
+            actor_scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE))
+        with self.unit_of_work() as uow:
+            ws = uow.stores.workspaces.get("workspace-a")
+        self.assertEqual(ws.current_graph_id, graph.graph_id)
+        self.workspace.update(current_graph_id=ws.current_graph_id,
+            current_realized_projection_id=ws.current_realized_projection_id,
+            desired_graph_revision=ws.desired_graph_revision)
+        return {"authored_graph_id": ws.desired_graph_id,
+            "realized_projection_id": ws.desired_realized_projection_id}
+
+    def configure_retained_reader(self):
+        from tests.test_managed_application_chain import RecordingManagedHealth
+
+        self.configure_retained_bootstrap()
+        captured = []
+
+        class CaptureHealth(RecordingManagedHealth):
+            def select(inner, *, plan, current, desired, registered_products, runtime_authorities):
+                self.assertEqual(set(current.nodes), {"api"})
+                self.assertEqual(desired, self.graph)
+                selected = tuple(item.activity_id for item in plan.activities
+                    if type(item.operation) in (ObserveManagementBootstrap, ObserveNodeHealth))
+                inner.selections.append(selected)
+                return selected
+
+            async def observe_connection(inner, realization, request, authority):
+                captured.append(realization.run_connector_installation)
+                return await super().observe_connection(realization, request, authority)
+
+        self.health = CaptureHealth(self)
+        self.health.responses = [NativeConnectionOutcome.CONNECTED]
+        return captured
+
+    async def execute_through_native_attempt(self):
+        for _ in self.plan.activities:
+            await self.execute_one()
+            if any(event.activity_id == self.native_id for event in self.history()
+                    if event.kind is not ActivityEventKind.STEP_STARTED):
+                return self.native_attempt(1)
+        self.fail("the native attempt never produced an outcome")
+
+    async def test_retained_bootstrap_delivers_original_connector_receipt_to_native_reader(self):
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+
+        captured = self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read()
+        proof = read()
+        self.assertIsNotNone(proof)
+        self.assertIsNone(read(node_id="application-connector"))
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.activity_history.get_plan(self.plan_id).derivation_profile,
+                PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1)
+        _, retained = await self.execute_through_native_attempt()
+        self.assertEqual(captured, [proof])
+        self.assertEqual(len(self.health.native_reads), 1)
+        self.assertIs(retained.outcome.observation.outcome, NativeConnectionOutcome.CONNECTED)
+
+    async def test_retained_bootstrap_missing_dispatch_receipt_refuses_native_read(self):
+        captured = self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read(registered=False)
+        self.assertIsNone(read())
+        _, retained = await self.execute_through_native_attempt()
+        self.assertEqual(captured, [])
+        self.assertEqual(self.health.native_reads, [])
+        self.assertEqual(retained.outcome.result.failure.code, "native-read-result-unknown")
+
+    async def test_retained_bootstrap_foreign_allocation_refuses_native_read(self):
+        captured = self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read()
+        proof = read()
+        self.assertIsNotNone(proof)
+        with self.connection.transaction():
+            changed = self.connection.execute(
+                "UPDATE cpk_generated_ingress_secret_references SET source_run_id=%s "
+                "WHERE source_run_id=%s AND source_event_id=%s",
+                ("unrelated-run", self.run_id, proof.allocation_start_event_id))
+            self.assertEqual(changed.rowcount, 1)
+        self.assertIsNone(read())
+        _, retained = await self.execute_through_native_attempt()
+        self.assertEqual(captured, [])
+        self.assertEqual(self.health.native_reads, [])
+        self.assertEqual(retained.outcome.result.failure.code, "native-read-result-unknown")
+
     async def test_worker_reads_new_connector_from_its_active_run(self):
         from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
         read, runtime, start, claim = await self.prepare_worker_connector_read()
