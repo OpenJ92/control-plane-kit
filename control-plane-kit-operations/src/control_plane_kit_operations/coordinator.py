@@ -78,7 +78,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.topology.validation import validate_graph
 from control_plane_kit_core.planning.management_compiler import resolve_management_observation
 from control_plane_kit_operations.connector_installation import (
-    CurrentConnectorInstallation, CurrentConnectorInstallationRead,
+    CurrentConnectorInstallation, CurrentConnectorInstallationRead, RunConnectorInstallation,
 )
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.activity_journal import activity_journal_events
@@ -341,6 +341,7 @@ class ActivityRealizationContext:
     ingress_resources: tuple[CloudflareOwnedIngressResource, ...] = ()
     generated_ingress_secrets: tuple[GeneratedIngressSecretReference, ...] = ()
     connector_installation: CurrentConnectorInstallation | None = field(default=None, repr=False)
+    run_connector_installation: RunConnectorInstallation | None = field(default=None, repr=False)
 
     @property
     def plan(self) -> ActivityPlan:
@@ -521,6 +522,24 @@ class ActivityRealizationContext:
                 )
         if self.intent_event.activity_id != self.activity.activity_id.value:
             raise InvalidOperationCommand("realization intent must match activity")
+        if self.run_connector_installation is not None:
+            proof = self.run_connector_installation
+            if not is_native_connection_operation(self.activity.operation):
+                raise InvalidOperationCommand("active connector installation requires the native connector observation")
+            resolved = _native_connector_observation(self)
+            runtime = resolved.selected_graph.graph.runtimes[resolved.connector_node.runtime_id]
+            if (type(proof) is not RunConnectorInstallation or self.connector_installation is not None
+                    or proof.authority_ref != runtime.authority_ref
+                    or not any(a.registration_id == proof.runtime_registration_id and a.authority_ref == proof.authority_ref
+                        and a.workspace_id == self.request.identity.workspace_id for a in self.runtime_authorities)
+                    or self.plan_record.derivation_profile is not PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1
+                    or (proof.source.workspace_id, proof.source.request_id, proof.source.run_id.value,
+                        proof.source.plan_id, proof.source.base_graph_id, proof.source.desired_graph_id,
+                        proof.wrapper.node_id, proof.wrapper.runtime_id, proof.ingress_id) !=
+                    (self.request.identity.workspace_id, self.request.identity.request_id, self.run.run_id,
+                        self.plan_record.plan_id, self.plan_record.base_graph_id, self.plan_record.desired_graph_id,
+                        resolved.connector_node.node_id, resolved.connector_node.runtime_id, resolved.ingress.ingress_id)):
+                raise InvalidOperationCommand("active connector installation differs from pinned observation")
         if self.connector_installation is not None:
             valid = False
             try:
@@ -1436,6 +1455,7 @@ class ExecutionCoordinator:
     def _native_connector_installation(self, stores, realization):
         """Join accepted provenance inside fresh admission, never across effects."""
         if realization.plan_record.derivation_profile not in (
+                PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1,
                 PlanDerivationProfile.MANAGED_UPDATE_V1,
                 PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1):
             return realization
@@ -1453,6 +1473,14 @@ class ExecutionCoordinator:
         active = accounting.active
         accounting.active = True
         try:
+            if plan.derivation_profile is PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1:
+                runtime_id = resolved.operation.target.runtime_id
+                runtime = resolved.selected_graph.graph.runtimes[runtime_id]
+                proof = self._unit_of_work_factory().read_run_connector_installation(
+                    workspace_id=workspace.workspace_id, request_id=realization.request.identity.request_id,
+                    plan_id=plan.plan_id, run_id=realization.run.run_id, activity_id=realization.activity.activity_id.value,
+                    node_id=resolved.connector_node.node_id, authority_ref=runtime.authority_ref, fence=realization.fence)
+                return None if proof is None else replace(realization, run_connector_installation=proof)
             proof = stores.configuration_acceptance.read_current_connector_installation(
                 workspace.workspace_id, expected_current_graph_id=plan.base_graph_id,
                 expected_current_realized_projection_id=plan.base_realized_projection_id,
