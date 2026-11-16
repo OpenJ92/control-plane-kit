@@ -282,7 +282,7 @@ class DesiredTopologyDraftTests(DraftCatalogueFixture, unittest.TestCase):
                     self.assertFalse(body in str(response), "ordinary graph read returned the configured file contents")
                     self.assertEqual(response["graph_id"], created.graph_id)
                     public, = response["graph_descriptor"]["nodes"]["app"]["configuration_artifacts"]
-                    self.assertEqual(public["artifact_id"], artifact.artifact_id)
+                    self.assertEqual(public, {key: value for key, value in artifact.descriptor().items() if key != "content"})
         with self.unit_of_work() as uow:
             stored = uow.stores.graphs.get(created.graph_id).graph_descriptor
             self.assertEqual(stored["nodes"]["app"]["configuration_artifacts"][0], artifact.descriptor())
