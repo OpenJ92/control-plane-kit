@@ -65,6 +65,12 @@ class PostgresUnitOfWork:
             yield stores.graphs.receiver_authoring_snapshot()
 
     @contextmanager
+    def ingress_extension_snapshot(self):
+        """All inputs to one ingress proposal share one read-only MVCC view."""
+        with self._read_snapshot() as stores:
+            yield stores
+
+    @contextmanager
     def activity_recovery_snapshot(self):
         """Retained effect evidence only; no fold, reservation or dispatch."""
         from .activity_recovery_read import ActivityRecoverySnapshot

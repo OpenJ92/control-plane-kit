@@ -5,6 +5,8 @@ from hashlib import sha256
 import json
 import unittest
 
+import psycopg
+
 from control_plane_kit_core.algebra import BlockSockets, DeploymentTopology, DockerRuntime, ProviderSocket, RequirementSocket
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
@@ -19,7 +21,7 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.products import (
     ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
-    ProductCatalog, ProductIdentity, ProductInstanceConfiguration, ProductRuntimeContract, ProductRuntimeContractCodec, ProviderRuntimePort, instantiate_catalog_product,
+    ProductCatalog, ProductIdentity, ProductReferenceCodec, ProductInstanceConfiguration, ProductRuntimeContract, ProductRuntimeContractCodec, ProviderRuntimePort, instantiate_catalog_product,
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_core.types import Protocol
@@ -31,6 +33,7 @@ from control_plane_kit_operations.product_topology_authoring import (
 )
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_operations.ingress_authorities import CloudflareZoneIngressAuthorityCodec
+from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftError, bounded_draft_graph_descriptor
 from control_plane_kit_operations.read_services.workspace_graph import _redact_graph_descriptor
@@ -279,6 +282,54 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 self.append_ingress_preview(preview, **changed)
             self.assertEqual(refusal.exception.status, 409)
         self.assertEqual(committed, (self.catalogue_truth(), self.runtime_truth()))
+
+    def test_named_ingress_extension_observes_one_snapshot_during_authority_and_product_change(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        workspace = "workspace-a"
+        with self.unit_of_work() as uow:
+            pin = ProductReferenceCodec().decode(recipe["connector"]["product"])
+            original = uow.stores.registered_products.get(workspace, pin).descriptor_document.product
+        successor = replace(original, identity=replace(original.identity, contract_revision=2))
+        document = ProductDescriptorCodec().encode_document(successor)
+        recipe["connector"]["product"] = {"identity": successor.identity.descriptor(), "descriptor_sha256": document.content_digest}
+        commits = []
+        observed = set()
+
+        def rotate():
+            with self.unit_of_work() as writer:
+                writer.stores.ingress_authorities.revoke(workspace, IngressAuthorityReference("hello-public"))
+                writer.stores.registered_products.register(workspace_id=workspace, descriptor_document=document,
+                    source=InlineDescriptorSource(), imported_by="operator-a", imported_at=NOW)
+                writer.commit()
+            commits.append(True)
+
+        class ObservedConnection(psycopg.Connection):
+            def execute(connection, query, *args, **kwargs):
+                result = super().execute(query, *args, **kwargs)
+                sql = str(query).lower()
+                if "select" in sql and "cpk_" in sql:
+                    observed.add(super().execute("SELECT pg_backend_pid(), current_setting('transaction_isolation'), "
+                        "current_setting('transaction_read_only')").fetchone())
+                if "from cpk_ingress_authorities" in sql and not commits:
+                    rotate()
+                return result
+
+        def reader():
+            return PostgresUnitOfWork(lambda: ObservedConnection.connect(self.database_url,
+                options=f"-c search_path={self.schema} -c lock_timeout=5000 -c statement_timeout=10000"))
+
+        request = CatalogueRequest("http", PREVIEW, ControlPlaneServiceRole.READS, {"workspace_id": workspace},
+            {"recipe": recipe}, principal())
+        with self.assertRaises(CpkServerApplicationError) as refused:
+            CpkServerReadService(reader).handle(request)
+        self.assertEqual(refused.exception.status, 409)
+        self.assertEqual(commits, [True])
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(next(iter(observed))[1:], ("repeatable read", "on"))
+        with self.assertRaises(CpkServerApplicationError) as fresh:
+            self.preview(recipe)
+        self.assertEqual(fresh.exception.status, 409)
 
     def test_named_ingress_extension_refuses_a_graph_id_from_an_older_revision(self):
         extension, first, _ = self.ingress_extension_fixture()

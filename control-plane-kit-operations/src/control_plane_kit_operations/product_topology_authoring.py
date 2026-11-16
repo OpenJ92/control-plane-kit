@@ -311,29 +311,30 @@ class ProductTopologyAuthoringService:
         revision = base["revision"]
         if type(revision) is not int or not 1 <= revision < 2**63:
             raise ProductTopologyAuthoringError()
-        with self._uow() as uow:
+        with self._uow().ingress_extension_snapshot() as stores:
             try:
-                drafts = uow.stores.desired_topology_drafts
+                drafts = stores.desired_topology_drafts
                 draft = drafts.get(context.workspace_id, draft_id)
                 saved = drafts.revision(context.workspace_id, draft_id, revision)
             except KeyError:
                 raise ProductTopologyAuthoringError(404) from None
             if draft.deleted_at is not None or draft.head_revision != revision or saved.graph_id != graph_id:
                 raise ProductTopologyAuthoringError(409)
-            record = uow.stores.graphs.get(saved.graph_id)
+            record = stores.graphs.get(saved.graph_id)
             if record.workspace_id != context.workspace_id:
                 raise ProductTopologyAuthoringError(409)
             graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
             runtime_id = _identifier(recipe["runtime_id"])
             runtime = graph.runtimes[runtime_id]
             connector = _object(recipe["connector"], {"node_id", "product", "receiver_id", "provider_socket"})
-            ingress = _named_ingress(uow.stores, context.workspace_id, recipe["ingress"], connector["node_id"], graph, runtime_id)
+            ingress = _named_ingress(stores, context.workspace_id, recipe["ingress"], connector["node_id"], graph, runtime_id)
             receiver_context = ReceiverAuthoringContextReadService(self._uow).read(
                 ReceiverAuthoringContextQuery(context.workspace_id, pending_draft={
-                    "draft_id": draft_id, "expected_head_revision": revision}), context=context)
+                    "draft_id": draft_id, "expected_head_revision": revision}), context=context,
+                snapshot=stores.graphs.receiver_authoring_snapshot())
             if receiver_context.pending_draft.source.graph_id != graph_id:
                 raise ProductTopologyAuthoringError(409)
-            node, slot = _connector_instance(uow.stores, context.workspace_id, connector, runtime_id, graph, receiver_context)
+            node, slot = _connector_instance(stores, context.workspace_id, connector, runtime_id, graph, receiver_context)
             extended = graph.add_node(node).add_public_ingress(ingress)
             extended = replace(extended, runtimes={**graph.runtimes,
                 runtime_id: replace(runtime, children=(*runtime.children, node.node_id))})
