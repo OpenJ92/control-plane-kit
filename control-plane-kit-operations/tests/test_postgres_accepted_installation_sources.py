@@ -696,6 +696,8 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
         self.assertEqual(retained.outcome.result.failure.code, "native-read-result-unknown")
 
     async def test_retained_bootstrap_foreign_allocation_refuses_native_read(self):
+        from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
+
         captured = self.configure_retained_reader()
         read, *_ = await self.prepare_worker_connector_read()
         proof = read()
@@ -707,10 +709,12 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
                 ("unrelated-run", self.run_id, proof.allocation_start_event_id))
             self.assertEqual(changed.rowcount, 1)
         self.assertIsNone(read())
-        _, retained = await self.execute_through_native_attempt()
+        before = self.rows("cpk_effect_attempts")
+        with self.assertRaisesRegex(ExecutionCoordinatorConflict, "configuration material is unavailable"):
+            await self.execute_one()
+        self.assertEqual(self.rows("cpk_effect_attempts"), before)
         self.assertEqual(captured, [])
         self.assertEqual(self.health.native_reads, [])
-        self.assertEqual(retained.outcome.result.failure.code, "native-read-result-unknown")
 
     async def test_retained_bootstrap_substituted_signed_receiver_refuses_before_dispatch(self):
         from unittest.mock import patch
