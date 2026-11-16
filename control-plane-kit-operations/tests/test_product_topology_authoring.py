@@ -6,6 +6,11 @@ import json
 import unittest
 
 from control_plane_kit_core.algebra import BlockSockets, DeploymentTopology, DockerRuntime, ProviderSocket, RequirementSocket
+from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
+from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_operations.delegation_signing_keys import RegisterDelegationSigningKeyCommand
+from tests.test_delegation_signing_keys import PUBLIC_KEY_A
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.operations import (
@@ -156,8 +161,35 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
 
     def test_named_ingress_extension_matching_base_previews_connector_and_keeps_source(self):
         extension, _, graph = self.ingress_extension_fixture()
+        with self.unit_of_work() as uow:
+            for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ, DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ):
+                key = DelegationPublicKey("fixture-public", DelegationKeyAlgorithm.ED25519, PUBLIC_KEY_A)
+                candidate = RegisterDelegationSigningKeyCommand("workspace-a", purpose, "fixture-issuer", key,
+                    SecretReference("secret://fixture/verifier-key"), "operator-a", NOW, ()).candidate()
+                uow.stores.delegation_signing_keys.register(candidate)
+                uow.stores.delegation_signing_keys.activate("workspace-a", purpose, "fixture-issuer", key.key_id,
+                    activated_by="operator-a", activated_at=NOW)
+            uow.commit()
         before = self.catalogue_truth(), self.runtime_truth()
         result = self.preview(extension)
+        compiled, slot, _ = ProductTopologyAuthoringService(self.unit_of_work).prepare_ingress_preview(
+            principal().command_context("workspace-a"), extension)
+        self.assertEqual(compiled.node("hello"), graph.node("hello"))
+        self.assertEqual(compiled.node("mux"), graph.node("mux"))
+        self.assertEqual(compiled.edges, graph.edges)
+        self.assertEqual(compiled.node("hello").public_environment[0].value, "Hello from the operator")
+        artifact, = compiled.node("connector").configuration_artifacts
+        self.assertEqual((artifact.artifact_id, artifact.target_path, artifact.file_mode.value),
+            ("cloudflared-control", "/etc/cpk/cloudflared/control.json", "0444"))
+        self.assertEqual(result["receiver_configuration"], slot)
+        self.assertEqual(slot["sha256"], sha256(artifact.content.encode()).hexdigest())
+        configuration = ReceiverNodeControlConfigurationCodec().decode_bytes(artifact.content.encode())
+        self.assertEqual(configuration.target.descriptor(), {"workspace_id": "workspace-a", "runtime_id": "demo-docker",
+            "node_id": "connector", "provider_socket_name": "control", "receiver_id": "a" * 32})
+        self.assertEqual({family.issuer for family in configuration.verifiers}, {"fixture-issuer"})
+        self.assertNotIn("BEGIN PUBLIC KEY", json.dumps(result))
+        self.assertNotIn("secret://", json.dumps(result))
+        self.assertEqual(result["recipe"]["base"], extension["base"])
         self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
         proposed = result["graph_descriptor"]
         source = public_product_topology_graph(graph)
