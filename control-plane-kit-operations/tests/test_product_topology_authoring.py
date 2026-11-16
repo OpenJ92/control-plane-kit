@@ -59,7 +59,10 @@ class ProductTopologyPreviewContractTests(unittest.TestCase):
         self.assertEqual(route.request_schema.max_bytes, 1048576)
 
 
-class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
+from saved_preparation_fixture import SavedPreparationFixture
+
+
+class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.documents = {}
@@ -285,6 +288,53 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 self.append_ingress_preview(preview, **changed)
             self.assertEqual(refusal.exception.status, 409)
         self.assertEqual(committed, (self.catalogue_truth(), self.runtime_truth()))
+
+    def test_prepare_exact_hello_ingress_revision_pair_without_verification_options(self):
+        from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftResult
+        from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
+
+        recipe, _, _ = self.ingress_extension_fixture()
+        r2 = recipe["base"]
+        self.seed_receiver_verifiers()
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.set_current_graph("workspace-a", r2["graph_id"])
+            uow.commit()
+        preview = self.preview(recipe)
+        r3 = DesiredTopologyDraftResult(**self.append_ingress_preview(preview))
+        self.catalogue().execute(self.select_command(r3,
+            receiver_lifecycle=ReceiverLifecycleExpectation(**preview["receiver_lifecycle"])))
+        command = self.prepare_command(r3, key="prepare-disposable-ingress-pair")
+        self.assertEqual(command.expected_current.authored_graph_id, r2["graph_id"])
+        self.assertEqual(command.expected_desired.authored_graph_id, r3.graph_id)
+        arguments = {"workspace_id": "workspace-a", "draft_id": r3.draft_id, "revision": r3.revision,
+            "expected_current": vars(command.expected_current), "expected_desired": vars(command.expected_desired),
+            "expected_desired_graph_revision": command.expected_desired_graph_revision, "title": command.title,
+            "idempotency_key": command.idempotency_key.value}
+        owner = CpkServerPlanningService(self.planner(), deployment_program=self.program())
+        before = self.runtime_truth()
+        evidence = {"workspace": "workspace-a", "draft_id": r3.draft_id, "current_revision": 2,
+            "current_graph_id": r2["graph_id"], "desired_revision": 3, "desired_graph_id": r3.graph_id,
+            "target": "mux.internal:8000"}
+        try:
+            result = owner.handle(CatalogueRequest("mcp", "command.deployment.prepare",
+                ControlPlaneServiceRole.PLANNING, {}, arguments, principal()))
+        except CpkServerApplicationError as error:
+            evidence.update(http_status=error.status, refusal=str(error))
+            self.assertIn(error.status, (400, 403, 409))
+        else:
+            evidence.update(result)
+            with self.unit_of_work() as uow:
+                stored = uow.stores.activity_history.get_plan(result["plan_id"])
+                self.assertEqual(stored.base_graph_id, r2["graph_id"])
+                self.assertEqual(stored.desired_graph_id, r3.graph_id)
+                evidence.update(profile=stored.derivation_profile.value, session_id=stored.session_id)
+            self.assertEqual("approval_request_id" in result, result["status"] == "approval-required")
+        after = self.runtime_truth()
+        for name in ("cpk_approval_decisions", "cpk_execution_requests", "cpk_activity_runs", "cpk_effect_attempts"):
+            self.assertEqual(before[name], after[name], name)
+        for name in ("cpk_activity_plans", "cpk_approval_requests"):
+            evidence[name] = len(after[name]) - len(before[name])
+        print("Disposable R2/R3 planning observation", json.dumps(evidence, sort_keys=True))
 
     def test_append_extension_fences_commitment_lifecycle_and_authority_before_writing(self):
         recipe, _, _ = self.ingress_extension_fixture()
