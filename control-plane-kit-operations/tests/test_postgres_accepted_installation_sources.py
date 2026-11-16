@@ -507,6 +507,51 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
         return tuple(self.rows(name) for name in ("cpk_workspaces", "cpk_configuration_acceptances",
             "cpk_operation_actions", "cpk_graph_receiver_introductions", "cpk_activity_events"))
 
+    async def test_worker_reads_new_connector_from_its_active_run(self):
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+
+        await self.prepare_and_start()
+        runtime = self.graph.runtimes["docker"]
+        with self.unit_of_work() as uow:
+            claim = uow.stores.execution.get_request(self.request_id).claim
+        scope = dict(workspace_id="workspace-a", request_id=self.request_id, run_id=self.run_id,
+            plan_id=self.plan_id, activity_id=self.native_id, node_id="connector", authority_ref=runtime.authority_ref,
+            fence=ExecutionLeaseFence(claim.worker_id, claim.generation))
+        def read(**overrides):
+            unit = PostgresUnitOfWork(lambda: psycopg.connect(self.tracker.database_url))
+            return unit.read_run_connector_installation(**(scope | overrides))
+
+        self.assertIsNone(read())
+        start, = (step for step in self.plan.activities if type(step.operation) is StartNode
+            and step.operation.target.node_id == "connector")
+        for _ in self.plan.activities:
+            step = await self.execute_one()
+            self.assertEqual(step["run_status"], "running")
+            if any(e.activity_id == start.activity_id.value and e.kind is ActivityEventKind.STEP_SUCCEEDED
+                    for e in self.history()):
+                break
+        else:
+            self.fail("connector start did not succeed")
+        before = self.effects()
+        proof = read()
+        self.assertIsNotNone(proof)
+        self.assertEqual((proof.source.run_id.value, proof.source.plan_id, proof.source.request_id,
+            proof.start_activity_id, proof.wrapper.node_id, proof.ingress_id, proof.authority_ref),
+            (self.run_id, self.plan_id, self.request_id, start.activity_id.value, "connector",
+             "management", runtime.authority_ref))
+        self.assertNotEqual(proof.allocation_start_event_id, proof.allocation_success_event_id)
+        self.assertRegex(proof.receipt.current_realization_fingerprint, "^[0-9a-f]{64}$")
+        self.assertEqual(proof.receipt.disposition.value, "created")
+        self.assertNotIn(proof.token.version_id, repr(proof))
+        for changes in (dict(run_id="other-run"), dict(node_id="application-connector"),
+                dict(activity_id=start.activity_id.value), dict(plan_id="other-plan"),
+                dict(authority_ref=None), dict(request_id="other-request"),
+                dict(fence=ExecutionLeaseFence(claim.worker_id, claim.generation+1))):
+            with self.subTest(fields=tuple(changes)):
+                self.assertIsNone(read(**changes))
+        self.assertEqual(self.effects(), before)
+        self.assertEqual(self.health.native_reads, [])
+
     async def test_two_managed_ingress_connectors_advance_with_original_sources(self):
         await self.prepare_and_start()
         self.assert_initial_dependencies()
