@@ -712,6 +712,53 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
         self.assertEqual(self.health.native_reads, [])
         self.assertEqual(retained.outcome.result.failure.code, "native-read-result-unknown")
 
+    async def test_retained_bootstrap_substituted_signed_receiver_refuses_before_dispatch(self):
+        from unittest.mock import patch
+        from control_plane_kit_operations import coordinator
+        from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartConflict
+        from control_plane_kit_operations.managed_effect_plan import (
+            ManagedEffectPlanConflict, require_managed_effect_plan)
+        from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
+
+        self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read()
+        self.assertIsNotNone(read())
+        alternate, = (item for item in self.plan.activities
+            if type(item.operation) is ObserveNodeHealth and item.operation.node_id == "application-connector")
+        project = coordinator._runtime_effect_intent_for_context
+        substitutions = []
+        signed_requests = []
+
+        def substitute(context, activity):
+            original = project(context, activity)
+            if not is_signed_management_health_operation(original.operation):
+                return original
+            other = project(context, alternate)
+            self.assertNotEqual(activity.activity_id, alternate.activity_id)
+            forged = replace(other, activity_id=activity.activity_id)
+            with self.unit_of_work() as uow:
+                request = uow.stores.execution.get_request(self.request_id)
+                self.assertEqual(require_managed_effect_plan(uow.stores, original, request),
+                    require_managed_effect_plan(uow.stores, other, request))
+                with self.assertRaises(ManagedEffectPlanConflict):
+                    require_managed_effect_plan(uow.stores, forged, request)
+            substitutions.append(activity.activity_id)
+            return forged
+
+        async def record_signed(*args, **kwargs):
+            signed_requests.append(args[1])
+            self.fail("a substituted receiver reached the signed reader")
+
+        # Inject only the alternate intent. The worker, plan reader and start service stay real.
+        with patch.object(coordinator, "_runtime_effect_intent_for_context", substitute), \
+                patch.object(self.health, "observe_signed", record_signed):
+            with self.assertRaises(EffectAttemptStartConflict):
+                for _ in self.plan.activities:
+                    await self.execute_one()
+        self.assertTrue(substitutions)
+        self.assertEqual(signed_requests, [])
+        self.assertFalse(any(event.activity_id == substitutions[-1].value for event in self.history()))
+
     async def test_worker_reads_new_connector_from_its_active_run(self):
         from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
         read, runtime, start, claim = await self.prepare_worker_connector_read()
