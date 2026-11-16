@@ -1446,6 +1446,176 @@ class ConfigurationAcceptanceStore:
             workspace_id, header["graph_id"], header["projection_id"], header["pinned_revision"],
             runtime_id, node_id, request, installation))
 
+    def _run_connector_installation(self, stores, *, workspace_id, request_id, run_id,
+            plan_id, activity_id, node_id, authority_ref, fence):
+        """The worker's fresh read-only snapshot owns the PostgreSQL view and clock."""
+        from control_plane_kit_core.planning import PlanGraphSide, resolve_management_observation
+        from control_plane_kit_core.policies import ApprovalPolicy
+        from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations.deployment_transitions import Deploy
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
+        from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
+
+        try:
+            for value in (workspace_id, request_id, run_id, plan_id, activity_id, node_id):
+                _read_identifier(value)
+            if type(authority_ref) is not RuntimeAuthorityReference or type(fence) is not ExecutionLeaseFence:
+                return None
+            with _joined_read(self._connection) as read:
+                # Reuse the admitted decision. A second run for the request, a
+                # changed pointer, or a lost lease cannot select an older success.
+                pins = read.query("""
+                    SELECT a.max_risk,a.destructive,a.required_scope FROM cpk_activity_runs r
+                    JOIN cpk_execution_requests q ON q.request_id=r.request_id AND q.plan_id=r.plan_id
+                    JOIN cpk_activity_plans p ON p.plan_id=r.plan_id AND p.session_id=q.session_id
+                    JOIN cpk_workspaces w ON w.workspace_id=q.workspace_id
+                    JOIN cpk_approval_requests a ON a.request_id=q.approval_request_id
+                      AND a.plan_id=p.plan_id AND a.session_id=q.session_id
+                    JOIN cpk_approval_decisions d ON d.decision_id=q.approval_decision_id
+                      AND d.request_id=a.request_id AND d.scope=a.required_scope
+                    WHERE r.run_id=%s AND r.request_id=%s AND r.plan_id=%s AND w.workspace_id=%s
+                      AND r.status='running' AND q.status='claimed' AND p.status='planned'
+                      AND d.decision='approved' AND q.claim_worker_id=%s AND q.claim_generation=%s
+                      AND q.lease_expires_at>clock_timestamp()
+                      AND NOT EXISTS (SELECT 1 FROM cpk_activity_runs later WHERE
+                        later.request_id=r.request_id AND later.attempt>r.attempt)
+                      AND (w.current_graph_id,w.current_realized_projection_id,w.desired_graph_id,
+                        w.desired_realized_projection_id,w.desired_graph_revision) =
+                        (p.base_graph_id,p.base_realized_projection_id,p.desired_graph_id,
+                        p.desired_realized_projection_id,p.desired_graph_revision)
+                    """, (run_id, request_id, plan_id, workspace_id, fence.worker_id, fence.generation),
+                    records=1, octets=128, cells=3)
+                if not pins:
+                    return None
+                plan = stores.activity_history.get_plan(plan_id)
+                if plan.derivation_profile not in (PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1,
+                        PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1):
+                    return None
+                requirement = ApprovalPolicy().requirement_for(plan.plan)
+                if pins[0] != (requirement.max_risk.value, requirement.destructive, requirement.required_scope.value):
+                    return None
+                operation = plan.plan.activity(ActivityId(activity_id)).operation
+                if not is_native_connection_operation(operation):
+                    return None
+                _, _, base = self._projection(plan.base_graph_id, plan.base_realized_projection_id, workspace_id)
+                _, _, desired = self._projection(plan.desired_graph_id, plan.desired_realized_projection_id, workspace_id)
+                pair = validate_graph(base), validate_graph(desired)
+                if plan.plan != derive_activity_plan(Deploy(*pair), profile=plan.derivation_profile) or not plan.plan.ready_for_execution:
+                    return None
+                resolved = resolve_management_observation(operation, *pair,
+                    expected_operation=operation)
+                runtime = desired.runtimes[operation.target.runtime_id]
+                if (node_id in base.nodes or node_id != resolved.connector_node.node_id
+                        or operation.target.graph_side is not PlanGraphSide.DESIRED_GRAPH or runtime.authority_ref != authority_ref
+                        or any(i.ingress_id == resolved.ingress.ingress_id for i in base.public_ingresses)):
+                    return None
+                authority = stores.runtime_authorities._configuration_authority(workspace_id, authority_ref, read)
+                if authority.runtime_kind != runtime.kind:
+                    return None
+                request = stores.execution.get_request(request_id)
+                run = stores.execution.get_run(run_id)
+                proof = self._run_connector_start(stores, read, plan, request, run, desired,
+                    resolved, authority, fence, activity_id)
+                if proof is None:
+                    return None
+                # The snapshot fixes database facts, but its evidence read may span lease expiry.
+                live = read.query("SELECT lease_expires_at>clock_timestamp() FROM cpk_execution_requests WHERE request_id=%s",
+                    (request_id,), records=1, octets=1, cells=1)
+                return proof if live and live[0][0] is True else None
+        except (_Unavailable, _Capacity, ValueError, KeyError, IndexError, TypeError, OperationsRecordError):
+            return None
+
+    def _run_connector_start(self, stores, read, plan, request, run, graph, resolved, authority, fence, activity_id):
+        from control_plane_kit_core.configuration_installation import (
+            ConfigurationInstallationDisposition, configuration_installation_receipt_for_result,
+        )
+        from control_plane_kit_core.configuration_invocation import configuration_invocation_correlation_for_request
+        from control_plane_kit_core.planning import AllocatePublicIngress
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        from control_plane_kit_operations.connector_installation import RunConnectorInstallation
+        from control_plane_kit_operations.effect_outcome_evidence import _require_original_installation_outcome
+
+        node, ingress = resolved.connector_node, resolved.ingress
+        workspace_id = request.identity.workspace_id
+        start, = (step for step in plan.plan.activities if type(step.operation) is StartNode
+            and step.operation.target.node_id == node.node_id)
+        allocation, = (step for step in plan.plan.activities if type(step.operation) is AllocatePublicIngress
+            and step.operation.target.ingress_id == ingress.ingress_id)
+        if (start.activity_id not in {d.predecessor for d in plan.plan.activity(ActivityId(activity_id)).dependencies}
+                or allocation.activity_id not in {d.predecessor for d in start.dependencies}):
+            return None
+        candidates = read.bounded_rows("cpk_effect_attempts", _REF_KEY_COLUMNS[:3],
+            "run_id=%s AND activity_id=%s", (run.run_id, start.activity_id.value), maximum=2)
+        if len(candidates) != 1:
+            return None
+        identity = EffectAttemptIdentity(RunId(run.run_id), start.activity_id.value, candidates[0][2])
+        attempt = stores.effect_attempts.get(identity)
+        if (attempt.state.status.value != "succeeded"
+                or (attempt.state.fence.worker_id, attempt.state.fence.generation) != (fence.worker_id, fence.generation)):
+            return None
+        original = stores.effect_attempt_intents.get(identity)
+        stored = stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id)
+        if stored.attempt != attempt or type(stored.outcome) is not ExecutionEffectOutcome:
+            return None
+        outcome = stored.outcome
+        origin = runtime_effect_request_for_intent(original.intent, effect_id=original.original_start_event.event_id)
+        source = origin.source
+        if ((source.workspace_id, source.request_id, source.run_id.value, source.plan_id,
+                source.base_graph_id, source.desired_graph_id, origin.operation, origin.authority_ref) !=
+                (workspace_id, request.identity.request_id, run.run_id, plan.plan_id, plan.base_graph_id,
+                plan.desired_graph_id, start.operation, authority.authority_ref)):
+            return None
+        receipt = _require_original_installation_outcome(original, attempt, outcome, original_plan=plan, request=request)
+        configuration = configuration_installation_receipt_for_result(
+            configuration_invocation_correlation_for_request(origin), outcome.result)
+        if (receipt is None or configuration is None or receipt.disposition is not ConfigurationInstallationDisposition.CREATED
+                or configuration.disposition != receipt.disposition
+                or configuration.current_realization_fingerprint != receipt.current_realization_fingerprint):
+            return None
+        material, = origin.products
+        wrapper, = origin.configuration_instances.instances
+        token, = material.secret_selections
+        if (type(token) is not SecretVersionSelection or material.reference.identity.key != node.metadata.get("product_identity")
+                or material.reference.descriptor_sha256.value != node.metadata.get("product_descriptor_digest")
+                or origin.runtime_kind != authority.runtime_kind):
+            return None
+        artifact, = node.configuration_artifacts
+        if ((material.runtime_id, material.node_id, wrapper.workspace_id, wrapper.runtime_id, wrapper.node_id,
+                wrapper.artifact_id, wrapper.content_digest, wrapper.target_path, wrapper.media_type, wrapper.file_mode) !=
+                (node.runtime_id, node.node_id, workspace_id, node.runtime_id, node.node_id, artifact.artifact_id,
+                artifact.content_digest, artifact.target_path, artifact.media_type, artifact.file_mode)):
+            return None
+        claim = read.query("SELECT true FROM cpk_configuration_claims WHERE "
+            "(run_id,activity_id,attempt,artifact_id,workspace_id,runtime_id,node_id,allocation_id)=(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (run.run_id, start.activity_id.value, identity.attempt, wrapper.artifact_id, workspace_id,
+            node.runtime_id, node.node_id, wrapper.allocation_id), records=1, octets=1, cells=1)
+        if not claim:
+            return None
+        resource = stores.ingress_resources._configuration_resource(workspace_id, ingress.ingress_id, read)
+        if ((resource.source_run_id, resource.source_activity_id, resource.runtime_id, resource.authority_ref,
+                resource.hostname, resource.lifecycle) != (run.run_id, allocation.activity_id.value, node.runtime_id,
+                ingress.authority_ref, ingress.hostname, ingress.lifecycle)):
+            return None
+        generated = stores.generated_ingress_secrets._configuration_source(resource, read)
+        if (token.reference, token.version_id) != (generated.secret_ref, generated.provider_version_id):
+            return None
+        # Verify the original event sequence, selected version and successful
+        # allocation using the same provenance laws as Current advancement.
+        binding = _InstallationSource(node.runtime_id, node.node_id, identity, plan.desired_graph_revision,
+            original.request_fingerprint, outcome.outcome_fingerprint, ())
+        context = ({"workspace_id": workspace_id, "pinned_revision": plan.desired_graph_revision},
+            None, None, plan, request, run, None)
+        generated_deliveries = tuple(d for d in material.product.runtime_contract.secret_deliveries
+            if d not in node.secret_deliveries)
+        proved, = self._installation_generated(binding, context, graph, original, generated_deliveries, read)
+        if proved.source_event_id != resource.source_event_id:
+            return None
+        return RunConnectorInstallation(source, authority.authority_ref, authority.registration_id,
+            ingress.ingress_id, allocation.activity_id.value, proved.source_event_id, proved.terminal_event_id,
+            start.activity_id.value, origin.effect_id, wrapper, token, receipt)
+
     def _known_birth(self, read, exact_ref):
         candidates = read.bounded_rows("cpk_effect_configuration_refs", _REF_KEY_COLUMNS,
             "workspace_id=%s AND allocation_id=%s AND is_birth", (exact_ref.workspace_id, exact_ref.allocation_id),

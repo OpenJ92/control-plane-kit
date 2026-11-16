@@ -549,6 +549,14 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
                 dict(fence=ExecutionLeaseFence(claim.worker_id, claim.generation+1))):
             with self.subTest(fields=tuple(changes)):
                 self.assertIsNone(read(**changes))
+        # Replace the origin of the real committed token receipt in the test database.
+        # The run, its start, its successful outcome and the active allocation still match.
+        with self.connection.transaction():
+            changed = self.connection.execute("UPDATE cpk_generated_ingress_secret_references SET source_run_id=%s "
+                "WHERE source_run_id=%s AND source_event_id=%s",
+                ("unrelated-run", self.run_id, proof.allocation_start_event_id))
+            self.assertEqual(changed.rowcount, 1)
+        self.assertIsNone(read())
         self.assertEqual(self.effects(), before)
         self.assertEqual(self.health.native_reads, [])
 
