@@ -289,6 +289,39 @@ class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
             self.assertEqual(refusal.exception.status, 409)
         self.assertEqual(committed, (self.catalogue_truth(), self.runtime_truth()))
 
+    def test_trace_both_stored_graphs_against_their_registered_management_declarations(self):
+        from control_plane_kit_operations.graph_authoring import product_reference_in_node
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        r2, r3 = recipe["base"], self.append_ingress_preview(self.preview(recipe))
+        before = self.runtime_truth()
+        rows = []
+        with self.unit_of_work().ingress_extension_snapshot() as stores:
+            for side, receipt in (("current", r2), ("desired", r3)):
+                saved = stores.desired_topology_drafts.revision("workspace-a", receipt["draft_id"], receipt["revision"])
+                self.assertEqual(saved.graph_id, receipt["graph_id"])
+                graph = DEFAULT_GRAPH_CODEC.decode(stores.graphs.get(saved.graph_id).graph_descriptor)
+                for node in graph.nodes.values():
+                    ref = product_reference_in_node(node)
+                    product = stores.registered_products.get("workspace-a", ref)
+                    self.assertEqual(product.status.value, "active")
+                    self.assertEqual(product.reference, ref)
+                    declared = node.block_spec.gateway_transit, node.block_spec.control_surfaces
+                    expected = product.descriptor_document.product.runtime_contract
+                    self.assertEqual(declared, (expected.gateway_transit, expected.control_surfaces))
+                    requires = bool(declared[0] is not None or declared[1])
+                    missing = requires and graph.runtimes[node.runtime_id].management is None
+                    rows.append((side, node.node_id, node.runtime_id, missing))
+                    if missing:
+                        self.assertEqual([s.descriptor() for s in expected.control_surfaces],
+                            [{"provider_socket_name": "control", "variables": [], "health_reads": ["liveness", "readiness"]}])
+            self.assertEqual(sorted((side, role, runtime) for side, role, runtime, missing in rows if missing),
+                             [("desired", "connector", "demo-docker")])
+            self.assertEqual(len(rows), 5)
+        self.assertEqual(self.runtime_truth(), before)
+        print("Disposable read-only management trace", json.dumps({"rows": sorted(rows),
+              "r2_graph": r2["graph_id"], "r3_graph": r3["graph_id"]}, sort_keys=True))
+
     def test_prepare_exact_hello_ingress_revision_pair_without_verification_options(self):
         from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftResult
         from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
