@@ -257,6 +257,32 @@ class DesiredTopologyDraftTests(DraftCatalogueFixture, unittest.TestCase):
                 service.execute(denied)
         self.assertEqual(self.catalogue_truth(), before)
 
+    def test_workspace_graph_reads_show_artifact_metadata_and_preserve_stored_file(self):
+        from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+
+        graph = self.graph()
+        body = "workspace-projection-fixture-body"
+        artifact = ConfigurationArtifact("fixture-settings", "/etc/fixture/settings.txt", ConfigurationMediaType.TEXT, body)
+        graph = replace(graph, nodes={"app": replace(graph.node("app"), configuration_artifacts=(artifact,))})
+        created = self.create(graph=graph)
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.set_current_graph("workspace-a", created.graph_id)
+            uow.stores.workspaces.set_desired_graph("workspace-a", created.graph_id)
+            uow.commit()
+        routes = (("read.desired-topology-draft-revision", {"draft_id": created.draft_id, "revision": 1}),
+                  ("read.current-graph", {}), ("read.desired-graph", {}))
+        for route, arguments in routes:
+            for surface in ("http", "mcp"):
+                with self.subTest(route=route, surface=surface):
+                    response = self.read(route, surface=surface, **arguments)
+                    self.assertFalse(body in str(response), "ordinary graph read returned the configured file contents")
+                    self.assertEqual(response["graph_id"], created.graph_id)
+                    public, = response["graph_descriptor"]["nodes"]["app"]["configuration_artifacts"]
+                    self.assertEqual(public["artifact_id"], artifact.artifact_id)
+        with self.unit_of_work() as uow:
+            stored = uow.stores.graphs.get(created.graph_id).graph_descriptor
+            self.assertEqual(stored["nodes"]["app"]["configuration_artifacts"][0], artifact.descriptor())
+
     def test_graph_bounds_and_redaction_do_not_return_submitted_sensitive_metadata(self):
         from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftError
 
