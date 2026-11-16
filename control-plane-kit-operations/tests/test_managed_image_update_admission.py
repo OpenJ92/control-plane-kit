@@ -249,3 +249,49 @@ class ExistingRuntimeBootstrapExecutionBoundaryTests(unittest.TestCase):
             with self.subTest(activities=len(plan.activities) if plan else None):
                 self.assertTrue(runtime_management_execution_is_unsupported(
                     first, second, plan, registered_products=products, derivation_profile=profile))
+
+    def pair(self):
+        from control_plane_kit_core.public_ingress import IngressAuthorityReference, NamedPublicIngress, PublicIngressTarget
+        from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
+        from control_plane_kit_core.types import Protocol
+
+        _, graph, _, products = managed_update_graphs(self, workload_ids=("management-agent", "public-agent"))
+        by_identity = {value.reference.identity.key: value for value in products}
+        nodes = {key: replace(node, metadata=selected_metadata(by_identity[node.metadata["product_identity"]]))
+                 for key, node in graph.nodes.items()}
+        # The two agents use the same registered product. The retained workload
+        # serves HTTP and has no management surface before or after the change.
+        plain = nodes.pop("connector")
+        product = by_identity[plain.metadata["product_identity"]]
+        agent = by_identity[nodes["public-agent"].metadata["product_identity"]].descriptor_document.product
+        retained = registered_successor(product, contract=replace(product.descriptor_document.product.runtime_contract,
+            sockets=agent.runtime_contract.sockets, provider_ports=agent.runtime_contract.provider_ports))
+        nodes["workload"] = replace(plain, node_id="workload", block_spec=replace(plain.block_spec, role_id="workload"),
+            sockets=agent.runtime_contract.sockets, endpoints={"http": Endpoint(LiteralAddress("http://workload:8000"), Protocol.HTTP)},
+            metadata=selected_metadata(retained))
+        management, = graph.public_ingresses
+        runtime = replace(graph.runtimes["docker"], children=tuple(nodes))
+        desired = replace(graph, nodes=nodes, runtimes={"docker": runtime}, public_ingresses=(
+            replace(management, connector_node_id="management-agent"),
+            NamedPublicIngress("app", IngressAuthorityReference("app-authority"), PublicIngressTarget("workload", "http"),
+                "public-agent", "app.example.invalid")))
+        current = replace(desired, nodes={"workload": nodes["workload"]}, public_ingresses=(),
+            runtimes={"docker": replace(runtime, children=("workload",), management=None)})
+        return current, desired, (*products, retained)
+
+    def test_retained_bootstrap_requires_original_approved_plan_and_active_products(self):
+        current, desired, products = self.pair()
+        left, right = validate_graph(current), validate_graph(desired)
+        left.require_valid()
+        right.require_valid()
+        profile = PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1
+        transition = Deploy(left, right)
+        self.assertEqual(runtime_management_plan_profile(transition, registered_products=products), profile)
+        canonical = derive_activity_plan(transition, profile=profile)
+        self.assertTrue(canonical.ready_for_execution)
+        self.assertFalse(runtime_management_execution_is_unsupported(current, desired, canonical,
+            registered_products=products, derivation_profile=profile))
+        for available, approved, recorded in ((products[:-1], canonical, profile),
+                (products, replace(canonical, activities=canonical.activities[:-1]), profile), (products, canonical, None)):
+            self.assertTrue(runtime_management_execution_is_unsupported(current, desired, approved,
+                registered_products=available, derivation_profile=recorded))
