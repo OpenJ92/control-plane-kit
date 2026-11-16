@@ -40,6 +40,7 @@ MAX_BYTES = 1048576
 RECIPE_SCHEMA = "registered-product-topology.v1"
 EXTENSION_SCHEMA = "registered-product-ingress-extension.v1"
 COMMITMENT_PROFILE = "registered-product-topology-public.v1"
+EXTENSION_COMMITMENT_PROFILE = "registered-product-ingress-extension-public.v1"
 
 
 class ProductTopologyAuthoringError(ValueError):
@@ -359,22 +360,29 @@ class ProductTopologyAuthoringService:
         result = {"workspace_id": context.workspace_id, "kind": "product-topology-preview",
             "recipe": recipe, "graph_descriptor": public, "receiver_configuration": slot,
             "receiver_lifecycle": expectation}
-        profile = "registered-product-ingress-extension-public.v1"
+        profile = EXTENSION_COMMITMENT_PROFILE
         digest = sha256(public_json_bytes({"profile": profile, **result})).hexdigest()
         result["proposal_commitment"] = {"profile": profile, "sha256": digest}
         public_json_bytes(result)
         return result
 
+    def validate_extension_append(self, command):
+        self._validate_ingress_input(command.context, command.recipe)
+        expected = _object(command.commitment, {"profile", "sha256"})
+        if (expected["profile"] != EXTENSION_COMMITMENT_PROFILE or type(expected["sha256"]) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", expected["sha256"]) is None
+                or command.receiver_lifecycle is None):
+            raise ProductTopologyAuthoringError()
+        base = command.recipe["base"]
+        if base["draft_id"] != command.draft_id or base["revision"] != command.expected_head_revision:
+            raise ProductTopologyAuthoringError(409)
+
     def prepare_locked_extension(self, stores, command):
         recipe, context = command.recipe, command.context
-        self._validate_ingress_input(context, recipe)
-        if (recipe["base"]["draft_id"] != command.draft_id
-                or recipe["base"]["revision"] != command.expected_head_revision):
-            raise ProductTopologyAuthoringError(409)
         try:
             graph, slot, expectation = self._ingress_graph(stores, context, recipe, for_update=True)
             observed = self._ingress_result(context, recipe, graph, slot, expectation)
-            if (observed["proposal_commitment"] != command.commitment or command.receiver_lifecycle is None
+            if (observed["proposal_commitment"] != command.commitment
                     or command.receiver_lifecycle.descriptor() != expectation):
                 raise ProductTopologyAuthoringError(409)
             return graph

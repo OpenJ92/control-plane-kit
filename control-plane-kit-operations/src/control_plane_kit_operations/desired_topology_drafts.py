@@ -236,6 +236,7 @@ class DesiredTopologyDraftCommandService:
     def append_preview(self, command: ReviseDesiredTopologyDraftFromPreview, authoring_service):
         if type(command) is not ReviseDesiredTopologyDraftFromPreview:
             raise DesiredTopologyDraftError("an extension append command is required")
+        authoring_service.validate_extension_append(command)
         return self._save(command, authoring_service=authoring_service)
 
     def _save(self, command, *, authoring_service=None):

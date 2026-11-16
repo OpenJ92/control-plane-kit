@@ -46,3 +46,10 @@ lifecycle expectation and control-file digest, omitting the file content.
 Tests compare the original and extended nodes and socket binding, inspect the
 rendered receiver target, and check database history before and after refusal
 or successful preview. The existing product recipe retains its own protocol.
+
+The revision command can append a reviewed extension to the exact source draft
+with its expected head, receiver lifecycle and public commitment. The ordinary
+preview uses a read-only PostgreSQL snapshot. Fresh append holds the draft and
+workspace guards, the ingress registration, the active product pins and the
+verifier-purpose locks while rebuilding the same proposal and saving its graph.
+A change to the reviewed public result requires a new preview.

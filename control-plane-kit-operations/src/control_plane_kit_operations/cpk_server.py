@@ -69,7 +69,7 @@ from control_plane_kit_operations.admission import (
     RequestPlanExecution,
 )
 from control_plane_kit_operations.product_topology_authoring import (
-    EXTENSION_SCHEMA, ProductTopologyAuthoringError, ProductTopologyAuthoringService, public_json_bytes,
+    ProductTopologyAuthoringError, ProductTopologyAuthoringService, public_json_bytes,
 )
 from control_plane_kit_operations.advancement import (
     AdvanceCurrentGraph,
@@ -909,11 +909,6 @@ class CpkServerPlanningService:
                     public_json_bytes(values)
                     recipe = _mapping(values, "product_recipe")
                     commitment = _mapping(values, "expected_proposal_commitment")
-                    if (recipe.get("schema") != EXTENSION_SCHEMA or set(commitment) != {"profile", "sha256"}
-                            or commitment["profile"] != "registered-product-ingress-extension-public.v1"
-                            or not isinstance(commitment["sha256"], str)
-                            or re.fullmatch(r"[0-9a-f]{64}", commitment["sha256"]) is None):
-                        raise ProductTopologyAuthoringError()
                     if self._product_topologies is None:
                         raise _service_not_configured(request)
                     command = ReviseDesiredTopologyDraftFromPreview(context, _text(values, "session_id"),
