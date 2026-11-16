@@ -14,7 +14,7 @@ from control_plane_kit_core.http_verification_sample_installation import (
     HttpVerificationSampleCheckBinding, HttpVerificationSampleReceiverConfigurationCodec,
 )
 from control_plane_kit_core.http_verification_samples import http_verification_check_digest
-from control_plane_kit_core.lifecycle import ResourceOwnership, ResourcePersistence
+from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL, ResourceOwnership, ResourcePersistence
 from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNodeControlSurfaceDescriptor
 from control_plane_kit_core.planning.activity_plan import (
     ActivityDependency, ActivityId, ActivityPlan, AllocatePublicIngress,
@@ -793,6 +793,52 @@ def compile_managed_update_activity_plan(current: ValidatedGraph, desired: Valid
     ))
 
 
+def _existing_runtime_application_ingress(current, desired):
+    """Prove that removing precisely the three new children restores the original graph."""
+    if (len(current.runtimes) != 1 or desired.runtimes.keys() != current.runtimes.keys()
+            or not current.nodes or current.public_ingresses or len(desired.public_ingresses) != 2):
+        return None
+    runtime_id, = current.runtimes
+    before, after = current.runtimes[runtime_id], desired.runtimes[runtime_id]
+    if (before.kind is not RuntimeKind.DOCKER or before.authority_ref is None
+            or before.lifecycle != OWNED_EPHEMERAL or before.management is not None or after.management is None):
+        return None
+    management = _management_ingress(desired, runtime_id)
+    application, = (item for item in desired.public_ingresses if item != management)
+    added = {after.management.gateway_node_id, management.connector_node_id, application.connector_node_id}
+    if (len(added) != 3 or added & current.nodes.keys() or application.target.node_id not in current.nodes
+            or management.hostname == application.hostname or management.authority_ref == application.authority_ref
+            or set(after.children) != set(before.children) | added):
+        return None
+    retained = {key: node for key, node in desired.nodes.items() if key not in added}
+    restored = replace(after, children=tuple(key for key in after.children if key not in added), management=None)
+    if replace(desired, nodes=retained, runtimes={runtime_id: restored}, public_ingresses=()) != current:
+        return None
+    for key in added:
+        node = desired.nodes[key]
+        surface, _ = _selected_surface(node)
+        if (node.runtime_id != runtime_id or node.lifecycle != OWNED_EPHEMERAL or node.runtime_authority_deliveries
+                or node.secret_deliveries or node.secret_selections or node.socket_environment
+                or _independent_verification(node) or surface is None or NodeHealthReadKind.READINESS not in surface.health_reads):
+            return None
+    return application
+
+
+def compile_existing_runtime_bootstrap_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
+    """Install a new management path and application ingress on one retained Docker runtime."""
+    _require_pair(current, desired)
+    diff = diff_graphs(current, desired)
+    application = _existing_runtime_application_ingress(current.graph, desired.graph)
+    if application is None:
+        return _review_blocked(compile_activity_plan(diff), diff)
+    # The equality proof above owns precisely these two logical runtime fields.
+    # Neither changes the Docker network. Compile all remaining changes normally.
+    additions = replace(diff, changes=tuple(change for change in diff.changes
+        if not (isinstance(change.subject, FieldSubject) and isinstance(change.subject.owner, RuntimeSubject)
+                and change.subject.field in (StructuralField.RUNTIME_CONTAINMENT, StructuralField.RUNTIME_MANAGEMENT))))
+    return _compile_graph_activity_plan(current, desired, bootstrap_application=application, diff=additions)
+
+
 def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
     """Derive management observation obligations from two complete graph values."""
     return _compile_graph_activity_plan(current, desired)
@@ -929,9 +975,11 @@ def _full_http_sample_coverage(node):
         return False
 
 
-def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgres_readiness=False):
+def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgres_readiness=False,
+                                 bootstrap_application=None, diff=None):
     _require_pair(current, desired)
-    diff = diff_graphs(current, desired)
+    if diff is None:
+        diff = diff_graphs(current, desired)
     structural = compile_activity_plan(diff)
     if not structural.activities or all(isinstance(value.operation, ReviewChange) for value in structural.activities):
         return structural
@@ -1016,7 +1064,8 @@ def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgr
         if gateway_id in starts:
             gateway_dependencies.add(starts[gateway_id].activity_id)
         connected = path = None
-        if fresh:
+        bootstrap = fresh or bootstrap_application is not None
+        if bootstrap:
             allocation = allocations[ingress.ingress_id]
             if gateway_wait:
                 dependencies[allocation.activity_id].discard(gateway_wait.activity_id)
@@ -1053,7 +1102,7 @@ def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgr
                 selected = sdk[node_id]
                 replacement = add(_observation_activity(ObserveNodeHealth(target, node_id,
                     selected.provider_socket_name.value, _health_kind(selected)),
-                    dependencies[wait.activity_id] | ({readiness.activity_id, connected.activity_id} if fresh else {path.activity_id})))
+                    dependencies[wait.activity_id] | ({readiness.activity_id, connected.activity_id} if bootstrap else {path.activity_id})))
             elif node_id == connector_id and not any(value.health_reads for value in node.block_spec.control_surfaces):
                 replacement = connected
             if _independent_verification(node):
@@ -1064,6 +1113,13 @@ def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgr
             elif replacement is not None:
                 replacements[wait.activity_id] = replacement.activity_id
                 del activities[wait.activity_id]
+
+        if bootstrap_application is not None:
+            # Leave the application hostname untouched until the new management path
+            # and the managed connector's own authenticated readiness are proven.
+            dependencies[allocations[bootstrap_application.ingress_id].activity_id].update((
+                readiness.activity_id, connected.activity_id, replacements[waits[connector_id].activity_id],
+            ))
 
     finished = []
     for identity, activity in activities.items():
