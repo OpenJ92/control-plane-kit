@@ -5,6 +5,7 @@ from copy import deepcopy
 from hashlib import sha256
 import json
 import threading
+import traceback
 import unittest
 
 import psycopg
@@ -310,8 +311,20 @@ class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
             "expected_current": vars(command.expected_current), "expected_desired": vars(command.expected_desired),
             "expected_desired_graph_revision": command.expected_desired_graph_revision, "title": command.title,
             "idempotency_key": command.idempotency_key.value}
-        owner = CpkServerPlanningService(self.planner(), deployment_program=self.program())
+        program = self.program()
+        failures = []
+        class ObservedProgram:
+            def prepare(self, request):
+                try:
+                    return program.prepare(request)
+                except Exception as error:
+                    frame = traceback.extract_tb(error.__traceback__)[-1]
+                    failures.append((type(error).__name__, frame.name, frame.lineno))
+                    raise
+        owner = CpkServerPlanningService(self.planner(), deployment_program=ObservedProgram())
         before = self.runtime_truth()
+        session_count = len(self.rows("cpk_operation_sessions"))
+        action_count = len(self.rows("cpk_operation_actions"))
         evidence = {"workspace": "workspace-a", "draft_id": r3.draft_id, "current_revision": 2,
             "current_graph_id": r2["graph_id"], "desired_revision": 3, "desired_graph_id": r3.graph_id,
             "target": "mux.internal:8000"}
@@ -319,7 +332,7 @@ class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
             result = owner.handle(CatalogueRequest("mcp", "command.deployment.prepare",
                 ControlPlaneServiceRole.PLANNING, {}, arguments, principal()))
         except CpkServerApplicationError as error:
-            evidence.update(http_status=error.status, refusal=str(error))
+            evidence.update(http_status=error.status, refusal=str(error), owner_frames=failures)
             self.assertIn(error.status, (400, 403, 409))
         else:
             evidence.update(result)
@@ -334,6 +347,8 @@ class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
             self.assertEqual(before[name], after[name], name)
         for name in ("cpk_activity_plans", "cpk_approval_requests"):
             evidence[name] = len(after[name]) - len(before[name])
+        evidence.update(new_sessions=len(self.rows("cpk_operation_sessions")) - session_count,
+                        new_actions=len(self.rows("cpk_operation_actions")) - action_count)
         print("Disposable R2/R3 planning observation", json.dumps(evidence, sort_keys=True))
 
     def test_append_extension_fences_commitment_lifecycle_and_authority_before_writing(self):
