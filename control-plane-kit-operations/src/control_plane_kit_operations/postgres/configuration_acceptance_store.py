@@ -1453,6 +1453,7 @@ class ConfigurationAcceptanceStore:
         from control_plane_kit_core.policies import ApprovalPolicy
         from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
         from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_core.types import RuntimeKind
         from control_plane_kit_operations.deployment_transitions import Deploy
         from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
@@ -1508,7 +1509,8 @@ class ConfigurationAcceptanceStore:
                     expected_operation=operation)
                 runtime = desired.runtimes[operation.target.runtime_id]
                 if (node_id in base.nodes or node_id != resolved.connector_node.node_id
-                        or operation.target.graph_side is not PlanGraphSide.DESIRED_GRAPH or runtime.authority_ref != authority_ref
+                        or operation.target.graph_side is not PlanGraphSide.DESIRED_GRAPH
+                        or runtime.kind is not RuntimeKind.DOCKER or runtime.authority_ref != authority_ref
                         or any(i.ingress_id == resolved.ingress.ingress_id for i in base.public_ingresses)):
                     return None
                 authority = stores.runtime_authorities._configuration_authority(workspace_id, authority_ref, read)

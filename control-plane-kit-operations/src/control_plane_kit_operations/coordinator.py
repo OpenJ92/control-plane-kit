@@ -525,7 +525,11 @@ class ActivityRealizationContext:
         if self.run_connector_installation is not None:
             proof = self.run_connector_installation
             resolved = _native_connector_observation(self)
+            runtime = resolved.selected_graph.graph.runtimes[resolved.connector_node.runtime_id]
             if (type(proof) is not RunConnectorInstallation or self.connector_installation is not None
+                    or proof.authority_ref != runtime.authority_ref
+                    or not any(a.registration_id == proof.runtime_registration_id and a.authority_ref == proof.authority_ref
+                        and a.workspace_id == self.request.identity.workspace_id for a in self.runtime_authorities)
                     or self.plan_record.derivation_profile is not PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1
                     or (proof.source.workspace_id, proof.source.request_id, proof.source.run_id.value,
                         proof.source.plan_id, proof.source.base_graph_id, proof.source.desired_graph_id,
