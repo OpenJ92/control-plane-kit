@@ -15,7 +15,7 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
     ProductCatalog, ProductInstanceConfiguration, ProductReferenceCodec, instantiate_catalog_product,
 )
-from control_plane_kit_core.topology import compile_topology, validate_graph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology, validate_graph
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import HttpCheck
 from .products import RegisteredProductStatus
@@ -25,6 +25,7 @@ from .read_services._redaction import public_verification_shape
 
 MAX_BYTES = 1048576
 RECIPE_SCHEMA = "registered-product-topology.v1"
+EXTENSION_SCHEMA = "registered-product-ingress-extension.v1"
 COMMITMENT_PROFILE = "registered-product-topology-public.v1"
 
 
@@ -221,7 +222,36 @@ class ProductTopologyAuthoringService:
         except (KeyError, ValueError, TypeError, AttributeError, RecursionError, OverflowError):
             raise ProductTopologyAuthoringError() from None
 
+    def _preview_ingress_extension(self, context, recipe):
+        scopes = {PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.INGRESS_AUTHORITY_READ, PolicyScope.DELEGATION_KEY_READ}
+        if type(context) is not TrustedCommandContext or not scopes.issubset(context.granted_scopes):
+            raise ProductTopologyAuthoringError(403)
+        public_json_bytes(recipe)
+        _object(recipe, {"schema", "base", "runtime_id", "connector", "ingress"})
+        base = _object(recipe["base"], {"draft_id", "revision", "graph_id"})
+        draft_id, graph_id = _text(base["draft_id"]), _text(base["graph_id"])
+        revision = base["revision"]
+        if type(revision) is not int or not 1 <= revision < 2**63:
+            raise ProductTopologyAuthoringError()
+        with self._uow() as uow:
+            try:
+                drafts = uow.stores.desired_topology_drafts
+                draft = drafts.get(context.workspace_id, draft_id)
+                saved = drafts.revision(context.workspace_id, draft_id, revision)
+            except KeyError:
+                raise ProductTopologyAuthoringError(404) from None
+            if draft.deleted_at is not None or draft.head_revision != revision or saved.graph_id != graph_id:
+                raise ProductTopologyAuthoringError(409)
+            record = uow.stores.graphs.get(saved.graph_id)
+            if record.workspace_id != context.workspace_id:
+                raise ProductTopologyAuthoringError(409)
+            graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
+            validate_graph(graph).require_valid()
+            raise ProductTopologyAuthoringError()
+
     def preview(self, context, raw_recipe):
+        if type(raw_recipe) is dict and raw_recipe.get("schema") == EXTENSION_SCHEMA:
+            return self._preview_ingress_extension(context, raw_recipe)
         recipe, graph = self._prepare(context, raw_recipe, preview=True)
         value = {"workspace_id": context.workspace_id, "kind": "product-topology-preview",
             "recipe": recipe.descriptor(), "graph_descriptor": public_product_topology_graph(graph),

@@ -97,7 +97,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         return CpkServerReadService(self.unit_of_work).handle(CatalogueRequest(
             surface, PREVIEW, ControlPlaneServiceRole.READS, path, payload, caller or principal()))
 
-    def test_named_ingress_extension_refuses_a_graph_id_from_an_older_revision(self):
+    def ingress_extension_fixture(self):
         workspace = "workspace-a"
         first_recipe = self.preview()
         owner = ProductTopologyAuthoringService(self.unit_of_work)
@@ -143,7 +143,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             uow.commit()
         extension = {
             "schema": "registered-product-ingress-extension.v1",
-            "base": {"draft_id": second.draft_id, "revision": second.revision, "graph_id": first.graph_id},
+            "base": {"draft_id": second.draft_id, "revision": second.revision, "graph_id": second.graph_id},
             "runtime_id": "demo-docker",
             "connector": {"node_id": "connector", "product": registered.reference.descriptor(),
                           "receiver_id": "a" * 32, "provider_socket": "control"},
@@ -152,6 +152,26 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                         "target": {"node_id": "mux", "provider_socket": "internal"},
                         "exposure": "https", "lifecycle": "ephemeral"},
         }
+        return extension, first, graph
+
+    def test_named_ingress_extension_matching_base_previews_connector_and_keeps_source(self):
+        extension, _, graph = self.ingress_extension_fixture()
+        before = self.catalogue_truth(), self.runtime_truth()
+        result = self.preview(extension)
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+        proposed = result["graph_descriptor"]
+        source = public_product_topology_graph(graph)
+        for role in ("hello", "mux"):
+            self.assertEqual(proposed["nodes"][role], source["nodes"][role])
+        self.assertEqual(proposed["edges"], source["edges"])
+        self.assertEqual(proposed["nodes"]["connector"]["metadata"]["product_descriptor_digest"],
+                         extension["connector"]["product"]["descriptor_sha256"])
+        self.assertEqual(proposed["public_ingresses"][0]["target"], {"node_id": "mux", "provider_socket": "internal"})
+        self.assertNotIn("Hello from the operator", json.dumps(result))
+
+    def test_named_ingress_extension_refuses_a_graph_id_from_an_older_revision(self):
+        extension, first, _ = self.ingress_extension_fixture()
+        extension["base"]["graph_id"] = first.graph_id
         before = self.catalogue_truth(), self.runtime_truth()
         with self.assertRaises(CpkServerApplicationError) as refused:
             self.preview(extension)
