@@ -4,7 +4,9 @@ import unittest
 from uuid import uuid4
 
 from control_plane_kit_core.receiver_management_routes import ReceiverManagementRoutesCodec
-from control_plane_kit_operations.planning import ActivityPlanningCommandService, RequestActivityPlan
+from control_plane_kit_operations.planning import (
+    ActivityPlanningCommandService, DesiredGraphCommandService, RequestActivityPlan, SetDesiredGraph)
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
 from control_plane_kit_operations.records import GraphVersionRecord
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
@@ -38,13 +40,17 @@ class ExistingRuntimeBootstrapPlanningTests(DraftCatalogueFixture, unittest.Test
 
     def request(self, graph):
         with self.unit_of_work() as uow:
-            desired = self.save_graph(uow.stores, graph)
-            uow.stores.workspaces.set_desired_graph("workspace-a", desired)
             state = uow.stores.workspaces.get("workspace-a")
-            uow.commit()
-        command = RequestActivityPlan(self.sessions["workspace-a"], "workspace-a", "operator-a",
-            self.base, desired, IdempotencyKey(uuid4().hex), state.current_realized_projection_id,
-            state.desired_realized_projection_id, state.desired_graph_revision)
+        session = self.sessions["workspace-a"]
+        edit = DesiredGraphCommandService(self.unit_of_work, clock=lambda: NOW, id_factory=lambda: uuid4().hex)
+        expectation = ReceiverLifecycleExpectation(self.base, state.current_realized_projection_id,
+            state.desired_graph_id, state.desired_realized_projection_id, state.desired_graph_revision)
+        saved = edit.execute(SetDesiredGraph(session, "workspace-a", "operator-a", graph,
+            state.desired_graph_id, IdempotencyKey(uuid4().hex), state.desired_realized_projection_id,
+            state.desired_graph_revision, receiver_lifecycle=expectation))
+        command = RequestActivityPlan(session, "workspace-a", "operator-a",
+            self.base, saved.graph_version_id, IdempotencyKey(uuid4().hex), state.current_realized_projection_id,
+            saved.desired_realized_projection_id, saved.desired_graph_revision)
         return ActivityPlanningCommandService(self.unit_of_work, clock=lambda: NOW,
             id_factory=lambda: uuid4().hex).execute(command).plan_record
 
