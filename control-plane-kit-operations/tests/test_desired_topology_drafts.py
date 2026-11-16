@@ -266,8 +266,12 @@ class DesiredTopologyDraftTests(DraftCatalogueFixture, unittest.TestCase):
         graph = replace(graph, nodes={"app": replace(graph.node("app"), configuration_artifacts=(artifact,))})
         created = self.create(graph=graph)
         with self.unit_of_work() as uow:
-            uow.stores.workspaces.set_current_graph("workspace-a", created.graph_id)
-            uow.stores.workspaces.set_desired_graph("workspace-a", created.graph_id)
+            selected = uow.stores.workspaces.set_desired_graph("workspace-a", created.graph_id)
+            # Populate an existing configured Current in this isolated read fixture.
+            # Legacy pointer mutation correctly rejects configured Current graphs.
+            uow.stores.connection.execute(
+                "UPDATE cpk_workspaces SET current_graph_id=%s, current_realized_projection_id=%s WHERE workspace_id=%s",
+                (created.graph_id, selected.desired_realized_projection_id, "workspace-a"))
             uow.commit()
         routes = (("read.desired-topology-draft-revision", {"draft_id": created.draft_id, "revision": 1}),
                   ("read.current-graph", {}), ("read.desired-graph", {}))
