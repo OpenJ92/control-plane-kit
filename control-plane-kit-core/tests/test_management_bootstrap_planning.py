@@ -2168,3 +2168,57 @@ class RetainedImageIngressPlanningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExistingRuntimeBootstrapTests(unittest.TestCase):
+    def pair(self):
+        from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+        desired = graph(workload_surfaces=(), added_workload=True, connector_surfaces=(surface(),))
+        runtime = replace(desired.runtimes["runtime"], authority_ref=RuntimeAuthorityReference("test-docker"))
+        application_ingress = NamedPublicIngress("public", IngressAuthorityReference("public"),
+            PublicIngressTarget("workload", "control"), "added-workload", "app.example.invalid")
+        desired = replace(desired, runtimes={"runtime": runtime},
+                          public_ingresses=(*desired.public_ingresses, application_ingress))
+        current = replace(desired, nodes={"workload": desired.node("workload")}, public_ingresses=(),
+                          runtimes={"runtime": replace(runtime, management=None, children=("workload",))})
+        return current, desired
+
+    def compile(self, current, desired):
+        left, right = validate_graph(current), validate_graph(desired)
+        left.require_valid()
+        right.require_valid()
+        compiler = getattr(core, "compile_existing_runtime_bootstrap_activity_plan", None)
+        self.assertIsNotNone(compiler, "existing-runtime bootstrap has no dedicated interpretation")
+        return compiler(left, right)
+
+    def test_only_new_infrastructure_and_ordered_application_exposure(self):
+        current, desired = self.pair()
+        plan = self.compile(current, desired)
+        self.assertTrue(plan.ready_for_execution)
+        self.assertFalse(core.compile_graph_activity_plan(validate_graph(current), validate_graph(desired)).ready_for_execution)
+        self.assertEqual({a.operation.target.node_id for a in plan.activities if type(a.operation) is StartNode},
+                         {"gateway", "connector", "added-workload"})
+        self.assertFalse(any(type(a.operation) in (ReconcileRuntime, StartRuntime, StopRuntime, ReconcileNode,
+                                                    StopNode, RemoveNodeResource) for a in plan.activities))
+        application = next(a for a in plan.activities if type(a.operation) is AllocatePublicIngress
+                           and a.operation.target.ingress_id == "public")
+        for stage in (core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+                      core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+                      core.ManagementBootstrapStage.GATEWAY_INGRESS_READY):
+            activity = next(a for a in plan.activities if getattr(a.operation, "stage", None) is stage)
+            self.assertIn(activity.activity_id, predecessors(plan, application))
+        health = {a.operation.node_id: a for a in plan.activities if type(a.operation) is core.ObserveNodeHealth}
+        self.assertEqual(set(health), {"connector", "added-workload"})
+        self.assertIn(application.activity_id, predecessors(plan, health["added-workload"]))
+        self.assertIn(health["connector"].activity_id, predecessors(plan, application))
+
+    def test_runtime_authority_workload_and_edge_scope_are_closed(self):
+        current, desired = self.pair()
+        runtime = desired.runtimes["runtime"]
+        for changed in (replace(desired, runtimes={"runtime": replace(runtime, authority_ref=None)}),
+                        replace(desired, name="different"),
+                        replace(desired, nodes={**desired.nodes, "workload": replace(desired.node("workload"),
+                            metadata={**desired.node("workload").metadata, "revision": "changed"})}),
+                        replace(desired, public_ingresses=desired.public_ingresses[:1])):
+            with self.subTest(graph=changed.name):
+                self.assertFalse(self.compile(current, changed).ready_for_execution)
