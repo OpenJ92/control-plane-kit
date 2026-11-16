@@ -174,10 +174,22 @@ def runtime_management_execution_is_unsupported(
     to the supplied pinned plan; callers with no such plan receive no exception.
     """
 
-    # The native connector reader has no qualified bootstrap on a retained
-    # runtime yet. Persist the approval subject without admitting any execution.
     if derivation_profile is PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1:
-        return True
+        # Every supported producer verified the complete route set before approval.
+        # Recheck the approved graph pair, active registrations and historical
+        # image/origin constraints here. Per-effect authority and receipts belong
+        # to the coordinator and interpreters.
+        if plan is None or not plan.activities:
+            return True
+        before, after = validate_graph(current, codec=codec), validate_graph(desired, codec=codec)
+        if not before.valid or not after.valid:
+            return True
+        transition = Deploy(before, after)
+        if type(transition) is not UpdateDeployment:
+            return True
+        canonical = derive_activity_plan(transition, profile=derivation_profile)
+        return (not canonical.ready_for_execution or canonical != plan
+            or _bootstrap_product_bindings(current, desired, registered_products) is None)
     # Parse independently of catalog contents. A malformed selected reference
     # cannot acquire a no-op exemption or leak its parser error into a receipt.
     if derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
@@ -473,23 +485,21 @@ def _managed_selection_nodes(current, desired):
                 desired.runtimes.get(node.runtime_id))))
 
 
-def _registered_bootstrap_products(current, desired, registered_products):
+def _bootstrap_product_bindings(current, desired, registered_products):
     """Bind new installations and both ingress targets to active catalog entries."""
     try:
-        runtime, = desired.runtimes.values()
-        gateway = runtime.management.gateway_node_id
         products = {key: _selected_product(node, registered_products) for key, node in desired.nodes.items()}
         if any(product is None for product in products.values()):
-            return False
+            return None
         for key in desired.nodes.keys() - current.nodes.keys():
             node, product = desired.nodes[key], products[key]
             declared = product.descriptor_document.product
             if (not _node_matches_product(node, product) or declared.runtime_contract.retained_data_mounts
                     or node.metadata.get("oci_image") != declared.image.execution_reference):
-                return False
+                return None
         connectors = [products[item.connector_node_id].reference for item in desired.public_ingresses]
         if connectors[0] != connectors[1]:
-            return False
+            return None
         for ingress in desired.public_ingresses:
             key, socket = ingress.target.node_id, ingress.target.provider_socket
             contract = products[key].descriptor_document.product.runtime_contract
@@ -498,7 +508,19 @@ def _registered_bootstrap_products(current, desired, registered_products):
             if (not any(v.name == socket and v.protocol == Protocol.HTTP for v in contract.sockets.providers)
                     or len(ports) != 1 or endpoint.protocol != Protocol.HTTP
                     or endpoint.url != f"http://{key}:{ports[0]}"):
-                return False
+                return None
+        return products
+    except (TypeError, AttributeError, KeyError, ValueError, IndexError):
+        return None
+
+
+def _registered_bootstrap_products(current, desired, registered_products):
+    products = _bootstrap_product_bindings(current, desired, registered_products)
+    if products is None:
+        return False
+    try:
+        runtime, = desired.runtimes.values()
+        gateway = runtime.management.gateway_node_id
         return _management_routes_are_exact(_configured_management_routes(desired, gateway),
             _expected_management_routes(desired, products, gateway, runtime_id=runtime.runtime_id))
     except (TypeError, AttributeError, KeyError, ValueError):
