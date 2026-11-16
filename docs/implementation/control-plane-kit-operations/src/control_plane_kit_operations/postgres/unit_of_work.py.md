@@ -10,3 +10,6 @@ projection failures and successful reads all rollback and close; none commit.
 Consistency is the complete committed database snapshot at first data read.
 There is no lifecycle/advisory lock, retry, end-of-read freshness claim or provider
 I/O. A later mutation must independently revalidate its captured expectations.
+
+Ingress-extension preview supplies the receiver projection with the same read-only
+repeatable-read snapshot as its graph, product, authority and verifier reads.
