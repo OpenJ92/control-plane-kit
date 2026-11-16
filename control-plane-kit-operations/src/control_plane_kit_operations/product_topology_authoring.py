@@ -199,7 +199,7 @@ def _eligible(contract):
         raise ProductTopologyAuthoringError()
 
 
-def _connector_instance(stores, workspace_id, connector, runtime_id, graph, receiver_context):
+def _connector_instance(stores, workspace_id, connector, runtime_id, graph, receiver_context, *, for_update=False):
     _object(connector, {"node_id", "product", "receiver_id", "provider_socket"})
     node_id = _identifier(connector["node_id"])
     target = NodeControlReceiverTargetCodec().decode({"workspace_id": workspace_id, "runtime_id": runtime_id,
@@ -215,7 +215,8 @@ def _connector_instance(stores, workspace_id, connector, runtime_id, graph, rece
     if stores.graphs.receiver_introduction(workspace_id, target.receiver_id) is not None:
         raise ProductTopologyAuthoringError(409)
     pin = ProductReferenceCodec().decode(connector["product"])
-    registered = stores.registered_products.get(workspace_id, pin)
+    lookup = stores.registered_products.get_for_update if for_update else stores.registered_products.get
+    registered = lookup(workspace_id, pin)
     if registered.status is not RegisteredProductStatus.ACTIVE or registered.reference != pin:
         raise ProductTopologyAuthoringError(409)
     contract = registered.descriptor_document.product.runtime_contract
@@ -247,12 +248,12 @@ def _connector_instance(stores, workspace_id, connector, runtime_id, graph, rece
         "media_type": slot.media_type.value, "file_mode": slot.file_mode.value, "sha256": sha256(content).hexdigest()}
 
 
-def _named_ingress(stores, workspace_id, spec, connector_id, graph, runtime_id):
+def _named_ingress(stores, workspace_id, spec, connector_id, graph, runtime_id, *, for_update=False):
     _object(spec, {"ingress_id", "authority_ref", "registration_id", "hostname", "target", "exposure", "lifecycle"})
     ingress = NamedPublicIngressCodec().decode({"ingress_id": spec["ingress_id"], "hostname": spec["hostname"],
         "exposure": spec["exposure"], "lifecycle": spec["lifecycle"], "target": spec["target"],
         "authority_ref": {"reference_id": spec["authority_ref"]}, "connector_node_id": connector_id})
-    binding = stores.ingress_authorities.require_active_for_hostname(workspace_id, ingress.authority_ref, ingress.hostname)
+    binding = stores.ingress_authorities.require_active_for_hostname(workspace_id, ingress.authority_ref, ingress.hostname, for_update=for_update)
     if binding.registration_id != spec["registration_id"] or binding.authority.allowed_hostname_pattern != ingress.hostname:
         raise ProductTopologyAuthoringError(409)
     target = graph.node(ingress.target.node_id)
@@ -299,6 +300,12 @@ class ProductTopologyAuthoringService:
             raise ProductTopologyAuthoringError() from None
 
     def prepare_ingress_preview(self, context, recipe):
+        self._validate_ingress_input(context, recipe)
+        with self._uow().ingress_extension_snapshot() as stores:
+            return self._ingress_graph(stores, context, recipe)
+
+    @staticmethod
+    def _validate_ingress_input(context, recipe):
         scopes = {PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.INGRESS_AUTHORITY_READ, PolicyScope.DELEGATION_KEY_READ}
         if type(context) is not TrustedCommandContext or not scopes.issubset(context.granted_scopes):
             raise ProductTopologyAuthoringError(403)
@@ -311,51 +318,80 @@ class ProductTopologyAuthoringService:
         revision = base["revision"]
         if type(revision) is not int or not 1 <= revision < 2**63:
             raise ProductTopologyAuthoringError()
-        with self._uow().ingress_extension_snapshot() as stores:
-            try:
-                drafts = stores.desired_topology_drafts
-                draft = drafts.get(context.workspace_id, draft_id)
-                saved = drafts.revision(context.workspace_id, draft_id, revision)
-            except KeyError:
-                raise ProductTopologyAuthoringError(404) from None
-            if draft.deleted_at is not None or draft.head_revision != revision or saved.graph_id != graph_id:
+
+    def _ingress_graph(self, stores, context, recipe, *, for_update=False):
+        base = recipe["base"]
+        draft_id, revision, graph_id = base["draft_id"], base["revision"], base["graph_id"]
+        try:
+            drafts = stores.desired_topology_drafts
+            draft = drafts.get(context.workspace_id, draft_id)
+            saved = drafts.revision(context.workspace_id, draft_id, revision)
+        except KeyError:
+            raise ProductTopologyAuthoringError(404) from None
+        if draft.deleted_at is not None or draft.head_revision != revision or saved.graph_id != graph_id:
+            raise ProductTopologyAuthoringError(409)
+        record = stores.graphs.get(saved.graph_id)
+        if record.workspace_id != context.workspace_id:
+            raise ProductTopologyAuthoringError(409)
+        graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
+        runtime_id = _identifier(recipe["runtime_id"])
+        runtime = graph.runtimes[runtime_id]
+        connector = _object(recipe["connector"], {"node_id", "product", "receiver_id", "provider_socket"})
+        ingress = _named_ingress(stores, context.workspace_id, recipe["ingress"], connector["node_id"], graph, runtime_id, for_update=for_update)
+        receiver_context = ReceiverAuthoringContextReadService(self._uow).read(
+            ReceiverAuthoringContextQuery(context.workspace_id, pending_draft={
+                "draft_id": draft_id, "expected_head_revision": revision}), context=context,
+            snapshot=stores.graphs.receiver_authoring_snapshot())
+        if receiver_context.pending_draft.source.graph_id != graph_id:
+            raise ProductTopologyAuthoringError(409)
+        node, slot = _connector_instance(stores, context.workspace_id, connector, runtime_id, graph, receiver_context, for_update=for_update)
+        extended = graph.add_node(node).add_public_ingress(ingress)
+        extended = replace(extended, runtimes={**graph.runtimes,
+            runtime_id: replace(runtime, children=(*runtime.children, node.node_id))})
+        validate_graph(extended).require_valid()
+        bounded_draft_graph_descriptor(extended)
+        return extended, slot, receiver_context.expectation.descriptor()
+
+    @staticmethod
+    def _ingress_result(context, recipe, graph, slot, expectation):
+        public = public_product_topology_graph(graph)
+        public["public_ingresses"] = [ingress.descriptor() for ingress in graph.public_ingresses]
+        result = {"workspace_id": context.workspace_id, "kind": "product-topology-preview",
+            "recipe": recipe, "graph_descriptor": public, "receiver_configuration": slot,
+            "receiver_lifecycle": expectation}
+        profile = "registered-product-ingress-extension-public.v1"
+        digest = sha256(public_json_bytes({"profile": profile, **result})).hexdigest()
+        result["proposal_commitment"] = {"profile": profile, "sha256": digest}
+        public_json_bytes(result)
+        return result
+
+    def prepare_locked_extension(self, stores, command):
+        recipe, context = command.recipe, command.context
+        self._validate_ingress_input(context, recipe)
+        if (recipe["base"]["draft_id"] != command.draft_id
+                or recipe["base"]["revision"] != command.expected_head_revision):
+            raise ProductTopologyAuthoringError(409)
+        try:
+            graph, slot, expectation = self._ingress_graph(stores, context, recipe, for_update=True)
+            observed = self._ingress_result(context, recipe, graph, slot, expectation)
+            if (observed["proposal_commitment"] != command.commitment or command.receiver_lifecycle is None
+                    or command.receiver_lifecycle.descriptor() != expectation):
                 raise ProductTopologyAuthoringError(409)
-            record = stores.graphs.get(saved.graph_id)
-            if record.workspace_id != context.workspace_id:
-                raise ProductTopologyAuthoringError(409)
-            graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
-            runtime_id = _identifier(recipe["runtime_id"])
-            runtime = graph.runtimes[runtime_id]
-            connector = _object(recipe["connector"], {"node_id", "product", "receiver_id", "provider_socket"})
-            ingress = _named_ingress(stores, context.workspace_id, recipe["ingress"], connector["node_id"], graph, runtime_id)
-            receiver_context = ReceiverAuthoringContextReadService(self._uow).read(
-                ReceiverAuthoringContextQuery(context.workspace_id, pending_draft={
-                    "draft_id": draft_id, "expected_head_revision": revision}), context=context,
-                snapshot=stores.graphs.receiver_authoring_snapshot())
-            if receiver_context.pending_draft.source.graph_id != graph_id:
-                raise ProductTopologyAuthoringError(409)
-            node, slot = _connector_instance(stores, context.workspace_id, connector, runtime_id, graph, receiver_context)
-            extended = graph.add_node(node).add_public_ingress(ingress)
-            extended = replace(extended, runtimes={**graph.runtimes,
-                runtime_id: replace(runtime, children=(*runtime.children, node.node_id))})
-            validate_graph(extended).require_valid()
-            bounded_draft_graph_descriptor(extended)
-            return extended, slot, receiver_context.expectation.descriptor()
+            return graph
+        except ProductTopologyAuthoringError:
+            raise
+        except ReceiverAuthoringContextError as error:
+            raise ProductTopologyAuthoringError(error.status) from None
+        except (IngressAuthorityNotFound, ProductRegistrationNotFound, WorkloadVerifierAuthorityUnavailable):
+            raise ProductTopologyAuthoringError(409) from None
+        except (KeyError, ValueError, TypeError, AttributeError, RecursionError, OverflowError):
+            raise ProductTopologyAuthoringError() from None
 
     def preview(self, context, raw_recipe):
         if type(raw_recipe) is dict and raw_recipe.get("schema") == EXTENSION_SCHEMA:
             try:
                 graph, slot, expectation = self.prepare_ingress_preview(context, raw_recipe)
-                public = public_product_topology_graph(graph)
-                public["public_ingresses"] = [ingress.descriptor() for ingress in graph.public_ingresses]
-                result = {"workspace_id": context.workspace_id, "kind": "product-topology-preview",
-                    "recipe": raw_recipe, "graph_descriptor": public, "receiver_configuration": slot,
-                    "receiver_lifecycle": expectation}
-                profile = "registered-product-ingress-extension-public.v1"
-                digest = sha256(public_json_bytes({"profile": profile, **result})).hexdigest()
-                result["proposal_commitment"] = {"profile": profile, "sha256": digest}
-                public_json_bytes(result)
-                return result
+                return self._ingress_result(context, raw_recipe, graph, slot, expectation)
             except ProductTopologyAuthoringError:
                 raise
             except ReceiverAuthoringContextError as error:
