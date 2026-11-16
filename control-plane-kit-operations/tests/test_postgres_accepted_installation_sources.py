@@ -622,6 +622,21 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
         self.assertEqual(self.effects(), before)
         self.assertEqual(self.health.native_reads, [])
 
+    def test_absent_original_dispatch_charges_the_shared_read_budget(self):
+        from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationKind
+        from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
+        from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+
+        store = PostgresExecutionStore(self.connection)
+        with _joined_read(self.connection) as read:
+            before = read.used
+            self.assertIsNone(store.original_final_invocation(EffectAttemptIdentity(RunId("missing"), "start", 1),
+                original_event_id="missing-start", request_fingerprint="a" * 64,
+                kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH))
+            self.assertGreater(read.used.statements, before.statements)
+            self.assertGreater(read.used.accounted_bytes, before.accounted_bytes)
+
     async def test_worker_read_refuses_connector_without_original_dispatch_registration(self):
         read, *_ = await self.prepare_worker_connector_read(registered=False)
         self.assertIsNone(read())

@@ -320,10 +320,7 @@ class PostgresExecutionStore:
             if for_update:
                 read.query("SELECT 1 FROM cpk_execution_command_invocations WHERE " + where + " FOR UPDATE",
                     parameters, records=1, octets=1, cells=1)
-            columns = tuple((name, "json" if name == "descriptor" else "int" if name in ("version", "attempt")
-                else "time" if name in ("decision_at", "completed_at") else "text",
-                8192 if name == "descriptor" else 2048) for name in _INVOCATION_COLUMNS)
-            rows = read.bounded_rows("cpk_execution_command_invocations", columns, where, parameters)
+            rows = read.bounded_rows("cpk_execution_command_invocations", _INVOCATION_READ_COLUMNS, where, parameters)
             row = rows[0] if rows else None
         else:
             row = self._connection.execute(_INVOCATION_SELECT + " WHERE " + where
@@ -390,9 +387,15 @@ class PostgresExecutionStore:
                 raise ValueError
         except (ValueError, TypeError, AttributeError):
             raise ExecutionInvocationConflict() from None
-        rows = self._connection.execute(_INVOCATION_SELECT
-            + " WHERE run_id=%s AND activity_id=%s AND attempt=%s AND kind=%s LIMIT 2",
-            (identity.run_id.value, identity.activity_id, identity.attempt, kind.value)).fetchall()
+        where = "run_id=%s AND activity_id=%s AND attempt=%s AND kind=%s"
+        parameters = (identity.run_id.value, identity.activity_id, identity.attempt, kind.value)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is None:
+            rows = self._connection.execute(_INVOCATION_SELECT + " WHERE " + where + " LIMIT 2", parameters).fetchall()
+        else:
+            # Keep the second row as an ambiguity witness, including under a shared budget.
+            rows = read.bounded_rows("cpk_execution_command_invocations", _INVOCATION_READ_COLUMNS,
+                where, parameters, maximum=2)
         if not rows:
             return None
         if len(rows) != 1:
@@ -1734,6 +1737,11 @@ _INVOCATION_COLUMNS = ("invocation_id", "version", "run_id", "command_key", "par
     "workspace_id", "activity_id", "kind", "slot_key", "target_fingerprint", "attempt",
     "original_event_id", "request_fingerprint", "authorization_id", "disposition", "decision_at",
     "outcome", "completed_at", "descriptor")
+_INVOCATION_READ_COLUMNS = tuple(
+    (name, "json" if name == "descriptor" else "int" if name in ("version", "attempt")
+        else "time" if name in ("decision_at", "completed_at") else "text",
+        8192 if name == "descriptor" else 2048)
+    for name in _INVOCATION_COLUMNS)
 _INVOCATION_SELECT = "SELECT " + ", ".join(
     name if name in ("version", "attempt", "decision_at", "completed_at") else
     "CASE WHEN octet_length(descriptor::text)<=8192 THEN descriptor ELSE NULL END" if name == "descriptor" else
