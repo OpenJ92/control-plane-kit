@@ -295,7 +295,11 @@ class DesiredTopologyDraftCommandService:
             if session.workspace_id != context.workspace_id or session.status is not OperationSessionStatus.OPEN:
                 raise DesiredTopologyDraftError("an open workspace operation session is required")
             try:
-                workspace = uow.stores.workspaces.get_for_update(context.workspace_id)
+                workspaces = uow.stores.workspaces
+                # The extension also takes verifier-purpose locks. A registration
+                # holding that lock must be able to reference the workspace key.
+                workspace = (workspaces.get_for_no_key_update(context.workspace_id) if extension
+                    else workspaces.get_for_update(context.workspace_id))
             except KeyError:
                 raise DesiredTopologyDraftError("workspace was not found") from None
             store = uow.stores.desired_topology_drafts
@@ -354,7 +358,7 @@ class DesiredTopologyDraftCommandService:
                 payload=payload, created_at=now, idempotency_key=command.idempotency_key.value,
                 intent_fingerprint=fingerprint))
             try:
-                held = uow.stores.workspaces.get_for_update(context.workspace_id)
+                held = workspaces.get(context.workspace_id)
                 if held != workspace:
                     raise DesiredTopologyDraftConflict("workspace graph truth changed")
                 new_ids = _validate_receiver_admission(uow.stores, held, command.receiver_lifecycle,
@@ -367,7 +371,7 @@ class DesiredTopologyDraftCommandService:
                         new_receiver_ids=new_ids, lifecycle_guard=guard)
                     uow.stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=guard)
                 _receiver_sources(uow.stores, held, draft_head=head)
-                _check_receiver_expectation(uow.stores.workspaces.get_for_update(context.workspace_id),
+                _check_receiver_expectation(workspaces.get(context.workspace_id),
                     command.receiver_lifecycle)
                 store._advance_head(saved_revision,
                     expected_head_revision=None if creating else command.expected_head_revision)

@@ -5,6 +5,7 @@ from copy import deepcopy
 from hashlib import sha256
 import json
 import threading
+import time
 import unittest
 
 import psycopg
@@ -14,7 +15,7 @@ from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, Deleg
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.delegation_signing_keys import RegisterDelegationSigningKeyCommand
-from tests.test_delegation_signing_keys import PUBLIC_KEY_A
+from tests.test_delegation_signing_keys import PUBLIC_KEY_A, PUBLIC_KEY_B
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.operations import (
@@ -327,6 +328,62 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             self.append_ingress_preview(preview)
         self.assertEqual(refusal.exception.status, 409)
         self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+
+    def test_append_overlapping_verifier_registration_requires_the_new_commitment(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        purpose = DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ
+        candidate = RegisterDelegationSigningKeyCommand("workspace-a", purpose, "fixture-issuer",
+            DelegationPublicKey("next-key", DelegationKeyAlgorithm.ED25519, PUBLIC_KEY_B),
+            SecretReference("secret://fixture/next-key"), "operator-a", NOW, ()).candidate()
+        before = self.catalogue_truth()
+        ready = threading.Event()
+        proceed = threading.Event()
+        owner_pid = []
+
+        class RegistrationConnection(psycopg.Connection):
+            def execute(connection, query, *args, **kwargs):
+                if "INSERT INTO cpk_delegation_signing_keys" in str(query):
+                    owner_pid.append(connection.info.backend_pid)
+                    ready.set()
+                    if not proceed.wait(10):
+                        raise TimeoutError("append did not reach the verifier-purpose lock")
+                return super().execute(query, *args, **kwargs)
+
+        def register():
+            with PostgresUnitOfWork(lambda: RegistrationConnection.connect(self.database_url,
+                    options=f"-c search_path={self.schema} -c lock_timeout=5000")) as uow:
+                key = uow.stores.delegation_signing_keys.register(candidate)
+                uow.commit()
+                return key
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            registration = pool.submit(register)
+            try:
+                self.assertTrue(ready.wait(5))
+                append = pool.submit(self.append_ingress_preview, preview)
+                deadline = time.monotonic() + 4
+                while not self.connection.execute(
+                        "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE NOT granted AND locktype='advisory' "
+                        "AND %s=ANY(pg_blocking_pids(pid)))", (owner_pid[0],)).fetchone()[0]:
+                    self.assertLess(time.monotonic(), deadline, "append did not wait for registration")
+                    time.sleep(0.01)
+            finally:
+                proceed.set()
+            self.assertEqual(registration.result().registration_id, candidate.registration_id)
+            with self.assertRaises(CpkServerApplicationError) as stale:
+                append.result()
+        self.assertEqual(stale.exception.status, 409)
+        self.assertEqual(self.catalogue_truth(), before)
+        refreshed = self.preview(recipe)
+        self.assertNotEqual(refreshed["proposal_commitment"], preview["proposal_commitment"])
+        receipt = self.append_ingress_preview(refreshed)
+        self.assertEqual(receipt["revision"], 3)
+        self.assertEqual(self.append_ingress_preview(refreshed), receipt)
+        with self.unit_of_work() as uow:
+            stored = uow.stores.delegation_signing_keys.get("workspace-a", purpose, "fixture-issuer", "next-key")
+            self.assertEqual(stored, candidate)
 
     def test_competing_extension_appends_from_revision_two_have_one_winner(self):
         recipe, _, _ = self.ingress_extension_fixture()
