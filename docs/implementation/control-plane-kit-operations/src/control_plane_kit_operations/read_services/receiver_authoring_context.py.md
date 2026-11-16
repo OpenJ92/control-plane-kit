@@ -25,3 +25,6 @@ errors without retained input or exception chains; no partial response escapes.
 The direct service and framework-neutral HTTP/MCP mapping share this owner.
 Existing redacted reads stay separate. Actual transport decoding, envelope
 bounds and coordinated dependency adoption remain Servers #238.
+
+Ingress-extension preview supplies the receiver projection with the same read-only
+repeatable-read snapshot as its graph, product, authority and verifier reads.

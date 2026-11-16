@@ -37,3 +37,12 @@ receipt and internal intent/replay fingerprint are unchanged.
 Operations' framework-neutral HTTP/MCP-shaped requests share this service.
 Actual transport decoding and lost-reply handling at the calling boundary,
 installed adoption and runtime execution remain separately owned and unproven.
+
+#2097 extends the preview with a named ingress on an exact authored revision.
+The workspace, draft, revision and graph ID fence the base. The new connector
+uses an active product reference, its declared receiver configuration slot and
+the workspace’s public verifier keys. The HTTP preview exposes the receiver
+lifecycle expectation and control-file digest, omitting the file content.
+Tests compare the original and extended nodes and socket binding, inspect the
+rendered receiver target, and check database history before and after refusal
+or successful preview. The existing product recipe retains its own protocol.

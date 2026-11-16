@@ -15,3 +15,12 @@ compiled-size bounds. The shared graph redaction regression keeps directory
 verification lists and a node literally named `verification` intact. Existing
 draft tests continue to own concurrency and transaction failure laws; lost
 start/save replies are proved by Servers' actual calling boundary.
+
+#2097 extends the preview with a named ingress on an exact authored revision.
+The workspace, draft, revision and graph ID fence the base. The new connector
+uses an active product reference, its declared receiver configuration slot and
+the workspace’s public verifier keys. The HTTP preview exposes the receiver
+lifecycle expectation and control-file digest, omitting the file content.
+Tests compare the original and extended nodes and socket binding, inspect the
+rendered receiver target, and check database history before and after refusal
+or successful preview. The existing product recipe retains its own protocol.

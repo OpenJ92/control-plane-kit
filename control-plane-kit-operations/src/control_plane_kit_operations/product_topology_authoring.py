@@ -1,13 +1,21 @@
 """Public recipes over workspace-pinned products; no preview persistence/effects."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
 import re
 from typing import Mapping
 
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime, SocketConnection
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationArtifactRequirement
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile
+from control_plane_kit_core.public_ingress import NamedPublicIngressCodec
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfiguration, ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_slot,
+)
+from control_plane_kit_core.receiver_identity import NodeControlReceiverTargetCodec
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.lifecycle import ResourceLifecycle
@@ -15,16 +23,22 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
     ProductCatalog, ProductInstanceConfiguration, ProductReferenceCodec, instantiate_catalog_product,
 )
-from control_plane_kit_core.topology import compile_topology, validate_graph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology, validate_graph
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import HttpCheck
-from .products import RegisteredProductStatus
+from ._workload_verifier_authority import WorkloadVerifierAuthorityUnavailable, current_workload_verifiers
+from .ingress_authorities import IngressAuthorityNotFound
+from .products import ProductRegistrationNotFound, RegisteredProductStatus
+from .read_services.receiver_authoring_context import (
+    ReceiverAuthoringContextError, ReceiverAuthoringContextQuery, ReceiverAuthoringContextReadService,
+)
 from .desired_topology_drafts import bounded_draft_graph_descriptor
 from .read_services._redaction import public_verification_shape
 
 
 MAX_BYTES = 1048576
 RECIPE_SCHEMA = "registered-product-topology.v1"
+EXTENSION_SCHEMA = "registered-product-ingress-extension.v1"
 COMMITMENT_PROFILE = "registered-product-topology-public.v1"
 
 
@@ -185,6 +199,69 @@ def _eligible(contract):
         raise ProductTopologyAuthoringError()
 
 
+def _connector_instance(stores, workspace_id, connector, runtime_id, graph, receiver_context):
+    _object(connector, {"node_id", "product", "receiver_id", "provider_socket"})
+    node_id = _identifier(connector["node_id"])
+    target = NodeControlReceiverTargetCodec().decode({"workspace_id": workspace_id, "runtime_id": runtime_id,
+        "node_id": node_id, "receiver_id": connector["receiver_id"], "provider_socket_name": connector["provider_socket"]})
+    if node_id in graph.nodes or node_id in graph.runtimes:
+        raise ProductTopologyAuthoringError(409)
+    sources = (receiver_context.current, receiver_context.desired, receiver_context.pending_draft.source)
+    if any(row.binding.receiver_id == target.receiver_id or
+           (row.binding.runtime_id, row.binding.node_id, row.binding.provider_socket_name) ==
+           (runtime_id, node_id, target.provider_socket_name.value)
+           for source in sources if source is not None for row in source.receivers):
+        raise ProductTopologyAuthoringError(409)
+    if stores.graphs.receiver_introduction(workspace_id, target.receiver_id) is not None:
+        raise ProductTopologyAuthoringError(409)
+    pin = ProductReferenceCodec().decode(connector["product"])
+    registered = stores.registered_products.get(workspace_id, pin)
+    if registered.status is not RegisteredProductStatus.ACTIVE or registered.reference != pin:
+        raise ProductTopologyAuthoringError(409)
+    contract = registered.descriptor_document.product.runtime_contract
+    slot = select_receiver_node_control_configuration_slot(artifacts=contract.configuration_artifacts,
+        environment=contract.public_environment, control_surfaces=contract.control_surfaces,
+        requirements=contract.configuration_requirements)
+    if not isinstance(slot, ConfigurationArtifactRequirement) or len(contract.control_surfaces) != 1:
+        raise ProductTopologyAuthoringError()
+    declaration = WorkloadNodeControlSurfaceDeclaration(contract.control_surfaces[0],
+        WorkloadNodeControlSurfaceDeclarationProfile.V2)
+    purposes = [DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ]
+    if declaration.surface.health_reads:
+        purposes.append(DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ)
+    if declaration.surface.variables:
+        purposes.append(DelegationKeyPurpose.WORKLOAD_NODE_CONTROL)
+    families = current_workload_verifiers(stores.delegation_signing_keys, workspace_id, purposes)
+    configuration = ReceiverNodeControlConfiguration(target, declaration, families)
+    content = ReceiverNodeControlConfigurationCodec().encode_bytes(configuration)
+    artifact = ConfigurationArtifact(slot.artifact_id, slot.target_path, slot.media_type, content.decode(), slot.file_mode)
+    block = instantiate_catalog_product(ProductCatalog.from_documents((registered.descriptor_document,)),
+        pin.identity, role_id=node_id, configuration=ProductInstanceConfiguration(
+            public_environment=contract.public_environment, configuration_artifacts=(artifact,)))
+    runtime = graph.runtimes[runtime_id]
+    if runtime.kind.value != "docker":
+        raise ProductTopologyAuthoringError()
+    isolated = compile_topology(DeploymentTopology(graph.name, DockerRuntime(runtime_id=runtime_id,
+        network_name=runtime.metadata["network_name"], children=(block,))))
+    return isolated.node(node_id), {"artifact_id": slot.artifact_id, "target_path": slot.target_path,
+        "media_type": slot.media_type.value, "file_mode": slot.file_mode.value, "sha256": sha256(content).hexdigest()}
+
+
+def _named_ingress(stores, workspace_id, spec, connector_id, graph, runtime_id):
+    _object(spec, {"ingress_id", "authority_ref", "registration_id", "hostname", "target", "exposure", "lifecycle"})
+    ingress = NamedPublicIngressCodec().decode({"ingress_id": spec["ingress_id"], "hostname": spec["hostname"],
+        "exposure": spec["exposure"], "lifecycle": spec["lifecycle"], "target": spec["target"],
+        "authority_ref": {"reference_id": spec["authority_ref"]}, "connector_node_id": connector_id})
+    binding = stores.ingress_authorities.require_active_for_hostname(workspace_id, ingress.authority_ref, ingress.hostname)
+    if binding.registration_id != spec["registration_id"] or binding.authority.allowed_hostname_pattern != ingress.hostname:
+        raise ProductTopologyAuthoringError(409)
+    target = graph.node(ingress.target.node_id)
+    if target.runtime_id != runtime_id or not any(socket.name == ingress.target.provider_socket
+            and socket.protocol == Protocol.HTTP for socket in target.sockets.providers):
+        raise ProductTopologyAuthoringError()
+    return ingress
+
+
 class ProductTopologyAuthoringService:
     """Canonical documents stay inside the workspace owner; preview never commits."""
     def __init__(self, unit_of_work_factory):
@@ -221,7 +298,72 @@ class ProductTopologyAuthoringService:
         except (KeyError, ValueError, TypeError, AttributeError, RecursionError, OverflowError):
             raise ProductTopologyAuthoringError() from None
 
+    def prepare_ingress_preview(self, context, recipe):
+        scopes = {PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.INGRESS_AUTHORITY_READ, PolicyScope.DELEGATION_KEY_READ}
+        if type(context) is not TrustedCommandContext or not scopes.issubset(context.granted_scopes):
+            raise ProductTopologyAuthoringError(403)
+        public_json_bytes(recipe)
+        _object(recipe, {"schema", "base", "runtime_id", "connector", "ingress"})
+        if recipe["schema"] != EXTENSION_SCHEMA:
+            raise ProductTopologyAuthoringError()
+        base = _object(recipe["base"], {"draft_id", "revision", "graph_id"})
+        draft_id, graph_id = _text(base["draft_id"]), _text(base["graph_id"])
+        revision = base["revision"]
+        if type(revision) is not int or not 1 <= revision < 2**63:
+            raise ProductTopologyAuthoringError()
+        with self._uow().ingress_extension_snapshot() as stores:
+            try:
+                drafts = stores.desired_topology_drafts
+                draft = drafts.get(context.workspace_id, draft_id)
+                saved = drafts.revision(context.workspace_id, draft_id, revision)
+            except KeyError:
+                raise ProductTopologyAuthoringError(404) from None
+            if draft.deleted_at is not None or draft.head_revision != revision or saved.graph_id != graph_id:
+                raise ProductTopologyAuthoringError(409)
+            record = stores.graphs.get(saved.graph_id)
+            if record.workspace_id != context.workspace_id:
+                raise ProductTopologyAuthoringError(409)
+            graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
+            runtime_id = _identifier(recipe["runtime_id"])
+            runtime = graph.runtimes[runtime_id]
+            connector = _object(recipe["connector"], {"node_id", "product", "receiver_id", "provider_socket"})
+            ingress = _named_ingress(stores, context.workspace_id, recipe["ingress"], connector["node_id"], graph, runtime_id)
+            receiver_context = ReceiverAuthoringContextReadService(self._uow).read(
+                ReceiverAuthoringContextQuery(context.workspace_id, pending_draft={
+                    "draft_id": draft_id, "expected_head_revision": revision}), context=context,
+                snapshot=stores.graphs.receiver_authoring_snapshot())
+            if receiver_context.pending_draft.source.graph_id != graph_id:
+                raise ProductTopologyAuthoringError(409)
+            node, slot = _connector_instance(stores, context.workspace_id, connector, runtime_id, graph, receiver_context)
+            extended = graph.add_node(node).add_public_ingress(ingress)
+            extended = replace(extended, runtimes={**graph.runtimes,
+                runtime_id: replace(runtime, children=(*runtime.children, node.node_id))})
+            validate_graph(extended).require_valid()
+            bounded_draft_graph_descriptor(extended)
+            return extended, slot, receiver_context.expectation.descriptor()
+
     def preview(self, context, raw_recipe):
+        if type(raw_recipe) is dict and raw_recipe.get("schema") == EXTENSION_SCHEMA:
+            try:
+                graph, slot, expectation = self.prepare_ingress_preview(context, raw_recipe)
+                public = public_product_topology_graph(graph)
+                public["public_ingresses"] = [ingress.descriptor() for ingress in graph.public_ingresses]
+                result = {"workspace_id": context.workspace_id, "kind": "product-topology-preview",
+                    "recipe": raw_recipe, "graph_descriptor": public, "receiver_configuration": slot,
+                    "receiver_lifecycle": expectation}
+                profile = "registered-product-ingress-extension-public.v1"
+                digest = sha256(public_json_bytes({"profile": profile, **result})).hexdigest()
+                result["proposal_commitment"] = {"profile": profile, "sha256": digest}
+                public_json_bytes(result)
+                return result
+            except ProductTopologyAuthoringError:
+                raise
+            except ReceiverAuthoringContextError as error:
+                raise ProductTopologyAuthoringError(error.status) from None
+            except (IngressAuthorityNotFound, ProductRegistrationNotFound, WorkloadVerifierAuthorityUnavailable):
+                raise ProductTopologyAuthoringError(409) from None
+            except (KeyError, ValueError, TypeError, AttributeError, RecursionError, OverflowError):
+                raise ProductTopologyAuthoringError() from None
         recipe, graph = self._prepare(context, raw_recipe, preview=True)
         value = {"workspace_id": context.workspace_id, "kind": "product-topology-preview",
             "recipe": recipe.descriptor(), "graph_descriptor": public_product_topology_graph(graph),

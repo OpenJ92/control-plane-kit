@@ -5,7 +5,14 @@ from hashlib import sha256
 import json
 import unittest
 
+import psycopg
+
 from control_plane_kit_core.algebra import BlockSockets, DeploymentTopology, DockerRuntime, ProviderSocket, RequirementSocket
+from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
+from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
+from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_operations.delegation_signing_keys import RegisterDelegationSigningKeyCommand
+from tests.test_delegation_signing_keys import PUBLIC_KEY_A
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.operations import (
@@ -14,7 +21,7 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.products import (
     ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
-    ProductCatalog, ProductIdentity, ProductInstanceConfiguration, ProductRuntimeContract, instantiate_catalog_product,
+    ProductCatalog, ProductIdentity, ProductReferenceCodec, ProductInstanceConfiguration, ProductRuntimeContract, ProductRuntimeContractCodec, ProviderRuntimePort, instantiate_catalog_product,
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_core.types import Protocol
@@ -24,6 +31,9 @@ from control_plane_kit_operations.product_topology_authoring import (
     COMMITMENT_PROFILE, ProductTopologyAuthoringService, ProductTopologyRecipe,
     public_product_topology_graph, public_proposal_commitment,
 )
+from control_plane_kit_core.public_ingress import IngressAuthorityReference
+from control_plane_kit_operations.ingress_authorities import CloudflareZoneIngressAuthorityCodec
+from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftError, bounded_draft_graph_descriptor
 from control_plane_kit_operations.read_services.workspace_graph import _redact_graph_descriptor
@@ -57,6 +67,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 RequirementSocket("primary", Protocol.HTTP, ("MULTIPLEXER_PRIMARY_URL",)),)
             contract = ProductRuntimeContract(
                 sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),), requirements=requirements),
+                provider_ports=(ProviderRuntimePort("internal", 8000),),
                 public_environment=(PublicStaticEnvironmentBinding("HELLO_MESSAGE", "hidden-default-canary"),) if name == "hello" else (),
                 verification=VerificationContract(checks=(HttpCheck(check_id="live", provider_socket="internal",
                     path=PRIVATE_PATH, expected_body_sha256="f" * 64),)),
@@ -94,6 +105,190 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             path = {}
         return CpkServerReadService(self.unit_of_work).handle(CatalogueRequest(
             surface, PREVIEW, ControlPlaneServiceRole.READS, path, payload, caller or principal()))
+
+    def ingress_extension_fixture(self):
+        workspace = "workspace-a"
+        first_recipe = self.preview()
+        owner = ProductTopologyAuthoringService(self.unit_of_work)
+        graph = owner.prepare_saved_graph(principal().command_context(workspace),
+            first_recipe["recipe"], first_recipe["proposal_commitment"])
+        first = self.create(graph=graph)
+        second = self.catalogue().execute(self.revise_command(first, graph=graph))
+        self.assertEqual(second.revision, 2)
+        self.assertNotEqual(first.graph_id, second.graph_id)
+        self.assertEqual(graph.node("mux").socket_environment[0].edge_id, "hello-to-mux")
+
+        # A disposable managed product has an unfilled read-only control slot.
+        # The portable release itself is exercised in the Servers cohort.
+        contract = ProductRuntimeContract(sockets=BlockSockets(
+            providers=(ProviderSocket("control", Protocol.HTTP),))).descriptor()
+        contract.update(
+            capabilities=["health-checkable", "node-controllable"],
+            provider_ports=[{"provider_socket": "control", "container_port": 8000}],
+            public_environment=[{"kind": "public-static", "name": "CPK_WRAPPER_CONFIGURATION_FILE",
+                                 "value": "/etc/cpk/cloudflared/control.json"}],
+            control_surfaces=[{"provider_socket_name": "control", "variables": [],
+                               "health_reads": ["liveness", "readiness"]}],
+            configuration_requirements=[{"artifact_id": "cloudflared-control",
+                "target_path": "/etc/cpk/cloudflared/control.json", "media_type": "application/json", "file_mode": "0444"}],
+        )
+        connector = ContainerServerProduct(ProductIdentity("authoring-example", "managed-connector", 1),
+            OciImageReference("example.invalid", "connector", "sha256:" + "9" * 64),
+            ProductRuntimeContractCodec().decode(contract))
+        authority_ref = IngressAuthorityReference("hello-public")
+        hostname = "hello.example.test"
+        authority = CloudflareZoneIngressAuthorityCodec().decode({
+            "provider_kind": "cloudflare", "account_id": "fixture-account", "zone_id": "fixture-zone",
+            "zone_name": "example.test", "allowed_hostname_pattern": hostname, "api_token_ref": "secret://fixture/api",
+            "generated_secret_provider_registration_id": "fixture-provider",
+            "generated_secret_reference_prefix": "secret://fixture/generated",
+        })
+        with self.unit_of_work() as uow:
+            registered = uow.stores.registered_products.register(workspace_id=workspace,
+                descriptor_document=ProductDescriptorCodec().encode_document(connector),
+                source=InlineDescriptorSource(), imported_by="operator-a", imported_at=NOW)
+            binding = uow.stores.ingress_authorities.register(workspace_id=workspace,
+                authority_ref=authority_ref, authority=authority, admitted_by="operator-a", admitted_at=NOW)
+            uow.commit()
+        extension = {
+            "schema": "registered-product-ingress-extension.v1",
+            "base": {"draft_id": second.draft_id, "revision": second.revision, "graph_id": second.graph_id},
+            "runtime_id": "demo-docker",
+            "connector": {"node_id": "connector", "product": registered.reference.descriptor(),
+                          "receiver_id": "a" * 32, "provider_socket": "control"},
+            "ingress": {"ingress_id": "hello-public", "authority_ref": authority_ref.reference_id,
+                        "registration_id": binding.registration_id, "hostname": hostname,
+                        "target": {"node_id": "mux", "provider_socket": "internal"},
+                        "exposure": "https", "lifecycle": "ephemeral"},
+        }
+        return extension, first, graph
+
+    def seed_receiver_verifiers(self):
+        with self.unit_of_work() as uow:
+            for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ, DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ):
+                key = DelegationPublicKey("fixture-public", DelegationKeyAlgorithm.ED25519, PUBLIC_KEY_A)
+                candidate = RegisterDelegationSigningKeyCommand("workspace-a", purpose, "fixture-issuer", key,
+                    SecretReference("secret://fixture/verifier-key"), "operator-a", NOW, ()).candidate()
+                uow.stores.delegation_signing_keys.register(candidate)
+                uow.stores.delegation_signing_keys.activate("workspace-a", purpose, "fixture-issuer", key.key_id,
+                    activated_by="operator-a", activated_at=NOW)
+            uow.commit()
+
+    def test_named_ingress_extension_matching_base_previews_connector_and_keeps_source(self):
+        extension, _, graph = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        before = self.catalogue_truth(), self.runtime_truth()
+        result = self.preview(extension)
+        compiled, slot, _ = ProductTopologyAuthoringService(self.unit_of_work).prepare_ingress_preview(
+            principal().command_context("workspace-a"), extension)
+        self.assertEqual(compiled.node("hello"), graph.node("hello"))
+        self.assertEqual(compiled.node("mux"), graph.node("mux"))
+        self.assertEqual(compiled.edges, graph.edges)
+        self.assertEqual(compiled.node("mux").endpoint("internal").url, "http://mux:8000")
+        self.assertEqual(compiled.node("hello").public_environment[0].value, "Hello from the operator")
+        artifact, = compiled.node("connector").configuration_artifacts
+        self.assertEqual((artifact.artifact_id, artifact.target_path, artifact.file_mode.value),
+            ("cloudflared-control", "/etc/cpk/cloudflared/control.json", "0444"))
+        self.assertEqual(result["receiver_configuration"], slot)
+        self.assertEqual(slot["sha256"], sha256(artifact.content.encode()).hexdigest())
+        configuration = ReceiverNodeControlConfigurationCodec().decode_bytes(artifact.content.encode())
+        self.assertEqual(configuration.target.descriptor(), {"workspace_id": "workspace-a", "runtime_id": "demo-docker",
+            "node_id": "connector", "provider_socket_name": "control", "receiver_id": "a" * 32})
+        self.assertEqual({family.issuer for family in configuration.verifiers}, {"fixture-issuer"})
+        self.assertNotIn("BEGIN PUBLIC KEY", json.dumps(result))
+        self.assertNotIn("secret://", json.dumps(result))
+        self.assertEqual(result["recipe"]["base"], extension["base"])
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+        proposed = result["graph_descriptor"]
+        source = public_product_topology_graph(graph)
+        for role in ("hello", "mux"):
+            self.assertEqual(proposed["nodes"][role], source["nodes"][role])
+        self.assertEqual(proposed["edges"], source["edges"])
+        self.assertEqual(proposed["nodes"]["connector"]["metadata"]["product_descriptor_digest"],
+                         extension["connector"]["product"]["descriptor_sha256"])
+        self.assertEqual(proposed["public_ingresses"][0]["target"], {"node_id": "mux", "provider_socket": "internal"})
+        self.assertNotIn("Hello from the operator", json.dumps(result))
+
+    def test_named_ingress_extension_refuses_unavailable_authority_product_or_receiver(self):
+        extension, _, _ = self.ingress_extension_fixture()
+        before = self.catalogue_truth(), self.runtime_truth()
+        for group, field, value in (
+            ("ingress", "registration_id", "iauth_" + "b" * 64),
+            ("ingress", "hostname", "other.example.test"),
+            ("connector", "product", {**extension["connector"]["product"], "descriptor_sha256": "b" * 64}),
+        ):
+            changed = deepcopy(extension)
+            changed[group][field] = value
+            with self.subTest(field=field), self.assertRaises(CpkServerApplicationError) as refused:
+                self.preview(changed)
+            self.assertEqual(refused.exception.status, 409)
+        with self.assertRaises(CpkServerApplicationError) as no_keys:
+            self.preview(extension)
+        self.assertEqual(no_keys.exception.status, 409)
+        for missing in (PolicyScope.INGRESS_AUTHORITY_READ, PolicyScope.DELEGATION_KEY_READ, PolicyScope.INSTANCE_WORKSPACE_READ):
+            caller = principal(scopes=tuple(scope for scope in PolicyScope if scope != missing))
+            with self.assertRaises(CpkServerApplicationError) as denied:
+                self.preview(extension, caller=caller)
+            self.assertEqual(denied.exception.status, 403)
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+
+    def test_named_ingress_extension_observes_one_snapshot_during_authority_and_product_change(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        workspace = "workspace-a"
+        with self.unit_of_work() as uow:
+            pin = ProductReferenceCodec().decode(recipe["connector"]["product"])
+            original = uow.stores.registered_products.get(workspace, pin).descriptor_document.product
+        successor = replace(original, identity=replace(original.identity, contract_revision=2))
+        document = ProductDescriptorCodec().encode_document(successor)
+        recipe["connector"]["product"] = {"identity": successor.identity.descriptor(), "descriptor_sha256": document.content_digest}
+        commits = []
+        observed = set()
+
+        def rotate():
+            with self.unit_of_work() as writer:
+                writer.stores.ingress_authorities.revoke(workspace, IngressAuthorityReference("hello-public"))
+                writer.stores.registered_products.register(workspace_id=workspace, descriptor_document=document,
+                    source=InlineDescriptorSource(), imported_by="operator-a", imported_at=NOW)
+                writer.commit()
+            commits.append(True)
+
+        class ObservedConnection(psycopg.Connection):
+            def execute(connection, query, *args, **kwargs):
+                result = super().execute(query, *args, **kwargs)
+                sql = str(query).lower()
+                if "select" in sql and "cpk_" in sql:
+                    observed.add(super().execute("SELECT pg_backend_pid(), current_setting('transaction_isolation'), "
+                        "current_setting('transaction_read_only')").fetchone())
+                if "from cpk_ingress_authorities" in sql and not commits:
+                    rotate()
+                return result
+
+        def reader():
+            return PostgresUnitOfWork(lambda: ObservedConnection.connect(self.database_url,
+                options=f"-c search_path={self.schema} -c lock_timeout=5000 -c statement_timeout=10000"))
+
+        request = CatalogueRequest("http", PREVIEW, ControlPlaneServiceRole.READS, {"workspace_id": workspace},
+            {"recipe": recipe}, principal())
+        with self.assertRaises(CpkServerApplicationError) as refused:
+            CpkServerReadService(reader).handle(request)
+        self.assertEqual(refused.exception.status, 409)
+        self.assertEqual(commits, [True])
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(next(iter(observed))[1:], ("repeatable read", "on"))
+        with self.assertRaises(CpkServerApplicationError) as fresh:
+            self.preview(recipe)
+        self.assertEqual(fresh.exception.status, 409)
+
+    def test_named_ingress_extension_refuses_a_graph_id_from_an_older_revision(self):
+        extension, first, _ = self.ingress_extension_fixture()
+        extension["base"]["graph_id"] = first.graph_id
+        before = self.catalogue_truth(), self.runtime_truth()
+        with self.assertRaises(CpkServerApplicationError) as refused:
+            self.preview(extension)
+        self.assertEqual(before, (self.catalogue_truth(), self.runtime_truth()))
+        self.assertEqual(refused.exception.status, 409,
+            "a valid extension with a mismatched base graph must report a stale revision")
 
     def test_two_pinned_products_preview_without_durable_writes(self):
         before = self.catalogue_truth(), self.runtime_truth(), self.rows("cpk_operation_sessions")
