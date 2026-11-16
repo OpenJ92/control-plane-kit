@@ -229,6 +229,57 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             self.assertEqual(denied.exception.status, 403)
         self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
 
+    def append_ingress_preview(self, proposal, **changes):
+        base = proposal["recipe"]["base"]
+        values = {"session_id": self.sessions["workspace-a"], "idempotency_key": "add-ingress-to-mux",
+            "product_recipe": proposal["recipe"], "expected_head_revision": base["revision"],
+            "expected_proposal_commitment": proposal["proposal_commitment"],
+            "receiver_lifecycle": proposal["receiver_lifecycle"], **changes}
+        planner = CpkServerPlanningService(None, desired_topology_drafts=self.catalogue(),
+            product_topologies=ProductTopologyAuthoringService(self.unit_of_work))
+        return planner.handle(CatalogueRequest("http", "command.desired-topology-draft.revise",
+            ControlPlaneServiceRole.PLANNING, {"workspace_id": "workspace-a", "draft_id": base["draft_id"]},
+            values, principal()))
+
+    def test_append_named_ingress_extension_keeps_base_and_replays_exact_receipt(self):
+        recipe, first, base_graph = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        base = recipe["base"]
+        before = self.runtime_truth()
+        graph_count = len(self.rows("cpk_graph_versions"))
+        action_count = len(self.rows("cpk_operation_actions"))
+        receipt = self.append_ingress_preview(preview)
+        self.assertEqual((receipt["workspace_id"], receipt["draft_id"], receipt["revision"]),
+            ("workspace-a", base["draft_id"], 3))
+        self.assertNotIn(receipt["graph_id"], {base["graph_id"], first.graph_id})
+        self.assertEqual(len(self.rows("cpk_graph_versions")), graph_count + 1)
+        self.assertEqual(len(self.rows("cpk_operation_actions")), action_count + 1)
+        after = self.runtime_truth()
+        for name in before.keys() - {"cpk_realized_graph_projections"}:
+            self.assertEqual(before[name], after[name], name)
+        with self.unit_of_work() as uow:
+            revisions = uow.stores.desired_topology_drafts
+            self.assertEqual([revisions.revision("workspace-a", base["draft_id"], i).graph_id for i in (1, 2, 3)],
+                [first.graph_id, base["graph_id"], receipt["graph_id"]])
+            saved = DEFAULT_GRAPH_CODEC.decode(uow.stores.graphs.get(receipt["graph_id"]).graph_descriptor)
+            self.assertEqual(saved.node("hello"), base_graph.node("hello"))
+            self.assertEqual(saved.node("mux"), base_graph.node("mux"))
+            self.assertEqual(saved.edges, base_graph.edges)
+            self.assertEqual(saved.public_ingresses[0].target.descriptor(),
+                             {"node_id": "mux", "provider_socket": "internal"})
+            self.assertEqual(saved.node("connector").configuration_artifacts[0].artifact_id, "cloudflared-control")
+            uow.stores.ingress_authorities.revoke("workspace-a", IngressAuthorityReference("hello-public"))
+            uow.commit()
+        committed = self.catalogue_truth(), self.runtime_truth()
+        self.assertEqual(self.append_ingress_preview(preview), receipt)
+        for changed in ({"idempotency_key": "another-intent"},
+                        {"product_recipe": {**recipe, "ingress": {**recipe["ingress"], "hostname": "changed.example.test"}}}):
+            with self.assertRaises(CpkServerApplicationError) as refusal:
+                self.append_ingress_preview(preview, **changed)
+            self.assertEqual(refusal.exception.status, 409)
+        self.assertEqual(committed, (self.catalogue_truth(), self.runtime_truth()))
+
     def test_named_ingress_extension_refuses_a_graph_id_from_an_older_revision(self):
         extension, first, _ = self.ingress_extension_fixture()
         extension["base"]["graph_id"] = first.graph_id
