@@ -483,7 +483,9 @@ def _registered_bootstrap_products(current, desired, registered_products):
             return False
         for key in desired.nodes.keys() - current.nodes.keys():
             node, product = desired.nodes[key], products[key]
-            if not _node_matches_product(node, product) or product.descriptor_document.product.runtime_contract.retained_data_mounts:
+            declared = product.descriptor_document.product
+            if (not _node_matches_product(node, product) or declared.runtime_contract.retained_data_mounts
+                    or node.metadata.get("oci_image") != declared.image.execution_reference):
                 return False
         connectors = [products[item.connector_node_id].reference for item in desired.public_ingresses]
         if connectors[0] != connectors[1]:
@@ -491,8 +493,11 @@ def _registered_bootstrap_products(current, desired, registered_products):
         for ingress in desired.public_ingresses:
             key, socket = ingress.target.node_id, ingress.target.provider_socket
             contract = products[key].descriptor_document.product.runtime_contract
+            ports = [port.container_port for port in contract.provider_ports if port.provider_socket == socket]
+            endpoint = desired.node(key).endpoint(socket)
             if (not any(v.name == socket and v.protocol == Protocol.HTTP for v in contract.sockets.providers)
-                    or sum(v.provider_socket == socket for v in contract.provider_ports) != 1):
+                    or len(ports) != 1 or endpoint.protocol != Protocol.HTTP
+                    or endpoint.url != f"http://{key}:{ports[0]}"):
                 return False
         return _management_routes_are_exact(_configured_management_routes(desired, gateway),
             _expected_management_routes(desired, products, gateway, runtime_id=runtime.runtime_id))

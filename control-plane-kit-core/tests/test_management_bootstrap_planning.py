@@ -2212,13 +2212,16 @@ class ExistingRuntimeBootstrapTests(unittest.TestCase):
         self.assertIn(application.activity_id, predecessors(plan, health["added-workload"]))
         self.assertIn(health["connector"].activity_id, predecessors(plan, application))
 
-    def test_runtime_authority_workload_and_edge_scope_are_closed(self):
+    def test_runtime_authority_workload_and_ingress_scope_are_closed(self):
+        from control_plane_kit_core.public_ingress import PublicIngressLifecycle
         current, desired = self.pair()
         runtime = desired.runtimes["runtime"]
         for changed in (replace(desired, runtimes={"runtime": replace(runtime, authority_ref=None)}),
                         replace(desired, name="different"),
                         replace(desired, nodes={**desired.nodes, "workload": replace(desired.node("workload"),
                             metadata={**desired.node("workload").metadata, "revision": "changed"})}),
+                        replace(desired, public_ingresses=(desired.public_ingresses[0],
+                            replace(desired.public_ingresses[1], lifecycle=PublicIngressLifecycle.EXTERNAL))),
                         replace(desired, public_ingresses=desired.public_ingresses[:1])):
             with self.subTest(graph=changed.name):
                 self.assertFalse(self.compile(current, changed).ready_for_execution)

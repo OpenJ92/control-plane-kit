@@ -27,7 +27,7 @@ from control_plane_kit_core.planning.management_observations import (
     ManagementBootstrapStage, ManagementObservationError, ManagementObservationTarget,
     ObserveManagementBootstrap, ObserveNodeHealth, PlanGraphSide, _bounded_wire,
 )
-from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.public_ingress import NamedPublicIngress, PublicIngressLifecycle
 from control_plane_kit_core.products import OciImageReference, ProductDescriptorDigest, ProductIdentity
 from control_plane_kit_core.receiver_configuration import (
     _receiver_health_declaration_successor,
@@ -802,6 +802,8 @@ def _existing_runtime_application_ingress(current, desired):
     before, after = current.runtimes[runtime_id], desired.runtimes[runtime_id]
     if (before.kind is not RuntimeKind.DOCKER or before.authority_ref is None
             or before.lifecycle != OWNED_EPHEMERAL or before.management is not None or after.management is None):
+        return None
+    if any(ingress.lifecycle is not PublicIngressLifecycle.EPHEMERAL for ingress in desired.public_ingresses):
         return None
     management = _management_ingress(desired, runtime_id)
     application, = (item for item in desired.public_ingresses if item != management)
