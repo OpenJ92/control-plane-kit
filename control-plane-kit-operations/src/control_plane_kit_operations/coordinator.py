@@ -524,6 +524,8 @@ class ActivityRealizationContext:
             raise InvalidOperationCommand("realization intent must match activity")
         if self.run_connector_installation is not None:
             proof = self.run_connector_installation
+            if not is_native_connection_operation(self.activity.operation):
+                raise InvalidOperationCommand("active connector installation requires the native connector observation")
             resolved = _native_connector_observation(self)
             runtime = resolved.selected_graph.graph.runtimes[resolved.connector_node.runtime_id]
             if (type(proof) is not RunConnectorInstallation or self.connector_installation is not None

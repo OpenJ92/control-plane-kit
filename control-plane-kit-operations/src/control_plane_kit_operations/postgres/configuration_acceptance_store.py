@@ -1455,6 +1455,7 @@ class ConfigurationAcceptanceStore:
         from control_plane_kit_core.topology import validate_graph
         from control_plane_kit_core.types import RuntimeKind
         from control_plane_kit_operations.deployment_transitions import Deploy
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationConflict
         from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
         from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, derive_activity_plan
         from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
@@ -1526,7 +1527,7 @@ class ConfigurationAcceptanceStore:
                 live = read.query("SELECT lease_expires_at>clock_timestamp() FROM cpk_execution_requests WHERE request_id=%s",
                     (request_id,), records=1, octets=1, cells=1)
                 return proof if live and live[0][0] is True else None
-        except (_Unavailable, _Capacity, ValueError, KeyError, IndexError, TypeError, OperationsRecordError):
+        except (_Unavailable, _Capacity, ValueError, KeyError, IndexError, TypeError, OperationsRecordError, ExecutionInvocationConflict):
             return None
 
     def _run_connector_start(self, stores, read, plan, request, run, graph, resolved, authority, fence, activity_id):
@@ -1538,6 +1539,9 @@ class ConfigurationAcceptanceStore:
         from control_plane_kit_core.secret_selections import SecretVersionSelection
         from control_plane_kit_operations.connector_installation import RunConnectorInstallation
         from control_plane_kit_operations.effect_outcome_evidence import _require_original_installation_outcome
+        from control_plane_kit_operations.execution_invocations import (
+            ExecutionInvocationDisposition, ExecutionInvocationKind, ExecutionInvocationOutcome,
+        )
 
         node, ingress = resolved.connector_node, resolved.ingress
         workspace_id = request.identity.workspace_id
@@ -1558,6 +1562,15 @@ class ConfigurationAcceptanceStore:
                 or (attempt.state.fence.worker_id, attempt.state.fence.generation) != (fence.worker_id, fence.generation)):
             return None
         original = stores.effect_attempt_intents.get(identity)
+        # Wrapped, version-selected StartNode uses prepared runtime dispatch.
+        # Its original receipt identifies the daemon registration used at start.
+        dispatch = stores.execution.original_final_invocation(identity,
+            original_event_id=original.original_start_event.event_id, request_fingerprint=original.request_fingerprint,
+            kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+        if (dispatch is None or dispatch.disposition is not ExecutionInvocationDisposition.ADMITTED
+                or dispatch.outcome is not ExecutionInvocationOutcome.RETURNED
+                or dispatch.runtime_registration_id != authority.registration_id):
+            return None
         stored = stores.effect_outcomes.get(identity, attempt.latest_transition_event.event_id)
         if stored.attempt != attempt or type(stored.outcome) is not ExecutionEffectOutcome:
             return None
@@ -1614,7 +1627,7 @@ class ConfigurationAcceptanceStore:
         proved, = self._installation_generated(binding, context, graph, original, generated_deliveries, read)
         if proved.source_event_id != resource.source_event_id:
             return None
-        return RunConnectorInstallation(source, authority.authority_ref, authority.registration_id,
+        return RunConnectorInstallation(source, authority.authority_ref, dispatch.runtime_registration_id,
             ingress.ingress_id, allocation.activity_id.value, proved.source_event_id, proved.terminal_event_id,
             start.activity_id.value, origin.effect_id, wrapper, token, receipt)
 
