@@ -5,7 +5,6 @@ from copy import deepcopy
 from hashlib import sha256
 import json
 import threading
-import traceback
 import unittest
 
 import psycopg
@@ -318,8 +317,7 @@ class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
                 try:
                     return program.prepare(request)
                 except Exception as error:
-                    frame = traceback.extract_tb(error.__traceback__)[-1]
-                    failures.append((type(error).__name__, frame.name, frame.lineno))
+                    failures.append((type(error).__name__, str(error)))
                     raise
         owner = CpkServerPlanningService(self.planner(), deployment_program=ObservedProgram())
         before = self.runtime_truth()
@@ -328,20 +326,14 @@ class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
         evidence = {"workspace": "workspace-a", "draft_id": r3.draft_id, "current_revision": 2,
             "current_graph_id": r2["graph_id"], "desired_revision": 3, "desired_graph_id": r3.graph_id,
             "target": "mux.internal:8000"}
-        try:
-            result = owner.handle(CatalogueRequest("mcp", "command.deployment.prepare",
+        with self.assertRaises(CpkServerApplicationError) as refused:
+            owner.handle(CatalogueRequest("mcp", "command.deployment.prepare",
                 ControlPlaneServiceRole.PLANNING, {}, arguments, principal()))
-        except CpkServerApplicationError as error:
-            evidence.update(http_status=error.status, refusal=str(error), owner_frames=failures)
-            self.assertIn(error.status, (400, 403, 409))
-        else:
-            evidence.update(result)
-            with self.unit_of_work() as uow:
-                stored = uow.stores.activity_history.get_plan(result["plan_id"])
-                self.assertEqual(stored.base_graph_id, r2["graph_id"])
-                self.assertEqual(stored.desired_graph_id, r3.graph_id)
-                evidence.update(profile=stored.derivation_profile.value, session_id=stored.session_id)
-            self.assertEqual("approval_request_id" in result, result["status"] == "approval-required")
+        self.assertEqual((refused.exception.status, str(refused.exception)),
+                         (400, "deployment preparation request is malformed"))
+        self.assertEqual(failures, [("InvalidOperationCommand", "runtime management planning is unsupported")])
+        evidence.update(http_status=refused.exception.status, refusal=str(refused.exception),
+                        owner_refusal=failures[0][1])
         after = self.runtime_truth()
         for name in ("cpk_approval_decisions", "cpk_execution_requests", "cpk_activity_runs", "cpk_effect_attempts"):
             self.assertEqual(before[name], after[name], name)
@@ -349,6 +341,8 @@ class ProductTopologyAuthoringTests(SavedPreparationFixture, unittest.TestCase):
             evidence[name] = len(after[name]) - len(before[name])
         evidence.update(new_sessions=len(self.rows("cpk_operation_sessions")) - session_count,
                         new_actions=len(self.rows("cpk_operation_actions")) - action_count)
+        self.assertEqual((evidence["cpk_activity_plans"], evidence["cpk_approval_requests"],
+                          evidence["new_sessions"], evidence["new_actions"]), (0, 0, 1, 1))
         print("Disposable R2/R3 planning observation", json.dumps(evidence, sort_keys=True))
 
     def test_append_extension_fences_commitment_lifecycle_and_authority_before_writing(self):
