@@ -1,8 +1,10 @@
 """Public pinned-recipe preview/save laws through the Operations owners."""
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from copy import deepcopy
 from hashlib import sha256
 import json
+import threading
 import unittest
 
 import psycopg
@@ -282,6 +284,47 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 self.append_ingress_preview(preview, **changed)
             self.assertEqual(refusal.exception.status, 409)
         self.assertEqual(committed, (self.catalogue_truth(), self.runtime_truth()))
+
+    def test_append_extension_fences_commitment_lifecycle_and_authority_before_writing(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        original = self.catalogue_truth(), self.runtime_truth()
+        for change in ({"expected_proposal_commitment": {**preview["proposal_commitment"], "sha256": "0" * 64}},
+                       {"receiver_lifecycle": {**preview["receiver_lifecycle"], "desired_graph_revision": 42}}):
+            with self.subTest(field=tuple(change)):
+                with self.assertRaises(CpkServerApplicationError) as refused:
+                    self.append_ingress_preview(preview, **change)
+                self.assertEqual(refused.exception.status, 409)
+                self.assertEqual((self.catalogue_truth(), self.runtime_truth()), original)
+        with self.unit_of_work() as uow:
+            uow.stores.ingress_authorities.revoke("workspace-a", IngressAuthorityReference("hello-public"))
+            uow.commit()
+        after_revoke = self.catalogue_truth(), self.runtime_truth()
+        with self.assertRaises(CpkServerApplicationError) as refused:
+            self.append_ingress_preview(preview)
+        self.assertEqual(refused.exception.status, 409)
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), after_revoke)
+
+    def test_competing_extension_appends_from_revision_two_have_one_winner(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        barrier = threading.Barrier(2)
+        def append(key):
+            barrier.wait(timeout=10)
+            try:
+                return self.append_ingress_preview(preview, idempotency_key=key)
+            except CpkServerApplicationError as error:
+                return error.status
+        before = len(self.rows("cpk_graph_versions")), len(self.rows("cpk_operation_actions"))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(append, ("editor-a", "editor-b")))
+        self.assertEqual(outcomes.count(409), 1)
+        winner, = (value for value in outcomes if isinstance(value, dict))
+        self.assertEqual(winner["revision"], 3)
+        self.assertEqual((len(self.rows("cpk_graph_versions")), len(self.rows("cpk_operation_actions"))),
+                         (before[0] + 1, before[1] + 1))
 
     def test_named_ingress_extension_observes_one_snapshot_during_authority_and_product_change(self):
         recipe, _, _ = self.ingress_extension_fixture()
