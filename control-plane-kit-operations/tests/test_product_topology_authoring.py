@@ -114,6 +114,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         contract = ProductRuntimeContract(sockets=BlockSockets(
             providers=(ProviderSocket("control", Protocol.HTTP),))).descriptor()
         contract.update(
+            capabilities=["health-checkable", "node-controllable"],
             provider_ports=[{"provider_socket": "control", "container_port": 8000}],
             public_environment=[{"kind": "public-static", "name": "CPK_WRAPPER_CONFIGURATION_FILE",
                                  "value": "/etc/cpk/cloudflared/control.json"}],
