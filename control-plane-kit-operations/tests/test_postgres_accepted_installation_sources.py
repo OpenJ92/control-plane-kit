@@ -390,7 +390,7 @@ class PostgresAcceptedInstallationSourcePublicationTests(unittest.TestCase):
 
 
 class _TwoIngressRuntime(ProfiledRecordingRuntime):
-    def execute_with_authority(self, request, authority):
+    def execute_with_authority(self, request, authority, *, invocations=None):
         if type(request.operation) is StartNode:
             ingresses = tuple(value for value in self.test.graph.public_ingresses
                 if value.connector_node_id == request.operation.target.node_id)
@@ -410,7 +410,15 @@ class _TwoIngressRuntime(ProfiledRecordingRuntime):
                 self.test.assertEqual(allocation.target.ingress_id, ingress.ingress_id)
                 self._require_connector_grant(request, selection.reference.reference_id)
         # Preserve both the profiled consumer/receipt checks and base port behavior.
-        return super().execute_with_authority(request, authority)
+        if invocations is None:
+            return super().execute_with_authority(request, authority)
+        grant, = request.secret_resolution_grants
+        permit = invocations.admit("secret-resolution", authorization_id=grant.authorization_id)
+        invocations.record_outcome(permit, "returned")
+        final = invocations.admit("prepared-runtime-dispatch")
+        result = super().execute_with_authority(request, authority)
+        invocations.record_outcome(final, "returned")
+        return result
 
 
 class _TwoIngressProvider(RecordingIngressInterpreter):
@@ -506,6 +514,166 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
     def acceptance_snapshot(self):
         return tuple(self.rows(name) for name in ("cpk_workspaces", "cpk_configuration_acceptances",
             "cpk_operation_actions", "cpk_graph_receiver_introductions", "cpk_activity_events"))
+
+    async def execute_registered_connector(self, claim):
+        import control_plane_kit_operations as ops
+        from tests import test_managed_application_chain as managed
+        from tests.test_postgres_coordinator_permissions import _CurrentCoordinatorPermission
+        from control_plane_kit_operations.workflows import IdempotencyKey
+        from control_plane_kit_core.types import RuntimeKind
+
+        _CurrentCoordinatorPermission.configure_permissions(self, self.worker.identity, installation="coordinator-permission")
+        factory = self.unit_of_work
+        fold = managed.EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
+        registration = RuntimeAdapterRegistration(self.runtime, exact_version_execute_with_authority=True,
+            invocation_profile="cpk.semantic-invocations.v1")
+        owner = managed.ExecutionCoordinator(factory,
+            lifecycle=managed.RunLifecycleCommandService(factory, clock=managed.now, id_factory=self.ids["lifecycle"]),
+            adapter=managed.ActivityExecutionDispatcher(runtime=managed.RuntimeInterpreterDispatcher(
+                {RuntimeKind.DOCKER: registration}, managed.SecretUseAuthorizationService(factory))),
+            start_service=managed.EffectAttemptStartService(factory, id_factory=self.ids["effect-start"],
+                permission_policy=self.policy, health_receiver_decoders=self.registry), fold_service=fold,
+            reconciliation_service=managed.EffectAttemptReconciliationService(factory, managed.ForbiddenRecovery(), fold),
+            clock=managed.now, id_factory=self.ids["execution"], permission_policy=self.policy,
+            managed_health=self.health, health_signing_authority=managed.HealthSigningAuthorityReloadService(
+                factory, health_receiver_decoders=self.registry),
+            invocation_service=ops.ExecutionInvocationService(factory, permission_policy=self.policy, clock=managed.now))
+        execution = ops.ExecuteActivityRun(self.run_id, ops.ExecutionWorkerAuthority(claim.worker_id,
+            self.original.granted_scopes), claim.fence, IdempotencyKey("registered-connector-start"))
+        return (await owner.execute_managed(ops.ExecuteManagedActivityRun(execution, self.original))).descriptor()
+
+    async def prepare_worker_connector_read(self, *, registered=True):
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+
+        await self.prepare_and_start()
+        runtime = self.graph.runtimes["docker"]
+        with self.unit_of_work() as uow:
+            claim = uow.stores.execution.get_request(self.request_id).claim
+        scope = dict(workspace_id="workspace-a", request_id=self.request_id, run_id=self.run_id,
+            plan_id=self.plan_id, activity_id=self.native_id, node_id="connector", authority_ref=runtime.authority_ref,
+            fence=ExecutionLeaseFence(claim.worker_id, claim.generation))
+        def read(**overrides):
+            unit = PostgresUnitOfWork(lambda: psycopg.connect(self.tracker.database_url))
+            return unit.read_run_connector_installation(**(scope | overrides))
+
+        self.assertIsNone(read())
+        start, = (step for step in self.plan.activities if type(step.operation) is StartNode
+            and step.operation.target.node_id == "connector")
+        from control_plane_kit_core.planning import derive_schedule
+        for _ in self.plan.activities:
+            journal = project_activity_journal(self.plan, activity_journal_events(self.history()))
+            ready = derive_schedule(self.plan, journal.state).ready
+            step = (await self.execute_registered_connector(claim) if registered and ready and ready[0].activity_id == start.activity_id
+                else await self.execute_one())
+            self.assertEqual(step["run_status"], "running")
+            if any(e.activity_id == start.activity_id.value and e.kind is ActivityEventKind.STEP_SUCCEEDED
+                    for e in self.history()):
+                break
+        else:
+            self.fail("connector start did not succeed")
+        return read, runtime, start, claim
+
+    async def test_worker_reads_new_connector_from_its_active_run(self):
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+        read, runtime, start, claim = await self.prepare_worker_connector_read()
+        before = self.effects()
+        proof = read()
+        self.assertIsNotNone(proof)
+        self.assertEqual((proof.source.run_id.value, proof.source.plan_id, proof.source.request_id,
+            proof.start_activity_id, proof.wrapper.node_id, proof.ingress_id, proof.authority_ref),
+            (self.run_id, self.plan_id, self.request_id, start.activity_id.value, "connector",
+             "management", runtime.authority_ref))
+        self.assertNotEqual(proof.allocation_start_event_id, proof.allocation_success_event_id)
+        self.assertRegex(proof.receipt.current_realization_fingerprint, "^[0-9a-f]{64}$")
+        self.assertEqual(proof.receipt.disposition.value, "created")
+        self.assertNotIn(proof.token.version_id, repr(proof))
+        for changes in (dict(run_id="other-run"), dict(node_id="application-connector"),
+                dict(activity_id=start.activity_id.value), dict(plan_id="other-plan"),
+                dict(authority_ref=None), dict(request_id="other-request"),
+                dict(fence=ExecutionLeaseFence(claim.worker_id, claim.generation+1))):
+            with self.subTest(fields=tuple(changes)):
+                self.assertIsNone(read(**changes))
+        # Replace the origin of the real committed token receipt in the test database.
+        # The run, its start, its successful outcome and the active allocation still match.
+        with self.connection.transaction():
+            changed = self.connection.execute("UPDATE cpk_generated_ingress_secret_references SET source_run_id=%s "
+                "WHERE source_run_id=%s AND source_event_id=%s",
+                ("unrelated-run", self.run_id, proof.allocation_start_event_id))
+            self.assertEqual(changed.rowcount, 1)
+        self.assertIsNone(read())
+        with self.connection.transaction():
+            self.connection.execute("UPDATE cpk_generated_ingress_secret_references SET source_run_id=%s "
+                "WHERE source_run_id=%s AND source_event_id=%s", (self.run_id, "unrelated-run", proof.allocation_start_event_id))
+        self.assertIsNotNone(read())
+        # A real replacement registration reuses the logical Docker name.
+        from control_plane_kit_operations.runtime_authorities import RemoteDockerTlsAuthority
+        from control_plane_kit_core.secrets import SecretReference
+        from tests.test_managed_application_chain import now
+        with self.unit_of_work() as uow:
+            registered = uow.stores.runtime_authorities
+            old = registered.revoke("workspace-a", runtime.authority_ref)
+            new = registered.register(workspace_id="workspace-a", authority_ref=runtime.authority_ref,
+                runtime_kind=runtime.kind, authority=RemoteDockerTlsAuthority("tcp://replacement.example.test:2376",
+                    *(SecretReference("secret://runtime/" + key) for key in ("ca", "cert", "key"))),
+                admitted_by="operator-a", admitted_at=now())
+            self.assertNotEqual(old.registration_id, new.registration_id)
+            uow.commit()
+        self.assertIsNone(read(), "a re-registered Docker name cannot relabel a previous start")
+        self.assertEqual(self.effects(), before)
+        self.assertEqual(self.health.native_reads, [])
+
+    def test_absent_original_dispatch_charges_the_shared_read_budget(self):
+        from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationKind
+        from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
+        from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+
+        store = PostgresExecutionStore(self.connection)
+        with _joined_read(self.connection) as read:
+            before = read.used
+            self.assertIsNone(store.original_final_invocation(EffectAttemptIdentity(RunId("missing"), "start", 1),
+                original_event_id="missing-start", request_fingerprint="a" * 64,
+                kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH))
+            self.assertGreater(read.used.statements, before.statements)
+            self.assertGreater(read.used.accounted_bytes, before.accounted_bytes)
+
+    async def test_worker_read_refuses_connector_without_original_dispatch_registration(self):
+        read, *_ = await self.prepare_worker_connector_read(registered=False)
+        self.assertIsNone(read())
+
+    async def test_active_connector_proof_is_only_carried_by_the_native_observation(self):
+        from tests.test_managed_application_chain import RecordingManagedHealth
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        from control_plane_kit_operations.workflows import InvalidOperationCommand
+
+        contexts = {}
+        class CaptureHealth(RecordingManagedHealth):
+            async def observe_connection(self, realization, request, authority):
+                contexts["native"] = realization
+                return await super().observe_connection(realization, request, authority)
+
+            async def observe_signed(self, realization, request, authority, **kwargs):
+                contexts["signed"] = realization
+                return await super().observe_signed(realization, request, authority, **kwargs)
+
+        self.health = CaptureHealth(self)
+        self.health.responses = [NativeConnectionOutcome.CONNECTED]
+        read, *_ = await self.prepare_worker_connector_read()
+        proof = read()
+        self.assertIsNotNone(proof)
+        for _ in self.plan.activities:
+            await self.execute_one()
+            if set(contexts) == {"native", "signed"}:
+                break
+        self.assertEqual(set(contexts), {"native", "signed"})
+        # Exercise the receiving value independently of the execution hold.
+        # Only the in-memory profile is varied; neither value is dispatched.
+        def attach(context):
+            record = replace(context.plan_record, derivation_profile=PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1)
+            return replace(context, plan_record=record, run_connector_installation=proof)
+        self.assertIs(attach(contexts["native"]).run_connector_installation, proof)
+        with self.assertRaises(InvalidOperationCommand):
+            attach(contexts["signed"])
 
     async def test_two_managed_ingress_connectors_advance_with_original_sources(self):
         await self.prepare_and_start()

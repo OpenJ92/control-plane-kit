@@ -70,6 +70,14 @@ class PostgresUnitOfWork:
         with self._read_snapshot() as stores:
             yield stores
 
+    def read_run_connector_installation(self, *, workspace_id, request_id, run_id, plan_id,
+            activity_id, node_id, authority_ref, fence):
+        """Read same-run installation references for a fenced worker before advancement."""
+        with self._read_snapshot() as stores:
+            return stores.configuration_acceptance._run_connector_installation(stores,
+                workspace_id=workspace_id, request_id=request_id, run_id=run_id, plan_id=plan_id,
+                activity_id=activity_id, node_id=node_id, authority_ref=authority_ref, fence=fence)
+
     @contextmanager
     def activity_recovery_snapshot(self):
         """Retained effect evidence only; no fold, reservation or dispatch."""
