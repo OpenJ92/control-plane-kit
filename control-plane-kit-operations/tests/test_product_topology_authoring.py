@@ -19,7 +19,7 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.products import (
     ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
-    ProductCatalog, ProductIdentity, ProductInstanceConfiguration, ProductRuntimeContract, ProductRuntimeContractCodec, instantiate_catalog_product,
+    ProductCatalog, ProductIdentity, ProductInstanceConfiguration, ProductRuntimeContract, ProductRuntimeContractCodec, ProviderRuntimePort, instantiate_catalog_product,
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_core.types import Protocol
@@ -64,6 +64,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 RequirementSocket("primary", Protocol.HTTP, ("MULTIPLEXER_PRIMARY_URL",)),)
             contract = ProductRuntimeContract(
                 sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),), requirements=requirements),
+                provider_ports=(ProviderRuntimePort("internal", 8000),),
                 public_environment=(PublicStaticEnvironmentBinding("HELLO_MESSAGE", "hidden-default-canary"),) if name == "hello" else (),
                 verification=VerificationContract(checks=(HttpCheck(check_id="live", provider_socket="internal",
                     path=PRIVATE_PATH, expected_body_sha256="f" * 64),)),
@@ -159,8 +160,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         }
         return extension, first, graph
 
-    def test_named_ingress_extension_matching_base_previews_connector_and_keeps_source(self):
-        extension, _, graph = self.ingress_extension_fixture()
+    def seed_receiver_verifiers(self):
         with self.unit_of_work() as uow:
             for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ, DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ):
                 key = DelegationPublicKey("fixture-public", DelegationKeyAlgorithm.ED25519, PUBLIC_KEY_A)
@@ -170,6 +170,10 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 uow.stores.delegation_signing_keys.activate("workspace-a", purpose, "fixture-issuer", key.key_id,
                     activated_by="operator-a", activated_at=NOW)
             uow.commit()
+
+    def test_named_ingress_extension_matching_base_previews_connector_and_keeps_source(self):
+        extension, _, graph = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
         before = self.catalogue_truth(), self.runtime_truth()
         result = self.preview(extension)
         compiled, slot, _ = ProductTopologyAuthoringService(self.unit_of_work).prepare_ingress_preview(
@@ -177,6 +181,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
         self.assertEqual(compiled.node("hello"), graph.node("hello"))
         self.assertEqual(compiled.node("mux"), graph.node("mux"))
         self.assertEqual(compiled.edges, graph.edges)
+        self.assertEqual(compiled.node("mux").endpoint("internal").url, "http://mux:8000")
         self.assertEqual(compiled.node("hello").public_environment[0].value, "Hello from the operator")
         artifact, = compiled.node("connector").configuration_artifacts
         self.assertEqual((artifact.artifact_id, artifact.target_path, artifact.file_mode.value),
@@ -200,6 +205,29 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                          extension["connector"]["product"]["descriptor_sha256"])
         self.assertEqual(proposed["public_ingresses"][0]["target"], {"node_id": "mux", "provider_socket": "internal"})
         self.assertNotIn("Hello from the operator", json.dumps(result))
+
+    def test_named_ingress_extension_refuses_unavailable_authority_product_or_receiver(self):
+        extension, _, _ = self.ingress_extension_fixture()
+        before = self.catalogue_truth(), self.runtime_truth()
+        for group, field, value in (
+            ("ingress", "registration_id", "iauth_" + "b" * 64),
+            ("ingress", "hostname", "other.example.test"),
+            ("connector", "product", {**extension["connector"]["product"], "descriptor_sha256": "b" * 64}),
+        ):
+            changed = deepcopy(extension)
+            changed[group][field] = value
+            with self.subTest(field=field), self.assertRaises(CpkServerApplicationError) as refused:
+                self.preview(changed)
+            self.assertEqual(refused.exception.status, 409)
+        with self.assertRaises(CpkServerApplicationError) as no_keys:
+            self.preview(extension)
+        self.assertEqual(no_keys.exception.status, 409)
+        for missing in (PolicyScope.INGRESS_AUTHORITY_READ, PolicyScope.DELEGATION_KEY_READ, PolicyScope.INSTANCE_WORKSPACE_READ):
+            caller = principal(scopes=tuple(scope for scope in PolicyScope if scope != missing))
+            with self.assertRaises(CpkServerApplicationError) as denied:
+                self.preview(extension, caller=caller)
+            self.assertEqual(denied.exception.status, 403)
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
 
     def test_named_ingress_extension_refuses_a_graph_id_from_an_older_revision(self):
         extension, first, _ = self.ingress_extension_fixture()
