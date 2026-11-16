@@ -14,7 +14,7 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.products import (
     ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
-    ProductCatalog, ProductIdentity, ProductInstanceConfiguration, ProductRuntimeContract, instantiate_catalog_product,
+    ProductCatalog, ProductIdentity, ProductInstanceConfiguration, ProductRuntimeContract, ProductRuntimeContractCodec, instantiate_catalog_product,
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, compile_topology
 from control_plane_kit_core.types import Protocol
@@ -24,6 +24,8 @@ from control_plane_kit_operations.product_topology_authoring import (
     COMMITMENT_PROFILE, ProductTopologyAuthoringService, ProductTopologyRecipe,
     public_product_topology_graph, public_proposal_commitment,
 )
+from control_plane_kit_core.public_ingress import IngressAuthorityReference
+from control_plane_kit_operations.ingress_authorities import CloudflareZoneIngressAuthorityCodec
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftError, bounded_draft_graph_descriptor
 from control_plane_kit_operations.read_services.workspace_graph import _redact_graph_descriptor
@@ -94,6 +96,67 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             path = {}
         return CpkServerReadService(self.unit_of_work).handle(CatalogueRequest(
             surface, PREVIEW, ControlPlaneServiceRole.READS, path, payload, caller or principal()))
+
+    def test_named_ingress_extension_refuses_a_graph_id_from_an_older_revision(self):
+        workspace = "workspace-a"
+        first_recipe = self.preview()
+        owner = ProductTopologyAuthoringService(self.unit_of_work)
+        graph = owner.prepare_saved_graph(principal().command_context(workspace),
+            first_recipe["recipe"], first_recipe["proposal_commitment"])
+        first = self.create(graph=graph)
+        second = self.catalogue().execute(self.revise_command(first, graph=graph))
+        self.assertEqual(second.revision, 2)
+        self.assertNotEqual(first.graph_id, second.graph_id)
+        self.assertEqual(graph.node("mux").socket_environment[0].edge_id, "hello-to-mux")
+
+        # A disposable managed product has an unfilled read-only control slot.
+        # The portable release itself is exercised in the Servers cohort.
+        contract = ProductRuntimeContract(sockets=BlockSockets(
+            providers=(ProviderSocket("control", Protocol.HTTP),))).descriptor()
+        contract.update(
+            provider_ports=[{"provider_socket": "control", "container_port": 8000}],
+            public_environment=[{"kind": "public-static", "name": "CPK_WRAPPER_CONFIGURATION_FILE",
+                                 "value": "/etc/cpk/cloudflared/control.json"}],
+            control_surfaces=[{"provider_socket_name": "control", "variables": [],
+                               "health_reads": ["liveness", "readiness"]}],
+            configuration_requirements=[{"artifact_id": "cloudflared-control",
+                "target_path": "/etc/cpk/cloudflared/control.json", "media_type": "application/json", "file_mode": "0444"}],
+        )
+        connector = ContainerServerProduct(ProductIdentity("authoring-example", "managed-connector", 1),
+            OciImageReference("example.invalid", "connector", "sha256:" + "9" * 64),
+            ProductRuntimeContractCodec().decode(contract))
+        authority_ref = IngressAuthorityReference("hello-public")
+        hostname = "hello.example.test"
+        authority = CloudflareZoneIngressAuthorityCodec().decode({
+            "provider_kind": "cloudflare", "account_id": "fixture-account", "zone_id": "fixture-zone",
+            "zone_name": "example.test", "allowed_hostname_pattern": hostname, "api_token_ref": "secret://fixture/api",
+            "generated_secret_provider_registration_id": "fixture-provider",
+            "generated_secret_reference_prefix": "secret://fixture/generated",
+        })
+        with self.unit_of_work() as uow:
+            registered = uow.stores.registered_products.register(workspace_id=workspace,
+                descriptor_document=ProductDescriptorCodec().encode_document(connector),
+                source=InlineDescriptorSource(), imported_by="operator-a", imported_at=NOW)
+            binding = uow.stores.ingress_authorities.register(workspace_id=workspace,
+                authority_ref=authority_ref, authority=authority, admitted_by="operator-a", admitted_at=NOW)
+            uow.commit()
+        extension = {
+            "schema": "registered-product-ingress-extension.v1",
+            "base": {"draft_id": second.draft_id, "revision": second.revision, "graph_id": first.graph_id},
+            "runtime_id": "demo-docker",
+            "connector": {"node_id": "connector", "product": registered.reference.descriptor(),
+                          "receiver_id": "a" * 32, "provider_socket": "control"},
+            "ingress": {"ingress_id": "hello-public", "authority_ref": authority_ref.reference_id,
+                        "registration_id": binding.registration_id, "hostname": hostname,
+                        "target": {"node_id": "mux", "provider_socket": "internal"},
+                        "exposure": "https", "lifecycle": "ephemeral"},
+        }
+        before = self.catalogue_truth(), self.runtime_truth()
+        with self.assertRaises(CpkServerApplicationError) as refused:
+            self.preview(extension)
+        self.assertEqual(before, (self.catalogue_truth(), self.runtime_truth()))
+        self.assertEqual(refused.exception.status, 409,
+            "a valid extension with a mismatched base graph must report a stale revision")
 
     def test_two_pinned_products_preview_without_durable_writes(self):
         before = self.catalogue_truth(), self.runtime_truth(), self.rows("cpk_operation_sessions")
