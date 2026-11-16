@@ -315,7 +315,8 @@ class ProductTopologyAuthoringService:
         if recipe["schema"] != EXTENSION_SCHEMA:
             raise ProductTopologyAuthoringError()
         base = _object(recipe["base"], {"draft_id", "revision", "graph_id"})
-        draft_id, graph_id = _text(base["draft_id"]), _text(base["graph_id"])
+        _text(base["draft_id"])
+        _text(base["graph_id"])
         revision = base["revision"]
         if type(revision) is not int or not 1 <= revision < 2**63:
             raise ProductTopologyAuthoringError()
