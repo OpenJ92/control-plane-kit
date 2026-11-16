@@ -234,7 +234,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             self.assertEqual(denied.exception.status, 403)
         self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
 
-    def append_ingress_preview(self, proposal, **changes):
+    def append_ingress_preview(self, proposal, *, caller=None, **changes):
         base = proposal["recipe"]["base"]
         values = {"session_id": self.sessions["workspace-a"], "idempotency_key": "add-ingress-to-mux",
             "product_recipe": proposal["recipe"], "expected_head_revision": base["revision"],
@@ -244,7 +244,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             product_topologies=ProductTopologyAuthoringService(self.unit_of_work))
         return planner.handle(CatalogueRequest("http", "command.desired-topology-draft.revise",
             ControlPlaneServiceRole.PLANNING, {"workspace_id": "workspace-a", "draft_id": base["draft_id"]},
-            values, principal()))
+            values, caller or principal()))
 
     def test_append_named_ingress_extension_keeps_base_and_replays_exact_receipt(self):
         recipe, first, base_graph = self.ingress_extension_fixture()
@@ -270,6 +270,7 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             saved = DEFAULT_GRAPH_CODEC.decode(uow.stores.graphs.get(receipt["graph_id"]).graph_descriptor)
             self.assertEqual(saved.node("hello"), base_graph.node("hello"))
             self.assertEqual(saved.node("mux"), base_graph.node("mux"))
+            self.assertEqual(saved.node("mux").endpoint("internal").url, "http://mux:8000")
             self.assertEqual(saved.edges, base_graph.edges)
             self.assertEqual(saved.public_ingresses[0].target.descriptor(),
                              {"node_id": "mux", "provider_socket": "internal"})
@@ -305,6 +306,27 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
             self.append_ingress_preview(preview)
         self.assertEqual(refused.exception.status, 409)
         self.assertEqual((self.catalogue_truth(), self.runtime_truth()), after_revoke)
+
+    def test_append_extension_rechecks_grants_and_active_product(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        before = self.catalogue_truth(), self.runtime_truth()
+        for missing in (PolicyScope.INSTANCE_WORKSPACE_EDIT, PolicyScope.INSTANCE_WORKSPACE_READ,
+                        PolicyScope.INGRESS_AUTHORITY_READ, PolicyScope.DELEGATION_KEY_READ):
+            denied = principal(scopes=tuple(scope for scope in PolicyScope if scope != missing))
+            with self.assertRaises(CpkServerApplicationError) as refusal:
+                self.append_ingress_preview(preview, caller=denied)
+            self.assertEqual(refusal.exception.status, 403)
+            self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+        with self.unit_of_work() as uow:
+            reference = ProductReferenceCodec().decode(recipe["connector"]["product"])
+            uow.stores.registered_products.revoke("workspace-a", reference)
+            uow.commit()
+        with self.assertRaises(CpkServerApplicationError) as refusal:
+            self.append_ingress_preview(preview)
+        self.assertEqual(refusal.exception.status, 409)
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
 
     def test_competing_extension_appends_from_revision_two_have_one_winner(self):
         recipe, _, _ = self.ingress_extension_fixture()
