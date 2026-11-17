@@ -395,6 +395,7 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.desired-topology-drafts": _WORKSPACE_READ,
     "read.desired-topology-draft-revisions": _WORKSPACE_READ,
     "read.desired-topology-draft-revision": _WORKSPACE_READ,
+    "read.desired-topology-draft-revision-metadata": _WORKSPACE_READ,
     "read.desired-topology-draft-revision-preparations": _WORKSPACE_READ,
     "read.desired-topology-draft-revision-attempts": _WORKSPACE_READ,
     "command.desired-topology-draft.create": _WORKSPACE_EDIT,
@@ -765,7 +766,7 @@ class CpkServerReadService:
                 page_failure = True
             if page_failure:
                 raise CpkServerApplicationError(400, "read page request is malformed")
-        if request.route_id == "read.desired-topology-draft-revision":
+        if request.route_id in {"read.desired-topology-draft-revision", "read.desired-topology-draft-revision-metadata"}:
             try:
                 DraftReadScope(_workspace_id(read_arguments), _text(read_arguments, "draft_id"))
             except ReadPageError:
@@ -2578,6 +2579,9 @@ def _read_model(
         return service.desired_graph(_workspace_id(args))
     if route_id in {"read.desired-topology-drafts", "read.desired-topology-draft-revisions"}:
         return service.desired_topology_drafts(_required_page_request(page_request, _PAGED_READ_COLLECTIONS[route_id]))
+    if route_id == "read.desired-topology-draft-revision-metadata":
+        return service.desired_topology_draft_revision_metadata(
+            _workspace_id(args), _text(args, "draft_id"), _draft_revision(args))
     if route_id == "read.desired-topology-draft-revision":
         return service.desired_topology_draft_revision(_workspace_id(args), _text(args, "draft_id"), _draft_revision(args))
     if route_id in {"read.desired-topology-draft-revision-preparations", "read.desired-topology-draft-revision-attempts"}:
@@ -2798,6 +2802,7 @@ _CLOSED_READ_ARGUMENTS = {
     "read.desired-topology-drafts": (None, True),
     "read.desired-topology-draft-revisions": ("draft_id", True),
     "read.desired-topology-draft-revision": (("draft_id", "revision"), False),
+    "read.desired-topology-draft-revision-metadata": (("draft_id", "revision"), False),
     "read.desired-topology-draft-revision-preparations": (("draft_id", "revision"), True),
     "read.desired-topology-draft-revision-attempts": (("draft_id", "revision"), True),
     "read.operator-overview": (None, True),

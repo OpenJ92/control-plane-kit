@@ -442,13 +442,6 @@ def _redact_graph_descriptor(descriptor: Mapping[str, object]) -> dict[str, obje
         for role, original in value["nodes"].items():
             node = dict(original) if isinstance(original, Mapping) else original
             if isinstance(node, dict):
-                if "configuration_artifacts" in node:
-                    # Only the declared file metadata belongs in an ordinary graph read.
-                    fields = ("artifact_id", "target_path", "media_type", "file_mode", "content_digest", "source_digest")
-                    node["configuration_artifacts"] = [
-                        {key: artifact[key] for key in fields if key in artifact}
-                        for artifact in _list(node["configuration_artifacts"]) if isinstance(artifact, Mapping)
-                    ]
                 if "verification" in node:
                     node["verification"] = public_verification_shape(node["verification"])
                 if isinstance(node.get("block_spec"), Mapping):

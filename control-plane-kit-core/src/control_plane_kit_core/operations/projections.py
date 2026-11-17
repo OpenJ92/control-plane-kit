@@ -34,6 +34,7 @@ class ReadProjectionKind(StrEnum):
     OPERATOR_GRAPH = "operator-graph"
     DESIRED_TOPOLOGY_DRAFTS = "desired-topology-drafts"
     DESIRED_TOPOLOGY_DRAFT_REVISIONS = "desired-topology-draft-revisions"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_METADATA = "desired-topology-draft-revision-metadata"
     DESIRED_TOPOLOGY_DRAFT_REVISION = "desired-topology-draft-revision"
     DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS = "desired-topology-draft-revision-preparations"
     DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS = "desired-topology-draft-revision-attempts"
@@ -84,6 +85,7 @@ class ReadProjectionPolicy(StrEnum):
     AUTHORIZED_PROVIDER_POLICY_ADMINISTRATION = (
         "authorized-provider-policy-administration"
     )
+    CONFIGURATION_ARTIFACT_METADATA = "configuration-artifact-metadata"
     REDACTED_GRAPH_DESCRIPTOR = "redacted-graph-descriptor"
     REDACTED_OPERATOR_OVERVIEW = "redacted-operator-overview"
     REDACTED_CONTROL_SURFACE = "redacted-control-surface"
@@ -601,6 +603,14 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION,
         "DesiredTopologyDraftRevisionReadResponse",
         ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+        paged=False,
+        max_page_size=None,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision-metadata",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_METADATA,
+        "DesiredTopologyDraftRevisionMetadataReadResponse",
+        ReadProjectionPolicy.CONFIGURATION_ARTIFACT_METADATA,
         paged=False,
         max_page_size=None,
     ),

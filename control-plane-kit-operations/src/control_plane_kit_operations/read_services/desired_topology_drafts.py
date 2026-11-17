@@ -30,7 +30,7 @@ class _DesiredTopologyDraftReadProjection:
                 raise ReadModelError("missing draft") from None
         return store.page(request).map(lambda row: row.descriptor())
 
-    def detail(self, workspace_id: str, draft_id: str, revision: int):
+    def _revision_graph(self, workspace_id: str, draft_id: str, revision: int):
         self._workspace(workspace_id)
         store = self._require_store()
         try:
@@ -41,6 +41,23 @@ class _DesiredTopologyDraftReadProjection:
         if graph.workspace_id != workspace_id:
             raise ReadModelError("invalid draft graph reference")
         _decode_valid_graph(DEFAULT_GRAPH_CODEC, graph.graph_descriptor)
+        return record, graph.graph_descriptor
+
+    def detail(self, workspace_id: str, draft_id: str, revision: int):
+        record, descriptor = self._revision_graph(workspace_id, draft_id, revision)
         return FocusedDetailReadModel(workspace_id, "desired-topology-draft-revision",
-            {**record.descriptor(), "graph_descriptor": _redact_graph_descriptor(graph.graph_descriptor),
+            {**record.descriptor(), "graph_descriptor": _redact_graph_descriptor(descriptor),
              "history": self._history.presence(RevisionReadScope(workspace_id, draft_id, revision))})
+
+    def metadata(self, workspace_id: str, draft_id: str, revision: int):
+        record, descriptor = self._revision_graph(workspace_id, draft_id, revision)
+        fields = ("artifact_id", "target_path", "media_type", "file_mode", "content_digest", "source_digest")
+        files = {
+            node_id: [{field: artifact[field] for field in fields} for artifact in node["configuration_artifacts"]]
+            for node_id, node in sorted(descriptor["nodes"].items())
+            if node.get("configuration_artifacts")
+        }
+        return FocusedDetailReadModel(workspace_id, "desired-topology-draft-revision-metadata", {
+            "draft_id": record.draft_id, "revision": record.revision, "graph_id": record.graph_id,
+            "configuration_artifacts": files,
+        })
