@@ -276,10 +276,10 @@ class DesiredTopologyDraftTests(DraftCatalogueFixture, unittest.TestCase):
                 self.assertNotIn(artifact.content, json.dumps(result))
             with self.assertRaises(CpkServerApplicationError) as missing:
                 self.read(route, surface=surface, workspace="workspace-b", draft_id=first.draft_id, revision=1)
-            self.assertEqual(missing.exception.status_code, 404)
+            self.assertEqual(missing.exception.status, 404)
             with self.assertRaises(CpkServerApplicationError) as denied:
                 self.read(route, surface=surface, reader=principal(scopes=()), draft_id=first.draft_id, revision=1)
-            self.assertEqual(denied.exception.status_code, 403)
+            self.assertEqual(denied.exception.status, 403)
         with self.unit_of_work() as uow:
             stored = uow.stores.graphs.get(first.graph_id).graph_descriptor
             self.assertEqual(stored["nodes"]["app"]["configuration_artifacts"], [artifact.descriptor()])
