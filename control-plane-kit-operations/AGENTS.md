@@ -26,6 +26,13 @@ cloud interpreters, product implementations, or external provider clients.
 Server routes and MCP tools compose Operations services; they do not own or
 reimplement Operations semantics.
 
+A graph save, Desired selection, plan approval, execution admission and worker
+result are separate durable facts. A client can use the saved revision to
+verify what was authored and the run to verify what was attempted. Keep
+workspace authorization and revision selection in their owning services so
+each transport observes the same facts. See the
+[installed workflow](../docs/OPERATING_MODEL.md#operating-an-installed-cpk).
+
 ## Transaction And Effect Laws
 
 - one operator command has an explicit caller-owned transaction boundary;

@@ -11,6 +11,52 @@ This repository is the coordination, pure-language, and durable-operations
 repository. Concrete interpreters, packaged server products, and durable secret
 custody live in sibling repositories.
 
+## Start with one deployment
+
+Suppose Hello serves a greeting and a multiplexer forwards requests to it.
+The desired graph places both nodes on one Docker runtime and connects the
+multiplexer's HTTP requirement to Hello's HTTP provider. A draft can say
+that the nodes belong together before the operator chooses an engine.
+Registering a Docker authority makes an engine available in the workspace.
+Selecting that authority on the graph tells the worker which engine to use.
+
+Saving the draft records a revision. Selecting it as **Desired** gives the
+planner a target. CPK compares that target with **Current**, records a plan
+and its approval, and admits the approved work for a worker to execute.
+The operator can then compare the recorded run and Current graph with an
+observation: does a request through the multiplexer actually return the
+configured greeting? Adding public ingress is a second graph revision with
+its own plan. The application ingress goes to the multiplexer. A separately
+declared management ingress goes to the runtime gateway.
+
+The earlier Hello deployment exercised create, update, and teardown on a real
+installation. Its final run reached the empty graph. Docker and Cloudflare
+confirmed removal of the workload containers, network, two tunnels and their
+DNS records. Eight named volumes remained at that inspection. That distinction
+matters whenever reporting what an empty graph means. [Teardown receipt](https://github.com/OpenJ92/control-plane-kit-servers/issues/225#issuecomment-6653018702)
+
+## Where the project is headed
+
+Follow the [product roadmap](https://github.com/users/OpenJ92/projects/5) and
+the owning issue for current status. The installation milestones in order are:
+
+1. Operate a fresh CPK installation through its own Codex MCP connection.
+   Verify its workspace independently in the website, then deploy private
+   Hello and mux and read the greeting through mux. [Fresh sibling #431](https://github.com/OpenJ92/control-plane-kit-servers/issues/431)
+2. Add the wrapped Cloudflare connector to that running topology. Verify the
+   public HTTPS greeting and the signed management checks on their respective
+   routes. [Named ingress #421](https://github.com/OpenJ92/control-plane-kit-servers/issues/421)
+3. Use the grandparent to deploy a child CPK installation as an ordinary
+   graph. Verify the child's readiness from the grandparent, connect Codex to
+   the child's own MCP endpoint, read its workspace and operate an application
+   there. The two installations keep separate identities and histories.
+   [Recursive deployment #163](https://github.com/OpenJ92/control-plane-kit-servers/issues/163)
+
+Later work includes making gateway-to-workload relationships explicit in the
+graph and separating compute provisioning from deployment. A local, owned, or
+cloud host could supply a registered Docker endpoint and protected credential
+references for the same interpreter. [Management relationships #2112](https://github.com/OpenJ92/control-plane-kit/issues/2112) · [Provisioning and Docker over mutual TLS #2083](https://github.com/OpenJ92/control-plane-kit/issues/2083)
+
 ## Repository Shape
 
 ```text
@@ -33,6 +79,12 @@ control-plane-kit-secrets
 control-plane-kit-servers
   cpk-server, cpk-local-gateway, seeded product processes, descriptors,
   Dockerfiles, OCI coordinates, and catalogue metadata
+
+control-plane-kit-server-sdk
+  application wrappers and receivers for declared management and health checks
+
+control-plane-kit-web
+  operator website, graph inspection and human review of deployment plans
 ```
 
 The governing dependency direction is:
@@ -112,8 +164,9 @@ cpk-server
 
 Interpreter availability is process capability. A
 `RegisteredRuntimeAuthority` is workspace-scoped permission and material for a
-specific runtime target. Graph nodes reference admitted authorities; endpoints,
-TLS private material, tokens, and local socket paths do not become graph truth.
+specific runtime target. For a named Docker target, the graph's runtime record
+selects the authority. Access to the Docker socket or TLS credential is
+delivered to the interpreter; the workloads remain on their declared runtime.
 
 ## Products And Sockets
 
@@ -178,9 +231,16 @@ descriptors, events, observations, logs, errors, or public responses.
 ## Public Boundary
 
 `cpk-server` is the FastAPI/MCP process wrapper around operations. HTTP and MCP
-project the same operations command/read services and authorization laws. The
+share Operations services and authorization laws. The installed MCP profile
+determines which of those operations a client can discover and call. The
 server process composes dependencies; it does not own runtime, ingress, graph,
 approval, or secret semantics.
+
+For agents, the installed server supplies instructions and a tool catalogue.
+Tool discovery, workspace access and a verified application response answer
+three different questions. The [operating model](docs/OPERATING_MODEL.md#operating-an-installed-cpk)
+walks through each. A future ACP service would connect the website to an agent
+that operates CPK through MCP. [ACP roadmap](https://github.com/OpenJ92/control-plane-kit/issues/2090)
 
 ## Documentation
 

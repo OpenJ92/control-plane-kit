@@ -7,6 +7,37 @@ Canonical contract: `cpk-agent-contract/v1`
 This is the normal issue-to-merge loop for Control Plane Kit. `AGENTS.md` owns
 the shared product, authority, memory, and validation laws.
 
+## Operating an installed CPK
+
+Use the named MCP connection for agent-driven workspace operations. A newly
+bootstrapped installation first needs an endpoint and an authorized identity.
+A grandparent, a sibling and a child can all be running at once. Identify the
+target by reading a known workspace and revision through a fresh client.
+
+1. Read the server instructions and discover the tools in the installed
+   profile. An advertised command still requires the caller's workspace
+   permissions. Check public product registrations and runtime authority
+   against the graph you intend to save.
+2. Save the draft and keep its workspace, draft, revision and graph ID.
+   Read back that exact revision. Discover the available read tools on the
+   target build. Newer source may support authoring forms or file-metadata
+   reads that the installed image lacks. When the workflow requires MCP,
+   record a missing capability on its owning issue; an HTTP test proves the
+   HTTP path.
+3. Select Desired and ask CPK to prepare a plan. Review its actual activities
+   and the target revision. Record the authorized decision through the website
+   in the Hello workflow. Read back that decision before requesting admission.
+4. Follow the admitted request to the worker run and its terminal result.
+   Verify Current and the user-visible effect. For private Hello, read the
+   configured greeting through mux. For public ingress, check the public
+   hostname as well. On an uncertain reply, use the recorded request or run
+   identity to establish the outcome before considering another attempt.
+
+The workspace operator, approver and worker have distinct permissions. Keep
+credential values in the configured custody mechanism. When handing off work,
+name the installation, source or image tested, workspace and saved revision,
+and the observation still outstanding. [MCP coverage](https://github.com/OpenJ92/control-plane-kit-servers/issues/396) · [Operator guidance](https://github.com/OpenJ92/control-plane-kit-servers/issues/413)
+
 ## Normal Loop
 
 ```text
