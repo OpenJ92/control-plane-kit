@@ -8,7 +8,7 @@ from dataclasses import replace
 from itertools import count
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
-from control_plane_kit_core.policies import ApprovalPolicy
+from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService
 from control_plane_kit_operations.coordinator import CoordinatorStatus
@@ -51,7 +51,7 @@ def initialize_receiver_fixture_origin(case, *, runtime_graph=None):
 
 def accept_selected_fixture_origin(case, plan, *, workspace_id="workspace-a",
                                    prefix="fixture-origin", timestamp="2026-07-22T11:00:00Z",
-                                   expected_configurations=()):
+                                   expected_configurations=(), actor_scopes=(PolicyScope.PLAN_EXECUTE,)):
     """Approve, execute and accept explicit authored origin material.
 
     Opt-in entries are (activity_id, runtime_id, node_id, authored_artifacts).
@@ -81,7 +81,7 @@ def accept_selected_fixture_origin(case, plan, *, workspace_id="workspace-a",
         uow.commit()
     admit_fixture_plan(case, request_id=identity("request"), session_id=identity("session"),
         plan_id=identity("plan"), approval_request_id=identity("approval"), key=identity("admit"),
-        requested_at=timestamp, workspace_id=workspace_id)
+        requested_at=timestamp, workspace_id=workspace_id, actor_scopes=actor_scopes)
     engine = coordinator_fixture.ExecutionCoordinatorTests()
     engine.database_url, engine.connection = case.database_url, case.connection
     ids = count(1)

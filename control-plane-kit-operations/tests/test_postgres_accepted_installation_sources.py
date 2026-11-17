@@ -390,7 +390,7 @@ class PostgresAcceptedInstallationSourcePublicationTests(unittest.TestCase):
 
 
 class _TwoIngressRuntime(ProfiledRecordingRuntime):
-    def execute_with_authority(self, request, authority):
+    def execute_with_authority(self, request, authority, *, invocations=None):
         if type(request.operation) is StartNode:
             ingresses = tuple(value for value in self.test.graph.public_ingresses
                 if value.connector_node_id == request.operation.target.node_id)
@@ -410,7 +410,15 @@ class _TwoIngressRuntime(ProfiledRecordingRuntime):
                 self.test.assertEqual(allocation.target.ingress_id, ingress.ingress_id)
                 self._require_connector_grant(request, selection.reference.reference_id)
         # Preserve both the profiled consumer/receipt checks and base port behavior.
-        return super().execute_with_authority(request, authority)
+        if invocations is None:
+            return super().execute_with_authority(request, authority)
+        grant, = request.secret_resolution_grants
+        permit = invocations.admit("secret-resolution", authorization_id=grant.authorization_id)
+        invocations.record_outcome(permit, "returned")
+        final = invocations.admit("prepared-runtime-dispatch")
+        result = super().execute_with_authority(request, authority)
+        invocations.record_outcome(final, "returned")
+        return result
 
 
 class _TwoIngressProvider(RecordingIngressInterpreter):
@@ -506,6 +514,356 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
     def acceptance_snapshot(self):
         return tuple(self.rows(name) for name in ("cpk_workspaces", "cpk_configuration_acceptances",
             "cpk_operation_actions", "cpk_graph_receiver_introductions", "cpk_activity_events"))
+
+    async def execute_registered_connector(self, claim):
+        import control_plane_kit_operations as ops
+        from tests import test_managed_application_chain as managed
+        from tests.test_postgres_coordinator_permissions import _CurrentCoordinatorPermission
+        from control_plane_kit_operations.workflows import IdempotencyKey
+        from control_plane_kit_core.types import RuntimeKind
+
+        _CurrentCoordinatorPermission.configure_permissions(self, self.worker.identity, installation="coordinator-permission")
+        factory = self.unit_of_work
+        fold = managed.EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
+        registration = RuntimeAdapterRegistration(self.runtime, exact_version_execute_with_authority=True,
+            invocation_profile="cpk.semantic-invocations.v1")
+        owner = managed.ExecutionCoordinator(factory,
+            lifecycle=managed.RunLifecycleCommandService(factory, clock=managed.now, id_factory=self.ids["lifecycle"]),
+            adapter=managed.ActivityExecutionDispatcher(runtime=managed.RuntimeInterpreterDispatcher(
+                {RuntimeKind.DOCKER: registration}, managed.SecretUseAuthorizationService(factory))),
+            start_service=managed.EffectAttemptStartService(factory, id_factory=self.ids["effect-start"],
+                permission_policy=self.policy, health_receiver_decoders=self.registry), fold_service=fold,
+            reconciliation_service=managed.EffectAttemptReconciliationService(factory, managed.ForbiddenRecovery(), fold),
+            clock=managed.now, id_factory=self.ids["execution"], permission_policy=self.policy,
+            managed_health=self.health, health_signing_authority=managed.HealthSigningAuthorityReloadService(
+                factory, health_receiver_decoders=self.registry),
+            invocation_service=ops.ExecutionInvocationService(factory, permission_policy=self.policy, clock=managed.now))
+        execution = ops.ExecuteActivityRun(self.run_id, ops.ExecutionWorkerAuthority(claim.worker_id,
+            self.original.granted_scopes), claim.fence, IdempotencyKey("registered-connector-start"))
+        return (await owner.execute_managed(ops.ExecuteManagedActivityRun(execution, self.original))).descriptor()
+
+    async def prepare_worker_connector_read(self, *, registered=True):
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+
+        await self.prepare_and_start()
+        runtime = self.graph.runtimes["docker"]
+        with self.unit_of_work() as uow:
+            claim = uow.stores.execution.get_request(self.request_id).claim
+        scope = dict(workspace_id="workspace-a", request_id=self.request_id, run_id=self.run_id,
+            plan_id=self.plan_id, activity_id=self.native_id, node_id="connector", authority_ref=runtime.authority_ref,
+            fence=ExecutionLeaseFence(claim.worker_id, claim.generation))
+        def read(**overrides):
+            unit = PostgresUnitOfWork(lambda: psycopg.connect(self.tracker.database_url))
+            return unit.read_run_connector_installation(**(scope | overrides))
+
+        self.assertIsNone(read())
+        start, = (step for step in self.plan.activities if type(step.operation) is StartNode
+            and step.operation.target.node_id == "connector")
+        from control_plane_kit_core.planning import derive_schedule
+        for _ in self.plan.activities:
+            journal = project_activity_journal(self.plan, activity_journal_events(self.history()))
+            ready = derive_schedule(self.plan, journal.state).ready
+            step = (await self.execute_registered_connector(claim) if registered and ready and ready[0].activity_id == start.activity_id
+                else await self.execute_one())
+            self.assertEqual(step["run_status"], "running")
+            if any(e.activity_id == start.activity_id.value and e.kind is ActivityEventKind.STEP_SUCCEEDED
+                    for e in self.history()):
+                break
+        else:
+            self.fail("connector start did not succeed")
+        return read, runtime, start, claim
+
+    def configure_retained_bootstrap(self):
+        """Keep the ordinary API running and add two managed connector roles."""
+        from control_plane_kit_core.public_ingress import IngressAuthorityReference
+
+        api = self.graph.node("api")
+        original = self.documents["api"].product
+        contract = replace(original.runtime_contract, configuration_artifacts=(), public_environment=(),
+            capabilities=(), control_surfaces=())
+        ordinary = ProductDescriptorCodec().encode_document(replace(original,
+            identity=replace(original.identity, contract_revision=2), runtime_contract=contract))
+        self.documents["api"] = ordinary
+        # Both connector roles use the same registered image with distinct receiver configurations.
+        self.documents.pop("application-connector")
+        nodes = dict(self.graph.nodes)
+        nodes["api"] = replace(api, configuration_artifacts=(), public_environment=(),
+            block_spec=replace(api.block_spec, capabilities=(), control_surfaces=()))
+        for key, node in tuple(nodes.items()):
+            doc = self.documents["connector" if key == "application-connector" else key]
+            ref = ProductReference.from_document(doc)
+            nodes[key] = replace(node, metadata={**node.metadata, "product_identity": ref.identity.key,
+                "product_descriptor_digest": ref.descriptor_sha256.value, "oci_image": doc.product.image.execution_reference})
+        gateway = nodes["gateway"]
+        routes = ReceiverManagementRoutesCodec().encode_bytes(management_routes(nodes)).decode()
+        nodes["gateway"] = replace(gateway, configuration_artifacts=tuple(
+            replace(item, content=routes, source_digest=None) if item.artifact_id == "gateway-health-targets" else item
+            for item in gateway.configuration_artifacts))
+        management, public = self.graph.public_ingresses
+        self.graph = replace(self.graph, nodes=nodes, public_ingresses=(management,
+            replace(public, authority_ref=IngressAuthorityReference("application-authority"))))
+        self.author_initial_desired = self.accept_retained_workload
+
+    async def accept_retained_workload(self):
+        from control_plane_kit_core.policies import PolicyScope
+        from control_plane_kit_core.planning import compile_graph_activity_plan
+        from control_plane_kit_core.topology import DeploymentGraph
+        from control_plane_kit_operations.records import GraphVersionRecord
+        from tests.accepted_graph_origin_fixture import accept_selected_fixture_origin
+        from tests.test_managed_application_chain import now
+
+        runtime = replace(self.graph.runtimes["docker"], children=("api",), management=None)
+        base = replace(self.graph, public_ingresses=(), runtimes={"docker": runtime},
+            nodes={"api": self.graph.node("api")})
+        with self.unit_of_work() as uow:
+            stores = uow.stores
+            graph = GraphVersionRecord.from_graph(graph_id="retained-app", workspace_id="workspace-a",
+                version=stores.graphs.next_version_for_workspace("workspace-a"), graph=base, created_by="operator-a", created_at=now())
+            stores.graphs.save(graph)
+            stores.workspaces.set_desired_graph("workspace-a", graph.graph_id)
+            management, public = self.graph.public_ingresses
+            registration = stores.ingress_authorities.get("workspace-a", management.authority_ref)
+            stores.ingress_authorities.register(workspace_id="workspace-a", authority_ref=public.authority_ref,
+                authority=registration.authority, admitted_by="operator-a", admitted_at=now())
+            uow.commit()
+        plan = compile_graph_activity_plan(validate_graph(DeploymentGraph("empty")), validate_graph(base))
+        self.database_url = self.tracker.database_url
+        accept_selected_fixture_origin(self, plan, prefix="accepted-retained", timestamp=now(),
+            actor_scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE))
+        with self.unit_of_work() as uow:
+            ws = uow.stores.workspaces.get("workspace-a")
+        self.assertEqual(ws.current_graph_id, graph.graph_id)
+        self.workspace.update(current_graph_id=ws.current_graph_id,
+            current_realized_projection_id=ws.current_realized_projection_id,
+            desired_graph_revision=ws.desired_graph_revision)
+        return {"authored_graph_id": ws.desired_graph_id,
+            "realized_projection_id": ws.desired_realized_projection_id}
+
+    def configure_retained_reader(self):
+        from tests.test_managed_application_chain import RecordingManagedHealth
+
+        self.configure_retained_bootstrap()
+        captured = []
+
+        class CaptureHealth(RecordingManagedHealth):
+            def select(inner, *, plan, current, desired, registered_products, runtime_authorities):
+                self.assertEqual(set(current.nodes), {"api"})
+                self.assertEqual(desired, self.graph)
+                selected = tuple(item.activity_id for item in plan.activities
+                    if type(item.operation) in (ObserveManagementBootstrap, ObserveNodeHealth))
+                inner.selections.append(selected)
+                return selected
+
+            async def observe_connection(inner, realization, request, authority):
+                captured.append(realization.run_connector_installation)
+                return await super().observe_connection(realization, request, authority)
+
+        self.health = CaptureHealth(self)
+        self.health.responses = [NativeConnectionOutcome.CONNECTED]
+        return captured
+
+    async def execute_through_native_attempt(self):
+        for _ in self.plan.activities:
+            await self.execute_one()
+            if any(event.activity_id == self.native_id for event in self.history()
+                    if event.kind is not ActivityEventKind.STEP_STARTED):
+                return self.native_attempt(1)
+        self.fail("the native attempt never produced an outcome")
+
+    async def test_retained_bootstrap_delivers_original_connector_receipt_to_native_reader(self):
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+
+        captured = self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read()
+        proof = read()
+        self.assertIsNotNone(proof)
+        self.assertIsNone(read(node_id="application-connector"))
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.activity_history.get_plan(self.plan_id).derivation_profile,
+                PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1)
+        _, retained = await self.execute_through_native_attempt()
+        self.assertEqual(captured, [proof])
+        self.assertEqual(len(self.health.native_reads), 1)
+        self.assertIs(retained.outcome.observation.outcome, NativeConnectionOutcome.CONNECTED)
+
+    async def test_retained_bootstrap_missing_dispatch_receipt_refuses_native_read(self):
+        captured = self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read(registered=False)
+        self.assertIsNone(read())
+        _, retained = await self.execute_through_native_attempt()
+        self.assertEqual(captured, [])
+        self.assertEqual(self.health.native_reads, [])
+        self.assertEqual(retained.outcome.result.failure.code, "native-read-result-unknown")
+
+    async def test_retained_bootstrap_foreign_allocation_refuses_native_read(self):
+        from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
+
+        captured = self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read()
+        proof = read()
+        self.assertIsNotNone(proof)
+        with self.connection.transaction():
+            changed = self.connection.execute(
+                "UPDATE cpk_generated_ingress_secret_references SET source_run_id=%s "
+                "WHERE source_run_id=%s AND source_event_id=%s",
+                ("unrelated-run", self.run_id, proof.allocation_start_event_id))
+            self.assertEqual(changed.rowcount, 1)
+        self.assertIsNone(read())
+        before = self.rows("cpk_effect_attempts")
+        with self.assertRaisesRegex(ExecutionCoordinatorConflict, "configuration material is unavailable"):
+            await self.execute_one()
+        self.assertEqual(self.rows("cpk_effect_attempts"), before)
+        self.assertEqual(captured, [])
+        self.assertEqual(self.health.native_reads, [])
+
+    async def test_retained_bootstrap_substituted_signed_receiver_refuses_before_dispatch(self):
+        from unittest.mock import patch
+        from control_plane_kit_operations import coordinator
+        from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartConflict
+        from control_plane_kit_operations.managed_effect_plan import (
+            ManagedEffectPlanConflict, require_managed_effect_plan)
+        from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
+
+        self.configure_retained_reader()
+        read, *_ = await self.prepare_worker_connector_read()
+        self.assertIsNotNone(read())
+        alternate, = (item for item in self.plan.activities
+            if type(item.operation) is ObserveNodeHealth and item.operation.node_id == "application-connector")
+        project = coordinator._runtime_effect_intent_for_context
+        substitutions = []
+        signed_requests = []
+
+        def substitute(context, activity):
+            original = project(context, activity)
+            if not is_signed_management_health_operation(original.operation):
+                return original
+            other = project(context, alternate)
+            self.assertNotEqual(activity.activity_id, alternate.activity_id)
+            forged = replace(other, activity_id=activity.activity_id)
+            with self.unit_of_work() as uow:
+                request = uow.stores.execution.get_request(self.request_id)
+                self.assertEqual(require_managed_effect_plan(uow.stores, original, request),
+                    require_managed_effect_plan(uow.stores, other, request))
+                with self.assertRaises(ManagedEffectPlanConflict):
+                    require_managed_effect_plan(uow.stores, forged, request)
+            substitutions.append(activity.activity_id)
+            return forged
+
+        async def record_signed(*args, **kwargs):
+            signed_requests.append(args[1])
+            self.fail("a substituted receiver reached the signed reader")
+
+        # Inject only the alternate intent. The worker, plan reader and start service stay real.
+        with patch.object(coordinator, "_runtime_effect_intent_for_context", substitute), \
+                patch.object(self.health, "observe_signed", record_signed):
+            with self.assertRaises(EffectAttemptStartConflict):
+                for _ in self.plan.activities:
+                    await self.execute_one()
+        self.assertTrue(substitutions)
+        self.assertEqual(signed_requests, [])
+        self.assertFalse(any(event.activity_id == substitutions[-1].value for event in self.history()))
+
+    async def test_worker_reads_new_connector_from_its_active_run(self):
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+        read, runtime, start, claim = await self.prepare_worker_connector_read()
+        before = self.effects()
+        proof = read()
+        self.assertIsNotNone(proof)
+        self.assertEqual((proof.source.run_id.value, proof.source.plan_id, proof.source.request_id,
+            proof.start_activity_id, proof.wrapper.node_id, proof.ingress_id, proof.authority_ref),
+            (self.run_id, self.plan_id, self.request_id, start.activity_id.value, "connector",
+             "management", runtime.authority_ref))
+        self.assertNotEqual(proof.allocation_start_event_id, proof.allocation_success_event_id)
+        self.assertRegex(proof.receipt.current_realization_fingerprint, "^[0-9a-f]{64}$")
+        self.assertEqual(proof.receipt.disposition.value, "created")
+        self.assertNotIn(proof.token.version_id, repr(proof))
+        for changes in (dict(run_id="other-run"), dict(node_id="application-connector"),
+                dict(activity_id=start.activity_id.value), dict(plan_id="other-plan"),
+                dict(authority_ref=None), dict(request_id="other-request"),
+                dict(fence=ExecutionLeaseFence(claim.worker_id, claim.generation+1))):
+            with self.subTest(fields=tuple(changes)):
+                self.assertIsNone(read(**changes))
+        # Replace the origin of the real committed token receipt in the test database.
+        # The run, its start, its successful outcome and the active allocation still match.
+        with self.connection.transaction():
+            changed = self.connection.execute("UPDATE cpk_generated_ingress_secret_references SET source_run_id=%s "
+                "WHERE source_run_id=%s AND source_event_id=%s",
+                ("unrelated-run", self.run_id, proof.allocation_start_event_id))
+            self.assertEqual(changed.rowcount, 1)
+        self.assertIsNone(read())
+        with self.connection.transaction():
+            self.connection.execute("UPDATE cpk_generated_ingress_secret_references SET source_run_id=%s "
+                "WHERE source_run_id=%s AND source_event_id=%s", (self.run_id, "unrelated-run", proof.allocation_start_event_id))
+        self.assertIsNotNone(read())
+        # A real replacement registration reuses the logical Docker name.
+        from control_plane_kit_operations.runtime_authorities import RemoteDockerTlsAuthority
+        from control_plane_kit_core.secrets import SecretReference
+        from tests.test_managed_application_chain import now
+        with self.unit_of_work() as uow:
+            registered = uow.stores.runtime_authorities
+            old = registered.revoke("workspace-a", runtime.authority_ref)
+            new = registered.register(workspace_id="workspace-a", authority_ref=runtime.authority_ref,
+                runtime_kind=runtime.kind, authority=RemoteDockerTlsAuthority("tcp://replacement.example.test:2376",
+                    *(SecretReference("secret://runtime/" + key) for key in ("ca", "cert", "key"))),
+                admitted_by="operator-a", admitted_at=now())
+            self.assertNotEqual(old.registration_id, new.registration_id)
+            uow.commit()
+        self.assertIsNone(read(), "a re-registered Docker name cannot relabel a previous start")
+        self.assertEqual(self.effects(), before)
+        self.assertEqual(self.health.native_reads, [])
+
+    def test_absent_original_dispatch_charges_the_shared_read_budget(self):
+        from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationKind
+        from control_plane_kit_operations.postgres.configuration_evidence import _joined_read
+        from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+
+        store = PostgresExecutionStore(self.connection)
+        with _joined_read(self.connection) as read:
+            before = read.used
+            self.assertIsNone(store.original_final_invocation(EffectAttemptIdentity(RunId("missing"), "start", 1),
+                original_event_id="missing-start", request_fingerprint="a" * 64,
+                kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH))
+            self.assertGreater(read.used.statements, before.statements)
+            self.assertGreater(read.used.accounted_bytes, before.accounted_bytes)
+
+    async def test_worker_read_refuses_connector_without_original_dispatch_registration(self):
+        read, *_ = await self.prepare_worker_connector_read(registered=False)
+        self.assertIsNone(read())
+
+    async def test_active_connector_proof_is_only_carried_by_the_native_observation(self):
+        from tests.test_managed_application_chain import RecordingManagedHealth
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+        from control_plane_kit_operations.workflows import InvalidOperationCommand
+
+        contexts = {}
+        class CaptureHealth(RecordingManagedHealth):
+            async def observe_connection(self, realization, request, authority):
+                contexts["native"] = realization
+                return await super().observe_connection(realization, request, authority)
+
+            async def observe_signed(self, realization, request, authority, **kwargs):
+                contexts["signed"] = realization
+                return await super().observe_signed(realization, request, authority, **kwargs)
+
+        self.health = CaptureHealth(self)
+        self.health.responses = [NativeConnectionOutcome.CONNECTED]
+        read, *_ = await self.prepare_worker_connector_read()
+        proof = read()
+        self.assertIsNotNone(proof)
+        for _ in self.plan.activities:
+            await self.execute_one()
+            if set(contexts) == {"native", "signed"}:
+                break
+        self.assertEqual(set(contexts), {"native", "signed"})
+        # Exercise the receiving value independently of the execution hold.
+        # Only the in-memory profile is varied; neither value is dispatched.
+        def attach(context):
+            record = replace(context.plan_record, derivation_profile=PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1)
+            return replace(context, plan_record=record, run_connector_installation=proof)
+        self.assertIs(attach(contexts["native"]).run_connector_installation, proof)
+        with self.assertRaises(InvalidOperationCommand):
+            attach(contexts["signed"])
 
     async def test_two_managed_ingress_connectors_advance_with_original_sources(self):
         await self.prepare_and_start()

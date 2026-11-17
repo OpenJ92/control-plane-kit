@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields, replace
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, nullcontext
 import json
 from types import MappingProxyType
 from typing import Protocol
@@ -198,7 +198,8 @@ class ReceiverAuthoringContextReadService:
     def __init__(self, snapshot_factory: ReceiverAuthoringSnapshotFactory):
         self._snapshot_factory = snapshot_factory
 
-    def read(self, query: ReceiverAuthoringContextQuery, *, context: TrustedCommandContext):
+    def read(self, query: ReceiverAuthoringContextQuery, *, context: TrustedCommandContext,
+             snapshot: ReceiverAuthoringSnapshot | None = None):
         if type(query) is not ReceiverAuthoringContextQuery:
             raise ReceiverAuthoringContextError("malformed")
         authorized = False
@@ -217,8 +218,9 @@ class ReceiverAuthoringContextReadService:
         try:
             # Revalidate a detached request before asking the factory for a UoW.
             query = replace(query)
-            with self._snapshot_factory().read_snapshot() as snapshot:
-                result = self._project(snapshot, query)
+            source = self._snapshot_factory().read_snapshot() if snapshot is None else nullcontext(snapshot)
+            with source as selected:
+                result = self._project(selected, query)
                 if len(_body_bytes(result.descriptor())) > 1048576:
                     raise ReceiverAuthoringContextError()
             return result

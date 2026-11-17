@@ -136,6 +136,14 @@ class TrackingUnitOfWork:
         finally:
             self._factory.active -= 1
 
+    def read_run_connector_installation(self, **coordinates):
+        self._factory.entered += 1
+        self._factory.active += 1
+        try:
+            return self._inner.read_run_connector_installation(**coordinates)
+        finally:
+            self._factory.active -= 1
+
     @contextmanager
     def run_events_snapshot(self):
         self._factory.entered += 1

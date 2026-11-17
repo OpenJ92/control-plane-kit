@@ -1,4 +1,4 @@
-"""Current connector installation provenance; never execution authority.
+"""Connector installation provenance for an active run or an accepted Current revision.
 
 Pins describe the current snapshot captured by the read. Historical runtime
 authority and installation receipts neither freeze that snapshot nor establish
@@ -6,7 +6,10 @@ the connector's present external existence. Consumers must admit fresh effects.
 """
 from dataclasses import dataclass, field
 
-from control_plane_kit_core.runtime_effects import RuntimeEffectRequest
+from control_plane_kit_core.configuration_instances import ConfigurationInstanceRef
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_effects import RuntimeEffectRequest, RuntimeEffectSource
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.secret_installation import (
     SecretInstallationReceipt, secret_installation_correlation_for_request,
     secret_material_selection_fingerprint,
@@ -75,4 +78,22 @@ class CurrentConnectorInstallationRead:
             _require(self.installation is None)
 
 
-__all__ = ["CurrentConnectorInstallation", "CurrentConnectorInstallationRead"]
+@dataclass(frozen=True, slots=True, repr=False)
+class RunConnectorInstallation:
+    """Worker evidence from a single committed snapshot. Contains references only."""
+
+    source: RuntimeEffectSource
+    authority_ref: RuntimeAuthorityReference
+    runtime_registration_id: str
+    ingress_id: str
+    allocation_activity_id: str
+    allocation_start_event_id: str
+    allocation_success_event_id: str
+    start_activity_id: str
+    start_effect_id: str
+    wrapper: ConfigurationInstanceRef
+    token: SecretVersionSelection
+    receipt: SecretInstallationReceipt
+
+
+__all__ = ["CurrentConnectorInstallation", "CurrentConnectorInstallationRead", "RunConnectorInstallation"]
