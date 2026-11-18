@@ -752,6 +752,30 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
 
 
 class ManagedApplicationChainTests(ManagedApplicationFixture):
+    def test_fixture_resets_installation_identity_between_cases(self):
+        import control_plane_kit_operations as operations
+        from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
+
+        admin = PrincipalIdentity("fixture-isolation", "admin", PrincipalKind.OPERATOR)
+
+        def initialize(fixture, installation):
+            policy = operations.WorkspaceAdministrationPolicy(installation, (admin,), (admin,))
+            service = operations.WorkspacePermissionCommandService(fixture.unit_of_work,
+                administration_policy=policy, clock=now, id_factory=fixture.ids["session"])
+            return service.initialize(policy.authorize(AuthenticatedPrincipal(admin)),
+                idempotency_key=IdempotencyKey("initialize"))
+
+        initialize(self, "fixture-first")
+        with self.assertRaises(operations.WorkspacePermissionConflict):
+            initialize(self, "fixture-second")
+        following = ManagedApplicationFixture()
+        self.addCleanup(following.doCleanups)
+        following.setUp()
+        initialize(following, "fixture-second")
+        self.assertEqual(following.connection.execute(
+            "SELECT installation_id FROM cpk_workspace_permission_installation"
+        ).fetchall(), [("fixture-second",)])
+
     async def test_empty_deployment_waits_then_explicit_reads_finish_without_recreating(self):
         await self.reach_native_wait()
         first = self.native_attempt(1)
