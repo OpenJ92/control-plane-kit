@@ -137,6 +137,18 @@ class ReviseDesiredTopologyDraft:
 
 
 @dataclass(frozen=True)
+class ReviseDesiredTopologyDraftFromPreview:
+    context: TrustedCommandContext
+    session_id: str
+    draft_id: str
+    expected_head_revision: int
+    recipe: dict
+    commitment: dict
+    idempotency_key: IdempotencyKey
+    receiver_lifecycle: ReceiverLifecycleExpectation
+
+
+@dataclass(frozen=True)
 class DesiredTopologyDraftResult:
     workspace_id: str
     draft_id: str
@@ -219,6 +231,15 @@ class DesiredTopologyDraftCommandService:
             return _execute_reference_command(self, command)
         if type(command) not in (CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft):
             raise DesiredTopologyDraftError("unsupported draft command")
+        return self._save(command)
+
+    def append_preview(self, command: ReviseDesiredTopologyDraftFromPreview, authoring_service):
+        if type(command) is not ReviseDesiredTopologyDraftFromPreview:
+            raise DesiredTopologyDraftError("an extension append command is required")
+        authoring_service.validate_extension_append(command)
+        return self._save(command, authoring_service=authoring_service)
+
+    def _save(self, command, *, authoring_service=None):
         context = command.context
         if not isinstance(context, TrustedCommandContext) or PolicyScope.INSTANCE_WORKSPACE_EDIT not in context.granted_scopes:
             raise DesiredTopologyDraftError("workspace edit authority is required")
@@ -234,15 +255,18 @@ class DesiredTopologyDraftCommandService:
             _text(command.draft_id, "draft_id")
             if type(command.expected_head_revision) is not int or not 1 <= command.expected_head_revision < 9_223_372_036_854_775_807:
                 raise DesiredTopologyDraftError("expected head revision must be positive and bounded")
-        descriptor = bounded_draft_graph_descriptor(command.graph)
+        extension = isinstance(command, ReviseDesiredTopologyDraftFromPreview)
+        authored = None if extension else command.graph
+        descriptor = None if extension else bounded_draft_graph_descriptor(authored)
         kind = (OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT if creating
                 else OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT)
         intent = {"kind": kind.value, "context": context.descriptor(), "session_id": command.session_id,
-                  "graph": descriptor, "title": command.title if creating else None,
+                  "title": command.title if creating else None,
                   "draft_id": None if creating else command.draft_id,
                   "expected_head_revision": None if creating else command.expected_head_revision}
         intent.update(_expectation_member(command.receiver_lifecycle))
-        fingerprint = hashlib.sha256(json.dumps(intent, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+        if extension:
+            intent.update(product_recipe=command.recipe, expected_proposal_commitment=command.commitment)
         with self._uow() as uow:
             history = uow.stores.activity_history
             history.lock_action_idempotency(command.session_id, command.idempotency_key.value)
@@ -252,7 +276,13 @@ class DesiredTopologyDraftCommandService:
                 raise DesiredTopologyDraftConflict("draft replay evidence is malformed") from None
 
             if existing is not None:
-                if existing.action_type != kind or existing.intent_fingerprint != fingerprint:
+                if extension:
+                    try:
+                        retained_id = existing.payload["graph_id"]
+                        descriptor = uow.stores.graphs.get(retained_id).graph_descriptor
+                    except (KeyError, ValueError, TypeError):
+                        raise DesiredTopologyDraftConflict("draft replay evidence is malformed") from None
+                if existing.action_type != kind or existing.intent_fingerprint != _draft_save_fingerprint(intent, descriptor):
                     raise DesiredTopologyDraftConflict("idempotency key already records different intent")
                 result = _replay_result(uow, command, existing, descriptor)
                 uow.commit()
@@ -265,7 +295,11 @@ class DesiredTopologyDraftCommandService:
             if session.workspace_id != context.workspace_id or session.status is not OperationSessionStatus.OPEN:
                 raise DesiredTopologyDraftError("an open workspace operation session is required")
             try:
-                workspace = uow.stores.workspaces.get_for_update(context.workspace_id)
+                workspaces = uow.stores.workspaces
+                # The extension also takes verifier-purpose locks. A registration
+                # holding that lock must be able to reference the workspace key.
+                workspace = (workspaces.get_for_no_key_update(context.workspace_id) if extension
+                    else workspaces.get_for_update(context.workspace_id))
             except KeyError:
                 raise DesiredTopologyDraftError("workspace was not found") from None
             store = uow.stores.desired_topology_drafts
@@ -276,10 +310,15 @@ class DesiredTopologyDraftCommandService:
                     raise DesiredTopologyDraftError("draft was not found") from None
                 if draft.deleted_at is not None or draft.head_revision != command.expected_head_revision:
                     raise DesiredTopologyDraftConflict("draft head is stale or retired")
+            if extension:
+                authored = authoring_service.prepare_locked_extension(uow.stores, command)
+                descriptor = bounded_draft_graph_descriptor(authored)
+            fingerprint = _draft_save_fingerprint(intent, descriptor)
             try:
-                validate_graph(command.graph).require_valid()
-                for reference in product_references_in_graph(command.graph):
-                    registered = uow.stores.registered_products.get(context.workspace_id, reference)
+                validate_graph(authored).require_valid()
+                lookup = uow.stores.registered_products.get_for_update if extension else uow.stores.registered_products.get
+                for reference in product_references_in_graph(authored):
+                    registered = lookup(context.workspace_id, reference)
                     if registered.status is not RegisteredProductStatus.ACTIVE:
                         raise ValueError
             except (KeyError, ValueError):
@@ -292,7 +331,7 @@ class DesiredTopologyDraftCommandService:
             now = self._clock()
             revision = 1 if creating else command.expected_head_revision + 1
             graph = GraphVersionRecord.from_graph(graph_id=graph_id, workspace_id=context.workspace_id,
-                version=uow.stores.graphs.next_version_for_workspace(context.workspace_id), graph=command.graph,
+                version=uow.stores.graphs.next_version_for_workspace(context.workspace_id), graph=authored,
                 created_by=context.actor_id, created_at=now)
             projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
             bindings = derive_receiver_bindings(context.workspace_id, graph_id,
@@ -319,7 +358,7 @@ class DesiredTopologyDraftCommandService:
                 payload=payload, created_at=now, idempotency_key=command.idempotency_key.value,
                 intent_fingerprint=fingerprint))
             try:
-                held = uow.stores.workspaces.get_for_update(context.workspace_id)
+                held = workspaces.get(context.workspace_id)
                 if held != workspace:
                     raise DesiredTopologyDraftConflict("workspace graph truth changed")
                 new_ids = _validate_receiver_admission(uow.stores, held, command.receiver_lifecycle,
@@ -332,7 +371,7 @@ class DesiredTopologyDraftCommandService:
                         new_receiver_ids=new_ids, lifecycle_guard=guard)
                     uow.stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=guard)
                 _receiver_sources(uow.stores, held, draft_head=head)
-                _check_receiver_expectation(uow.stores.workspaces.get_for_update(context.workspace_id),
+                _check_receiver_expectation(workspaces.get(context.workspace_id),
                     command.receiver_lifecycle)
                 store._advance_head(saved_revision,
                     expected_head_revision=None if creating else command.expected_head_revision)
@@ -340,6 +379,12 @@ class DesiredTopologyDraftCommandService:
                 raise DesiredTopologyDraftError("receiver draft admission is unavailable") from None
             uow.commit()
             return result
+
+
+def _draft_save_fingerprint(intent, descriptor):
+    encoded = json.dumps({**intent, "graph": descriptor}, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _replay_result(uow, command, action, graph_descriptor) -> DesiredTopologyDraftResult:

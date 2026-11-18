@@ -1,8 +1,11 @@
 """Public pinned-recipe preview/save laws through the Operations owners."""
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from copy import deepcopy
 from hashlib import sha256
 import json
+import threading
+import time
 import unittest
 
 import psycopg
@@ -12,7 +15,7 @@ from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, Deleg
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.delegation_signing_keys import RegisterDelegationSigningKeyCommand
-from tests.test_delegation_signing_keys import PUBLIC_KEY_A
+from tests.test_delegation_signing_keys import PUBLIC_KEY_A, PUBLIC_KEY_B
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.operations import (
@@ -231,6 +234,176 @@ class ProductTopologyAuthoringTests(DraftCatalogueFixture, unittest.TestCase):
                 self.preview(extension, caller=caller)
             self.assertEqual(denied.exception.status, 403)
         self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+
+    def append_ingress_preview(self, proposal, *, caller=None, **changes):
+        base = proposal["recipe"]["base"]
+        values = {"session_id": self.sessions["workspace-a"], "idempotency_key": "add-ingress-to-mux",
+            "product_recipe": proposal["recipe"], "expected_head_revision": base["revision"],
+            "expected_proposal_commitment": proposal["proposal_commitment"],
+            "receiver_lifecycle": proposal["receiver_lifecycle"], **changes}
+        planner = CpkServerPlanningService(None, desired_topology_drafts=self.catalogue(),
+            product_topologies=ProductTopologyAuthoringService(self.unit_of_work))
+        return planner.handle(CatalogueRequest("http", "command.desired-topology-draft.revise",
+            ControlPlaneServiceRole.PLANNING, {"workspace_id": "workspace-a", "draft_id": base["draft_id"]},
+            values, caller or principal()))
+
+    def test_append_named_ingress_extension_keeps_base_and_replays_exact_receipt(self):
+        recipe, first, base_graph = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        base = recipe["base"]
+        before = self.runtime_truth()
+        graph_count = len(self.rows("cpk_graph_versions"))
+        action_count = len(self.rows("cpk_operation_actions"))
+        receipt = self.append_ingress_preview(preview)
+        self.assertEqual((receipt["workspace_id"], receipt["draft_id"], receipt["revision"]),
+            ("workspace-a", base["draft_id"], 3))
+        self.assertNotIn(receipt["graph_id"], {base["graph_id"], first.graph_id})
+        self.assertEqual(len(self.rows("cpk_graph_versions")), graph_count + 1)
+        self.assertEqual(len(self.rows("cpk_operation_actions")), action_count + 1)
+        after = self.runtime_truth()
+        for name in before.keys() - {"cpk_realized_graph_projections"}:
+            self.assertEqual(before[name], after[name], name)
+        with self.unit_of_work() as uow:
+            revisions = uow.stores.desired_topology_drafts
+            self.assertEqual([revisions.revision("workspace-a", base["draft_id"], i).graph_id for i in (1, 2, 3)],
+                [first.graph_id, base["graph_id"], receipt["graph_id"]])
+            saved = DEFAULT_GRAPH_CODEC.decode(uow.stores.graphs.get(receipt["graph_id"]).graph_descriptor)
+            self.assertEqual(saved.node("hello"), base_graph.node("hello"))
+            self.assertEqual(saved.node("mux"), base_graph.node("mux"))
+            self.assertEqual(saved.node("mux").endpoint("internal").url, "http://mux:8000")
+            self.assertEqual(saved.edges, base_graph.edges)
+            self.assertEqual(saved.public_ingresses[0].target.descriptor(),
+                             {"node_id": "mux", "provider_socket": "internal"})
+            self.assertEqual(saved.node("connector").configuration_artifacts[0].artifact_id, "cloudflared-control")
+            uow.stores.ingress_authorities.revoke("workspace-a", IngressAuthorityReference("hello-public"))
+            uow.commit()
+        committed = self.catalogue_truth(), self.runtime_truth()
+        self.assertEqual(self.append_ingress_preview(preview), receipt)
+        for changed in ({"idempotency_key": "another-intent"},
+                        {"product_recipe": {**recipe, "ingress": {**recipe["ingress"], "hostname": "changed.example.test"}}}):
+            with self.assertRaises(CpkServerApplicationError) as refusal:
+                self.append_ingress_preview(preview, **changed)
+            self.assertEqual(refusal.exception.status, 409)
+        self.assertEqual(committed, (self.catalogue_truth(), self.runtime_truth()))
+
+    def test_append_extension_fences_commitment_lifecycle_and_authority_before_writing(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        original = self.catalogue_truth(), self.runtime_truth()
+        for change in ({"expected_proposal_commitment": {**preview["proposal_commitment"], "sha256": "0" * 64}},
+                       {"receiver_lifecycle": {**preview["receiver_lifecycle"], "desired_graph_revision": 42}}):
+            with self.subTest(field=tuple(change)):
+                with self.assertRaises(CpkServerApplicationError) as refused:
+                    self.append_ingress_preview(preview, **change)
+                self.assertEqual(refused.exception.status, 409)
+                self.assertEqual((self.catalogue_truth(), self.runtime_truth()), original)
+        with self.unit_of_work() as uow:
+            uow.stores.ingress_authorities.revoke("workspace-a", IngressAuthorityReference("hello-public"))
+            uow.commit()
+        after_revoke = self.catalogue_truth(), self.runtime_truth()
+        with self.assertRaises(CpkServerApplicationError) as refused:
+            self.append_ingress_preview(preview)
+        self.assertEqual(refused.exception.status, 409)
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), after_revoke)
+
+    def test_append_extension_rechecks_grants_and_active_product(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        before = self.catalogue_truth(), self.runtime_truth()
+        for missing in (PolicyScope.INSTANCE_WORKSPACE_EDIT, PolicyScope.INSTANCE_WORKSPACE_READ,
+                        PolicyScope.INGRESS_AUTHORITY_READ, PolicyScope.DELEGATION_KEY_READ):
+            denied = principal(scopes=tuple(scope for scope in PolicyScope if scope != missing))
+            with self.assertRaises(CpkServerApplicationError) as refusal:
+                self.append_ingress_preview(preview, caller=denied)
+            self.assertEqual(refusal.exception.status, 403)
+            self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+        with self.unit_of_work() as uow:
+            reference = ProductReferenceCodec().decode(recipe["connector"]["product"])
+            uow.stores.registered_products.revoke("workspace-a", reference)
+            uow.commit()
+        with self.assertRaises(CpkServerApplicationError) as refusal:
+            self.append_ingress_preview(preview)
+        self.assertEqual(refusal.exception.status, 409)
+        self.assertEqual((self.catalogue_truth(), self.runtime_truth()), before)
+
+    def test_append_overlapping_verifier_registration_requires_the_new_commitment(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        purpose = DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ
+        candidate = RegisterDelegationSigningKeyCommand("workspace-a", purpose, "fixture-issuer",
+            DelegationPublicKey("next-key", DelegationKeyAlgorithm.ED25519, PUBLIC_KEY_B),
+            SecretReference("secret://fixture/next-key"), "operator-a", NOW, ()).candidate()
+        before = self.catalogue_truth()
+        ready = threading.Event()
+        proceed = threading.Event()
+        owner_pid = []
+
+        class RegistrationConnection(psycopg.Connection):
+            def execute(connection, query, *args, **kwargs):
+                if "INSERT INTO cpk_delegation_signing_keys" in str(query):
+                    owner_pid.append(connection.info.backend_pid)
+                    ready.set()
+                    if not proceed.wait(10):
+                        raise TimeoutError("append did not reach the verifier-purpose lock")
+                return super().execute(query, *args, **kwargs)
+
+        def register():
+            with PostgresUnitOfWork(lambda: RegistrationConnection.connect(self.database_url,
+                    options=f"-c search_path={self.schema} -c lock_timeout=5000")) as uow:
+                key = uow.stores.delegation_signing_keys.register(candidate)
+                uow.commit()
+                return key
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            registration = pool.submit(register)
+            try:
+                self.assertTrue(ready.wait(5))
+                append = pool.submit(self.append_ingress_preview, preview)
+                deadline = time.monotonic() + 4
+                while not self.connection.execute(
+                        "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE NOT granted AND locktype='advisory' "
+                        "AND %s=ANY(pg_blocking_pids(pid)))", (owner_pid[0],)).fetchone()[0]:
+                    self.assertLess(time.monotonic(), deadline, "append did not wait for registration")
+                    time.sleep(0.01)
+            finally:
+                proceed.set()
+            self.assertEqual(registration.result().registration_id, candidate.registration_id)
+            with self.assertRaises(CpkServerApplicationError) as stale:
+                append.result()
+        self.assertEqual(stale.exception.status, 409)
+        self.assertEqual(self.catalogue_truth(), before)
+        refreshed = self.preview(recipe)
+        self.assertNotEqual(refreshed["proposal_commitment"], preview["proposal_commitment"])
+        receipt = self.append_ingress_preview(refreshed)
+        self.assertEqual(receipt["revision"], 3)
+        self.assertEqual(self.append_ingress_preview(refreshed), receipt)
+        with self.unit_of_work() as uow:
+            stored = uow.stores.delegation_signing_keys.get("workspace-a", purpose, "fixture-issuer", "next-key")
+            self.assertEqual(stored, candidate)
+
+    def test_competing_extension_appends_from_revision_two_have_one_winner(self):
+        recipe, _, _ = self.ingress_extension_fixture()
+        self.seed_receiver_verifiers()
+        preview = self.preview(recipe)
+        barrier = threading.Barrier(2)
+        def append(key):
+            barrier.wait(timeout=10)
+            try:
+                return self.append_ingress_preview(preview, idempotency_key=key)
+            except CpkServerApplicationError as error:
+                return error.status
+        before = len(self.rows("cpk_graph_versions")), len(self.rows("cpk_operation_actions"))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(append, ("editor-a", "editor-b")))
+        self.assertEqual(outcomes.count(409), 1)
+        winner, = (value for value in outcomes if isinstance(value, dict))
+        self.assertEqual(winner["revision"], 3)
+        self.assertEqual((len(self.rows("cpk_graph_versions")), len(self.rows("cpk_operation_actions"))),
+                         (before[0] + 1, before[1] + 1))
 
     def test_named_ingress_extension_observes_one_snapshot_during_authority_and_product_change(self):
         recipe, _, _ = self.ingress_extension_fixture()

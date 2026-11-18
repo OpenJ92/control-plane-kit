@@ -283,8 +283,10 @@ class IngressAuthorityStore:
         workspace_id: str,
         authority_ref: IngressAuthorityReference,
         hostname: str,
+        *,
+        for_update: bool = False,
     ) -> RegisteredIngressAuthority:
-        authority = self._get_active_by_ref(workspace_id, authority_ref)
+        authority = self._get_active_by_ref(workspace_id, authority_ref, for_update=for_update)
         if authority is None or not authority.authority.allows_hostname(hostname):
             raise IngressAuthorityNotFound(
                 "active ingress authority does not allow hostname"
@@ -295,6 +297,8 @@ class IngressAuthorityStore:
         self,
         workspace_id: str,
         authority_ref: IngressAuthorityReference,
+        *,
+        for_update: bool = False,
     ) -> RegisteredIngressAuthority | None:
         row = self._connection.execute(
             """
@@ -311,7 +315,7 @@ class IngressAuthorityStore:
             WHERE workspace_id = %s
               AND authority_ref = %s
               AND status = 'active'
-            """,
+            """ + (" FOR UPDATE" if for_update else ""),
             (workspace_id, authority_ref.reference_id),
         ).fetchone()
         if row is None:
