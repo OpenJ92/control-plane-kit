@@ -20,6 +20,10 @@ from control_plane_kit_operations.records import OperationsRecordError
 # Shared cumulative transport allowance, independent of native collection caps.
 MAX_CONFIGURATION_EVIDENCE_RECORDS = 8192
 
+
+class ConfigurationEvidenceCapacityError(ValueError):
+    """Preparation exhausted its evidence allowance; no raw cause is retained."""
+
 _ERROR = "configuration preparation evidence is invalid"
 _ARTIFACT = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")

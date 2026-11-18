@@ -396,7 +396,10 @@ class _OperatorOverviewReadProjection:
         incomplete = [receipt for receipt in receipts
                       if receipt.status is ExecutionCommandReceiptStatus.INCOMPLETE]
         if incomplete:
-            return _command("incomplete" if len(incomplete) == 1 else "ambiguous"), receipts
+            projection = _command("incomplete" if len(incomplete) == 1 else "ambiguous")
+            if len(incomplete) == 1 and incomplete[0].diagnostic is not None:
+                projection["diagnostic"] = incomplete[0].diagnostic.descriptor()
+            return projection, receipts
         # Historical completions do not compete with the latest result. Only
         # chronology can establish currency; an idempotency key never does.
         completed = [(datetime.fromisoformat(receipt.completed_at), receipt)

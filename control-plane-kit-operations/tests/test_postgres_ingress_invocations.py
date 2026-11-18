@@ -39,30 +39,338 @@ class PostgresNativeIngressAcceptanceTests(_CurrentCoordinatorPermission, manage
         self.ingress = StagedIngressPort(self)
         self.health.responses = [managed.NativeConnectionOutcome.CONNECTED]
 
-    async def allocate_native(self):
+    async def allocate_native(self, *, max_effects=1, qualified_runtime=False,
+            command_key="native-ingress-acceptance"):
         factory = self.unit_of_work
         fold = managed.EffectAttemptFoldService(factory, id_factory=self.ids["effect-fold"])
+        import control_plane_kit_operations as operations
+        runtime = (managed.RuntimeInterpreterDispatcher({managed.RuntimeKind.DOCKER:
+            managed.RuntimeAdapterRegistration(self.runtime, exact_version_execute_with_authority=True,
+                invocation_profile="cpk.semantic-invocations.v1")}, managed.SecretUseAuthorizationService(factory))
+            if qualified_runtime else self.runtime)
         owner = ExecutionCoordinator(factory,
             lifecycle=managed.RunLifecycleCommandService(factory, clock=now, id_factory=self.ids["lifecycle"]),
-            adapter=ActivityExecutionDispatcher(runtime=self.runtime,
+            adapter=ActivityExecutionDispatcher(runtime=runtime,
                 ingress=IngressRealizationAdapter(factory,
                     {IngressAuthorityProviderKind.CLOUDFLARE: IngressProviderRegistration(
                         self.ingress, "cpk.ingress-invocations.v1")}, now,
                     managed.SecretUseAuthorizationService(factory), invocation_service=IngressInvocationService(
                         factory, permission_policy=self.policy, clock=now))),
             start_service=managed.EffectAttemptStartService(factory,
-                id_factory=self.ids["effect-start"], permission_policy=self.policy), fold_service=fold,
+                id_factory=self.ids["effect-start"], permission_policy=self.policy,
+                health_receiver_decoders=self.registry), fold_service=fold,
             reconciliation_service=managed.EffectAttemptReconciliationService(
                 factory, managed.ForbiddenRecovery(), fold),
             clock=now, id_factory=self.ids["execution"], permission_policy=self.policy,
             managed_health=self.health, health_signing_authority=managed.HealthSigningAuthorityReloadService(
-                factory, health_receiver_decoders=self.registry))
+                factory, health_receiver_decoders=self.registry),
+            invocation_service=(operations.ExecutionInvocationService(factory, permission_policy=self.policy,
+                clock=now, health_receiver_decoders=self.registry) if qualified_runtime else None))
         with factory() as uow:
             request = uow.stores.execution.get_request(self.request_id)
         execution = ExecuteActivityRun(self.run_id,
             ExecutionWorkerAuthority(request.claim.worker_id, self.original.granted_scopes),
-            request.claim.fence, IdempotencyKey("native-ingress-acceptance"))
+            request.claim.fence, IdempotencyKey(command_key), max_effects=max_effects)
         return (await owner.execute_managed(ExecuteManagedActivityRun(execution, self.original))).descriptor()
+
+    async def qualified_ingress_boundary(self, *, connector_configuration=False):
+        import control_plane_kit_operations as operations
+        from tests.test_postgres_accepted_installation_sources import _TwoIngressRuntime
+        if connector_configuration:
+            self.connector_artifacts = (managed.ConfigurationArtifact("connector-settings",
+                "/etc/cpk/connector/settings.json", managed.ConfigurationMediaType.JSON, '{"configured":true}'),)
+            self.graph, self.documents, self.registry = self.authored_graph()
+        self.runtime = _TwoIngressRuntime(self)
+        await self.prepare_and_start()
+        for _ in range(len(self.plan.activities)):
+            journal = project_activity_journal(self.plan, activity_journal_events(self.history()))
+            ready = derive_schedule(self.plan, journal.state).ready
+            if ready and type(ready[0].operation) is AllocatePublicIngress:
+                self.allocation_activity = ready[0].activity_id.value
+                break
+            result = await self.execute_one()
+            self.assertEqual(result["coordinator_status"], "progressed", result)
+        else:
+            self.fail("allocation never became ready")
+        self.configure_permissions(self.worker.identity, installation="coordinator-permission")
+        with self.unit_of_work() as uow:
+            runtime = uow.stores.runtime_authorities.get_active_for_update(
+                "workspace-a", self.graph.runtimes["docker"].authority_ref)
+        assignments = operations.ManagedRuntimeAssignmentCommandService(self.unit_of_work,
+            administration_policy=self.admin_policy, capability_policy=self.capabilities,
+            clock=now, id_factory=self.ids["session"])
+        assignments.grant(operations.GrantManagedRuntimeAccess(self.admin_context,
+            "workspace-a", "docker", runtime.authority_ref, runtime.registration_id,
+            "local-docker", 0, IdempotencyKey("qualified-ingress-management")))
+
+    async def test_qualified_ingress_connector_separate_commands_positive_control(self):
+        await self.qualified_ingress_boundary()
+        first = await self.allocate_native(qualified_runtime=True, command_key="qualified-allocation")
+        self.assertEqual(first["coordinator_status"], "progressed", first)
+        from tests.ingress_materialization_diagnostic import inspect_materialization
+        before = self.history()
+        observed = inspect_materialization(self.tracker._connect, workspace_id="workspace-a",
+            request_id=self.request_id, run_id=self.run_id, plan_id=self.plan_id,
+            command_key="qualified-allocation", expected_plan={name: self.plan_descriptor[name] for name in (
+                "base_graph_id", "base_realized_projection_id", "desired_graph_id",
+                "desired_realized_projection_id", "desired_graph_revision", "derivation_profile")})
+        self.assertTrue(observed["transaction_read_only"], observed)
+        self.assertTrue(observed["configuration_context_ready"], observed)
+        self.assertEqual(self.history(), before)
+        second = await self.allocate_native(qualified_runtime=True, command_key="qualified-connector")
+        self.assertEqual(second["coordinator_status"], "progressed", second)
+        self.assertIn("connector", self.runtime.containers)
+        self.assertEqual(self.ingress.calls, ["secret-resolution", "ingress-provider-create", "ingress-custody-write"])
+
+    async def test_qualified_ingress_connector_single_command_preserves_owner_transition(self):
+        await self.qualified_ingress_boundary()
+        result = await self.allocate_native(qualified_runtime=True, max_effects=2,
+            command_key="qualified-allocation-and-connector")
+        self.assertEqual(result["coordinator_status"], "progressed", result)
+        self.assertEqual(result["effects_attempted"], 2)
+        self.assertIn("connector", self.runtime.containers)
+        self.assertEqual(self.ingress.calls, ["secret-resolution", "ingress-provider-create", "ingress-custody-write"])
+
+    async def test_post_allocation_preparation_capacity_failure_retains_command_diagnostic(self):
+        """New law: diagnostic evidence never invents a terminal activity outcome."""
+        from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
+        from control_plane_kit_operations.postgres.configuration_evidence import _Capacity
+
+        await self.qualified_ingress_boundary(connector_configuration=True)
+        before = self.history()
+        current_before = await self.invoke("read.current-graph", ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a"})
+        boundary = {}
+        original = ExecutionCoordinator._configuration_context
+        command_key = "post-allocation-preparation-diagnostic"
+
+        def refuse_next_context(owner, stores, command, request, run, **kwargs):
+            history = self.history()
+            if any(event.activity_id == self.allocation_activity
+                    and event.kind is ActivityEventKind.STEP_SUCCEEDED for event in history):
+                boundary["history"] = history
+                boundary["run"] = run
+                boundary["request"] = request
+                raise _Capacity("diagnostic-test-private-material-must-not-be-recorded")
+            return original(owner, stores, command, request, run, **kwargs)
+
+        with mock.patch.object(ExecutionCoordinator, "_configuration_context", refuse_next_context):
+            with self.assertRaises(ExecutionCoordinatorConflict) as raised:
+                await self.allocate_native(qualified_runtime=True, max_effects=2,
+                    command_key=command_key)
+
+        self.assertIn("history", boundary, "fault must follow committed allocation success")
+        self.assertEqual(boundary["history"][:len(before)], before)
+        self.assertEqual(self.history(), boundary["history"])
+        self.assertNotIn("connector", self.runtime.containers)
+        self.assertEqual(self.ingress.calls,
+            ["secret-resolution", "ingress-provider-create", "ingress-custody-write"])
+        with self.unit_of_work() as uow:
+            receipt = uow.stores.execution.command_receipt_for_idempotency(self.run_id, command_key)
+            self.assertEqual(uow.stores.execution.get_run(self.run_id), boundary["run"])
+            self.assertEqual(uow.stores.execution.get_request(self.request_id), boundary["request"])
+        self.assertEqual(receipt.status.value, "incomplete")
+        self.assertIsNone(receipt.result)
+        self.assertIsNone(receipt.completed_at)
+        diagnostic = getattr(receipt, "diagnostic", None)
+        self.assertIsNotNone(diagnostic,
+            "missing durable command diagnostic after committed allocation and typed preparation refusal")
+        self.assertEqual(diagnostic.phase, "context-preparation")
+        self.assertEqual(diagnostic.category, "evidence-capacity")
+        self.assertEqual(diagnostic.last_committed_event_ordinal, boundary["history"][-1].ordinal)
+        self.assertNotIn("diagnostic-test-private-material", repr(diagnostic))
+        self.assertEqual(raised.exception.category, "evidence-capacity")
+        self.assertEqual(raised.exception.diagnostic_status, "recorded")
+        self.assertEqual(await self.invoke("read.current-graph", ControlPlaneServiceRole.READS,
+            path={"workspace_id": "workspace-a"}), current_before)
+        replay = await self.allocate_native(qualified_runtime=True, max_effects=2,
+            command_key=command_key)
+        self.assertEqual(replay["coordinator_status"], "uncertain")
+        self.assertEqual(self.history(), boundary["history"])
+        self.assertNotIn("connector", self.runtime.containers)
+
+    async def test_claimed_preparation_unavailable_records_opened_frontier_without_effects(self):
+        from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
+        from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable
+        self.connector_artifacts = (managed.ConfigurationArtifact("connector-settings",
+            "/etc/cpk/connector/settings.json", managed.ConfigurationMediaType.JSON, '{"configured":true}'),)
+        self.graph, self.documents, self.registry = self.authored_graph()
+        await self.prepare_and_start(start_run=False)
+        self.configure_permissions(self.worker.identity, installation="coordinator-permission")
+        before = self.history()
+        self.assertEqual([event.kind for event in before], [ActivityEventKind.RUN_OPENED])
+        with self.unit_of_work() as uow:
+            run_before = uow.stores.execution.get_run(self.run_id)
+            request_before = uow.stores.execution.get_request(self.request_id)
+        with mock.patch.object(ExecutionCoordinator, "_configuration_context",
+                side_effect=_Unavailable("private-preparation-material")):
+            with self.assertRaises(ExecutionCoordinatorConflict) as raised:
+                await self.allocate_native(qualified_runtime=True, command_key="early-unavailable")
+        with self.unit_of_work() as uow:
+            receipt = uow.stores.execution.command_receipt_for_idempotency(self.run_id, "early-unavailable")
+            self.assertEqual(uow.stores.execution.get_run(self.run_id), run_before)
+            self.assertEqual(uow.stores.execution.get_request(self.request_id), request_before)
+        diagnostic = getattr(receipt, "diagnostic", None)
+        self.assertIsNotNone(diagnostic, "early CLAIMED failure needs bounded command evidence")
+        self.assertEqual(diagnostic.category, "material-unavailable")
+        self.assertEqual(diagnostic.last_committed_event_ordinal, before[-1].ordinal)
+        self.assertEqual(raised.exception.diagnostic_status, "recorded")
+        self.assertNotIn("private-preparation-material", repr(raised.exception))
+        self.assertEqual(self.history(), before)
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+        from control_plane_kit_operations.read_services.operator_overview import _OperatorOverviewReadProjection
+        with self.unit_of_work() as uow:
+            projection = _OperatorOverviewReadProjection(uow.stores.workspaces, uow.stores.graphs,
+                uow.stores.activity_history, uow.stores.execution)
+            command_view, _ = projection._read_command(run_before)
+            self.assertEqual(command_view["diagnostic"], diagnostic.descriptor())
+            uow.stores.execution.add_command_receipt(replace(receipt,
+                idempotency_key="second-unresolved", diagnostic=None))
+            ambiguous, _ = projection._read_command(run_before)
+            self.assertEqual(ambiguous["receipt_state"], "ambiguous")
+            self.assertNotIn("diagnostic", ambiguous)
+        from control_plane_kit_operations.postgres.execution import validate_command_diagnostic_rows
+        validate_command_diagnostic_rows(self.connection)
+        # No invocation children are needed for strict retained diagnostic validation.
+        self.connection.execute("UPDATE cpk_execution_command_receipts SET diagnostic=jsonb_set("
+            "diagnostic,'{category}','\"unknown\"'::jsonb) WHERE run_id=%s AND idempotency_key=%s",
+            (self.run_id, "early-unavailable"))
+        from control_plane_kit_operations.postgres.current_data_validation import CurrentRowDrift
+        try:
+            with self.assertRaises(CurrentRowDrift):
+                validate_command_diagnostic_rows(self.connection)
+        finally:
+            from psycopg.types.json import Jsonb
+            self.connection.execute("UPDATE cpk_execution_command_receipts SET diagnostic=%s "
+                "WHERE run_id=%s AND idempotency_key=%s", (Jsonb(diagnostic.descriptor()),
+                    self.run_id, "early-unavailable"))
+
+    async def test_command_diagnostic_store_first_write_fencing_and_rollback(self):
+        from control_plane_kit_operations import records
+        from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
+        await self.prepare_and_start(start_run=False)
+        self.configure_permissions(self.worker.identity, installation="coordinator-permission")
+        key = "store-diagnostic"
+        with mock.patch.object(ExecutionCoordinator, "_load_context",
+                side_effect=ExecutionCoordinatorConflict("admission-only boundary")):
+            with self.assertRaises(ExecutionCoordinatorConflict):
+                await self.allocate_native(qualified_runtime=True, command_key=key)
+        with self.unit_of_work() as uow:
+            receipt = uow.stores.execution.command_receipt_for_idempotency(self.run_id, key)
+            request = uow.stores.execution.get_request(self.request_id)
+            writer = getattr(uow.stores.execution, "record_command_diagnostic", None)
+            self.assertIsNotNone(writer, "missing immutable fenced diagnostic mutation")
+        value = records.ExecutionCommandDiagnostic("context-preparation", "evidence-capacity",
+            now(), self.history()[-1].ordinal)
+        args = dict(intent_fingerprint=receipt.intent_fingerprint, fence=request.claim.fence,
+            diagnostic=value)
+        # An uncommitted caller cannot persist evidence.
+        with self.unit_of_work() as uow:
+            uow.stores.execution.record_command_diagnostic(self.run_id, key, **args)
+        with self.unit_of_work() as uow:
+            self.assertIsNone(uow.stores.execution.command_receipt_for_idempotency(self.run_id, key).diagnostic)
+        for changed in ({"intent_fingerprint": "0" * 64},
+                {"fence": replace(request.claim.fence, generation=request.claim.generation + 1)},
+                {"fence": replace(request.claim.fence, worker_id="foreign-worker")},
+                {"diagnostic": replace(value, last_committed_event_ordinal=value.last_committed_event_ordinal + 1)},
+                {"diagnostic": replace(value, occurred_at="2000-01-01T00:00:00Z")}):
+            with self.subTest(changed=changed), self.assertRaises(records.OperationsRecordError):
+                with self.unit_of_work() as uow:
+                    uow.stores.execution.record_command_diagnostic(self.run_id, key, **(args | changed))
+                    uow.commit()
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        barrier = Barrier(2, timeout=10)
+        def first_writer():
+            barrier.wait()
+            with self.unit_of_work() as uow:
+                record = uow.stores.execution.record_command_diagnostic(self.run_id, key, **args)
+                uow.commit()
+            return record
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            first_future, second_future = workers.submit(first_writer), workers.submit(first_writer)
+            first, second = first_future.result(timeout=20), second_future.result(timeout=20)
+        self.assertEqual(first, second)
+        await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
+            path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
+            payload={"claim_generation": self.generation, "idempotency_key": "later-explicit-start"})
+        self.assertGreater(self.history()[-1].ordinal, value.last_committed_event_ordinal)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.record_command_diagnostic(self.run_id, key, **args), first)
+            uow.commit()
+        with self.assertRaises(records.OperationsRecordError):
+            with self.unit_of_work() as uow:
+                uow.stores.execution.record_command_diagnostic(self.run_id, key,
+                    **(args | {"diagnostic": replace(value, category="material-unavailable")}))
+                uow.commit()
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.command_receipt_for_idempotency(self.run_id, key).diagnostic, value)
+        # Even an exact duplicate cannot use an expired live lease.
+        self.connection.execute("UPDATE cpk_execution_requests SET lease_expires_at=clock_timestamp() "
+            "WHERE request_id=%s", (self.request_id,))
+        with self.assertRaises(records.OperationsRecordError):
+            with self.unit_of_work() as uow:
+                uow.stores.execution.record_command_diagnostic(self.run_id, key, **args)
+
+    async def test_preparation_diagnostic_exit_uncertainty_preserves_primary_category(self):
+        from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
+        from control_plane_kit_operations.postgres.configuration_evidence import _Unavailable
+        from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+        from control_plane_kit_operations.postgres.unit_of_work import PostgresUnitOfWork
+        self.connector_artifacts = (managed.ConfigurationArtifact("connector-settings",
+            "/etc/cpk/connector/settings.json", managed.ConfigurationMediaType.JSON, '{"configured":true}'),)
+        self.graph, self.documents, self.registry = self.authored_graph()
+        await self.prepare_and_start(start_run=False)
+        self.configure_permissions(self.worker.identity, installation="coordinator-permission")
+        before = self.history()
+        original_exit = PostgresUnitOfWork.__exit__
+        original_write = PostgresExecutionStore.record_command_diagnostic
+        for mode in ("preparation-exit", "before-commit", "commit-before-ack"):
+            boundary = {}
+            key = "uncertain-" + mode
+            def unavailable(owner, stores, *args, **kwargs):
+                boundary["preparation"] = id(stores.connection)
+                raise _Unavailable("private-preparation-cause")
+            def write(store, *args, **kwargs):
+                boundary["diagnostic"] = id(store._connection)
+                return original_write(store, *args, **kwargs)
+            def exit_with_fault(uow, *args):
+                target = "preparation" if mode == "preparation-exit" else "diagnostic"
+                selected = id(uow._connection) == boundary.get(target)
+                if selected and mode == "before-commit":
+                    uow.rollback()
+                result = original_exit(uow, *args)
+                if selected:
+                    raise RuntimeError("private-exit-cause")
+                return result
+            with self.subTest(mode=mode), mock.patch.object(ExecutionCoordinator, "_configuration_context", unavailable), \
+                    mock.patch.object(PostgresExecutionStore, "record_command_diagnostic", write), \
+                    mock.patch.object(PostgresUnitOfWork, "__exit__", exit_with_fault):
+                with self.assertRaises(ExecutionCoordinatorConflict) as raised:
+                    await self.allocate_native(qualified_runtime=True, command_key=key)
+            self.assertEqual(raised.exception.category, "material-unavailable")
+            self.assertEqual(raised.exception.diagnostic_status, "unacknowledged")
+            self.assertIsNone(raised.exception.__context__)
+            with self.unit_of_work() as uow:
+                receipt = uow.stores.execution.command_receipt_for_idempotency(self.run_id, key)
+            self.assertEqual(receipt.diagnostic is not None, mode == "commit-before-ack")
+            self.assertEqual(receipt.status.value, "incomplete")
+            self.assertEqual(self.history(), before)
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+
+    async def test_qualified_ingress_connector_configuration_and_generated_token_cross_same_command(self):
+        await self.qualified_ingress_boundary(connector_configuration=True)
+        result = await self.allocate_native(qualified_runtime=True, max_effects=2,
+            command_key="qualified-configured-connector")
+        self.assertEqual(result["coordinator_status"], "progressed", result)
+        self.assertEqual(result["effects_attempted"], 2)
+        request, = (r for r in self.runtime.calls
+            if getattr(r.operation.target, "node_id", None) == "connector")
+        self.assertEqual(request.kind.value, "configuration-activity.v1")
+        self.assertEqual(len(request.products[0].secret_selections), 1)
+        self.assertIn("connector", self.runtime.containers)
+
+
 
     async def test_native_allocation_reaches_current_graph_acceptance_with_original_evidence(self):
         await self.prepare_and_start()

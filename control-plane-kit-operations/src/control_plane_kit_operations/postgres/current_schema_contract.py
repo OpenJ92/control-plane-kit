@@ -2170,3 +2170,34 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = replace(
 CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = (
     "75b6b900f70a170376c1133af7a066df11b27a147c29075230c26a94ab219d25"
 )
+
+# Exact predecessor retained for the dedicated #2117 additive transition.
+PRE_COMMAND_DIAGNOSTIC_SCHEMA_CONTRACT = CURRENT_POSTGRES_SCHEMA_CONTRACT
+PRE_COMMAND_DIAGNOSTIC_SCHEMA_CONTRACT_SHA256 = CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256
+_COMMAND_DIAGNOSTIC_COLUMN = ColumnContract(
+    relation="cpk_execution_command_receipts", name="diagnostic", type_namespace="pg_catalog",
+    formatted_type="jsonb", not_null=False, identity="", generated="",
+    collation_namespace=None, collation_name=None, default_expression=None,
+)
+_COMMAND_DIAGNOSTIC_CONSTRAINT = ConstraintContract(
+    relation="cpk_execution_command_receipts", name="cpk_execution_command_receipts_diagnostic_check",
+    kind="c", validated=True, deferrable=False, deferred=False, no_inherit=False,
+    local_columns=("diagnostic", "receipt_status"), referenced_relation=None,
+    referenced_columns=None, update_action=None, delete_action=None, match_type=None,
+    check_expression="((diagnostic IS NULL) OR ((receipt_status = 'incomplete'::text) AND (jsonb_typeof(diagnostic) = 'object'::text) AND (octet_length((diagnostic)::text) <= 1024)))",
+)
+CURRENT_POSTGRES_SCHEMA_CONTRACT = replace(
+    PRE_COMMAND_DIAGNOSTIC_SCHEMA_CONTRACT,
+    columns=tuple(value for item in PRE_COMMAND_DIAGNOSTIC_SCHEMA_CONTRACT.columns
+        for value in ((item, _COMMAND_DIAGNOSTIC_COLUMN) if
+            (item.relation, item.name) == ("cpk_execution_command_receipts", "managed_intent") else (item,))),
+    constraints=tuple(sorted((*PRE_COMMAND_DIAGNOSTIC_SCHEMA_CONTRACT.constraints, _COMMAND_DIAGNOSTIC_CONSTRAINT),
+        key=lambda item: (item.relation, item.name))),
+)
+CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = "47db4dbe188b09d0a60a0bdee0fc678a49d463335e631fd359ca35d7c6091415"
+
+# Freeze this transition independently of future fresh-installation additions.
+COMMAND_DIAGNOSTIC_UPGRADE_TARGET_SCHEMA_CONTRACT = CURRENT_POSTGRES_SCHEMA_CONTRACT
+COMMAND_DIAGNOSTIC_UPGRADE_TARGET_SCHEMA_CONTRACT_SHA256 = (
+    "47db4dbe188b09d0a60a0bdee0fc678a49d463335e631fd359ca35d7c6091415"
+)

@@ -9,11 +9,12 @@ import json
 from control_plane_kit_operations.configuration_preparation import (
     MAX_CONFIGURATION_EVIDENCE_RECORDS,
     ConfigurationCapacityDecision, ConfigurationEvidenceFootprint,
+    ConfigurationEvidenceCapacityError,
     configuration_evidence_capacity,
 )
 
 
-class _Capacity(ValueError):
+class _Capacity(ConfigurationEvidenceCapacityError):
     pass
 
 

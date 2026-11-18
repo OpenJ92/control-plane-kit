@@ -654,7 +654,7 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
     def check_initial_prepared(self):
         self.assertEqual(self.plan_descriptor["desired_graph_id"], self.authored_revision)
 
-    async def prepare_and_start(self):
+    async def prepare_and_start(self, *, start_run=True):
         self.require_managed_interface()
         self.app = self.application()
         workspace = await self.invoke("command.workspace.create", ControlPlaneServiceRole.PLANNING,
@@ -701,9 +701,10 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
             path={"workspace_id": "workspace-a", "run_id": self.request_id}, principal=self.worker,
             payload={"lease_duration_seconds": 1800, "idempotency_key": "claim"})
         self.run_id, self.generation = claimed["run_id"], claimed["claim_generation"]
-        await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
-            path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
-            payload={"claim_generation": self.generation, "idempotency_key": "start"})
+        if start_run:
+            await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
+                payload={"claim_generation": self.generation, "idempotency_key": "start"})
 
     async def execute_one(self):
         self.execution_number += 1
