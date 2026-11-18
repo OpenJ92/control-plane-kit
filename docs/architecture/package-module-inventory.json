@@ -2,6 +2,20 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.postgres.command_diagnostic_upgrade",
+      "destination": "control_plane_kit_operations.postgres.command_diagnostic_upgrade",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/command_diagnostic_upgrade.py",
+      "owner": "operation", "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "persistence", "validation", "authorization"],
+      "movement": "remain", "migration_prerequisites": [],
+      "canonical_public_exports": ["CommandDiagnosticUpgradePolicy", "CommandDiagnosticUpgradePlan", "CommandDiagnosticUpgradeResult", "CommandDiagnosticUpgradeInspection", "CommandDiagnosticUpgradeError", "CommandDiagnosticUpgradeUncertain", "upgrade_command_diagnostics", "inspect_command_diagnostic_upgrade"],
+      "internal_dependencies": ["control_plane_kit_core.identity", "control_plane_kit_operations.postgres.current_schema_contract", "control_plane_kit_operations.postgres.current_schema_verification", "control_plane_kit_operations.postgres.current_data_validation", "control_plane_kit_operations.postgres.schema", "control_plane_kit_operations.postgres.execution", "control_plane_kit_operations.postgres.ingress_invocation_store", "control_plane_kit_operations.postgres.runtime_effect_origin_store", "control_plane_kit_operations.postgres.workspace_permission_store", "control_plane_kit_operations.postgres.managed_runtime_assignment_store", "control_plane_kit_operations.postgres.provider_policy_command_store"],
+      "known_package_consumers": ["control_plane_kit_operations.postgres"],
+      "optional_external_dependencies": ["psycopg"],
+      "protecting_tests": ["tests/test_postgres_command_diagnostic_upgrade.py", "tests/test_postgres_ingress_invocations.py"],
+      "motivation": "One exact predecessor additive diagnostic transition preserving all retained truth, scoped authenticated administration, bounded locks and explicit transaction acknowledgement."
+    },
+    {
       "module": "control_plane_kit_operations.product_topology_authoring",
       "destination": "control_plane_kit_operations.product_topology_authoring",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/product_topology_authoring.py",

@@ -373,7 +373,8 @@ class PostgresExecutionStore:
         _require_invocation_owners(self, record)
         return record
 
-    def original_final_invocation(self, identity, *, original_event_id, request_fingerprint, kind):
+    def original_final_invocation(self, identity, *, original_event_id, request_fingerprint, kind,
+            receipt_identity_reader=None):
         """Bounded original candidates; malformed history never becomes absence."""
         from control_plane_kit_core.operations import EffectAttemptIdentity
         if (type(identity) is not EffectAttemptIdentity or kind not in (
@@ -405,7 +406,7 @@ class PostgresExecutionStore:
         if (record.original_event_id != original_event_id
                 or record.request_fingerprint != request_fingerprint):
             raise ExecutionInvocationConflict(record.invocation_id)
-        _require_invocation_owners(self, record)
+        _require_invocation_owners(self, record, receipt_identity_reader=receipt_identity_reader)
         return record
 
     def ordinary_verification_invocations(self, marker, profile):
@@ -1603,6 +1604,21 @@ def _result_from_descriptor(value: object) -> ExecutionCommandResultRecord:
         ) from None
 
 
+def historical_command_receipt_identity(connection, run_id, idempotency_key):
+    """Identity-only projection for an already verified pre-diagnostic schema.
+
+    Not a current receipt read or schema fallback; upgrade validators select it
+    explicitly after exact historical contract admission. It cannot write.
+    """
+    _require_run_id(run_id)
+    _require_command_key(idempotency_key)
+    row = connection.execute("SELECT run_id,idempotency_key,intent_fingerprint,worker_id,"
+        "authority_scopes,claim_generation,max_effects,admitted_at,initial_run,receipt_status,"
+        "completed_at,result,managed_intent FROM cpk_execution_command_receipts "
+        "WHERE run_id=%s AND idempotency_key=%s", (run_id, idempotency_key)).fetchone()
+    return None if row is None else _command_receipt((*row, None))
+
+
 def validate_command_diagnostic_rows(connection) -> None:
     """Validate retained facts even when a command has no invocation children."""
     from .current_data_validation import CurrentRowDrift
@@ -1886,7 +1902,7 @@ def _invocation_row(row):
         raise ExecutionInvocationConflict() from None
 
 
-def _require_invocation_owners(store, record, *, fresh=False):
+def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_reader=None):
     """Check immutable joins; semantic permission remains with the admitting owner."""
     from control_plane_kit_core.operations import EffectAttemptIdentity
     from control_plane_kit_core.planning import ActivityId
@@ -1896,9 +1912,14 @@ def _require_invocation_owners(store, record, *, fresh=False):
     from .secret_provider_store import SecretUseAuthorizationStore
     try:
         from .ingress_invocation_store import require_ingress_invocation_owner
-        if require_ingress_invocation_owner(store._connection, record, fresh=fresh):
+        if require_ingress_invocation_owner(store._connection, record, fresh=fresh,
+                receipt_identity_reader=receipt_identity_reader):
             return
-        parent = store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+        if fresh and receipt_identity_reader is not None:
+            raise ExecutionInvocationConflict(record.invocation_id)
+        parent = (store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+            if receipt_identity_reader is None else receipt_identity_reader(store._connection,
+                record.command.run_id, record.command.idempotency_key))
         if (parent is None or parent.intent_fingerprint != record.command.intent_fingerprint
                 or parent.managed_intent is None or parent.managed_intent.workspace_id != record.workspace_id
                 or (fresh and parent.status is not ExecutionCommandReceiptStatus.INCOMPLETE)):
@@ -1947,7 +1968,8 @@ def _require_invocation_owners(store, record, *, fresh=False):
             else:
                 original = store.original_final_invocation(identity,
                     original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                    kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                    kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
+                        receipt_identity_reader=receipt_identity_reader)
                 if original is None or original.command != record.command:
                     raise ExecutionInvocationConflict(record.invocation_id)
             runtime = RuntimeAuthorityStore(store._connection).get_registration(
@@ -1960,7 +1982,8 @@ def _require_invocation_owners(store, record, *, fresh=False):
                 raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.RECONCILIATION_OBSERVATION:
             from .runtime_observation_source import original_observation_source
-            original, _, _, target = original_observation_source(store._connection, intent)
+            original, _, _, target = original_observation_source(store._connection, intent,
+                        receipt_identity_reader=receipt_identity_reader)
             if original.command == record.command or record.target_fingerprint != target:
                 raise ExecutionInvocationConflict(record.invocation_id)
 
@@ -1976,7 +1999,8 @@ def _require_invocation_owners(store, record, *, fresh=False):
                     from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
                     original = store.original_final_invocation(identity,
                         original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                        kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                        kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
+                        receipt_identity_reader=receipt_identity_reader)
                     if original is None or original.command != record.command:
                         raise ExecutionInvocationConflict(record.invocation_id)
                     runtime = RuntimeAuthorityStore(store._connection).get_registration(
@@ -2004,18 +2028,21 @@ def _require_invocation_owners(store, record, *, fresh=False):
             if record.attempt is not None and authorized.effect_id == record.original_event_id:
                 original_marker = store.original_final_invocation(identity,
                     original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH,
+                        receipt_identity_reader=receipt_identity_reader)
                 origin = None
                 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
                 if original_marker is None and intent.intent.kind is RuntimeEffectKind.REALIZE_ACTIVITY:
                     from .runtime_effect_origin_store import RuntimeEffectOriginStore
-                    origin = RuntimeEffectOriginStore(store._connection).get(identity)
+                    origin = RuntimeEffectOriginStore(store._connection).get(identity,
+                        receipt_identity_reader=receipt_identity_reader)
                 original_command = original_marker.command if original_marker is not None else (
                     None if origin is None else origin.command)
                 if original_command is not None and original_command != record.command:
                     from .runtime_observation_source import original_observation_source
                     from control_plane_kit_operations.runtime_secret_uses import OperationalSecretUse
-                    _, _, observation_profile, _ = original_observation_source(store._connection, intent)
+                    _, _, observation_profile, _ = original_observation_source(store._connection, intent,
+                        receipt_identity_reader=receipt_identity_reader)
                     if (OperationalSecretUse(authorized.reference, authorized.intent) not in observation_profile.required_uses
                             or authorized.probe_id is not None):
                         raise ExecutionInvocationConflict(record.invocation_id)
@@ -2040,7 +2067,7 @@ def _require_invocation_owners(store, record, *, fresh=False):
         raise ExecutionInvocationConflict(record.invocation_id) from None
 
 
-def validate_execution_invocation_rows(connection):
+def validate_execution_invocation_rows(connection, *, receipt_identity_reader=None):
     """Bounded exact-data verification for the final schema, never repair."""
     from .current_data_validation import CurrentRowDrift
     store, after = PostgresExecutionStore(connection), None
@@ -2052,7 +2079,7 @@ def validate_execution_invocation_rows(connection):
                 () if after is None else (after,)).fetchall()
             for row in rows:
                 record = _invocation_row(row)
-                _require_invocation_owners(store, record)
+                _require_invocation_owners(store, record, receipt_identity_reader=receipt_identity_reader)
                 after = record.invocation_id
             if len(rows) < 100:
                 return

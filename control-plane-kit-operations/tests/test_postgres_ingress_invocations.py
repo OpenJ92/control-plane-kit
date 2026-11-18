@@ -370,7 +370,71 @@ class PostgresNativeIngressAcceptanceTests(_CurrentCoordinatorPermission, manage
         self.assertEqual(len(request.products[0].secret_selections), 1)
         self.assertIn("connector", self.runtime.containers)
 
+    async def test_command_upgrade_preserves_populated_command_and_ingress_owners(self):
+        from control_plane_kit_operations import postgres
+        from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
+        from tests.historical_schema_fixture import catalog_sha256, namespace_state, PRE_COMMAND_DIAGNOSTIC_SHA256
+        await self.qualified_ingress_boundary()
+        result = await self.allocate_native(qualified_runtime=True, command_key="retained-allocation")
+        self.assertEqual(result["coordinator_status"], "progressed")
+        self.assertGreater(len(self.rows("cpk_execution_command_invocations")), 0)
+        self.assertGreater(len(self.rows("cpk_ingress_invocation_contexts")), 0)
+        self.connection.execute("ALTER TABLE cpk_execution_command_receipts DROP COLUMN diagnostic")
+        self.assertEqual(catalog_sha256(self.connection), PRE_COMMAND_DIAGNOSTIC_SHA256)
+        before_objects, before_rows, _ = namespace_state(self.connection)
+        database, schema = self.connection.execute("SELECT current_database(),current_schema()").fetchone()
+        admin = PrincipalIdentity("issuer-a", "admin", PrincipalKind.OPERATOR)
+        principal = AuthenticatedPrincipal(admin)
+        policy = postgres.CommandDiagnosticUpgradePolicy("installation-a", database, schema, (admin,))
+        plan = policy.plan(principal)
+        result = postgres.upgrade_command_diagnostics(self.connection, plan,
+            principal=principal, administration_policy=policy)
+        self.assertFalse(result.replayed)
+        self.assertTrue(postgres.upgrade_command_diagnostics(self.connection, plan,
+            principal=principal, administration_policy=policy).replayed)
+        objects, rows, _ = namespace_state(self.connection)
+        for row, in rows["cpk_execution_command_receipts"]:
+            self.assertIsNone(row.pop("diagnostic"))
+        self.assertEqual(objects, before_objects)
+        self.assertEqual(rows, before_rows)
 
+    async def test_historical_upgrade_preserves_populated_nested_ingress_owners(self):
+        from control_plane_kit_operations import postgres
+        import control_plane_kit_operations as operations
+        from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
+        from control_plane_kit_operations.postgres import current_schema_contract as contracts
+        from tests.historical_schema_fixture import catalog_sha256, namespace_state, PROVIDER_SOURCE_SHA256, HISTORICAL_TARGET_SHA256
+        await self.qualified_ingress_boundary()
+        result = await self.allocate_native(qualified_runtime=True, command_key="historical-allocation")
+        self.assertEqual(result["coordinator_status"], "progressed")
+        self.assertGreater(len(self.rows("cpk_execution_command_invocations")), 0)
+        self.assertGreater(len(self.rows("cpk_ingress_invocation_contexts")), 0)
+        self.connection.execute("BEGIN")
+        self.addCleanup(self.connection.rollback)
+        # Reconstruct the exact independently pinned historical catalog around real
+        # retained owner rows. Empty later tables are the only removed relations.
+        for table in ("cpk_provider_policy_outcome_observations", "cpk_provider_policy_commands"):
+            self.assertEqual(self.rows(table), ())
+            self.connection.execute(f'DROP TABLE "{table}"')
+        self.connection.execute("ALTER TABLE cpk_execution_command_receipts DROP COLUMN diagnostic")
+        for constraint in contracts.PRE_PROVIDER_POLICY_COMMAND_SCHEMA_CONTRACT.constraints:
+            if constraint.name in ("cpk_delegation_signing_keys_purpose_check", "cpk_secret_use_authorizations_intent_check"):
+                self.connection.execute(f'ALTER TABLE "{constraint.relation}" DROP CONSTRAINT "{constraint.name}"')
+                self.connection.execute(f'ALTER TABLE "{constraint.relation}" ADD CONSTRAINT "{constraint.name}" CHECK ({constraint.check_expression})')
+        self.assertEqual(catalog_sha256(self.connection), PROVIDER_SOURCE_SHA256)
+        _, before, _ = namespace_state(self.connection)
+        admin = PrincipalIdentity("issuer-a", "admin", PrincipalKind.OPERATOR)
+        binding = operations.ProviderPolicyBinding("binding-a", "provider-a", "provider-a")
+        policy = operations.ProviderPolicyAdministrationPolicy("installation-a",
+            (operations.ProviderPolicyAdmission(admin, binding),))
+        context = policy.authorize(AuthenticatedPrincipal(admin), "provider-a")
+        self.assertFalse(postgres.upgrade_provider_policy_commands(self.connection, context,
+            administration_policy=policy).replayed)
+        self.assertTrue(postgres.upgrade_provider_policy_commands(self.connection, context,
+            administration_policy=policy).replayed)
+        _, after, digest = namespace_state(self.connection)
+        self.assertEqual(digest, HISTORICAL_TARGET_SHA256)
+        self.assertEqual({name: after[name] for name in before}, before)
 
     async def test_native_allocation_reaches_current_graph_acceptance_with_original_evidence(self):
         await self.prepare_and_start()

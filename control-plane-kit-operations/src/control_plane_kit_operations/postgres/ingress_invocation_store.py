@@ -112,12 +112,15 @@ class IngressInvocationStore:
         require(self.context_for_command_activity(record.command, record.activity_id) == record)
         return record
 
-    def require_owners(self, record, *, fresh=False):
+    def require_owners(self, record, *, fresh=False, receipt_identity_reader=None):
         from .stores import PostgresStoreBundle
         require(type(record) is IngressInvocationContextRecord)
         record.__post_init__()
         stores = PostgresStoreBundle(self._connection)
-        parent = stores.execution.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+        require(not fresh or receipt_identity_reader is None)
+        parent = (stores.execution.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+            if receipt_identity_reader is None else receipt_identity_reader(self._connection,
+                record.command.run_id, record.command.idempotency_key))
         run = stores.execution.get_run(record.command.run_id)
         request = stores.execution.get_request(run.admission.request_id)
         plan = stores.activity_history.get_plan(record.plan_id)
@@ -253,19 +256,19 @@ def _context_values(record):
         record.original_event_id, record.ingress_registration_id, encode_postgres_timestamp(record.created_at), record.descriptor())
 
 
-def require_ingress_invocation_owner(connection, record, *, fresh=False):
+def require_ingress_invocation_owner(connection, record, *, fresh=False, receipt_identity_reader=None):
     """Return whether the exact ingress owner applies, rejecting mixed sources."""
     store = IngressInvocationStore(connection)
     context = store.context_for_command_activity(record.command, record.activity_id)
     if context is None:
         require(record.kind not in INGRESS_KINDS)
         return False
-    store.require_owners(context, fresh=fresh)
+    store.require_owners(context, fresh=fresh, receipt_identity_reader=receipt_identity_reader)
     store.require_invocation(context, record)
     return True
 
 
-def validate_ingress_invocation_rows(connection):
+def validate_ingress_invocation_rows(connection, *, receipt_identity_reader=None):
     from .current_data_validation import CurrentRowDrift
     store, after = IngressInvocationStore(connection), None
     try:
@@ -275,7 +278,7 @@ def validate_ingress_invocation_rows(connection):
                 () if after is None else (after,), limit=100, order='context_id COLLATE "C"')
             for row in rows:
                 context = store._context_row(row)
-                store.require_owners(context)
+                store.require_owners(context, receipt_identity_reader=receipt_identity_reader)
                 store.invocations(context)
                 store.results_for_context(context)
                 after = context.context_id
