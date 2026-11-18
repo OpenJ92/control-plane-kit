@@ -359,7 +359,9 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         self.connection = psycopg.connect(database_url, autocommit=True)
         self.addCleanup(self.connection.close)
         install_schema(self.connection)
-        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.connection.execute(
+            "TRUNCATE TABLE cpk_workspaces, cpk_workspace_permission_installation CASCADE"
+        )
         self.tracker = TrackingUnitOfWorkFactory(database_url)
         self.unit_of_work = self.tracker
         self.health = RecordingManagedHealth(self)

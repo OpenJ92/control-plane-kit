@@ -853,3 +853,19 @@ category = "exact-verifier"
 sql = "Current-namespace pg_class relation/kind enumeration excluding indexes; ordered relname; LIMIT final relation count+1 (71)"
 consumer_kind = "production"
 consumer = "Authorized provider-policy schema transition recognizes only the accepted predecessor or exact final relation set before locked verification"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.command_diagnostic_upgrade"
+selector = "_timeouts"
+category = "fixed-cardinality"
+sql = "pg_settings restricted to two unique names: lock_timeout and statement_timeout"
+consumer_kind = "production"
+consumer = "Explicit diagnostic upgrade preserves caller timeouts and establishes bounded waits before acquiring locks"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "validate_command_diagnostic_rows"
+category = "exact-verifier"
+sql = "Strict run_id/idempotency_key keyset order, LIMIT 100, diagnostic IS NOT NULL; exact run/event identity rereads"
+consumer_kind = "production"
+consumer = "Current schema verification and explicit diagnostic upgrade inspection validate all retained diagnostic receipts, including those without invocations, without repair"

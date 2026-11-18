@@ -244,8 +244,11 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
             else:
                 # The closed capacity proof folds UNCERTAIN. The existing
                 # post-fold context reload cannot spend the exhausted budget.
-                with self.assertRaisesRegex(ExecutionCoordinatorConflict, "configuration material is unavailable"):
+                from control_plane_kit_operations.coordinator import ExecutionCommandPreparationFailure
+                with self.assertRaises(ExecutionCommandPreparationFailure) as caught:
                     await self.execute_to_native(starts)
+                self.assertEqual(caught.exception.category, "evidence-capacity")
+                self.assertEqual(caught.exception.diagnostic_status, "recorded")
                 result = None
         self.assertEqual(len(reads), 1, "native dispatch must acquire a fresh installation proof")
         self.assertEqual(len(starts), 1)
