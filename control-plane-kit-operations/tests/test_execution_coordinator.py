@@ -1857,11 +1857,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(adapter.calls, [])
 
-    def test_all_writer_phases_reject_stale_fence_without_progress(self) -> None:
+    def test_all_writer_phases_lock_request_before_run_and_recheck_fence(self) -> None:
         self.claim_and_start()
         adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
-        coordinator = self.coordinator(adapter)
-        stale = self.command(generation=2)
         activity = single_activity_plan().activities[0]
 
         def retained_state():
@@ -1872,18 +1870,81 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     uow.stores.execution.events_for_run("run-a"),
                 )
 
-        before = retained_state()
-        phases = (
-            lambda: coordinator._load_context(stale),
-            lambda: coordinator._record_step_event(stale, activity, ActivityEventKind.STEP_STARTED),
-            lambda: coordinator._record_outcome(stale, activity, ActivityExecutionOutcome.succeeded()),
-        )
-        for phase in phases:
+        def wait_for_blocker(future, worker_pid, blocker_pid):
+            deadline = time.monotonic() + 5
+            while blocker_pid not in self.connection.execute(
+                "SELECT pg_blocking_pids(%s)", (worker_pid,)
+            ).fetchone()[0]:
+                if future.done():
+                    future.result()
+                    self.fail("writer phase completed without taking the required lock")
+                if time.monotonic() >= deadline:
+                    self.fail("writer phase did not wait for the required row lock")
+                time.sleep(0.01)
+
+        for phase in ("context", "step", "outcome"):
             with self.subTest(phase=phase):
-                with self.assertRaises(ExecutionCoordinatorDenied):
-                    phase()
-                self.assertEqual(retained_state(), before)
-                self.assertEqual(adapter.calls, [])
+                self.connection.execute(
+                    "UPDATE cpk_execution_requests SET claim_generation=1 "
+                    "WHERE request_id='request-a'"
+                )
+                worker_pids: queue.Queue[int] = queue.Queue()
+
+                def connection_factory():
+                    connection = psycopg.connect(self.database_url)
+                    worker_pids.put(connection.info.backend_pid)
+                    return connection
+
+                coordinator = self.coordinator(adapter,
+                    unit_of_work_factory=lambda: PostgresUnitOfWork(connection_factory))
+                command = self.command()
+                invoke = {
+                    "context": lambda: coordinator._load_context(command),
+                    "step": lambda: coordinator._record_step_event(
+                        command, activity, ActivityEventKind.STEP_STARTED),
+                    "outcome": lambda: coordinator._record_outcome(
+                        command, activity, ActivityExecutionOutcome.succeeded()),
+                }[phase]
+                with psycopg.connect(self.database_url) as request_blocker, \
+                        psycopg.connect(self.database_url) as run_blocker, \
+                        concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    try:
+                        request_blocker.execute(
+                            "SELECT request_id FROM cpk_execution_requests "
+                            "WHERE request_id='request-a' FOR UPDATE"
+                        )
+                        future = executor.submit(invoke)
+                        worker_pid = worker_pids.get(timeout=5)
+                        wait_for_blocker(future, worker_pid, request_blocker.info.backend_pid)
+                        # The phase must not have locked the run ahead of its request.
+                        run_blocker.execute(
+                            "SELECT run_id FROM cpk_activity_runs "
+                            "WHERE run_id='run-a' FOR UPDATE NOWAIT"
+                        )
+                        # A claim change committed while the phase waits must be observed.
+                        request_blocker.execute(
+                            "UPDATE cpk_execution_requests SET claim_generation=2 "
+                            "WHERE request_id='request-a'"
+                        )
+                        request_blocker.commit()
+                        wait_for_blocker(future, worker_pid, run_blocker.info.backend_pid)
+                        # It must retain the request lock while acquiring the run lock.
+                        with psycopg.connect(self.database_url) as probe:
+                            with self.assertRaises(psycopg.errors.LockNotAvailable):
+                                probe.execute(
+                                    "SELECT request_id FROM cpk_execution_requests "
+                                    "WHERE request_id='request-a' FOR UPDATE NOWAIT"
+                                )
+                            probe.rollback()
+                        before = retained_state()
+                        run_blocker.commit()
+                        with self.assertRaises(ExecutionCoordinatorDenied):
+                            future.result(timeout=5)
+                        self.assertEqual(retained_state(), before)
+                        self.assertEqual(adapter.calls, [])
+                    finally:
+                        request_blocker.rollback()
+                        run_blocker.rollback()
 
     def test_claimed_run_must_be_started_before_coordinator_execution(self) -> None:
         self.claim()
