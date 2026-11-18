@@ -9,6 +9,12 @@ authorization, Docker-only validation, truthful-uncertainty, test-ownership, or
 GitHub-memory laws. When instructions conflict, follow the more protective law
 and record the conflict on the governing issue.
 
+Start with the [Hello walkthrough](README.md#start-with-one-deployment) for
+project context. Use the [product roadmap](https://github.com/users/OpenJ92/projects/5)
+to find the governing issue and its accepted base. An older checkout can contain
+an earlier agent contract. Compare the checkout with that base before changing
+instructions or interpreting a historical run.
+
 Read `docs/OPERATING_MODEL.md` for the working loop and `docs/TESTING.md` before
 executable validation. Read only the design docs and ADRs relevant to the
 current issue.

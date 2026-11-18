@@ -12,6 +12,10 @@ issues, and current validation uses package-local gates plus
 The architecture document explains what the package wants to become. The
 roadmap explains how to get there in reviewable, testable verticals.
 
+For work on the current installation, start with the
+[installation milestones](../../README.md#where-the-project-is-headed) and
+their linked issues. The numbered sequence below describes the earlier design.
+
 ## How To Use This Roadmap
 
 Each roadmap document is a source for GitHub issue topology. A roadmap item
