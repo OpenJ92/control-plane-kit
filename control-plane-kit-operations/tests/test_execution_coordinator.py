@@ -1857,6 +1857,34 @@ class ExecutionCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(adapter.calls, [])
 
+    def test_all_writer_phases_reject_stale_fence_without_progress(self) -> None:
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        stale = self.command(generation=2)
+        activity = single_activity_plan().activities[0]
+
+        def retained_state():
+            with self.unit_of_work() as uow:
+                return (
+                    uow.stores.execution.get_request("request-a"),
+                    uow.stores.execution.get_run("run-a"),
+                    uow.stores.execution.events_for_run("run-a"),
+                )
+
+        before = retained_state()
+        phases = (
+            lambda: coordinator._load_context(stale),
+            lambda: coordinator._record_step_event(stale, activity, ActivityEventKind.STEP_STARTED),
+            lambda: coordinator._record_outcome(stale, activity, ActivityExecutionOutcome.succeeded()),
+        )
+        for phase in phases:
+            with self.subTest(phase=phase):
+                with self.assertRaises(ExecutionCoordinatorDenied):
+                    phase()
+                self.assertEqual(retained_state(), before)
+                self.assertEqual(adapter.calls, [])
+
     def test_all_writer_phases_lock_request_before_run_and_recheck_fence(self) -> None:
         self.claim_and_start()
         adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
