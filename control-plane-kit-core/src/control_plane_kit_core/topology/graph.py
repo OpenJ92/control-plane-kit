@@ -9,6 +9,9 @@ from urllib.parse import urlsplit
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, RequirementSocket
 from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.secret_selections import (
+    SecretSelection, normalize_secret_selections, author_secret_selections,
+)
 from control_plane_kit_core.delegation_authority import (
     DelegationAuthorityBinding,
     DelegationVerifierProjection,
@@ -28,6 +31,7 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.runtime_management import RuntimeManagement
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference, RuntimeAuthorityAccessDelivery,
     normalize_runtime_authority_deliveries,
@@ -117,6 +121,7 @@ class Node:
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
+    secret_selections: tuple[SecretSelection, ...] = ()
     delegation_verifier_projection: DelegationVerifierProjection | None = None
     runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
 
@@ -184,6 +189,8 @@ class Node:
         all_environment_names = environment_names + tuple(secret_environment_names)
         if len(set(all_environment_names)) != len(all_environment_names):
             raise ValueError("node environment binding names must be unique across sources")
+        object.__setattr__(self, "secret_selections",
+                           normalize_secret_selections(self.secret_deliveries, self.secret_selections))
 
     def requirement_socket(self, name: str):
         return self.sockets.requirement(name)
@@ -207,6 +214,8 @@ class Node:
             self,
             socket_environment=self.socket_environment + environment,
             secret_deliveries=self.secret_deliveries + secret_deliveries,
+            secret_selections=author_secret_selections(
+                self.secret_deliveries + secret_deliveries, self.secret_selections),
         )
 
     def non_secret_environment(self) -> dict[str, str]:
@@ -232,6 +241,8 @@ class Node:
                 surface.descriptor()
                 for surface in self.block_spec.control_surfaces
             ]
+        if self.block_spec.gateway_transit is not None:
+            block_spec_descriptor["gateway_transit"] = self.block_spec.gateway_transit.descriptor()
         descriptor: dict[str, object] = {
             "node_id": self.node_id,
             "block_family": self.block_family.value,
@@ -266,6 +277,8 @@ class Node:
                     key=secret_delivery_sort_key,
                 )
             ],
+            "secret_selections": [value.descriptor() for value in
+                normalize_secret_selections(self.secret_deliveries, self.secret_selections)],
         }
         if self.delegation_verifier_projection is not None:
             descriptor["delegation_verifier_projection"] = (
@@ -337,9 +350,14 @@ class RuntimeRecord:
     metadata: Mapping[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     authority_ref: RuntimeAuthorityReference | None = None
+    management: RuntimeManagement | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if self.management is not None and not isinstance(self.management, RuntimeManagement):
+            raise TypeError("runtime management must be a typed selection")
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "kind": self.kind.value,
             "children": list(self.children),
             "authority_ref": None
@@ -348,6 +366,9 @@ class RuntimeRecord:
             "metadata": dict(self.metadata),
             "lifecycle": self.lifecycle.descriptor(),
         }
+        if self.management is not None:
+            descriptor["management"] = self.management.descriptor()
+        return descriptor
 
 
 class GraphConstructionCode(StrEnum):

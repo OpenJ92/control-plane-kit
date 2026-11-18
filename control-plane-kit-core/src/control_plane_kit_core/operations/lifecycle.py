@@ -61,6 +61,8 @@ class ActivityEventKind(StrEnum):
     RUN_RESUMED = "run_resumed"
     STEP_STARTED = "step_started"
     STEP_SUCCEEDED = "step_succeeded"
+    STEP_OBSERVATION_NOT_READY = "step_observation_not_ready"
+    STEP_OBSERVATION_RESTARTED = "step_observation_restarted"
     STEP_FAILED = "step_failed"
     STEP_UNSUPPORTED = "step_unsupported"
     STEP_UNCERTAIN = "step_uncertain"
@@ -871,6 +873,8 @@ _STEP_EVENT_KINDS = frozenset(
     {
         ActivityEventKind.STEP_STARTED,
         ActivityEventKind.STEP_SUCCEEDED,
+        ActivityEventKind.STEP_OBSERVATION_NOT_READY,
+        ActivityEventKind.STEP_OBSERVATION_RESTARTED,
         ActivityEventKind.STEP_FAILED,
         ActivityEventKind.STEP_UNSUPPORTED,
         ActivityEventKind.STEP_UNCERTAIN,

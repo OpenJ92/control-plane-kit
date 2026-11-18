@@ -45,6 +45,7 @@ class DraftCatalogueContractTests(unittest.TestCase):
             ("read.desired-topology-drafts", "/desired-topology-drafts", "list_desired_topology_drafts", True),
             ("read.desired-topology-draft-revisions", "/desired-topology-drafts/{draft_id}/revisions", "list_desired_topology_draft_revisions", True),
             ("read.desired-topology-draft-revision", "/desired-topology-drafts/{draft_id}/revisions/{revision}", "get_desired_topology_draft_revision", False),
+            ("read.desired-topology-draft-revision-metadata", "/desired-topology-drafts/{draft_id}/revisions/{revision}/metadata", "get_desired_topology_draft_revision_metadata", False),
         ):
             with self.subTest(route=route_id):
                 self.assertIn(route_id, routes)
@@ -58,3 +59,5 @@ class DraftCatalogueContractTests(unittest.TestCase):
                 self.assertIn(route_id, projections)
                 self.assertEqual(projections[route_id].paged, paged)
                 self.assertEqual(projections[route_id].max_page_size, 100 if paged else None)
+
+        self.assertEqual(routes["read.desired-topology-draft-revision-metadata"].response_schema.max_bytes, 1048576)

@@ -257,13 +257,14 @@ class PostgresRevisionHistoryStore:
         if row["prior_present"] and row["prior_run_id"] is None:
             raise ReadPageError("revision history prior identity is malformed")
         retry = RetryIdentity(row["attempt"], row["prior_run_id"])
-        if retry.prior_run_id is not None:
-            prior = row["prior"]
-            if prior is None or tuple(prior[:4]) != (retry.prior_run_id, row["plan_id"], row["request_id"], retry.attempt - 1):
-                raise ReadPageError("revision history retry lineage is incongruent")
+        from control_plane_kit_operations.revision_history import validate_retry_predecessor
+        prior = row["prior"] if retry.prior_run_id is not None else None
+        if prior is not None:
             _canonical_instant(prior[4])
-            if prior[4] > row["created_at"]:
-                raise ReadPageError("revision history retry chronology is incongruent")
+            prior = (*prior[:4], decode_postgres_timestamp(encode_postgres_cursor_timestamp(prior[4])))
+        validate_retry_predecessor(prior_run_id=retry.prior_run_id, attempt=retry.attempt,
+            plan_id=row["plan_id"], request_id=row["request_id"],
+            created_at=decode_postgres_timestamp(encode_postgres_cursor_timestamp(row["created_at"])), prior=prior)
         plan = row["plan"]
         for key in ("base_graph_id", "base_realized_projection_id", "desired_graph_id", "desired_realized_projection_id"):
             _general_identifier(plan[key])

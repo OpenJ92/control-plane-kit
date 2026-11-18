@@ -280,9 +280,12 @@ class DraftSelectionTests(DraftSelectionFixture, unittest.TestCase):
                                  if not isinstance(result, self.api.DesiredTopologyDraftConflict))]
         locks = [query for query in successful if "pg_advisory_xact_lock" in query or "FOR UPDATE" in query]
         self.assertIn("pg_advisory_xact_lock", locks[0])
-        self.assertIn("cpk_operation_sessions", locks[1])
-        self.assertIn("cpk_workspaces", locks[2])
-        self.assertIn("cpk_desired_topology_drafts", locks[3])
+        # #1896 S1 adds the workspace lifecycle key before all existing rows.
+        # Exact-key PostgreSQL blockers are in test_postgres_lifecycle_graph_locks.
+        self.assertIn("pg_advisory_xact_lock", locks[1])
+        self.assertIn("cpk_operation_sessions", locks[2])
+        self.assertIn("cpk_workspaces", locks[3])
+        self.assertIn("cpk_desired_topology_drafts", locks[4])
         self.assertEqual(self.workspace().desired_graph_revision, commands[0].expected_desired_graph_revision + 1)
 
     def test_select_and_delete_each_lock_owner_excludes_the_other(self):

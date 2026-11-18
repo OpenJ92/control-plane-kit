@@ -42,6 +42,10 @@ class SecretProviderContractTests(unittest.TestCase):
                 "workload.node-control-signing-key",
                 "secrets.custody-root-key",
                 "secrets.provider-credentials-document",
+                "workload.node-health-read-signing-key",
+                "gateway.node-health-read-transit-signing-key",
+                "workload.http-verification-sample-signing-key",
+                "gateway.http-verification-sample-transit-signing-key",
             ),
         )
         with self.assertRaises(ValueError):

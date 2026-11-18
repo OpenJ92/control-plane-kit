@@ -38,7 +38,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             ("attempt-exhausted", None),
         )
         original_observe = PostgresExecutionStore.observe_request_lease_for_update
-        original_add_run = PostgresExecutionStore.add_run
+        original_add_run = PostgresExecutionStore._add_run
 
         def fail_observe(*_args, **_kwargs):
             raise AssertionError("rejected retry sampled database time")
@@ -50,7 +50,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             with self.subTest(label=label):
                 self.reset_retry_truth(history=history or "failed")
                 PostgresExecutionStore.observe_request_lease_for_update = fail_observe
-                PostgresExecutionStore.add_run = fail_add_run
+                PostgresExecutionStore._add_run = fail_add_run
                 try:
                     command = self.retry_command()
                     if label == "wrong-fence":
@@ -106,7 +106,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                     PostgresExecutionStore.observe_request_lease_for_update = (
                         original_observe
                     )
-                    PostgresExecutionStore.add_run = original_add_run
+                    PostgresExecutionStore._add_run = original_add_run
 
     def test_expired_claim_rejects_after_one_observation_before_ids(self) -> None:
         self.require_retry_service()
@@ -177,7 +177,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
         self.reset_retry_truth()
         allocated = iter(("run-b", "retry-decision", "run-b-opened"))
         raw = RawDependencyFailure("identity-canary-secret")
-        original_add_run = PostgresExecutionStore.add_run
+        original_add_run = PostgresExecutionStore._add_run
 
         def fail_if_written(*_args, **_kwargs):
             raise AssertionError("retry wrote before complete result planning")
@@ -188,7 +188,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             except StopIteration:
                 raise raw
 
-        PostgresExecutionStore.add_run = fail_if_written
+        PostgresExecutionStore._add_run = fail_if_written
         try:
             before = self.snapshot()
             with self.assertRaises(RawDependencyFailure) as raised:
@@ -199,13 +199,13 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             self.assertIs(raised.exception, raw)
             self.assertEqual(self.snapshot(), before)
         finally:
-            PostgresExecutionStore.add_run = original_add_run
+            PostgresExecutionStore._add_run = original_add_run
 
     def test_persistence_order_is_run_decision_opened_action(self) -> None:
         self.require_retry_service()
         self.reset_retry_truth()
         calls: list[str] = []
-        original_add_run = PostgresExecutionStore.add_run
+        original_add_run = PostgresExecutionStore._add_run
         original_add_event = PostgresExecutionStore.add_event
         original_add_action = PostgresActivityHistoryStore.add_action
 
@@ -221,7 +221,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             calls.append("action")
             return original_add_action(store, record)
 
-        PostgresExecutionStore.add_run = add_run
+        PostgresExecutionStore._add_run = add_run
         PostgresExecutionStore.add_event = add_event
         PostgresActivityHistoryStore.add_action = add_action
         try:
@@ -229,7 +229,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                 "run-b", "retry-decision", "run-b-opened", "retry-action"
             ).execute(self.retry_command())
         finally:
-            PostgresExecutionStore.add_run = original_add_run
+            PostgresExecutionStore._add_run = original_add_run
             PostgresExecutionStore.add_event = original_add_event
             PostgresActivityHistoryStore.add_action = original_add_action
         self.assertEqual(
@@ -250,7 +250,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
         original_event_ordinal = PostgresExecutionStore.next_event_ordinal
         original_action_ordinal = PostgresActivityHistoryStore.next_action_ordinal
         original_result = retry_interpreter.ActivityRunRetryResult
-        original_add_run = PostgresExecutionStore.add_run
+        original_add_run = PostgresExecutionStore._add_run
 
         def observe(store, request_id):
             trace.append("observe")
@@ -283,7 +283,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
         PostgresExecutionStore.next_event_ordinal = event_ordinal
         PostgresActivityHistoryStore.next_action_ordinal = action_ordinal
         retry_interpreter.ActivityRunRetryResult = result
-        PostgresExecutionStore.add_run = add_run
+        PostgresExecutionStore._add_run = add_run
         try:
             ActivityRunRetryCommandService(
                 self.unit_of_work,
@@ -294,7 +294,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             PostgresExecutionStore.next_event_ordinal = original_event_ordinal
             PostgresActivityHistoryStore.next_action_ordinal = original_action_ordinal
             retry_interpreter.ActivityRunRetryResult = original_result
-            PostgresExecutionStore.add_run = original_add_run
+            PostgresExecutionStore._add_run = original_add_run
         self.assertEqual(
             trace,
             [
@@ -316,7 +316,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
         before = self.snapshot()
         raw = RawDependencyFailure("result-construction-canary")
         original_result = retry_interpreter.ActivityRunRetryResult
-        original_add_run = PostgresExecutionStore.add_run
+        original_add_run = PostgresExecutionStore._add_run
 
         def fail_result(*_args, **_kwargs):
             raise raw
@@ -325,7 +325,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             raise AssertionError("result failure reached first write")
 
         retry_interpreter.ActivityRunRetryResult = fail_result
-        PostgresExecutionStore.add_run = fail_write
+        PostgresExecutionStore._add_run = fail_write
         try:
             with self.assertRaises(RawDependencyFailure) as raised:
                 ActivityRunRetryCommandService(
@@ -336,7 +336,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                 ).execute(self.retry_command())
         finally:
             retry_interpreter.ActivityRunRetryResult = original_result
-            PostgresExecutionStore.add_run = original_add_run
+            PostgresExecutionStore._add_run = original_add_run
         self.assertIs(raised.exception, raw)
         self.assertEqual(self.snapshot(), before)
 
@@ -347,7 +347,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             with self.subTest(stage=stage):
                 self.reset_retry_truth()
                 before = self.snapshot()
-                original_add_run = PostgresExecutionStore.add_run
+                original_add_run = PostgresExecutionStore._add_run
                 original_add_event = PostgresExecutionStore.add_event
                 original_add_action = PostgresActivityHistoryStore.add_action
                 event_calls = 0
@@ -370,7 +370,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                     persisted = original_add_action(store, record)
                     return object() if stage == "action" else persisted
 
-                PostgresExecutionStore.add_run = add_run
+                PostgresExecutionStore._add_run = add_run
                 PostgresExecutionStore.add_event = add_event
                 PostgresActivityHistoryStore.add_action = add_action
                 try:
@@ -387,7 +387,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                             ).__next__,
                         ).execute(self.retry_command())
                 finally:
-                    PostgresExecutionStore.add_run = original_add_run
+                    PostgresExecutionStore._add_run = original_add_run
                     PostgresExecutionStore.add_event = original_add_event
                     PostgresActivityHistoryStore.add_action = original_add_action
                 safe_error(self, raised.exception, stage)
@@ -401,7 +401,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                 self.reset_retry_truth()
                 before = self.snapshot()
                 raw = RawDependencyFailure(f"late-{stage}-canary")
-                original_add_run = PostgresExecutionStore.add_run
+                original_add_run = PostgresExecutionStore._add_run
                 original_add_event = PostgresExecutionStore.add_event
                 original_add_action = PostgresActivityHistoryStore.add_action
                 event_calls = 0
@@ -425,7 +425,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                         raise raw
                     return original_add_action(store, record)
 
-                PostgresExecutionStore.add_run = add_run
+                PostgresExecutionStore._add_run = add_run
                 PostgresExecutionStore.add_event = add_event
                 PostgresActivityHistoryStore.add_action = add_action
                 try:
@@ -446,7 +446,7 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                         ).execute(self.retry_command())
                     self.assertIs(raised.exception, raw)
                 finally:
-                    PostgresExecutionStore.add_run = original_add_run
+                    PostgresExecutionStore._add_run = original_add_run
                     PostgresExecutionStore.add_event = original_add_event
                     PostgresActivityHistoryStore.add_action = original_add_action
                 self.assertEqual(self.snapshot(), before)

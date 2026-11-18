@@ -38,6 +38,10 @@ _validate_current_rows = getattr(store_module, "_validate_current_rows", None)
 class PostgresEffectAttemptIntentStoreFixture(
     PostgresEffectAttemptStartFixture,
 ):
+    def intent(self, **changes):
+        """Codec laws retain the product, port, authority and secret bytes."""
+        return self.retained_intent(**changes)
+
     def require_intent_store(self) -> None:
         self.assertIsNotNone(
             EffectAttemptIntentStore,
@@ -125,11 +129,11 @@ class PostgresEffectAttemptIntentStoreFixture(
                 attempt.original_start_event,
             )
             self.assertEqual(
-                stores.effect_attempt_intents.insert(evidence),
+                stores.effect_attempt_intents._insert(evidence),
                 evidence,
             )
             self.assertEqual(
-                stores.effect_attempts.insert_absent(attempt),
+                stores.effect_attempts._insert_absent(attempt),
                 attempt,
             )
             unit_of_work.commit()

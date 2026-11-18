@@ -46,6 +46,7 @@ class PolicyScope(StrEnum):
     SECRET_PROVIDER_READ = "secret-provider:read"
     SECRET_PROVIDER_USE = "secret-provider:use"
     SECRET_PROVIDER_REVOKE = "secret-provider:revoke"
+    SECRET_MATERIAL_PROVISION = "secret-material:provision"
     DELEGATION_KEY_GENERATE = "delegation-key:generate"
     DELEGATION_KEY_REGISTER = "delegation-key:register"
     DELEGATION_KEY_READ = "delegation-key:read"

@@ -34,6 +34,18 @@ def _redact_descriptor_value(key: str, value: object) -> object:
     return value
 
 
+def public_verification_shape(value: object) -> object:
+    """Only the already-public discovery shape of a verification contract."""
+    if not isinstance(value, Mapping) or not isinstance(value.get("checks"), (list, tuple)):
+        return _REDACTED
+    checks = []
+    for check in value["checks"]:
+        if not isinstance(check, Mapping) or any(type(check.get(key)) is not str for key in ("kind", "check_id", "provider_socket")):
+            return _REDACTED
+        checks.append({key: check[key] for key in ("kind", "check_id", "provider_socket")})
+    return {"checks": checks}
+
+
 def _redact_environment_bindings(value: object) -> object:
     if not isinstance(value, (list, tuple)):
         return _REDACTED

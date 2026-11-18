@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from typing import Any, Mapping
 
 from psycopg.types.json import Jsonb
+import rfc8785
 
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
@@ -149,6 +151,44 @@ class IngressAuthorityStore:
             )
         return _row_to_authority(row)
 
+    def _configuration_authority(self, workspace_id, reference, read):
+        columns = (("registration_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("authority_ref", "text", 2048), ("authority", "json", 65536),
+            ("admitted_by", "text", 2048), ("admitted_at", "time", 64),
+            ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_ingress_authorities", columns,
+            "workspace_id=%s AND authority_ref=%s AND status='active'", (workspace_id, reference.reference_id))
+        if not rows:
+            raise IngressAuthorityNotFound("registered ingress authority is unavailable")
+        value = _row_to_authority(rows[0])
+        if value.workspace_id != workspace_id or value.authority_ref != reference:
+            raise IngressAuthorityNotFound("registered ingress authority is unavailable")
+        return value
+
+    def get_registration(self, workspace_id, authority_ref, registration_id):
+        """Read the selected historical registration, never its replacement."""
+        return self._get_registration(workspace_id, authority_ref, registration_id, lock=False)
+
+    def get_registration_for_admission(self, workspace_id, authority_ref, registration_id):
+        """Hold the exact registration against revocation until caller commit."""
+        return self._get_registration(workspace_id, authority_ref, registration_id, lock=True)
+
+    def _get_registration(self, workspace_id, authority_ref, registration_id, *, lock):
+        row = self._connection.execute(
+            "SELECT registration_id, workspace_id, authority_ref, authority, admitted_by, "
+            "admitted_at, status, metadata FROM cpk_ingress_authorities "
+            "WHERE workspace_id=%s AND authority_ref=%s AND registration_id=%s"
+            + (" FOR SHARE" if lock else ""),
+            (workspace_id, authority_ref.reference_id, registration_id),
+        ).fetchone()
+        if row is None:
+            raise IngressAuthorityNotFound("selected ingress authority was not found")
+        value = _row_to_authority(row)
+        if (value.workspace_id != workspace_id or value.authority_ref != authority_ref
+                or value.registration_id != registration_id):
+            raise IngressAuthorityRegistrationConflict("selected ingress authority is incongruent")
+        return value
+
     def list_active(self, workspace_id: str) -> tuple[RegisteredIngressAuthority, ...]:
         rows = self._connection.execute(
             """
@@ -285,12 +325,33 @@ class IngressResourceStore:
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
 
+    def lock_resource(self, workspace_id: str, ingress_id: str) -> None:
+        """Serialize owner writes, without reserving anything across provider IO."""
+        key = "cpk.ingress-resource.v1:" + hashlib.sha256(
+            rfc8785.dumps([workspace_id, ingress_id])).hexdigest()
+        self._connection.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (key,))
+
+    def get_cloudflare_epoch_for_update(self, workspace_id, ingress_id, epoch):
+        self.lock_resource(workspace_id, ingress_id)
+        row = self._connection.execute(
+            "SELECT workspace_id, runtime_id, ingress_id, epoch, status, authority_ref, "
+            "provider_kind, tunnel_name, tunnel_id, dns_record_id, hostname, zone_id, lifecycle, "
+            "created_at, observed_at, source_run_id, source_activity_id, source_event_id, "
+            "removed_at, removed_by_run_id FROM cpk_cloudflare_ingress_resources "
+            "WHERE workspace_id=%s AND ingress_id=%s AND epoch=%s FOR UPDATE",
+            (workspace_id, ingress_id, epoch),
+        ).fetchone()
+        if row is None:
+            raise IngressAuthorityNotFound("selected owned ingress resource was not found")
+        return _row_to_cloudflare_resource(row)
+
     def record_cloudflare(
         self,
         resource: CloudflareOwnedIngressResource,
     ) -> CloudflareOwnedIngressResource:
         if not isinstance(resource, CloudflareOwnedIngressResource):
             raise TypeError("record_cloudflare requires CloudflareOwnedIngressResource")
+        self.lock_resource(resource.workspace_id, resource.ingress_id)
         encoded_created_at = encode_postgres_timestamp(resource.created_at)
         encoded_observed_at = encode_postgres_timestamp(resource.observed_at)
         encoded_removed_at = (
@@ -391,13 +452,14 @@ class IngressResourceStore:
         source_run_id: str,
     ) -> CloudflareOwnedIngressResource:
         _validate_run_id(source_run_id, "source_run_id")
+        self.lock_resource(workspace_id, ingress_id)
         resource = self.require_active_cloudflare(workspace_id, ingress_id)
         updated = replace(
             resource,
             status=OwnedIngressResourceStatus.REMOVING,
             source_run_id=source_run_id,
         )
-        self._update_cloudflare_status(updated)
+        self._update_cloudflare_status(resource, updated)
         return updated
 
     def mark_removed(
@@ -410,6 +472,7 @@ class IngressResourceStore:
     ) -> CloudflareOwnedIngressResource:
         _validate_run_id(removed_by_run_id, "removed_by_run_id")
         encode_postgres_timestamp(removed_at)
+        self.lock_resource(workspace_id, ingress_id)
         resource = self._get_cloudflare_by_status(
             workspace_id,
             ingress_id,
@@ -426,7 +489,7 @@ class IngressResourceStore:
             removed_at=removed_at,
             removed_by_run_id=removed_by_run_id,
         )
-        self._update_cloudflare_status(updated)
+        self._update_cloudflare_status(resource, updated)
         return updated
 
     def mark_uncertain(
@@ -437,6 +500,7 @@ class IngressResourceStore:
         source_run_id: str,
     ) -> CloudflareOwnedIngressResource:
         _validate_run_id(source_run_id, "source_run_id")
+        self.lock_resource(workspace_id, ingress_id)
         resource = self._get_blocking_cloudflare(workspace_id, ingress_id)
         if resource is None:
             raise IngressAuthorityNotFound("owned ingress resource was not found")
@@ -445,7 +509,7 @@ class IngressResourceStore:
             status=OwnedIngressResourceStatus.UNCERTAIN,
             source_run_id=source_run_id,
         )
-        self._update_cloudflare_status(updated)
+        self._update_cloudflare_status(resource, updated)
         return updated
 
     def get_cloudflare(
@@ -492,6 +556,20 @@ class IngressResourceStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_cloudflare_resource(row) for row in rows)
+
+    def _configuration_resource(self, workspace_id, ingress_id, read):
+        names = ("workspace_id", "runtime_id", "ingress_id", "epoch", "status", "authority_ref",
+            "provider_kind", "tunnel_name", "tunnel_id", "dns_record_id", "hostname", "zone_id",
+            "lifecycle", "created_at", "observed_at", "source_run_id", "source_activity_id",
+            "source_event_id", "removed_at", "removed_by_run_id")
+        columns = tuple((name, "int" if name == "epoch" else "time" if name in
+            ("created_at", "observed_at", "removed_at") else "text", 2048) for name in names)
+        rows = read.bounded_rows("cpk_cloudflare_ingress_resources", columns,
+            "workspace_id=%s AND ingress_id=%s AND status='active'", (workspace_id, ingress_id),
+            order="epoch DESC")
+        if not rows:
+            raise IngressAuthorityNotFound("owned ingress resource is unavailable")
+        return _row_to_cloudflare_resource(rows[0])
 
     def _get_blocking_cloudflare(
         self,
@@ -564,14 +642,27 @@ class IngressResourceStore:
 
     def _update_cloudflare_status(
         self,
+        expected: CloudflareOwnedIngressResource,
         resource: CloudflareOwnedIngressResource,
     ) -> None:
+        if (type(expected) is not CloudflareOwnedIngressResource
+                or type(resource) is not CloudflareOwnedIngressResource):
+            raise OwnedIngressResourceConflict("owned ingress update requires exact records")
+        expected.__post_init__()
+        resource.__post_init__()
+        # A status update cannot rewrite the allocation or select another epoch.
+        if replace(resource, status=expected.status, source_run_id=expected.source_run_id,
+                removed_at=expected.removed_at, removed_by_run_id=expected.removed_by_run_id) != expected:
+            raise OwnedIngressResourceConflict("owned ingress allocation is immutable")
+        current = self.get_cloudflare_epoch_for_update(expected.workspace_id, expected.ingress_id, expected.epoch)
+        if current != expected:
+            raise OwnedIngressResourceConflict("selected owned ingress resource changed")
         encoded_removed_at = (
             None
             if resource.removed_at is None
             else encode_postgres_timestamp(resource.removed_at)
         )
-        self._connection.execute(
+        rows = self._connection.execute(
             """
             UPDATE cpk_cloudflare_ingress_resources
             SET
@@ -582,6 +673,9 @@ class IngressResourceStore:
             WHERE workspace_id = %s
               AND ingress_id = %s
               AND epoch = %s
+              AND status = %s AND source_run_id = %s
+              AND source_activity_id = %s AND source_event_id = %s
+            RETURNING epoch
             """,
             (
                 resource.status.value,
@@ -591,8 +685,15 @@ class IngressResourceStore:
                 resource.workspace_id,
                 resource.ingress_id,
                 resource.epoch,
+                expected.status.value,
+                expected.source_run_id,
+                expected.source_activity_id,
+                expected.source_event_id,
             ),
-        )
+        ).fetchall()
+        if (rows != [(expected.epoch,)] or self.get_cloudflare_epoch_for_update(
+                expected.workspace_id, expected.ingress_id, expected.epoch) != resource):
+            raise OwnedIngressResourceConflict("selected owned ingress update did not match")
 
 
 class GeneratedIngressSecretReferenceStore:
@@ -683,6 +784,31 @@ class GeneratedIngressSecretReferenceStore:
                 "generated ingress secret reference was not found"
             )
         return evidence
+
+    def _configuration_source(self, resource, read):
+        columns = (("workspace_id", "text", 2048), ("purpose", "text", 128),
+            ("secret_ref", "text", 2048), ("recorded_at", "time", 64),
+            ("source_run_id", "text", 2048), ("source_activity_id", "text", 2048),
+            ("source_event_id", "text", 2048), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_generated_ingress_secret_references", columns,
+            "workspace_id=%s AND purpose=%s AND source_run_id=%s AND source_activity_id=%s AND source_event_id=%s",
+            (resource.workspace_id, GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN.value,
+             resource.source_run_id, resource.source_activity_id, resource.source_event_id))
+        if not rows:
+            raise IngressAuthorityNotFound("generated ingress secret reference is unavailable")
+        return _row_to_generated_ingress_secret_reference(rows[0])
+
+    def _installation_source(self, workspace_id, secret_ref, read):
+        """Immutable custody identity, independent of today's ingress resource."""
+        columns = (("workspace_id", "text", 2048), ("purpose", "text", 128),
+            ("secret_ref", "text", 2048), ("recorded_at", "time", 64),
+            ("source_run_id", "text", 2048), ("source_activity_id", "text", 2048),
+            ("source_event_id", "text", 2048), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_generated_ingress_secret_references", columns,
+            "workspace_id=%s AND secret_ref=%s", (workspace_id, secret_ref.reference_id))
+        if len(rows) != 1:
+            raise IngressAuthorityNotFound("generated ingress secret reference is unavailable")
+        return _row_to_generated_ingress_secret_reference(rows[0])
 
     def list_for_workspace(
         self,

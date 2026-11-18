@@ -179,7 +179,7 @@ class DraftCatalogueFixture:
     def create(self, **kwargs):
         return self.catalogue().execute(self.create_command(**kwargs))
 
-    def read(self, route="read.desired-topology-drafts", *, surface="http", workspace="workspace-a", **values):
+    def read(self, route="read.desired-topology-drafts", *, surface="http", workspace="workspace-a", reader=None, **values):
         path = {"workspace_id": workspace}
         for key in ("draft_id", "revision"):
             if key in values:
@@ -190,7 +190,7 @@ class DraftCatalogueFixture:
         else:
             path = {key: str(value) for key, value in path.items()}
         return CpkServerReadService(self.unit_of_work).handle(CatalogueRequest(
-            surface, route, ControlPlaneServiceRole.READS, path, values, principal(workspace),
+            surface, route, ControlPlaneServiceRole.READS, path, values, reader if reader is not None else principal(workspace),
         ))
 
     def rows(self, table):

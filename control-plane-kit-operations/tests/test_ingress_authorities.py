@@ -11,7 +11,10 @@ from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     PublicIngressLifecycle,
 )
-from control_plane_kit_core.secrets import SecretCustodyReceipt, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretCustodyReceipt, SecretReference, SecretFileDelivery, SecretFileMode,
+    SecretFilePathBinding, SecretUseIntent, SecretEnvironmentDelivery, SecretReferenceEnvironmentDelivery,
+)
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareIngressTeardownActionKind,
     CloudflareOwnedIngressResource,
@@ -50,6 +53,36 @@ from control_plane_kit_operations.read_pages import (
 
 
 class IngressAuthorityValueTests(unittest.TestCase):
+    def test_generated_connector_token_is_one_owner_read_only_file_delivery(self):
+        reference = SecretReference("secret://cloudflare/openj92/cpk-gateway-001-tunnel-token")
+        plan = cloudflare_tunnel_token_delivery_plan(
+            authority=self.cloudflare_authority(), resource=self.cloudflare_resource(),
+            connector_node_id="cloudflared-001", tunnel_token_ref=reference,
+        )
+        self.assertIs(type(plan.secret_delivery), SecretFileDelivery)
+        self.assertEqual(plan.secret_delivery, SecretFileDelivery(
+            "/run/secrets/cloudflare-tunnel-token", reference,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, SecretFileMode.OWNER_READ_ONLY,
+            SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
+        ))
+        self.assertEqual(require_cloudflared_tunnel_token_delivery((plan.secret_delivery,)), plan.secret_delivery)
+
+    def test_configured_token_file_refuses_ambiguous_or_misdirected_reserved_slots(self):
+        reference = SecretReference("secret://cloudflare/openj92/tunnel")
+        valid = SecretFileDelivery("/run/secrets/cloudflare-tunnel-token", reference,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, path_binding=SecretFilePathBinding("TUNNEL_TOKEN_FILE"))
+        wrong = (
+            SecretEnvironmentDelivery("TUNNEL_TOKEN", reference, SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN),
+            SecretReferenceEnvironmentDelivery("TUNNEL_TOKEN_FILE", reference),
+            replace(valid, target_path="/run/secrets/wrong"),
+            replace(valid, intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN),
+            replace(valid, path_binding=None),
+        )
+        for value in wrong:
+            for deliveries in ((value,), (valid, value)):
+                with self.subTest(deliveries=deliveries), self.assertRaises(IngressAuthorityRegistrationError):
+                    require_cloudflared_tunnel_token_delivery(deliveries)
+
     def test_exact_hostname_authority_roundtrips_and_matches_only_its_host(self) -> None:
         authority = replace(self.cloudflare_authority(),
                             allowed_hostname_pattern="cpk-child.openj92.dev")
@@ -280,8 +313,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertEqual(
             descriptor["secret_delivery"],
             {
-                "kind": "environment",
-                "environment_name": "TUNNEL_TOKEN",
+                "kind": "file",
+                "target_path": "/run/secrets/cloudflare-tunnel-token",
+                "file_mode": "0400",
+                "path_binding": {"environment_name": "TUNNEL_TOKEN_FILE"},
                 "reference_id": (
                     "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
                 ),

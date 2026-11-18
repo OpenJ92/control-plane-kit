@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+from dataclasses import replace
 
 from control_plane_kit_core.operations import (
     EffectAttemptStatus,
@@ -11,16 +12,10 @@ from control_plane_kit_core.operations import (
     EffectRecoveryResolution,
     RunId,
 )
-from control_plane_kit_core.runtime_effect_observation import (
-    RuntimeEffectIntent,
-    RuntimeEffectIntentSource,
-)
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectFailure,
-    RuntimeEffectKind,
     RuntimeEffectResult,
 )
-from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
 from control_plane_kit_operations.effect_attempt_fold_interpreter import (
     EffectAttemptFoldService,
@@ -73,29 +68,10 @@ class FailedRunCompensationAttemptFixture(FailedRunCompensationFixture):
             _, program = unit_of_work.stores.failed_run_compensations.get(
                 "program-a"
             )
-        step = program.steps[position - 1]
-        values = {
-            "kind": RuntimeEffectKind.REALIZE_ACTIVITY,
-            "runtime_kind": RuntimeKind.DOCKER,
-            "source": RuntimeEffectIntentSource(
-                "workspace-a",
-                "request-a",
-                RunId("run-a"),
-                "plan-a",
-                "graph-current",
-                "graph-desired",
-            ),
-            "activity_id": __import__(
-                "control_plane_kit_core.planning",
-                fromlist=("ActivityId",),
-            ).ActivityId(step.source_effect.attempt_identity.activity_id),
-            "operation": step.operation,
-            "authority_ref": None,
-            "authority_deliveries": (),
-            "products": (),
-        }
-        values.update(changes)
-        return RuntimeEffectIntent(**values)
+            step = program.steps[position - 1]
+            original = unit_of_work.stores.effect_attempt_intents.get(
+                step.source_effect.attempt_identity)
+        return replace(original.intent, **{"operation": step.operation, **changes})
 
     def start_command(self, position: int = 1, **changes):
         module = self.require_attempt_contract()

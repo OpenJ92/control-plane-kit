@@ -1,5 +1,4 @@
 """#1773 historical receipts originate from the existing advancement owner."""
-from dataclasses import replace
 import unittest
 
 from psycopg.types.json import Jsonb
@@ -19,7 +18,7 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
         self.assertIsNotNone(self.collection, "missing revision history attempts")
         # Reuse fixture setup and actual command; do not inherit/recollect its tests.
         self.fixture = advancement_fixture.CurrentGraphAdvancementTests()
-        self.addCleanup(self.fixture.tearDown)
+        self.addCleanup(self.cleanup_fixture)
         self.fixture.setUp()
         with self.fixture.unit_of_work() as uow:
             self.assertIsNotNone(getattr(uow.stores, "revision_history", None), "missing revision history owner")
@@ -30,6 +29,23 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
                 "graph-desired", "operator-a", "2026-07-22T12:00:00Z"), expected_head_revision=None)
             uow.commit()
         self.fixture.seed_succeeded_run()
+
+    def cleanup_fixture(self):
+        self.assertTrue(self.fixture.doCleanups(), "nested advancement fixture cleanup failed")
+
+    def remove_zero_slot_header(self, result):
+        # Privileged test corruption: remove only this genuine zero-slot
+        # header before its witness, without disabling any foreign key.
+        connection = self.fixture.connection
+        self.assertEqual(connection.execute("SELECT workspace_id,pinned_revision,event_id,slot_count "
+            "FROM cpk_configuration_acceptances WHERE action_id=%s",
+            (result.action.action_id,)).fetchall(),
+            [("workspace-a", result.desired_graph_revision, result.event.event_id, 0)])
+        self.assertEqual(connection.execute("SELECT count(*) FROM cpk_configuration_accepted_slots "
+            "WHERE workspace_id='workspace-a' AND pinned_revision=%s",
+            (result.desired_graph_revision,)).fetchone(), (0,))
+        self.assertEqual(connection.execute("DELETE FROM cpk_configuration_acceptances WHERE action_id=%s",
+            (result.action.action_id,)).rowcount, 1)
 
     def page(self):
         with self.fixture.unit_of_work() as uow:
@@ -64,8 +80,13 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
         self.assertEqual(self.page()["items"][0]["advancement"], accepted)
 
     def test_event_without_action_is_unavailable(self):
-        self.accepted()
-        self.fixture.connection.execute("DELETE FROM cpk_operation_actions WHERE action_id='action-advance'")
+        result = self.accepted()
+        with self.fixture.connection.transaction():
+            self.remove_zero_slot_header(result)
+            self.assertEqual(self.fixture.connection.execute(
+                "DELETE FROM cpk_operation_actions WHERE action_id=%s", (result.action.action_id,)).rowcount, 1)
+        self.assertEqual(self.fixture.connection.execute(
+            "SELECT count(*) FROM cpk_activity_events WHERE event_id=%s", (result.event.event_id,)).fetchone(), (1,))
         self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
 
     def test_accepted_history_survives_current_claim_rotation_and_removal(self):
@@ -83,22 +104,35 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
             "FROM cpk_execution_requests WHERE request_id='request-a'").fetchone(), ("cancelled", None, None))
 
     def test_action_without_event_is_unavailable(self):
-        self.accepted()
-        self.fixture.connection.execute("DELETE FROM cpk_activity_events WHERE event_id='event-advance'")
+        result = self.accepted()
+        with self.fixture.connection.transaction():
+            self.remove_zero_slot_header(result)
+            self.assertEqual(self.fixture.connection.execute(
+                "DELETE FROM cpk_activity_events WHERE event_id=%s", (result.event.event_id,)).rowcount, 1)
+        self.assertEqual(self.fixture.connection.execute(
+            "SELECT count(*) FROM cpk_operation_actions WHERE action_id=%s", (result.action.action_id,)).fetchone(), (1,))
         self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
 
     def test_duplicate_candidates_on_either_side_are_not_arbitrarily_selected(self):
         result = self.accepted()
-        with self.fixture.unit_of_work() as uow:
-            uow.stores.execution.add_event(replace(result.event, event_id="event-duplicate",
-                ordinal=uow.stores.execution.next_event_ordinal("run-a")))
-            uow.commit()
+        # Typed copies are deliberately corrupt reader premises, not accepted
+        # receipts manufactured through the now-closed generic writers.
+        self.assertEqual(self.fixture.connection.execute(
+            "INSERT INTO cpk_activity_events (event_id,run_id,ordinal,event_type,occurred_at,payload,"
+            "advancement_workspace_id,advancement_request_id,advancement_plan_id,advancement_revision) "
+            "SELECT 'event-duplicate',run_id,ordinal+1,event_type,occurred_at,payload,advancement_workspace_id,"
+            "advancement_request_id,advancement_plan_id,advancement_revision FROM cpk_activity_events WHERE event_id=%s",
+            (result.event.event_id,)).rowcount, 1)
         self.assertEqual(self.page()["items"][0]["advancement"]["state"], "unavailable")
         self.fixture.connection.execute("DELETE FROM cpk_activity_events WHERE event_id='event-duplicate'")
-        with self.fixture.unit_of_work() as uow:
-            uow.stores.activity_history.add_action(replace(result.action, action_id="action-duplicate",
-                ordinal=uow.stores.activity_history.next_action_ordinal("session-a"), idempotency_key="duplicate"))
-            uow.commit()
+        self.assertEqual(self.fixture.connection.execute(
+            "INSERT INTO cpk_operation_actions (action_id,session_id,ordinal,action_type,"
+            "actor_id,payload,created_at,idempotency_key,intent_fingerprint,advancement_workspace_id,"
+            "advancement_request_id,advancement_plan_id,advancement_run_id,advancement_revision) "
+            "SELECT 'action-duplicate',session_id,ordinal+1,action_type,actor_id,payload,created_at,"
+            "'duplicate',intent_fingerprint,advancement_workspace_id,advancement_request_id,"
+            "advancement_plan_id,advancement_run_id,advancement_revision FROM cpk_operation_actions WHERE action_id=%s",
+            (result.action.action_id,)).rowcount, 1)
         self.assertEqual(self.page()["items"][0]["advancement"]["state"], "unavailable")
 
     def test_false_request_plan_transition_time_and_oversized_evidence_fail_closed_without_writes(self):

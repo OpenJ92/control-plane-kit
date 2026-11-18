@@ -45,6 +45,7 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.verification import (
     PostgresPasswordAuthentication,
     PostgresQueryCheck,
@@ -54,7 +55,7 @@ from control_plane_kit_core.verification import (
 
 MODULE = "control_plane_kit_core.runtime_effect_observation"
 INTENT_DOMAIN = b"control-plane-kit.runtime-effect-intent.v1\x00"
-PRODUCT_MATERIAL_CANONICAL = b'{"node_id":"api","product":{"description":null,"display_name":null,"identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"},"image":{"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platforms":[{"architecture":"amd64","os":"linux","variant":null}],"provenance":{"build":"build-a"},"registry":"ghcr.io","repository":"openj92/control-plane-kit-servers/hello-server","tag":"stable"},"kind":"container-server","product_family":"server","runtime_contract":{"capabilities":[],"configuration_artifacts":[],"lifecycle":{"compute":"ephemeral","data":[],"ownership":"owned"},"provider_ports":[{"container_port":5432,"provider_socket":"database"},{"container_port":5433,"provider_socket":"database-alt"},{"container_port":8000,"provider_socket":"http"}],"public_environment":[],"retained_data_mounts":[],"secret_deliveries":[{"environment_name":"APP_CONTROL_TOKEN","intent":"application.control-token","kind":"environment","reference_id":"secret://local/workspace-a/app/token"}],"sockets":{"providers":{"database":{"protocol":{"application":"postgres","transport":"tcp"}},"database-alt":{"protocol":{"application":"postgres","transport":"tcp"}},"http":{"protocol":{"application":"http","transport":"tcp"}}},"requirements":{}},"verification":{"checks":[{"authentication":{"database":"app","kind":"password","password_reference_id":"secret://local/workspace-a/postgres/password","username":"app"},"check_id":"database-ready","kind":"postgres-query","operation":"select-one","policy":{"interval_seconds":1,"maximum_attempts":1,"maximum_evidence_bytes":16384,"timeout_seconds":5},"provider_socket":"database"}]}}},"public_environment":[{"kind":"public-static","name":"HELLO_MESSAGE","value":"Hello from graph"}],"pull_authority":{"credential_reference":"secret://local/workspace-a/oci/pull","registry":"ghcr.io","repository":"openj92"},"reference":{"descriptor_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"}},"runtime_id":"docker","socket_environment":[{"edge_id":"upstream.internal->api.upstream","kind":"socket-derived","name":"UPSTREAM_URL","value":"http://upstream:8080"}]}'
+PRODUCT_MATERIAL_CANONICAL = b'{"node_id":"api","product":{"description":null,"display_name":null,"identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"},"image":{"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platforms":[{"architecture":"amd64","os":"linux","variant":null}],"provenance":{"build":"build-a"},"registry":"ghcr.io","repository":"openj92/control-plane-kit-servers/hello-server","tag":"stable"},"kind":"container-server","product_family":"server","runtime_contract":{"capabilities":[],"configuration_artifacts":[],"lifecycle":{"compute":"ephemeral","data":[],"ownership":"owned"},"provider_ports":[{"container_port":5432,"provider_socket":"database"},{"container_port":5433,"provider_socket":"database-alt"},{"container_port":8000,"provider_socket":"http"}],"public_environment":[],"retained_data_mounts":[],"secret_deliveries":[{"environment_name":"APP_CONTROL_TOKEN","intent":"application.control-token","kind":"environment","reference_id":"secret://local/workspace-a/app/token"}],"sockets":{"providers":{"database":{"protocol":{"application":"postgres","transport":"tcp"}},"database-alt":{"protocol":{"application":"postgres","transport":"tcp"}},"http":{"protocol":{"application":"http","transport":"tcp"}}},"requirements":{}},"verification":{"checks":[{"authentication":{"database":"app","kind":"password","password_reference_id":"secret://local/workspace-a/postgres/password","username":"app"},"check_id":"database-ready","kind":"postgres-query","operation":"select-one","policy":{"interval_seconds":1,"maximum_attempts":1,"maximum_evidence_bytes":16384,"timeout_seconds":5},"provider_socket":"database"}]}}},"public_environment":[{"kind":"public-static","name":"HELLO_MESSAGE","value":"Hello from graph"}],"pull_authority":{"credential_reference":"secret://local/workspace-a/oci/pull","registry":"ghcr.io","repository":"openj92"},"reference":{"descriptor_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"}},"runtime_id":"docker","secret_selections":[{"intent":"application.control-token","reference_id":"secret://local/workspace-a/app/token","version_id":"version-1"}],"socket_environment":[{"edge_id":"upstream.internal->api.upstream","kind":"socket-derived","name":"UPSTREAM_URL","value":"http://upstream:8080"}]}'
 
 
 def _language():
@@ -190,6 +191,7 @@ def _product_material(
         runtime_id=runtime_id,
         reference=ProductReference(identity, ProductDescriptorDigest(descriptor_digest)),
         product=product,
+        secret_selections=(SecretVersionSelection(SecretReference(delivery_reference), secret_use_intent, "version-1"),),
         public_environment=(
             PublicStaticEnvironmentBinding(public_name, public_value),
         ),
@@ -257,7 +259,7 @@ def _request(
         operation=StartNode(NodeTarget("api")),
         authority_ref=delivery.authority_ref if complete else None,
         authority_deliveries=(delivery,) if complete else (),
-        products=(replace(_product_material(), runtime_authority_deliveries=(delivery,)),) if complete else (),
+        products=(replace(_product_material(), runtime_authority_deliveries=(delivery,)),) if complete else (_product_material(),),
     )
 
 
@@ -423,25 +425,25 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             },
         )
         self.assertEqual(product_canonical, PRODUCT_MATERIAL_CANONICAL)
-        self.assertEqual(len(product_canonical), 2_226)
+        self.assertEqual(len(product_canonical), 2_366)
         self.assertEqual(
             hashlib.sha256(product_canonical).hexdigest(),
-            "f7da31e6a9d0b4cd5838570253b5d691f1fd1965cc4e26aecf98fea5cd80db81",
+            "50933da4e8ee4e0511a321af04327751e72fff8a4626bf6a8786be31fccb06b8",
         )
-        self.assertEqual(len(canonical), 3_005)
+        self.assertEqual(len(canonical), 3_145)
         self.assertEqual(
             hashlib.sha256(canonical).hexdigest(),
-            "f06647243f28bbe5e0200f9a85c27630fabbf2e42669f85e47cdb4390d3cd48d",
+            "3d7571fb355b8e8bea13b8b2a638a33073df13af5502ef6e8a20712c4ae725b3",
         )
         with self.assertRaises(RuntimeEffectContractError):
             replace(intent, products=(_product_material(),))
         self.assertNotEqual(
             language.runtime_effect_intent_fingerprint(intent),
-            "fa6e2d2c44210d027421b9f25f5cf0481a8345d9727fd5f0b27fd90aaa9ccda0",
+            "57d8b7f83e3f563700c7ccc34a8e242309b71e98333b6e3570ee695d557cd4f6",
         )
         self.assertEqual(
             hashlib.sha256(INTENT_DOMAIN + canonical).hexdigest(),
-            "fa6e2d2c44210d027421b9f25f5cf0481a8345d9727fd5f0b27fd90aaa9ccda0",
+            "57d8b7f83e3f563700c7ccc34a8e242309b71e98333b6e3570ee695d557cd4f6",
         )
         self.assertEqual(
             intent.products[0].product.runtime_contract.sockets.provider_names(),
@@ -455,15 +457,17 @@ class RuntimeEffectIntentTests(unittest.TestCase):
 
         self.assertEqual(
             canonical,
-            b'{"activity_id":"activity-a","authority_deliveries":[],"authority_ref":null,"kind":"realize-activity","operation":{"kind":"start-node","target":{"kind":"node","node_id":"api"}},"products":[],"runtime_kind":"docker","source":{"base_graph_id":"graph-base","desired_graph_id":"graph-desired","plan_id":"plan-a","request_id":"request-a","run_id":"run-a","workspace_id":"workspace-a"}}',
+            b'{"activity_id":"activity-a","authority_deliveries":[],"authority_ref":null,"kind":"realize-activity","operation":{"kind":"start-node","target":{"kind":"node","node_id":"api"}},"products":['
+            + PRODUCT_MATERIAL_CANONICAL
+            + b'],"runtime_kind":"docker","source":{"base_graph_id":"graph-base","desired_graph_id":"graph-desired","plan_id":"plan-a","request_id":"request-a","run_id":"run-a","workspace_id":"workspace-a"}}',
         )
         self.assertEqual(
             language.runtime_effect_intent_fingerprint(intent),
-            "01524d40ae572390e1ce15c7e201e2555ab5f0a175fec0243a759ba5f8709128",
+            "176f26b9c207504a1c777823d423efa10511584df3cebd282ebee6bbdf70f56f",
         )
         self.assertEqual(
             hashlib.sha256(INTENT_DOMAIN + canonical).hexdigest(),
-            "01524d40ae572390e1ce15c7e201e2555ab5f0a175fec0243a759ba5f8709128",
+            "176f26b9c207504a1c777823d423efa10511584df3cebd282ebee6bbdf70f56f",
         )
         self.assertEqual(len(language.runtime_effect_intent_fingerprint(intent)), 64)
 
@@ -685,7 +689,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                     language.runtime_effect_intent_fingerprint(candidate),
                     baseline,
                 )
-        self.assertEqual({value.value for value in RuntimeEffectKind}, {"realize-activity"})
+        self.assertEqual({value.value for value in RuntimeEffectKind}, {"realize-activity", "configuration-activity.v1"})
 
     def test_projection_and_fingerprint_require_exact_nominal_values(self) -> None:
         language = _language()
@@ -758,6 +762,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                 ("authority_ref", True),
                 ("authority_deliveries", True),
                 ("products", True),
+                ("configuration_instances", True),
             ),
         )
         self.assertTrue(language.RuntimeEffectIntentSource.__dataclass_params__.frozen)
@@ -797,7 +802,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             for index in range(2_048)
         )
         intent = language.runtime_effect_intent_for_request(
-            replace(request, products=products)
+            replace(request, operation=StopNode(NodeTarget("api")), products=products)
         )
         self.assertGreater(len(rfc8785.dumps(intent.descriptor())), 1_048_576)
 

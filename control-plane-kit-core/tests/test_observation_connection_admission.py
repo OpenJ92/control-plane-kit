@@ -20,7 +20,8 @@ from control_plane_kit_core.runtime_effects import (
 )
 from control_plane_kit_core.secrets import SecretReference, SecretUseIntent
 from control_plane_kit_core.types import RuntimeKind
-from test_runtime_effect_observation import _delivery, _grant, _grant_product
+from test_runtime_effect_observation import _consumer_grant, _delivery, _forged_dataclass, _grant, _grant_product
+from tests.test_runtime_authority_recipient import material as target_material
 
 
 AUTHORITY = RuntimeAuthorityReference("remote-docker")
@@ -47,7 +48,10 @@ def grants_for(admission, fresh="a"):
     )
 
 
-def request(*, operation=None, grants=(), products=(), deliveries=(), authority=AUTHORITY):
+def request(*, operation=None, grants=(), products=None, deliveries=(), authority=AUTHORITY):
+    operation = operation or StartNode(NodeTarget("api"))
+    if products is None:
+        products = (target_material(node_id="api", deliveries=()),) if type(operation) is StartNode else ()
     return RuntimeEffectRequest(
         effect_id="event-started-a", kind=RuntimeEffectKind.REALIZE_ACTIVITY,
         runtime_kind=RuntimeKind.DOCKER,
@@ -57,7 +61,7 @@ def request(*, operation=None, grants=(), products=(), deliveries=(), authority=
             intent_event_id="event-started-a",
         ),
         activity_id=ActivityId("activity-a"),
-        operation=operation or StartNode(NodeTarget("api")), authority_ref=authority,
+        operation=operation, authority_ref=authority,
         authority_deliveries=deliveries, secret_resolution_grants=grants,
         products=products,
     )
@@ -114,20 +118,21 @@ class ObservationConnectionAdmissionTests(unittest.TestCase):
         admission = connection()
         tls = grants_for(admission)
         product = _grant_product()
-        extra = tuple(
+        ungranted = request(products=(product,))
+        extra = (_consumer_grant(ungranted, fresh="d"),) + tuple(
             _grant(fresh=chr(ord("d") + index), label="product-use", reference=reference, intent=intent)
             for index, (reference, intent) in enumerate((
-                ("secret://local/workspace-a/app/token", SecretUseIntent.APPLICATION_CONTROL_TOKEN),
                 ("secret://local/workspace-a/oci/pull", SecretUseIntent.OCI_PULL_CREDENTIAL),
                 ("secret://local/workspace-a/postgres/password", SecretUseIntent.POSTGRES_PASSWORD),
-            ))
+            ), start=1)
         )
         original = request(grants=tls + extra, products=(product,))
         self.assertIs(observe(original, admission).runtime_request, original)
         bad = (
             tls + extra + (extra[0],),
             tls + extra + (tls[0],),
-            tls + (replace(extra[0], reference=SecretReference("secret://private/unrelated")),),
+            tls + (replace(extra[0], selection=replace(extra[0].selection,
+                reference=SecretReference("secret://private/unrelated"))),),
             (replace(tls[0], reference=SecretReference("secret://private/unrelated")),) + extra,
             tls + (replace(extra[0], workspace_id="foreign-workspace"),),
             (replace(tls[0], effect_id="foreign-effect"),) + extra,
@@ -135,7 +140,7 @@ class ObservationConnectionAdmissionTests(unittest.TestCase):
         for supplied in bad:
             with self.subTest(count=len(supplied)):
                 with self.assertRaises(RuntimeEffectContractError):
-                    observe(replace(original, secret_resolution_grants=supplied), admission)
+                    observe(_forged_dataclass(original, secret_resolution_grants=supplied), admission)
 
     def test_fresh_grants_and_rotated_private_carrier_preserve_committed_identity(self):
         original = request()

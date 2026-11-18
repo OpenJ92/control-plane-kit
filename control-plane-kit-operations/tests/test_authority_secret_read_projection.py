@@ -712,6 +712,7 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
             "secret_provider_detail",
             "secret_references",
             "secret_reference_detail",
+            "secret_material_provision",
         }
         self.assertEqual(methods, moved_methods)
 
@@ -738,6 +739,7 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
                 "ingress_authority_detail": ("workspace_id", "authority_ref"),
                 "secret_provider_detail": ("workspace_id", "provider_id"),
                 "secret_reference_detail": ("workspace_id", "registration_id"),
+                "secret_material_provision": ("workspace_id", "request_id"),
             }
         )
         for method_name, argument_names in expected_arguments.items():
@@ -799,6 +801,7 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
                 "_ingress_authority_store",
                 "_secret_provider_store",
                 "_secret_reference_store",
+                "_provision_attempt_store",
             }.isdisjoint(assigned)
         )
 

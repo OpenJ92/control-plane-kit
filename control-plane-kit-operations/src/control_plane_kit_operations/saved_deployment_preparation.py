@@ -13,6 +13,7 @@ from control_plane_kit_operations.graph_authoring import product_references_in_g
 from control_plane_kit_operations.products import RegisteredProductStatus
 from control_plane_kit_operations.records import RealizedGraphProjectionRecord, SavedPreparationSourceRecord
 from control_plane_kit_operations.workflows import IdempotencyKey, OperationCommandError, StartOperationSession, _fingerprint
+from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_reference
 
 
 class SavedPreparationError(ValueError):
@@ -91,6 +92,10 @@ def _metadata(command):
               "expected_current": current, "expected_desired": desired,
               "expected_desired_graph_revision": command.expected_desired_graph_revision,
               "title": command.title, "approval_comment": command.approval_comment}
+    if command.http_verification_intent is not None:
+        intent["http_verification_intent"] = command.http_verification_intent.value
+    if command.managed_verification is not None:
+        intent["managed_verification"] = command.managed_verification.value
     digest = hashlib.sha256(json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     return {"deployment_prepare_source": "saved-revision.v1", "deployment_prepare_intent_sha256": digest,
             "deployment_prepare_saved_draft_id": command.desired.draft_id,
@@ -135,7 +140,8 @@ class SavedDeploymentPreparationService:
                     validate_saved_preparation_source(source, result.session, revision)
                     uow.commit()
                     return result
-                # No existing session row: key -> workspace -> draft precedes inserts.
+                # No existing session row: key -> lifecycle -> workspace -> draft.
+                uow.stores.graphs.lock_receiver_lifecycle(command.context.workspace_id)
                 workspace = uow.stores.workspaces.get_for_update(command.context.workspace_id)
                 draft = uow.stores.desired_topology_drafts.get(
                     command.context.workspace_id, command.desired.draft_id, for_update=True)
@@ -147,6 +153,9 @@ class SavedDeploymentPreparationService:
                     or workspace.desired_graph_revision != command.expected_desired_graph_revision):
                     raise SavedPreparationError("saved preparation state is unavailable")
                 graph = _immutable_graphs(uow.stores, command)
+                _validate_receiver_reference(uow.stores, workspace,
+                    command.expected_desired.authored_graph_id, command.expected_desired.realized_projection_id,
+                    draft_head=(draft.draft_id, draft.head_revision))
                 for reference in product_references_in_graph(graph):
                     if uow.stores.registered_products.get(command.context.workspace_id, reference).status is not RegisteredProductStatus.ACTIVE:
                         raise SavedPreparationError("saved preparation state is unavailable")

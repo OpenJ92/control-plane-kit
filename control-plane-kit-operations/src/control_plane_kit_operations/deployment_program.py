@@ -8,7 +8,12 @@ from typing import TypeAlias
 from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.admission import ExternalReadinessAttestation
+from control_plane_kit_operations.graph_authoring import (
+    GraphAuthoringError,
+    validate_proposed_graph_id,
+)
 from control_plane_kit_operations.records import GraphProjectionLineage
+from control_plane_kit_operations.plan_derivation import HttpVerificationPlanningIntent, ManagedVerificationPlanningIntent
 from control_plane_kit_operations.workflows import IdempotencyKey
 
 
@@ -56,8 +61,16 @@ class PrepareDeploymentProgram:
     title: str = field(repr=False)
     idempotency_key: IdempotencyKey
     approval_comment: str | None = field(default=None, repr=False)
+    proposed_graph_id: str | None = None
+    http_verification_intent: HttpVerificationPlanningIntent | None = field(default=None, kw_only=True)
+    managed_verification: ManagedVerificationPlanningIntent | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
+        if self.http_verification_intent is not None and type(self.http_verification_intent) is not HttpVerificationPlanningIntent:
+            raise InvalidDeploymentProgramContract("HTTP verification planning intent is invalid")
+        if ((self.managed_verification is not None and type(self.managed_verification) is not ManagedVerificationPlanningIntent)
+                or (self.managed_verification is not None and self.http_verification_intent is not None)):
+            raise InvalidDeploymentProgramContract("managed verification planning intent is invalid")
         _context(self.context)
         if type(self.desired) not in (DeploymentGraph, SavedDesiredTopologyRevision):
             raise InvalidDeploymentProgramContract(
@@ -89,9 +102,23 @@ class PrepareDeploymentProgram:
         _idempotency_key(self.idempotency_key)
         if self.approval_comment is not None:
             _bounded_content(self.approval_comment, "approval_comment")
+        if self.proposed_graph_id is not None:
+            if type(self.desired) is SavedDesiredTopologyRevision:
+                raise InvalidDeploymentProgramContract(
+                    "proposed_graph_id requires inline desired graph"
+                )
+            invalid_proposal = False
+            try:
+                validate_proposed_graph_id(self.proposed_graph_id)
+            except GraphAuthoringError:
+                invalid_proposal = True
+            if invalid_proposal:
+                raise InvalidDeploymentProgramContract(
+                    "proposed_graph_id must be a bounded public graph reference"
+                )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        result = {
             "command": "prepare-deployment-program",
             "workspace_id": self.context.workspace_id,
             "expected_current": _lineage_descriptor(self.expected_current),
@@ -106,6 +133,13 @@ class PrepareDeploymentProgram:
             "idempotency_key": self.idempotency_key.value,
             "approval_comment_present": self.approval_comment is not None,
         }
+        if self.proposed_graph_id is not None:
+            result["proposed_graph_id"] = self.proposed_graph_id
+        if self.http_verification_intent is not None:
+            result["http_verification_intent"] = self.http_verification_intent.value
+        if self.managed_verification is not None:
+            result["managed_verification"] = self.managed_verification.value
+        return result
 
 
 @dataclass(frozen=True, slots=True)

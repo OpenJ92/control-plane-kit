@@ -105,8 +105,12 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             self.assertNotIn(None, revision, "missing revision history collections")
             legacy = {case.collection for case in cases}
             self.assertFalse(legacy & revision)
-            self.assertEqual(legacy | revision, set(ReadCollection))
-            self.assertEqual(len(ReadCollection), 20)
+            # Product admission traversal/direct+HTTP+MCP parity over 201 rows
+            # is owned by test_product_directory with canonical product documents.
+            products = {ReadCollection.REGISTERED_PRODUCTS}
+            self.assertFalse((legacy | revision) & products)
+            self.assertEqual(legacy | revision | products, set(ReadCollection))
+            self.assertEqual(len(ReadCollection), 21)
 
             for case in cases:
                 with self.subTest(collection=case.collection.value):
@@ -1038,27 +1042,11 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             """,
             (decision_id, approval_id, _INSTANT),
         )
-        connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES (%s, %s, %s, %s, 'cancelled', 'operator', %s, %s, %s,
-                    %s, %s)
-            """,
-            (
-                execution_id,
-                handles.runs_workspace_id,
-                handles.runs_session_id,
-                handles.runs_plan_id,
-                _INSTANT,
-                approval_id,
-                decision_id,
-                execution_id,
-                f"{run_id}-fingerprint",
-            ),
-        )
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        insert_recorded_request(connection, request_id=execution_id, workspace_id=handles.runs_workspace_id,
+            session_id=handles.runs_session_id, plan_id=handles.runs_plan_id, status="cancelled",
+            requested_by="operator", requested_at=_INSTANT, approval_request_id=approval_id,
+            approval_decision_id=decision_id, idempotency_key=execution_id, intent_fingerprint=f"{run_id}-fingerprint")
         connection.execute(
             """
             INSERT INTO cpk_activity_runs

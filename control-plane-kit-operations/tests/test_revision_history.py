@@ -271,7 +271,7 @@ class RevisionHistoryTests(RevisionHistoryFixture, unittest.TestCase):
         first = self.add_attempt(plan, "first")
         second = replace(first, run_id="run-second", retry=RetryIdentity(2, first.run_id))
         with self.unit_of_work() as uow:
-            uow.stores.execution.add_run(second)
+            uow.stores.execution._add_run(second)
             uow.commit()
         rows = self.page(draft, "attempts").items
         self.assertEqual([(row["run_id"], row["prior_run_id"], row["attempt"]) for row in rows],

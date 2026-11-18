@@ -95,6 +95,10 @@ class PostgresEffectAttemptFoldFixture(
 ):
     """Lifecycle-coherent PostgreSQL worlds for one effect-attempt fold."""
 
+    def intent(self, **changes):
+        """Fold/reconciliation own retained rich attempts, not fresh admission."""
+        return self.retained_intent(**changes)
+
     def outcome_story(self, story: str, *, compensation: bool | None = None):
         if story.startswith(("execution-", "observed-")):
             name = story

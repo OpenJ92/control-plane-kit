@@ -5,6 +5,7 @@ from dataclasses import replace
 import pathlib
 import threading
 import unittest
+from unittest import mock
 
 import psycopg
 
@@ -24,6 +25,7 @@ from control_plane_kit_operations.postgres.current_schema_contract import (
     CURRENT_POSTGRES_SCHEMA_CONTRACT,
 )
 from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.postgres.failed_run_compensation_attempt_store import FailedRunCompensationAttemptStore
 from tests.failed_run_compensation_attempt_fixture import (
     FailedRunCompensationAttemptFixture,
     TARGET_MODULE,
@@ -35,6 +37,25 @@ class PostgresFailedRunCompensationAttemptTests(
     FailedRunCompensationAttemptFixture,
     unittest.TestCase,
 ):
+    def test_collected_bindings_are_revalidated_before_starting_next_inverse(self):
+        # #1896 new-law: no newly discovered earlier attempt lock after the
+        # workspace/program suffix. Existing first-incomplete policy survives.
+        self.seed_admitted_program()
+        self.attempt_service("inverse-start-a").execute(self.start_command())
+        self.fold_bound_attempt(EffectAttemptStatus.SUCCEEDED)
+        command, before = self.start_command(position=2), self.binding_snapshot()
+        original = FailedRunCompensationAttemptStore.for_program
+        reads = []
+        def changed(store, program_id):
+            value = original(store, program_id)
+            reads.append(value)
+            return value if len(reads) == 1 else ()
+        with mock.patch.object(FailedRunCompensationAttemptStore, "for_program", changed):
+            with self.assertRaises(self.require_attempt_contract().FailedRunCompensationAttemptConflict):
+                self.attempt_service("must-not-start").execute(command)
+        self.assertGreaterEqual(len(reads), 2, "collected bindings were not revalidated")
+        self.assertEqual(self.binding_snapshot(), before)
+
     def test_closed_language_and_direct_current_schema_are_present(self) -> None:
         module = self.require_attempt_contract()
         required = (

@@ -25,11 +25,15 @@ from ._redaction import _redact_descriptor_value
 from .errors import ReadModelError
 from .models import FocusedDetailReadModel
 from .protocols import (
+    ProvisionAttemptStore,
     IngressAuthorityStore,
     RuntimeAuthorityDeliveryStore,
     RuntimeAuthorityStore,
     SecretProviderStore,
     SecretReferenceStore,
+)
+from control_plane_kit_operations.secret_material_provision_attempts import (
+    ProvisionAttemptError, ProvisionAttemptNotFound, ProvisionedSecretMaterialReceipt,
 )
 
 
@@ -43,6 +47,7 @@ class _AuthoritySecretReadProjection:
         ingress_authority_store: IngressAuthorityStore | None,
         secret_provider_store: SecretProviderStore | None,
         secret_reference_store: SecretReferenceStore | None,
+        provision_attempt_store: ProvisionAttemptStore | None = None,
     ) -> None:
         self._require_workspace = require_workspace
         self._runtime_authority_store = runtime_authority_store
@@ -50,6 +55,20 @@ class _AuthoritySecretReadProjection:
         self._ingress_authority_store = ingress_authority_store
         self._secret_provider_store = secret_provider_store
         self._secret_reference_store = secret_reference_store
+        self._provision_attempt_store = provision_attempt_store
+
+    def secret_material_provision(self, workspace_id: str, request_id: str) -> ProvisionedSecretMaterialReceipt:
+        self._require_workspace(workspace_id)
+        if self._provision_attempt_store is None:
+            raise ReadModelError("provision attempt store is not configured")
+        try:
+            return ProvisionedSecretMaterialReceipt.from_attempt(
+                self._provision_attempt_store.get(workspace_id, request_id))
+        except ProvisionAttemptNotFound:
+            failure = "missing provision request"
+        except ProvisionAttemptError:
+            failure = "provision request is unavailable"
+        raise ReadModelError(failure)
 
     def runtime_authorities(
         self,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from dataclasses import replace
 
 import psycopg
 
@@ -22,15 +23,19 @@ from control_plane_kit_core.products import (
     instantiate_product,
 )
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
+from control_plane_kit_core.secret_selections import SecretVersionSelection
+from control_plane_kit_core.secrets import SecretFileDelivery, SecretReference, SecretUseIntent
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.graph_authoring import (
     GraphAuthoringError,
     GraphAuthoringService,
     SetDesiredGraphCommand,
+    set_desired_graph_in_unit_of_work,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
+from secret_selection_authoring_fixture import admit_selection_reference
 
 
 class GraphAuthoringTests(unittest.TestCase):
@@ -51,6 +56,63 @@ class GraphAuthoringTests(unittest.TestCase):
     def unit_of_work(self) -> PostgresUnitOfWork:
         database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
         return PostgresUnitOfWork(lambda: psycopg.connect(database_url))
+
+    def selected_secret_command(self) -> SetDesiredGraphCommand:
+        """Valid graph material is not evidence of provider metadata preparation."""
+        reference = SecretReference("secret://workspace-secrets/workspace-a/token")
+        intent = SecretUseIntent.APPLICATION_CONTROL_TOKEN
+        product = self.product("secret-server")
+        product = replace(product, runtime_contract=replace(
+            product.runtime_contract,
+            secret_deliveries=(SecretFileDelivery("/run/secrets/token", reference, intent),),
+        ))
+        document = ProductDescriptorCodec().encode_document(product)
+        block = instantiate_product(product, "app",
+            ProductInstanceConfiguration.from_contract(product.runtime_contract))
+        graph = compile_topology(DeploymentTopology("desired", DockerRuntime(children=(block,))))
+        graph = replace(graph, nodes={key: replace(node,
+            secret_selections=(SecretVersionSelection(reference, intent, "version-1"),))
+            for key, node in graph.nodes.items()})
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+            uow.stores.registered_products.register(workspace_id="workspace-a",
+                descriptor_document=document, source=InlineDescriptorSource(),
+                imported_by="operator-a", imported_at="2026-07-22T10:00:00Z")
+            uow.commit()
+        admit_selection_reference(self.unit_of_work, reference, intent)
+        return SetDesiredGraphCommand(workspace_id="workspace-a", actor_id="operator-a",
+            graph=graph, expected_desired_graph_id=None)
+
+    def test_new_secret_version_requires_preparation_before_desired_write(self) -> None:
+        command = self.selected_secret_command()
+        before = command.graph.descriptor()
+        service = GraphAuthoringService(self.unit_of_work,
+            graph_id_factory=lambda: "graph-unprepared", clock=lambda: "2026-07-22T10:05:00Z")
+        with self.assertRaises(GraphAuthoringError):
+            service.set_desired_graph(command)
+        self.assertEqual(command.graph.descriptor(), before)
+        self.assertEqual(self._row_count("cpk_graph_versions"), 0)
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            self.assertIsNone(workspace.desired_graph_id)
+            self.assertEqual(workspace.desired_graph_revision, 0)
+
+    def test_in_unit_of_work_cannot_publish_unprepared_secret_version(self) -> None:
+        command = self.selected_secret_command()
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            with self.assertRaises(GraphAuthoringError):
+                set_desired_graph_in_unit_of_work(uow, command, lifecycle_guard=guard,
+                    graph_id="graph-unprepared", created_at="2026-07-22T10:05:00Z")
+            # Inspect and commit the same transaction: the owner must refuse before
+            # writes rather than depend on an outer caller rolling back its work.
+            with self.assertRaises(KeyError):
+                uow.stores.graphs.get("graph-unprepared")
+            workspace = uow.stores.workspaces.get("workspace-a")
+            self.assertIsNone(workspace.desired_graph_id)
+            self.assertEqual(workspace.desired_graph_revision, 0)
+            uow.commit()
+        self.assertEqual(self._row_count("cpk_graph_versions"), 0)
 
     def test_registered_product_graph_becomes_desired_graph_truth(self) -> None:
         document = ProductDescriptorCodec().encode_document(self.product("hello-server"))

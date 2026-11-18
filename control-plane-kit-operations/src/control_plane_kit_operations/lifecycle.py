@@ -54,6 +54,56 @@ class RunLifecycleNotFound(RunLifecycleError):
     """Raised when lifecycle target truth is missing."""
 
 
+_RUN_TRANSITIONS = {
+    ActivityEventKind.RUN_STARTED: ((ActivityRunStatus.CLAIMED,), ActivityRunStatus.RUNNING),
+    ActivityEventKind.RUN_PAUSED: ((ActivityRunStatus.RUNNING,), ActivityRunStatus.PAUSED),
+    ActivityEventKind.RUN_RESUMED: ((ActivityRunStatus.PAUSED,), ActivityRunStatus.RUNNING),
+    ActivityEventKind.RUN_SUCCEEDED: ((ActivityRunStatus.RUNNING,), ActivityRunStatus.SUCCEEDED),
+    ActivityEventKind.RUN_FAILED: ((ActivityRunStatus.RUNNING, ActivityRunStatus.PAUSED), ActivityRunStatus.FAILED),
+    ActivityEventKind.RUN_CANCELLED: ((ActivityRunStatus.CLAIMED, ActivityRunStatus.PAUSED), ActivityRunStatus.CANCELLED),
+}
+
+
+def _require_historical_cancellation_envelope(run, events):
+    """Validate retained lifecycle association without replaying authority.
+
+    Uses the same ordinary transition facts as the command owner. Effect
+    evidence is independently checked by its existing journal/attempt owners.
+    """
+    from datetime import datetime
+    from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+
+    def instant(value):
+        return datetime.fromisoformat(validate_canonical_utc_timestamp(value).replace("Z", "+00:00"))
+
+    if (not events or events[0].kind is not ActivityEventKind.RUN_OPENED
+            or events[0].occurred_at != run.created_at
+            or events[-1].kind is not ActivityEventKind.RUN_CANCELLED
+            or events[-1].occurred_at != run.settled_at):
+        raise ValueError("historical cancellation envelope is incongruent")
+    state = ActivityRunStatus.CLAIMED
+    previous = instant(run.created_at)
+    started_at = None
+    for event in events[1:]:
+        current = instant(event.occurred_at)
+        if current < previous or state is ActivityRunStatus.CANCELLED:
+            raise ValueError("historical cancellation chronology is incongruent")
+        previous = current
+        if event.kind in _RUN_TRANSITIONS:
+            expected, replacement = _RUN_TRANSITIONS[event.kind]
+            if state not in expected:
+                raise ValueError("historical cancellation transition is incongruent")
+            state = replacement
+            if event.kind in (ActivityEventKind.RUN_STARTED, ActivityEventKind.RUN_CANCELLED) and started_at is None:
+                started_at = event.occurred_at
+        elif event.kind.value.startswith("step_"):
+            continue
+        else:
+            raise ValueError("historical cancellation event is incongruent")
+    if state is not run.status or started_at != run.started_at:
+        raise ValueError("historical cancellation status is incongruent")
+
+
 @dataclass(frozen=True)
 class ExecutionWorkerAuthority:
     """Worker identity plus least privilege lifecycle scopes."""
@@ -261,8 +311,8 @@ class RunLifecycleCommandService:
             return self._transition(
                 command,
                 action_type=LifecycleOperationKind.START_RUN,
-                expected=(ActivityRunStatus.CLAIMED,),
-                replacement=ActivityRunStatus.RUNNING,
+                expected=_RUN_TRANSITIONS[ActivityEventKind.RUN_STARTED][0],
+                replacement=_RUN_TRANSITIONS[ActivityEventKind.RUN_STARTED][1],
                 event_kind=ActivityEventKind.RUN_STARTED,
                 started=True,
             )
@@ -270,8 +320,8 @@ class RunLifecycleCommandService:
             return self._transition(
                 command,
                 action_type=LifecycleOperationKind.PAUSE_RUN,
-                expected=(ActivityRunStatus.RUNNING,),
-                replacement=ActivityRunStatus.PAUSED,
+                expected=_RUN_TRANSITIONS[ActivityEventKind.RUN_PAUSED][0],
+                replacement=_RUN_TRANSITIONS[ActivityEventKind.RUN_PAUSED][1],
                 event_kind=ActivityEventKind.RUN_PAUSED,
                 evidence=command.evidence,
             )
@@ -279,16 +329,16 @@ class RunLifecycleCommandService:
             return self._transition(
                 command,
                 action_type=LifecycleOperationKind.RESUME_RUN,
-                expected=(ActivityRunStatus.PAUSED,),
-                replacement=ActivityRunStatus.RUNNING,
+                expected=_RUN_TRANSITIONS[ActivityEventKind.RUN_RESUMED][0],
+                replacement=_RUN_TRANSITIONS[ActivityEventKind.RUN_RESUMED][1],
                 event_kind=ActivityEventKind.RUN_RESUMED,
             )
         if isinstance(command, CompleteActivityRun):
             return self._transition(
                 command,
                 action_type=LifecycleOperationKind.COMPLETE_RUN,
-                expected=(ActivityRunStatus.RUNNING,),
-                replacement=ActivityRunStatus.SUCCEEDED,
+                expected=_RUN_TRANSITIONS[ActivityEventKind.RUN_SUCCEEDED][0],
+                replacement=_RUN_TRANSITIONS[ActivityEventKind.RUN_SUCCEEDED][1],
                 event_kind=ActivityEventKind.RUN_SUCCEEDED,
                 settled=True,
                 evidence=command.evidence,
@@ -297,8 +347,8 @@ class RunLifecycleCommandService:
             return self._transition(
                 command,
                 action_type=LifecycleOperationKind.FAIL_RUN,
-                expected=(ActivityRunStatus.RUNNING, ActivityRunStatus.PAUSED),
-                replacement=ActivityRunStatus.FAILED,
+                expected=_RUN_TRANSITIONS[ActivityEventKind.RUN_FAILED][0],
+                replacement=_RUN_TRANSITIONS[ActivityEventKind.RUN_FAILED][1],
                 event_kind=ActivityEventKind.RUN_FAILED,
                 settled=False,
                 failure=command.failure,
@@ -307,8 +357,8 @@ class RunLifecycleCommandService:
             return self._transition(
                 command,
                 action_type=LifecycleOperationKind.CANCEL_RUN,
-                expected=(ActivityRunStatus.CLAIMED, ActivityRunStatus.PAUSED),
-                replacement=ActivityRunStatus.CANCELLED,
+                expected=_RUN_TRANSITIONS[ActivityEventKind.RUN_CANCELLED][0],
+                replacement=_RUN_TRANSITIONS[ActivityEventKind.RUN_CANCELLED][1],
                 event_kind=ActivityEventKind.RUN_CANCELLED,
                 started=True,
                 settled=True,
@@ -351,11 +401,14 @@ class RunLifecycleCommandService:
                 result = _replay(stores, locked_request, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            guard = stores.graphs.lock_receiver_lifecycle(locator.identity.workspace_id)
+            request = _get_request_for_update(stores, command.request_id)
+            if request.identity != locator.identity:
+                raise RunLifecycleConflict("execution request ownership changed")
             session = _get_open_session_for_update(
                 history,
                 locator.identity.session_id,
             )
-            request = _get_request(stores, command.request_id)
             if request.identity.session_id != session.session_id:
                 raise RunLifecycleConflict(
                     "execution request session linkage changed"
@@ -367,9 +420,10 @@ class RunLifecycleCommandService:
                 raise RunLifecycleConflict("execution request is not claimable")
             if stores.execution.runs_for_request(command.request_id):
                 raise RunLifecycleConflict("execution request already has a run")
+            _require_fresh_receiver_permission(stores, request, guard)
             run_id_candidate = self._id_factory()
             run_id = _run_id_or_lifecycle_error(run_id_candidate)
-            claimed = stores.execution.claim_request(
+            claimed = stores.execution._claim_request(
                 command.request_id,
                 command.authority.worker_id,
                 command.lease_duration.seconds,
@@ -381,7 +435,7 @@ class RunLifecycleCommandService:
             if claimed.claim is None:
                 raise RunLifecycleConflict("claimed request lacks lease evidence")
             now = claimed.claim.claimed_at
-            run = stores.execution.add_run(
+            run = stores.execution._add_run(
                 ActivityRunRecord(
                     run_id=run_id,
                     plan_id=claimed.identity.plan_id,
@@ -417,6 +471,7 @@ class RunLifecycleCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
+            _require_fresh_receiver_permission(stores, claimed, guard)
             unit_of_work.commit()
             return RunLifecycleResult(claimed, run, event, action)
 
@@ -487,22 +542,28 @@ class RunLifecycleCommandService:
                 )
                 unit_of_work.commit()
                 return result
-            session = _get_open_session_for_update(
-                history,
-                locator_request.identity.session_id,
-            )
+            guard = (stores.graphs.lock_receiver_lifecycle(locator_request.identity.workspace_id)
+                     if replacement is ActivityRunStatus.RUNNING else None)
             request = _get_request_for_update(
                 stores,
                 locator_run.admission.request_id,
             )
+            if request.identity != locator_request.identity:
+                raise RunLifecycleConflict("execution request ownership changed")
             run = _get_run_for_update(stores, command.run_id)
             _require_run_request_linkage(run, request)
+            session = _get_open_session_for_update(
+                history,
+                locator_request.identity.session_id,
+            )
             if request.identity.session_id != session.session_id:
                 raise RunLifecycleConflict("activity run session linkage changed")
             _require_worker_owns(request, command.authority, command.fence)
+            if guard is not None:
+                _require_fresh_receiver_permission(stores, request, guard)
             transitioned = None
             for status in expected:
-                transitioned = stores.execution.compare_and_set_run_status(
+                transitioned = stores.execution._compare_and_set_run_status(
                     run.run_id,
                     expected=status,
                     replacement=replacement,
@@ -541,8 +602,36 @@ class RunLifecycleCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
+            if guard is not None:
+                _require_fresh_receiver_permission(stores, request, guard)
             unit_of_work.commit()
             return RunLifecycleResult(request, transitioned, event, action)
+
+
+def _require_receiver_execution_permission(stores, request, guard):
+    """Receiver truth only; recovery retains its existing approval owner."""
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_execution
+    try:
+        _validate_receiver_execution(stores, request, guard)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise RunLifecycleConflict("fresh execution permission is unavailable")
+
+
+def _require_fresh_receiver_permission(stores, request, guard):
+    _require_receiver_execution_permission(stores, request, guard)
+    from control_plane_kit_operations.receiver_lifecycle import (
+        _validate_receiver_execution_approval,
+    )
+    try:
+        _validate_receiver_execution_approval(stores, request)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise RunLifecycleConflict("fresh execution permission is unavailable")
 
 
 def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:

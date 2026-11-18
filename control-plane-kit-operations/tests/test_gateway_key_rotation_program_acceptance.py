@@ -129,6 +129,10 @@ class _TrackingUnitOfWork:
     def stores(self):
         return self._inner.stores
 
+    @property
+    def _commit_requested(self):
+        return self._inner._commit_requested
+
     def commit(self) -> None:
         self._inner.commit()
 

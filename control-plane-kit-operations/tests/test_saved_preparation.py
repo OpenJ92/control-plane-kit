@@ -23,6 +23,22 @@ from draft_catalogue_fixture import NOW, principal
 
 
 class SavedPreparationTests(SavedPreparationFixture, unittest.TestCase):
+    def test_saved_prepare_http_sample_intent_is_bound_before_child_planning(self):
+        from control_plane_kit_operations import planning
+        intent = getattr(planning, "HttpVerificationPlanningIntent", None)
+        self.assertIsNotNone(intent, "typed sample planning intent is missing")
+        draft = self.selected()
+        for explicit_first in (False, True):
+            command = self.prepare_command(draft, key=f"sample-{explicit_first}")
+            explicit = replace(command, http_verification_intent=intent.AUTHENTICATED_SAMPLES)
+            first, changed = (explicit, command) if explicit_first else (command, explicit)
+            result = self.program().prepare(first)
+            before = self.runtime_truth()
+            self.assertEqual(self.program().prepare(first), result)
+            with self.assertRaises(DeploymentProgramStateConflict):
+                self.program().prepare(changed)
+            self.assertEqual(self.runtime_truth(), before)
+
     def test_accumulated_edits_plan_exact_selected_revision_and_preserve_later_head(self):
         def graph(*roles):
             return compile_topology(DeploymentTopology("saved edits", DockerRuntime(children=tuple(

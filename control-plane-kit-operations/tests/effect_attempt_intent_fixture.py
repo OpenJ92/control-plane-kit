@@ -46,6 +46,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectSource,
     RuntimeProductMaterial,
 )
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.secrets import (
     CredentialReference,
     SecretEnvironmentDelivery,
@@ -331,6 +332,11 @@ def product_material(
         runtime_id="docker",
         reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
         product=product,
+        secret_selections=(SecretVersionSelection(
+            SecretReference("secret://local/workspace-a/app/token"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+            "version-1",
+        ),),
         public_environment=(
             PublicStaticEnvironmentBinding("HELLO_MESSAGE", public_value),
         ),
@@ -394,6 +400,8 @@ class EffectAttemptIntentFixture:
         activity_id: str = "start-runtime",
         products: tuple[RuntimeProductMaterial, ...] | None = None,
         process_delivery: bool = True,
+        operation=None,
+        kind: RuntimeEffectKind = RuntimeEffectKind.REALIZE_ACTIVITY,
     ) -> RuntimeEffectIntent:
         delivery = authority_delivery()
         products = (product_material(),) if products is None else products
@@ -406,7 +414,7 @@ class EffectAttemptIntentFixture:
         )
         request = RuntimeEffectRequest(
             effect_id=EVENT_ID,
-            kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+            kind=kind,
             runtime_kind=RuntimeKind.DOCKER,
             source=RuntimeEffectSource(
                 workspace_id="workspace-a",
@@ -418,7 +426,7 @@ class EffectAttemptIntentFixture:
                 intent_event_id=EVENT_ID,
             ),
             activity_id=ActivityId(activity_id),
-            operation=(
+            operation=operation if operation is not None else (
                 StopNode(NodeTarget("api"))
                 if compensation
                 else StartNode(NodeTarget("api"))
@@ -474,22 +482,18 @@ class EffectAttemptIntentFixture:
         return rfc8785.dumps((intent or self.intent()).descriptor())
 
     def largest_lawful_intent(self) -> RuntimeEffectIntent:
-        products = tuple(
-            product_material(node_id=f"node-{index:04d}-" + "x" * 430)
-            for index in range(2_048)
+        material = product_material()
+        # One target, all 32 decoder-admitted bindings at their value ceiling.
+        # Values alone occupy half a MiB; the descriptor adds lawful overhead.
+        bindings = tuple(
+            PublicStaticEnvironmentBinding(f"LARGE_VALUE_{index:03d}", "x" * 16_384)
+            for index in range(32)
         )
-        lower = 1
-        upper = len(products)
-        accepted = self.intent(products=(products[0],), process_delivery=False)
-        while lower <= upper:
-            middle = (lower + upper) // 2
-            candidate = self.intent(products=products[:middle], process_delivery=False)
-            if len(rfc8785.dumps(candidate.descriptor())) <= INTENT_MAX_BYTES:
-                accepted = candidate
-                lower = middle + 1
-            else:
-                upper = middle - 1
-        return accepted
+        return self.intent(
+            products=(replace(material, public_environment=bindings),),
+            process_delivery=False,
+            operation=StartNode(NodeTarget(material.node_id)),
+        )
 
     def public_round_trip(
         self,

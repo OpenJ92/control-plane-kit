@@ -339,17 +339,30 @@ class PostgresEffectAttemptStoreContractTests(
         self.require_store()
         record = self.record()
         connection = _RecordingConnection()
-        self.assertIsNone(EffectAttemptStore(connection).insert_absent(record))
-        query = " ".join(str(connection.calls[0][0]).split())
+        self.assertIsNone(EffectAttemptStore(connection)._insert_absent(record))
+        statements = [" ".join(str(call[0]).split()) for call in connection.calls]
+        self.assertEqual([statement.split()[0] for statement in statements], ["SELECT", "INSERT"])
+        self.assertIn("FROM cpk_effect_attempt_intents AS intent", statements[0])
+        self.assertEqual(connection.calls[0][1], ("run-a", "activity-a", 1))
+        query, = (statement for statement in statements if statement.startswith("INSERT "))
         self.assertIn(
             "ON CONFLICT (run_id, activity_id, attempt) DO NOTHING",
             query,
         )
 
         integrity = UniqueViolation("event-role-canary")
+        class InsertFailingConnection(_RecordingConnection):
+            def execute(self, query, *parameters):
+                cursor = super().execute(query, *parameters)
+                if str(query).lstrip().startswith("INSERT "):
+                    raise integrity
+                return cursor
+
+        failing = InsertFailingConnection()
         with self.assertRaises(UniqueViolation) as caught:
-            EffectAttemptStore(_FailingConnection(integrity)).insert_absent(record)
+            EffectAttemptStore(failing)._insert_absent(record)
         self.assertIs(caught.exception, integrity)
+        self.assertEqual([str(call[0]).split()[0] for call in failing.calls], ["SELECT", "INSERT"])
 
     def test_unexpected_sql_errors_escape_with_identity(self) -> None:
         self.require_store()

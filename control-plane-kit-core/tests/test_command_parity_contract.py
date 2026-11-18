@@ -36,8 +36,6 @@ def _program() -> DeploymentProgramBoundary:
 def _transaction_rule(role: ControlPlaneServiceRole) -> ServiceTransactionBoundary:
     if role is ControlPlaneServiceRole.READS:
         return ServiceTransactionBoundary(role, StoreParticipation.READ_ONLY)
-    if role is ControlPlaneServiceRole.AUTHORIZATION:
-        return ServiceTransactionBoundary(role, StoreParticipation.NONE)
     if role is ControlPlaneServiceRole.EXECUTION:
         return ServiceTransactionBoundary(
             role,
@@ -80,6 +78,7 @@ class CommandParityContractTests(unittest.TestCase):
                     binding.approval,
                 )
                 for binding in parity.commands
+                if binding.service_role is not ControlPlaneServiceRole.AUTHORIZATION
             ],
             [
                 (
@@ -99,12 +98,22 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.SUBMITS_FOR_APPROVAL,
                 ),
                 (
+                    "delegation-key-generation.reconcile", "command.delegation-key-generation.reconcile",
+                    "reconcile_delegation_key_generation", ControlPlaneServiceRole.EXECUTION,
+                    CommandIdempotencyPolicy.REQUIRED, ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
                     "delegation-key.activate",
                     "command.delegation-key.activate",
                     "activate_delegation_key",
                     ControlPlaneServiceRole.PLANNING,
                     CommandIdempotencyPolicy.REQUIRED,
                     ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
+                    "delegation-key.generate", "command.delegation-key.generate",
+                    "generate_delegation_key", ControlPlaneServiceRole.EXECUTION,
+                    CommandIdempotencyPolicy.REQUIRED, ApprovalPolicy.NOT_REQUIRED,
                 ),
                 (
                     "delegation-key.register",
@@ -161,6 +170,14 @@ class CommandParityContractTests(unittest.TestCase):
                     ControlPlaneServiceRole.PLANNING,
                     CommandIdempotencyPolicy.REQUIRED,
                     ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+                ),
+                (
+                    "deployment.reobserve-connector",
+                    "command.deployment.reobserve-connector",
+                    "reobserve_connector_connection",
+                    ControlPlaneServiceRole.EXECUTION,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
                 ),
                 (
                     "desired-graph.set",

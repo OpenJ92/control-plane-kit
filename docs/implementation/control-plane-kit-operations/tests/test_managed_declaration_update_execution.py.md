@@ -1,0 +1,34 @@
+Source: [test_managed_declaration_update_execution.py](../../../../control-plane-kit-operations/tests/test_managed_declaration_update_execution.py).
+Maintain this companion with its source.
+
+#2078 changes the application adapter's failure boundary while preserving direct
+owner exceptions. The existing incomplete-run refusal helper now requires the
+bounded CpkServerApplicationError, status 500 and the exact preconditions/incomplete/
+unverified diagnostic with its requested workspace/run/plan/idempotency correlation.
+It retains all graph, effects, history and replay assertions. This corrects the
+seven CI errors caused by the stale imported exception alias before route dispatch;
+the correction at `95bcfb49ab05c583282a51defdf38318017ba242` passed the ordinary
+focused gate: all eight affected methods, 622.790 seconds, complete exit 0 with
+integrity, compilation and clean import. Full corrected CI remains pending;
+there is no production change. See [the result](https://github.com/OpenJ92/control-plane-kit/issues/2078#issuecomment-6595490883).
+
+#1979 extends the real Operations application/PostgreSQL fixture with seven
+focused new-law/strengthened composition tests. Existing public prepare, approve,
+admit, claim, start, execute and advance commands own all durable state. The
+existing recording runtime only models its external provider boundary; no second
+planner, receipt store, lifecycle owner or state machine is introduced.
+
+The happy path checks two distinct REPLACED installations, exact changed wrapper
+and route configuration references, unchanged other instances, selected successor,
+desired declaration health, reconstruction/replay and guarded advancement.
+Fresh authority controls cover plan refusal and drift after each optimistic
+proposal, including G's proposal after X committed. A narrow patch injects actual
+registry drift, then delegates to the unchanged real locked first-start service;
+it cannot manufacture a passing start or durable result. Missing X receipt and
+mismatched G receipt preserve uncertainty/order; failed final health preserves
+both actual installations. Original accepted history and replay remain intact.
+
+This tests-first checkpoint is unexecuted. Missing-admission red will not give
+credit to later assertions blocked behind admission. Use the released maintained
+-k selection and exact clean architecture-testing prerequisite; no custom runner.
+No credential lifecycle, provider/live execution or original tunnel/DNS change.

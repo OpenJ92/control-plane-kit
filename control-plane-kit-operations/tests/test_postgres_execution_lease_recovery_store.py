@@ -282,13 +282,15 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
                     *_candidate_canaries(request_id, observed_at),
                 )
 
-    def test_exact_duration_boundaries_reach_sql(self) -> None:
+    def test_physical_rotation_exact_duration_boundaries_reach_sql(self) -> None:
         self.require_store_methods()
         for duration in (1, 3600):
             with self.subTest(duration=duration):
                 connection = _RecordingConnection()
                 store = PostgresExecutionStore(connection)
-                result = store.rotate_request_claim(
+                # Physical encoding law; public C3 permission requires real
+                # original scope truth, covered by the direct permission tests.
+                result = store._rotate_request_claim(
                     "request-a",
                     expected_fence=ExecutionLeaseFence("worker-a", 7),
                     replacement_fence=ExecutionLeaseFence("worker-a", 8),
