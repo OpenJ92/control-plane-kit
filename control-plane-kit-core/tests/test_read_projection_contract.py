@@ -215,6 +215,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.desired-topology-draft-revision-metadata",
+                    ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_METADATA,
+                    "DesiredTopologyDraftRevisionMetadataReadResponse",
+                    ReadProjectionPolicy.CONFIGURATION_ARTIFACT_METADATA,
+                    True,
+                    False,
+                ),
+                (
                     "read.desired-topology-draft-revision-preparations",
                     history_preparations,
                     "DesiredTopologyDraftRevisionPreparationsReadResponse",

@@ -257,6 +257,33 @@ class DesiredTopologyDraftTests(DraftCatalogueFixture, unittest.TestCase):
                 service.execute(denied)
         self.assertEqual(self.catalogue_truth(), before)
 
+    def test_exact_revision_file_metadata_uses_requested_graph_and_preserves_stored_file(self):
+        from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+
+        graph = self.graph()
+        artifact = ConfigurationArtifact("settings", "/etc/example/settings.txt",
+            ConfigurationMediaType.TEXT, "recognizable revision one file", source_digest="a" * 64)
+        configured = replace(graph, nodes={"app": replace(graph.node("app"), configuration_artifacts=(artifact,))})
+        first = self.create(graph=configured)
+        second = self.catalogue().execute(self.revise_command(first, graph=graph))
+        route = "read.desired-topology-draft-revision-metadata"
+        expected_file = {key: value for key, value in artifact.descriptor().items() if key != "content"}
+        for surface in ("http", "mcp"):
+            for receipt, files in ((first, {"app": [expected_file]}), (second, {})):
+                result = self.read(route, surface=surface, draft_id=first.draft_id, revision=receipt.revision)
+                self.assertEqual(result, {**receipt.descriptor(), "kind": "desired-topology-draft-revision-metadata",
+                    "configuration_artifacts": files})
+                self.assertNotIn(artifact.content, json.dumps(result))
+            with self.assertRaises(CpkServerApplicationError) as missing:
+                self.read(route, surface=surface, workspace="workspace-b", draft_id=first.draft_id, revision=1)
+            self.assertEqual(missing.exception.status, 404)
+            with self.assertRaises(CpkServerApplicationError) as denied:
+                self.read(route, surface=surface, reader=principal(scopes=()), draft_id=first.draft_id, revision=1)
+            self.assertEqual(denied.exception.status, 403)
+        with self.unit_of_work() as uow:
+            stored = uow.stores.graphs.get(first.graph_id).graph_descriptor
+            self.assertEqual(stored["nodes"]["app"]["configuration_artifacts"], [artifact.descriptor()])
+
     def test_graph_bounds_and_redaction_do_not_return_submitted_sensitive_metadata(self):
         from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftError
 

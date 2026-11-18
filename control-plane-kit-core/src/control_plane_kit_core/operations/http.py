@@ -346,6 +346,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "DesiredTopologyDraftRevisionReadResponse",
             ),
             (
+                "read.desired-topology-draft-revision-metadata",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/metadata",
+                "DesiredTopologyDraftRevisionMetadataReadResponse",
+            ),
+            (
                 "read.desired-topology-draft-revision-preparations",
                 "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations",
                 "DesiredTopologyDraftRevisionPreparationsReadResponse",
@@ -1032,6 +1037,7 @@ def _read_route(
             "read.product-topology-preview",
             "read.workspaces",
             "read.products", "read.product-detail",
+            "read.desired-topology-draft-revision-metadata",
             "read.desired-topology-draft-revision-preparations",
             "read.desired-topology-draft-revision-attempts",
         } else 65536),

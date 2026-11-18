@@ -323,8 +323,16 @@ execute runtime effects.
 | `read.desired-topology-drafts` | GET `/desired-topology-drafts` | `list_desired_topology_drafts` |
 | `read.desired-topology-draft-revisions` | GET `/desired-topology-drafts/{draft_id}/revisions` | `list_desired_topology_draft_revisions` |
 | `read.desired-topology-draft-revision` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}` | `get_desired_topology_draft_revision` |
+| `read.desired-topology-draft-revision-metadata` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}/metadata` | `get_desired_topology_draft_revision_metadata` |
 | `read.desired-topology-draft-revision-preparations` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations` | `list_desired_topology_draft_revision_preparations` |
 | `read.desired-topology-draft-revision-attempts` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts` | `list_desired_topology_draft_revision_attempts` |
+
+The exact revision metadata read requires workspace read access. It returns the
+workspace, draft, revision and graph IDs plus `configuration_artifacts`, keyed by
+node ID for nodes with configured files. Each file has its artifact ID, target
+path, media type, mode, content digest and source digest. An empty map identifies
+a revision with no configured files. Use the content digest to compare a known
+file with the saved revision.
 
 Create accepts `session_id`, `idempotency_key`, `title`, and a Core `graph`
 descriptor. Revise accepts the same session/key/graph inputs and requires

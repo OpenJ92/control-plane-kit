@@ -139,6 +139,9 @@ class InstanceReadService:
     def desired_topology_draft_revision(self, workspace_id: str, draft_id: str, revision: int):
         return self._desired_topology_drafts.detail(workspace_id, draft_id, revision)
 
+    def desired_topology_draft_revision_metadata(self, workspace_id: str, draft_id: str, revision: int):
+        return self._desired_topology_drafts.metadata(workspace_id, draft_id, revision)
+
     def desired_topology_draft_revision_history(self, request: ReadPageRequest):
         return self._revision_history.page(request)
 
