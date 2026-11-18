@@ -755,6 +755,7 @@ class ManagedApplicationChainTests(ManagedApplicationFixture):
     def test_fixture_resets_installation_identity_between_cases(self):
         import control_plane_kit_operations as operations
         from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
+        from control_plane_kit_operations.workflows import IdempotencyKey
 
         admin = PrincipalIdentity("fixture-isolation", "admin", PrincipalKind.OPERATOR)
 
