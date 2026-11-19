@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from dataclasses import replace
 from pathlib import Path
 import subprocess
 import tarfile
@@ -23,6 +24,36 @@ from current_backend.source_lock import (
 
 
 class BackendSourceLockTests(unittest.TestCase):
+    def test_independent_clone_materializes_detached_clean_server_from_fetch_only_store(self) -> None:
+        with _backend_fixture() as fixture:
+            lock, paths = fixture.independent_lock()
+            assert lock.architecture_testing is not None
+            # Existing clone_backend is the public entrance under test. File URLs
+            # provide the same exact fetch-only stores without a network fixture.
+            lock = replace(lock,
+                server_products=replace(lock.server_products, url=paths[lock.server_products.name].as_uri()),
+                upstreams=tuple(replace(spec, url=paths[spec.name].as_uri()) for spec in lock.upstreams),
+                architecture_testing=replace(lock.architecture_testing, url=paths[lock.architecture_testing.name].as_uri()),
+            )
+            cloned = clone_backend(lock)
+            with cloned:
+                server = cloned.backend.repository("control-plane-kit-servers")
+                no_head = subprocess.run(("git", "rev-parse", "--verify", "HEAD"), cwd=server.object_store, capture_output=True)
+                self.assertNotEqual(no_head.returncode, 0)
+                with materialize_backend(cloned.backend) as materialized:
+                    materialized_root = materialized.root
+                    for role in ("control-plane-kit-servers", "control-plane-kit-architecture-testing"):
+                        path = materialized.path_for(role)
+                        selected = cloned.backend.repository(role)
+                        self.assertEqual(_run(("git", "rev-parse", "HEAD"), cwd=path).strip(), selected.commit)
+                        self.assertEqual(_run(("git", "rev-parse", "HEAD^{tree}"), cwd=path).strip(), selected.tree)
+                        detached = subprocess.run(("git", "symbolic-ref", "-q", "HEAD"), cwd=path, capture_output=True)
+                        self.assertEqual(detached.returncode, 1)
+                        self.assertEqual(_run(("git", "status", "--porcelain", "--untracked-files=all"), cwd=path), "")
+                        self.assertEqual(_run(("git", "diff", "--binary", "HEAD"), cwd=path), "")
+                self.assertFalse(materialized_root.exists())
+            self.assertFalse(cloned.root.exists())
+
     def test_cleanup_failure_does_not_hide_primary_consumer_error(self) -> None:
         with _backend_fixture() as fixture:
             resolved = resolve_local_backend(fixture.lock, fixture.paths)
@@ -131,6 +162,7 @@ class BackendSourceLockTests(unittest.TestCase):
                 payload = (
                     materialized.path_for("control-plane-kit") / "payload.txt"
                 ).read_text(encoding="utf-8")
+                self.assertFalse((materialized.path_for("control-plane-kit-servers") / ".git").exists())
             status_after = _run(("git", "status", "--porcelain"), cwd=core)
 
         self.assertEqual(payload, "control-plane-kit\n")
