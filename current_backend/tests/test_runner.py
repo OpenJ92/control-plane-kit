@@ -35,7 +35,7 @@ from current_backend.tests.test_contracts import _backend_fixture
 
 class BackendGateRunnerTests(unittest.TestCase):
     def test_covered_evidence_requires_executed_normal_path_not_disabled_source_tokens(self) -> None:
-        for mode in ("normal", "disabled", "early-exit"):
+        for mode in ("normal", "disabled", "early-exit", "missing", "out-of-order", "nonzero"):
             with self.subTest(mode=mode), _runner_fixture() as fixture:
                 fixture.backend_fixture.independent()
                 servers = fixture.backend.path_for("control-plane-kit-servers")
@@ -51,7 +51,14 @@ class BackendGateRunnerTests(unittest.TestCase):
                 gate.write_text(body)
                 gate.chmod(0o700)
                 smoke = servers / "scripts/cpk_server_image_smoke.sh"
-                smoke.write_text(smoke.read_text() + "\necho '" + SERVERS_ACCEPTANCE_EVIDENCE[0] + "'\necho '" + SERVERS_ACCEPTANCE_EVIDENCE[1] + "'\n")
+                emitted = list(SERVERS_ACCEPTANCE_EVIDENCE[:2])
+                if mode == "missing":
+                    emitted = emitted[1:]
+                elif mode == "out-of-order":
+                    emitted.reverse()
+                smoke.write_text(smoke.read_text() + "\n" + "\n".join("echo '" + line + "'" for line in emitted) + "\n")
+                if mode == "nonzero":
+                    gate.write_text(gate.read_text() + "exit 7\n")
                 (servers / "scripts/docker_residue_audit.sh").write_text("#!/bin/sh\necho '" + SERVERS_ACCEPTANCE_EVIDENCE[2] + "'\n")
                 def execute(stage, cwd, output):
                     if stage.identity == "server-products":
@@ -61,7 +68,7 @@ class BackendGateRunnerTests(unittest.TestCase):
                 self.assertEqual(report.status, "passed" if mode == "normal" else "failed")
                 if mode != "normal":
                     self.assertEqual(report.first_failed_stage, "server-products")
-                    self.assertEqual(report.stages[-1].detail, "normal Servers acceptance terminal evidence is missing")
+                    self.assertEqual(report.stages[-1].detail, "command exited with status 7" if mode == "nonzero" else "normal Servers acceptance terminal evidence is missing")
 
     def test_successful_secrets_and_sdk_commands_cannot_hide_uncertain_cleanup(self) -> None:
         for owner in ("secrets", "server-sdk"):
@@ -92,6 +99,10 @@ class BackendGateRunnerTests(unittest.TestCase):
             self.assertEqual(len(calls), 4)
             self.assertIn("reference=control-plane-kit-server-sdk-test:12345", calls[-1])
             self.assertIn("name=^/cpk-server-sdk-base-12345$", calls[0])
+            def image_residue(command, **kwargs):
+                return subprocess.CompletedProcess(command, 0, "control-plane-kit-server-sdk-test:12345\n" if command[1] == "image" else "")
+            with patch("current_backend.runner.subprocess.run", side_effect=image_residue):
+                self.assertEqual(_stage_cleanup_status(sdk, outcome), "residue")
             name = dict(secrets.environment)["CPK_SECRETS_TEST_CONTAINER"]
             with patch("current_backend.runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, name + "\n")):
                 self.assertEqual(_stage_cleanup_status(secrets, unknown), "residue")
