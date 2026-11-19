@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 import os
@@ -21,9 +21,13 @@ from .contracts import (
     BackendContracts,
     load_backend_contracts,
     validate_backend,
+    PACKAGE_CONTRACT_SCHEMA,
 )
 from .source_lock import (
     BackendLockError,
+    BackendCleanupError,
+    PACKAGE_LOCK_SCHEMA,
+    ARCHITECTURE_ROLE,
     MaterializedBackend,
     ResolvedBackend,
     clone_backend,
@@ -45,6 +49,7 @@ STAGE_ORDER = (
     "cpk-server-http-mcp-source-live",
     "docker-residue",
 )
+PACKAGE_STAGE_ORDER = (*STAGE_ORDER[:4], "server-sdk", *STAGE_ORDER[4:])
 _INTEGRITY = re.compile(
     r"^package-integrity contract=1 tests=(?P<tests>[0-9]+) "
     r"mocks=(?P<mocks>[0-9]+) approved_skips=(?P<skips>[0-9]+)$"
@@ -91,6 +96,7 @@ class GateStage:
     authoritative_caller: str | None = None
     provider_mutating: bool = False
     published_digest: bool = False
+    covered_by: str | None = None
 
     def __post_init__(self) -> None:
         if not self.identity or not self.identity.isascii() or len(self.identity) > 120:
@@ -104,7 +110,7 @@ class GateStage:
             or ".." in self.working_directory.parts
         ):
             raise BackendGateError(f"stage working directory is unsafe: {self.identity}")
-        if not self.command or not all(
+        if (not self.command and self.covered_by is None) or not all(
             isinstance(value, str) and value and value.isascii() and len(value) <= 300
             for value in self.command
         ):
@@ -133,10 +139,11 @@ class GateStage:
 @dataclass(frozen=True)
 class GatePlan:
     stages: tuple[GateStage, ...]
+    independent_packages: bool = False
 
     def validate(self) -> None:
         identities = tuple(stage.identity for stage in self.stages)
-        if identities != STAGE_ORDER:
+        if identities != (PACKAGE_STAGE_ORDER if self.independent_packages else STAGE_ORDER):
             raise BackendGateError("backend stage order is inconsistent")
         for stage in self.stages:
             if stage.repository == "control-plane-kit" and not stage.working_directory.parts:
@@ -155,6 +162,16 @@ class GatePlan:
             raise BackendGateError("source-live stage bypasses cpk-server")
         if self.stages[-1].kind != "residue":
             raise BackendGateError("Docker residue must be the final stage")
+        covered = [stage for stage in self.stages if stage.covered_by is not None]
+        if self.independent_packages:
+            owner = next(stage for stage in self.stages if stage.identity == "server-products")
+            if covered != list(self.stages[-2:]) or any(stage.covered_by != owner.identity or stage.command or stage.repository != owner.repository for stage in covered):
+                raise BackendGateError("Servers acceptance coverage is inconsistent")
+            expected_environment = {"CPK_SERVERS_TEST_IMAGE", "CPK_SERVER_IMAGE", "CPK_SERVER_BUILD_IMAGE"}
+            if (owner.command != ("./test.sh",) or owner.repository != "control-plane-kit-servers" or owner.kind != "package" or owner.working_directory != PurePosixPath(".") or set(dict(owner.environment)) != expected_environment or dict(owner.environment)["CPK_SERVER_BUILD_IMAGE"] != "1"):
+                raise BackendGateError("coverage requires the normal full Servers gate")
+        elif covered:
+            raise BackendGateError("legacy stages cannot claim covered evidence")
 
 
 @dataclass(frozen=True)
@@ -176,6 +193,8 @@ class StageResult:
     detail: str | None = None
     integrity: PackageIntegrityEvidence | None = None
     metrics: Mapping[str, int] | None = None
+    covered_by: str | None = None
+    cleanup_status: str | None = None
 
     def to_document(self) -> dict[str, object]:
         value: dict[str, object] = {
@@ -193,6 +212,13 @@ class StageResult:
             value["package_integrity"] = self.integrity.to_document()
         if self.metrics is not None:
             value["metrics"] = dict(sorted(self.metrics.items()))
+        if self.covered_by is not None:
+            value["covered_by"] = self.covered_by
+            value["execution_identity"] = self.covered_by
+        else:
+            value["execution_identity"] = self.identity
+        if self.cleanup_status is not None:
+            value["cleanup_status"] = self.cleanup_status
         return value
 
 
@@ -207,6 +233,7 @@ class BackendGateReport:
     stages: tuple[StageResult, ...]
     source_live_identity: str
     source_live_acceptance_level: str
+    source_details: Mapping[str, object] | None = None
 
     def to_document(self) -> dict[str, object]:
         return {
@@ -217,6 +244,7 @@ class BackendGateReport:
             "status": self.status,
             "first_failed_stage": self.first_failed_stage,
             "sources": dict(sorted(self.sources.items())),
+            "source_details": self.source_details,
             "stages": [stage.to_document() for stage in self.stages],
             "source_live": {
                 "identity": self.source_live_identity,
@@ -238,7 +266,12 @@ def build_gate_plan(
 ) -> GatePlan:
     del runner_root
     run_token = str(os.getpid())
-    coordination = backend.path_for("control-plane-kit")
+    modern = backend.schema == PACKAGE_LOCK_SCHEMA
+    if modern != (contracts.schema == PACKAGE_CONTRACT_SCHEMA):
+        raise BackendGateError("lock and contract profiles do not match")
+    core_role = "control-plane-kit-core" if modern else "control-plane-kit"
+    operations_role = "control-plane-kit-operations" if modern else "control-plane-kit"
+    coordination = backend.path_for(core_role)
     interpreters = backend.path_for("control-plane-kit-interpreters")
     secrets = backend.path_for("control-plane-kit-secrets")
     servers = backend.path_for("control-plane-kit-servers")
@@ -251,14 +284,7 @@ def build_gate_plan(
                 repository="runner",
                 working_directory=PurePosixPath("."),
                 command=(
-                    sys.executable,
-                    "-m",
-                    "unittest",
-                    "discover",
-                    "-s",
-                    "current_backend/tests",
-                    "-t",
-                    ".",
+                    "./current-backend-test.sh", "--unit-only",
                 ),
             ),
             GateStage(
@@ -271,14 +297,14 @@ def build_gate_plan(
             GateStage(
                 identity="core",
                 kind="package",
-                repository="control-plane-kit",
+                repository=core_role,
                 working_directory=PurePosixPath("control-plane-kit-core"),
                 command=("./test.sh",),
             ),
             GateStage(
                 identity="operations",
                 kind="package",
-                repository="control-plane-kit",
+                repository=operations_role,
                 working_directory=PurePosixPath("control-plane-kit-operations"),
                 command=("./test.sh",),
                 environment=(
@@ -346,6 +372,19 @@ def build_gate_plan(
             ),
         )
     )
+    if modern:
+        prerequisite = backend.path_for(ARCHITECTURE_ROLE)
+        sdk = backend.path_for("control-plane-kit-server-sdk")
+        if not prerequisite.is_dir() or not sdk.is_dir():
+            raise BackendGateError("package prerequisite path is unavailable")
+        if acceptance.covered_by != "server-products":
+            raise BackendGateError("modern acceptance must use its normal Servers owner")
+        stages = list(plan.stages)
+        stages[3] = replace(stages[3], environment=(*stages[3].environment, ("CPK_ARCHITECTURE_TESTING_ROOT", prerequisite.as_posix())))
+        stages.insert(4, GateStage(identity="server-sdk", kind="package", repository="control-plane-kit-server-sdk", working_directory=PurePosixPath("."), command=("./test.sh",), environment=(("CPK_SERVER_SDK_DEPENDENCY_MODE", "local-core"), ("CPK_CORE_REPO", coordination.as_posix()))))
+        stages[-2] = replace(stages[-2], command=(), environment=(), covered_by="server-products")
+        stages[-1] = replace(stages[-1], command=(), environment=(), covered_by="server-products")
+        plan = GatePlan(stages=tuple(stages), independent_packages=True)
     plan.validate()
     for path in (coordination, interpreters, secrets, servers):
         if not path.is_dir():
@@ -364,6 +403,8 @@ def execute_gate(
     command_executor: CommandExecutor | None = None,
     runner_commit: str | None = None,
     plan: GatePlan | None = None,
+    finalize_report: bool = True,
+    cleanup_observer: Callable[[GateStage], str] | None = None,
 ) -> BackendGateReport:
     plan = plan or build_gate_plan(runner_root, backend, contracts)
     plan.validate()
@@ -376,7 +417,12 @@ def execute_gate(
     for stage in plan.stages:
         print(f"\n=== current-backend stage: {stage.identity} ===", file=output, flush=True)
         started = time.monotonic()
-        if stage.kind == "contract":
+        if stage.covered_by is not None:
+            owner = next((value for value in results if value.identity == stage.covered_by), None)
+            if owner is None or owner.status != "passed":
+                raise BackendGateError("covering invocation did not pass")
+            result = StageResult(identity=stage.identity, kind=stage.kind, repository=stage.repository, working_directory=stage.working_directory.as_posix(), command=(), duration_ms=0, status="passed", covered_by=stage.covered_by, detail="performed by the same normal full Servers invocation")
+        elif stage.kind == "contract":
             try:
                 contract_report = validate_backend(backend, contracts)
             except BackendContractError as error:
@@ -435,6 +481,11 @@ def execute_gate(
                 detail=detail,
                 integrity=outcome.integrity if stage.kind == "package" else None,
             )
+            if plan.independent_packages and stage.identity == "operations":
+                cleanup = (cleanup_observer or _operations_cleanup_status)(stage)
+                result = replace(result, cleanup_status=cleanup)
+                if cleanup != "verified-absent":
+                    result = replace(result, status="failed", detail=result.detail or "Operations resource cleanup is failed or uncertain")
         results.append(result)
         if result.status != "passed":
             first_failed = stage.identity
@@ -451,14 +502,32 @@ def execute_gate(
         stages=tuple(results),
         source_live_identity=source_live.identity,
         source_live_acceptance_level=source_live.acceptance_level or "",
+        source_details=resolved.to_document(),
     )
-    write_report(report_path, report)
+    if finalize_report:
+        write_report(report_path, report)
     print(
-        f"current-backend status={report.status} report={report_path}",
+        f"current-backend {'status' if finalize_report else 'stages-status'}={report.status} {'report=' + str(report_path) if finalize_report else 'source-cleanup=pending'}",
         file=output,
         flush=True,
     )
     return report
+
+
+def _operations_cleanup_status(stage: GateStage) -> str:
+    environment = dict(stage.environment)
+    targets = (("container", environment["CPK_OPERATIONS_TEST_POSTGRES_CONTAINER"]), ("network", environment["CPK_OPERATIONS_TEST_NETWORK_NAME"]))
+    for kind, name in targets:
+        command = ("docker", "container", "ls", "-a", "--format", "{{.Names}}") if kind == "container" else ("docker", "network", "ls", "--format", "{{.Name}}")
+        try:
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=30, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return "uncertain"
+        if result.returncode != 0:
+            return "uncertain"
+        if name in result.stdout.splitlines():
+            return "residue"
+    return "verified-absent"
 
 
 def execute_command(stage: GateStage, cwd: Path, output: TextIO) -> CommandOutcome:
@@ -497,7 +566,11 @@ def execute_command(stage: GateStage, cwd: Path, output: TextIO) -> CommandOutco
 
 
 def write_report(path: Path, report: BackendGateReport) -> None:
-    document = json.dumps(report.to_document(), indent=2, sort_keys=True) + "\n"
+    _write_document(path, report.to_document())
+
+
+def _write_document(path: Path, value: Mapping[str, object]) -> None:
+    document = json.dumps(value, indent=2, sort_keys=True) + "\n"
     if len(document.encode("utf-8")) > 128 * 1024:
         raise BackendGateError("backend gate report exceeds bounded size")
     path = path.resolve()
@@ -522,35 +595,60 @@ def main(arguments: Sequence[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="NAME=PATH",
-        help="read exact Git objects from all four local repositories instead of cloning",
+        help="read exact Git objects for every declared source role instead of cloning",
     )
+    parser.add_argument("--lock", type=Path)
+    parser.add_argument("--contracts", type=Path)
     options = parser.parse_args(arguments)
     runner_root = Path(__file__).resolve().parents[1]
-    lock = load_backend_lock(runner_root / "current-backend.lock.json")
-    contracts = load_backend_contracts(runner_root / "current-backend.contracts.json")
+    report: BackendGateReport | None = None
+    resolved: ResolvedBackend | None = None
+    started = _utc_now()
+    try:
+        lock = load_backend_lock(options.lock or runner_root / "current-backend.lock.json")
+        contracts = load_backend_contracts(options.contracts or runner_root / "current-backend.contracts.json")
+        if (lock.schema == PACKAGE_LOCK_SCHEMA) != (contracts.schema == PACKAGE_CONTRACT_SCHEMA):
+            raise BackendGateError("lock and contract profiles do not match")
 
-    if options.local_repository:
-        repositories = _local_repositories(options.local_repository)
-        resolved = resolve_local_backend(lock, repositories)
-        with materialize_backend(resolved) as backend:
-            report = execute_gate(
-                runner_root=runner_root,
-                resolved=resolved,
-                backend=backend,
-                contracts=contracts,
-                report_path=options.report,
-            )
-    else:
-        cloned = clone_backend(lock)
-        with cloned, materialize_backend(cloned.backend) as backend:
-            report = execute_gate(
-                runner_root=runner_root,
-                resolved=cloned.backend,
-                backend=backend,
-                contracts=contracts,
-                report_path=options.report,
-            )
-    return 0 if report.status == "passed" else 1
+        def run(selected: ResolvedBackend) -> BackendGateReport:
+            nonlocal resolved, report
+            resolved = selected
+            with materialize_backend(selected) as backend:
+                report = execute_gate(runner_root=runner_root, resolved=selected, backend=backend, contracts=contracts, report_path=options.report, finalize_report=False)
+            return report
+
+        if options.local_repository:
+            run(resolve_local_backend(lock, _local_repositories(options.local_repository)))
+        else:
+            with clone_backend(lock) as cloned:
+                run(cloned.backend)
+        assert report is not None
+        document = report.to_document()
+        document["source_cleanup"] = "verified-absent"
+    except (BackendLockError, BackendContractError, BackendGateError, OSError) as error:
+        document = report.to_document() if report is not None else {
+            "schema": REPORT_SCHEMA, "runner_commit": _runner_commit(runner_root),
+            "started_at": started, "finished_at": _utc_now(), "stages": [],
+            "sources": {source.name: source.commit for source in resolved.repositories} if resolved else {},
+            "source_details": resolved.to_document() if resolved else None,
+            "first_failed_stage": "source-preflight",
+        }
+        document["status"] = "failed"
+        if not document.get("first_failed_stage"):
+            document["first_failed_stage"] = "source-cleanup" if isinstance(error, BackendCleanupError) else "source-preflight"
+        document["source_cleanup"] = "uncertain" if isinstance(error, BackendCleanupError) else "not-confirmed"
+        document["failure_category"] = type(error).__name__
+        # Fixed type identities preserve the primary cause without exception bodies.
+        chain = []
+        cause: BaseException | None = error
+        while cause is not None and len(chain) < 8 and id(cause) not in [item[0] for item in chain]:
+            chain.append((id(cause), type(cause).__name__))
+            cause = cause.__context__
+        document["failure_chain"] = [name for _identity, name in chain]
+    document["finished_at"] = _utc_now()
+    _write_document(options.report, document)
+    print(f"current-backend status={document['status']} report={options.report}", flush=True)
+    return 0 if document["status"] == "passed" else 1
 
 
 def _source_live_contract(contracts: BackendContracts) -> AcceptanceContract:

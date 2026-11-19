@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import tempfile
+import subprocess
 import unittest
 
 from current_backend.runner import (
@@ -16,6 +17,9 @@ from current_backend.runner import (
     build_gate_plan,
     execute_gate,
     _stage_environment,
+    CommandOutcome,
+    PackageIntegrityEvidence,
+    main,
 )
 from current_backend.source_lock import (
     ResolvedBackend,
@@ -26,6 +30,76 @@ from current_backend.tests.test_contracts import _backend_fixture
 
 
 class BackendGateRunnerTests(unittest.TestCase):
+    def test_modern_plan_uses_selected_packages_and_one_normal_servers_invocation(self) -> None:
+        with _runner_fixture() as fixture:
+            fixture.backend_fixture.independent()
+            plan = build_gate_plan(fixture.root, fixture.backend, fixture.contracts)
+            selected = {stage.identity: stage for stage in plan.stages}
+            self.assertEqual(selected["core"].repository, "control-plane-kit-core")
+            self.assertEqual(selected["operations"].repository, "control-plane-kit-operations")
+            self.assertIn("CPK_ARCHITECTURE_TESTING_ROOT", dict(selected["operations"].environment))
+            self.assertEqual(dict(selected["server-sdk"].environment)["CPK_CORE_REPO"], fixture.backend.path_for("control-plane-kit-core").as_posix())
+            trace = []
+            def execute(stage, cwd, output):
+                trace.append(stage.identity)
+                return CommandOutcome(0, PackageIntegrityEvidence(17, 0, 0), 1)
+            report = execute_gate(runner_root=fixture.root, resolved=fixture._resolved(), backend=fixture.backend, contracts=fixture.contracts, report_path=fixture.report_path, output=io.StringIO(), runner_commit="9" * 40, command_executor=execute, cleanup_observer=lambda stage: "verified-absent")
+            self.assertEqual(report.status, "passed")
+            self.assertEqual(trace.count("server-products"), 1)
+            self.assertNotIn("cpk-server-http-mcp-source-live", trace)
+            self.assertNotIn("docker-residue", trace)
+            self.assertEqual(report.stages[-1].covered_by, "server-products")
+            self.assertIsNone(report.stages[-1].integrity)
+
+    def test_coverage_rejects_early_return_environment_and_unknown_owner(self) -> None:
+        with _runner_fixture() as fixture:
+            fixture.backend_fixture.independent()
+            plan = build_gate_plan(fixture.root, fixture.backend, fixture.contracts)
+            owner_index = next(i for i, stage in enumerate(plan.stages) if stage.identity == "server-products")
+            cases = [
+                (owner_index, replace(plan.stages[owner_index], command=("./test.sh", "--mcp-source-tests"))),
+                (owner_index, replace(plan.stages[owner_index], environment=(*plan.stages[owner_index].environment, ("CPK_ROOT_ARTIFACT_MODE", "published-digest")))),
+                (-2, replace(plan.stages[-2], covered_by="docker-residue")),
+                (-1, replace(plan.stages[-1], covered_by="unknown")),
+            ]
+            for index, stage in cases:
+                with self.subTest(index=index, stage=stage):
+                    stages = list(plan.stages)
+                    stages[index] = stage
+                    with self.assertRaises(BackendGateError):
+                        replace(plan, stages=tuple(stages)).validate()
+
+    def test_operations_cleanup_uncertainty_preserves_primary_failure(self) -> None:
+        with _runner_fixture() as fixture:
+            fixture.backend_fixture.independent()
+            def execute(stage, cwd, output):
+                return CommandOutcome(7 if stage.identity == "operations" else 0, PackageIntegrityEvidence(17, 0, 0), 1)
+            report = execute_gate(runner_root=fixture.root, resolved=fixture._resolved(), backend=fixture.backend, contracts=fixture.contracts, report_path=fixture.report_path, output=io.StringIO(), runner_commit="9" * 40, command_executor=execute, cleanup_observer=lambda stage: "uncertain")
+            self.assertEqual(report.first_failed_stage, "operations")
+            self.assertEqual(report.stages[-1].detail, "command exited with status 7")
+            self.assertEqual(report.stages[-1].cleanup_status, "uncertain")
+
+    def test_resolution_failure_emits_failed_report_before_any_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lock = root / "lock.json"
+            lock.write_text('{"schema":"unsupported"}')
+            report = root / "report.json"
+            self.assertEqual(main(["--lock", str(lock), "--report", str(report)]), 1)
+            document = json.loads(report.read_text())
+            self.assertEqual(document["status"], "failed")
+            self.assertEqual(document["first_failed_stage"], "source-preflight")
+            self.assertEqual(document["stages"], [])
+            self.assertEqual(document["sources"], {})
+
+    def test_unit_only_refuses_full_report_arguments(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "not-a-backend-report.json"
+            result = subprocess.run((str(root / "current-backend-test.sh"), "--unit-only", "--report", str(report)), capture_output=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertFalse(report.exists())
+
     def test_stages_execute_in_exact_order_and_emit_bounded_report(self) -> None:
         with _runner_fixture() as fixture:
             plan = fixture.plan()

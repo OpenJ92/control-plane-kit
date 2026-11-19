@@ -7,10 +7,12 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from current_backend.source_lock import (
     BackendLock,
     BackendLockError,
+    BackendCleanupError,
     RepositorySpec,
     clone_backend,
     load_backend_lock,
@@ -21,6 +23,27 @@ from current_backend.source_lock import (
 
 
 class BackendSourceLockTests(unittest.TestCase):
+    def test_cleanup_failure_does_not_hide_primary_consumer_error(self) -> None:
+        with _backend_fixture() as fixture:
+            resolved = resolve_local_backend(fixture.lock, fixture.paths)
+            import shutil
+            root = None
+            try:
+                with self.assertRaises(BackendCleanupError) as caught:
+                    with patch("current_backend.source_lock.shutil.rmtree", side_effect=OSError("unavailable")):
+                        with materialize_backend(resolved) as backend:
+                            root = backend.root
+                            raise RuntimeError("primary consumer failure")
+                chain = []
+                error = caught.exception
+                while error is not None:
+                    chain.append(type(error))
+                    error = error.__context__
+                self.assertIn(RuntimeError, chain)
+            finally:
+                if root is not None:
+                    shutil.rmtree(root)
+
     def test_independent_package_coordinates_preserve_exact_roots_and_prerequisite(self) -> None:
         with _backend_fixture() as fixture:
             lock, paths = fixture.independent_lock()
@@ -42,6 +65,21 @@ class BackendSourceLockTests(unittest.TestCase):
             lock, paths = fixture.independent_lock(divergent_core=True)
             with self.assertRaisesRegex(BackendLockError, "consumed Core"):
                 resolve_local_backend(lock, paths)
+
+    def test_independent_profile_rejects_hybrid_roles_and_wrong_prerequisite(self) -> None:
+        from dataclasses import replace
+        with _backend_fixture() as fixture:
+            lock, paths = fixture.independent_lock()
+            raw_path = fixture.root / "modern-lock.json"
+            raw = json.loads(raw_path.read_text())
+            raw["upstreams"][0]["coordinate_key"] = "control_plane_kit_commit"
+            raw_path.write_text(json.dumps(raw))
+            with self.assertRaisesRegex(BackendLockError, "coordinate key"):
+                load_backend_lock(raw_path)
+            assert lock.architecture_testing is not None
+            wrong = replace(lock, architecture_testing=replace(lock.architecture_testing, commit=fixture.commits["control-plane-kit"]))
+            with self.assertRaisesRegex(BackendLockError, "prerequisite does not match"):
+                resolve_local_backend(wrong, paths)
 
     def test_repository_lock_uses_one_server_products_root_coordinate(self) -> None:
         root = Path(__file__).resolve().parents[2]
