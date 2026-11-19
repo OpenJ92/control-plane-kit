@@ -21,6 +21,28 @@ from current_backend.source_lock import (
 
 
 class BackendSourceLockTests(unittest.TestCase):
+    def test_independent_package_coordinates_preserve_exact_roots_and_prerequisite(self) -> None:
+        with _backend_fixture() as fixture:
+            lock, paths = fixture.independent_lock()
+            resolved = resolve_local_backend(lock, paths)
+            core = resolved.repository("control-plane-kit-core")
+            operations = resolved.repository("control-plane-kit-operations")
+            self.assertNotEqual(core.commit, operations.commit)
+            self.assertEqual(core.package_tree, operations.consumed_core_tree)
+            self.assertEqual(core.package_root, "control-plane-kit-core")
+            self.assertEqual(operations.package_root, "control-plane-kit-operations")
+            with materialize_backend(resolved) as backend:
+                self.assertNotEqual(backend.path_for(core.name), backend.path_for(operations.name))
+                prerequisite = backend.path_for("control-plane-kit-architecture-testing")
+                self.assertEqual(_run(("git", "rev-parse", "HEAD"), cwd=prerequisite).strip(), fixture.architecture_commit)
+                self.assertEqual(_run(("git", "status", "--porcelain"), cwd=prerequisite), "")
+
+    def test_independent_profile_rejects_different_consumed_core(self) -> None:
+        with _backend_fixture() as fixture:
+            lock, paths = fixture.independent_lock(divergent_core=True)
+            with self.assertRaisesRegex(BackendLockError, "consumed Core"):
+                resolve_local_backend(lock, paths)
+
     def test_repository_lock_uses_one_server_products_root_coordinate(self) -> None:
         root = Path(__file__).resolve().parents[2]
         lock = load_backend_lock(root / "current-backend.lock.json")
@@ -232,6 +254,48 @@ class BackendSourceLockTests(unittest.TestCase):
 
 
 class _BackendFixture:
+    def independent_lock(self, *, divergent_core: bool = False):
+        core = self.paths["control-plane-kit"]
+        for name in ("control-plane-kit-core", "control-plane-kit-operations"):
+            package = core / name
+            package.mkdir()
+            (package / "pyproject.toml").write_text('[project]\nname = "' + name + '"\n')
+        core_commit = _commit_all(core, "selected Core")
+        architecture = _init_repository(self.root / "architecture", "OpenJ92/control-plane-kit-architecture-testing", {"README.md": "prerequisite\n"})
+        self.architecture_commit = architecture.commit
+        (core / "control-plane-kit-operations/test.sh").write_text('ARCHITECTURE_TESTING_COMMIT="' + architecture.commit + '"\n')
+        if divergent_core:
+            (core / "control-plane-kit-core/changed.txt").write_text("different dependency\n")
+        operations_commit = _commit_all(core, "selected Operations")
+        sdk = _init_repository(self.root / "sdk", "OpenJ92/control-plane-kit-server-sdk", {"pyproject.toml": '[project]\nname="control-plane-kit-server-sdk"\n'})
+        servers = self.paths["control-plane-kit-servers"]
+        upstreams = {
+            "control_plane_kit_core_commit": core_commit,
+            "control_plane_kit_operations_commit": operations_commit,
+            "control_plane_kit_server_sdk_commit": sdk.commit,
+            "control_plane_kit_interpreters_commit": self.commits["control-plane-kit-interpreters"],
+            "control_plane_kit_secrets_commit": self.commits["control-plane-kit-secrets"],
+        }
+        (servers / "coordinates/server-products.json").write_text(json.dumps({"schema": "cpk-servers.coordinates", "upstreams": upstreams, "products": []}))
+        server_commit = _commit_all(servers, "independent package coordinates")
+        roles = {"control-plane-kit-core": "core", "control-plane-kit-operations": "operations", "control-plane-kit-server-sdk": "server_sdk", "control-plane-kit-interpreters": "interpreters", "control-plane-kit-secrets": "secrets"}
+        declarations = []
+        for role, key in roles.items():
+            repository = "control-plane-kit" if role in ("control-plane-kit-core", "control-plane-kit-operations") else role
+            declarations.append({"name": role, "identity": "OpenJ92/" + repository, "url": "https://github.com/OpenJ92/" + repository + ".git", "coordinate_key": "control_plane_kit_" + key + "_commit"})
+        raw = {
+            "schema": "cpk.current-backend-lock.v2",
+            "server_products": {"name": "control-plane-kit-servers", "identity": "OpenJ92/control-plane-kit-servers", "url": "https://github.com/OpenJ92/control-plane-kit-servers.git", "commit": server_commit, "coordinates_path": "coordinates/server-products.json"},
+            "upstreams": declarations,
+            "architecture_testing": {"name": "control-plane-kit-architecture-testing", "identity": "OpenJ92/control-plane-kit-architecture-testing", "url": "https://github.com/OpenJ92/control-plane-kit-architecture-testing.git", "commit": architecture.commit},
+        }
+        path = self.root / "modern-lock.json"
+        path.write_text(json.dumps(raw))
+        lock = load_backend_lock(path)
+        paths = {name: value for name, value in self.paths.items() if name != "control-plane-kit"}
+        paths.update({"control-plane-kit-core": core, "control-plane-kit-operations": core, "control-plane-kit-server-sdk": sdk.path, "control-plane-kit-architecture-testing": architecture.path})
+        return lock, paths
+
     def __init__(self, root: Path, *, use_file_urls: bool) -> None:
         self.root = root
         repositories: dict[str, _RepositoryFixture] = {}
