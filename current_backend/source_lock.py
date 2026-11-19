@@ -335,14 +335,17 @@ def materialize_backend(
             if len(archive) > MAX_ARCHIVE_BYTES:
                 raise BackendLockError("source archive exceeds bounded size")
             safe_extract_tar(archive, destination)
-            if repository.name == ARCHITECTURE_ROLE:
-                # The owning harness verifies a real clean Git checkout. Use an
-                # independent local clone, never mutate the developer object store.
+            if repository.name == ARCHITECTURE_ROLE or (backend.lock.schema == PACKAGE_LOCK_SCHEMA and repository.name == "control-plane-kit-servers"):
+                # Both owning harnesses read Git identity. Fetch the exact object
+                # into an independent store: a clone of an unborn/fetch-only HEAD
+                # does not reliably transfer its unadvertised selected commit.
                 _remove_owned(destination)
-                _run_git(root, ("clone", "--quiet", "--no-checkout", "--no-hardlinks", repository.object_store.as_posix(), destination.as_posix()))
+                _run_git(root, ("init", "--quiet", destination.as_posix()))
+                _run_git(destination, ("remote", "add", "origin", repository.url))
+                _run_git(destination, ("fetch", "--quiet", "--depth=1", repository.object_store.as_posix(), repository.commit))
                 _run_git(destination, ("-c", "core.hooksPath=/dev/null", "checkout", "--quiet", "--detach", repository.commit))
                 if _git_text(destination, ("status", "--porcelain", "--untracked-files=all"), "prerequisite cleanliness is unavailable").strip():
-                    raise BackendLockError("architecture prerequisite checkout is not clean")
+                    raise BackendLockError("owned source checkout is not clean")
             paths[repository.name] = destination
         yield MaterializedBackend(root=root, repositories=dict(paths), schema=backend.lock.schema, sources=backend.repositories)
     finally:

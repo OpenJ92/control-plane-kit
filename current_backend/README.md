@@ -140,7 +140,12 @@ are equal. The modern pin inventory follows the normal coordinate generator;
 frozen product image/catalogue identities and separately frozen test profiles
 are not rewritten.
 
-The prerequisite is an owned detached clean Git checkout. Ordinary serial
+The prerequisite and modern Servers source are owned detached clean Git
+checkouts at their resolved commits. Servers' normal PostgreSQL source-image
+witness reads HEAD and the binary diff. Exact local fetch works even when the
+resolver's object store has an unborn HEAD; no populated developer branch is
+required. Archive safety validation still precedes checkout, and legacy
+Servers remains an archive. Ordinary serial
 Operations consumes Core from its sibling directory, so this initial supported
 composition requires that sibling Core package tree to equal the separately
 selected Core package tree. Both trees are reported. A divergent Core refuses
