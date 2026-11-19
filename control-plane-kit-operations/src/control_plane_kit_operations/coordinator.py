@@ -197,6 +197,7 @@ from control_plane_kit_operations.records import (
     ActivityRunRecord,
     BoundedEvidence,
     CoordinatorStatus,
+    ExecutionCommandDiagnostic,
     ExecutionCommandReceiptRecord,
     ExecutionCommandReceiptStatus,
     ExecutionCommandResultRecord,
@@ -221,6 +222,20 @@ class ExecutionCoordinatorNotFound(ExecutionCoordinatorError):
 
 class ExecutionCoordinatorConflict(ExecutionCoordinatorError):
     """Raised when durable state rejects coordinator progress."""
+
+
+class ExecutionCommandPreparationFailure(ExecutionCoordinatorConflict):
+    """Closed preparation cause and evidence acknowledgement, never a raw cause."""
+
+    def __init__(self, category, *, diagnostic_status="unacknowledged", preparation_exit_acknowledged=False):
+        if category not in ("evidence-capacity", "material-unavailable") or diagnostic_status not in (
+                "recorded", "unacknowledged"):
+            raise ValueError("invalid preparation failure")
+        self.category = category
+        self.diagnostic_status = diagnostic_status
+        self.preparation_exit_acknowledged = preparation_exit_acknowledged
+        super().__init__("execution command context preparation failed: " + category +
+            "; diagnostic " + diagnostic_status)
 
 
 class ExecutionCoordinatorDenied(ExecutionCoordinatorError):
@@ -1089,7 +1104,13 @@ class ExecutionCoordinator:
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
         with _configuration_accounting(command.run_id, active=False):
             self._configure_run(command.run_id)
-            return self._execute_command(command)
+            failure = None
+            try:
+                return self._execute_command(command)
+            except ExecutionCommandPreparationFailure as error:
+                failure = error
+            status = self._record_preparation_failure(command, None, failure)
+        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status)
 
     def _configure_run(self, run_id):
         try:
@@ -1121,7 +1142,43 @@ class ExecutionCoordinator:
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
         with _configuration_accounting(command.execution.run_id, active=False) as accounting:
             self._configure_run(command.execution.run_id)
-            return await self._execute_managed_command(command, accounting)
+            failure = None
+            try:
+                return await self._execute_managed_command(command, accounting)
+            except ExecutionCommandPreparationFailure as error:
+                failure = error
+            status = self._record_preparation_failure(command.execution, self._managed_provenance(command), failure)
+        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status)
+
+    def _record_preparation_failure(self, command, provenance, failure):
+        if not failure.preparation_exit_acknowledged:
+            return "unacknowledged"
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        try:
+            # Fresh evidence allowance and transaction; no external effect or retry.
+            with _configuration_accounting(command.run_id, active=False):
+                with self._unit_of_work_factory() as uow:
+                    store = uow.stores.execution
+                    store.lock_command_idempotency(command.run_id, command.idempotency_key.value)
+                    _locked_request_and_run(uow.stores, command)
+                    receipt = store.command_receipt_for_idempotency(command.run_id,
+                        command.idempotency_key.value, for_update=True)
+                    if receipt is not None and receipt.diagnostic is not None:
+                        diagnostic = receipt.diagnostic
+                        if diagnostic.category != failure.category:
+                            return "unacknowledged"
+                    else:
+                        ordinal, _ = store.command_diagnostic_frontier(command.run_id)
+                        diagnostic = ExecutionCommandDiagnostic("context-preparation", failure.category,
+                            self._clock(), ordinal)
+                    store.record_command_diagnostic(command.run_id, command.idempotency_key.value,
+                        intent_fingerprint=_execution_command_fingerprint(command, provenance),
+                        fence=command.fence, diagnostic=diagnostic)
+                    uow.commit()
+            return "recorded"
+        except Exception:
+            # Commit-before-ack may have persisted. Never claim absence or retry.
+            return "unacknowledged"
 
     async def _execute_managed_command(
         self,
@@ -2643,6 +2700,21 @@ class ExecutionCoordinator:
             return outcome
 
     def _load_context(self, command: ExecuteActivityRun, *, material_activity_id=None) -> "_CoordinatorContext":
+        failure = []
+        acknowledged = False
+        try:
+            return self._load_context_read(command, material_activity_id=material_activity_id,
+                preparation_failure=failure)
+        except Exception as error:
+            if not failure:
+                raise
+            acknowledged = error is failure[0]
+        # Raising outside the handler keeps raw preparation/cleanup causes out of chaining.
+        raise ExecutionCommandPreparationFailure(failure[0].category,
+            preparation_exit_acknowledged=acknowledged)
+
+    def _load_context_read(self, command: ExecuteActivityRun, *, material_activity_id=None,
+            preparation_failure) -> "_CoordinatorContext":
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
@@ -2653,11 +2725,14 @@ class ExecutionCoordinator:
                 if active:
                     return self._configuration_context(stores, command, request, run,
                         material_activity_id=material_activity_id)
-            except (KeyError, ValueError, TypeError, AttributeError):
+            except (KeyError, ValueError, TypeError, AttributeError) as error:
                 if not active:
                     raise
+                from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceCapacityError
+                category = "evidence-capacity" if isinstance(error, ConfigurationEvidenceCapacityError) else "material-unavailable"
+                preparation_failure.append(ExecutionCommandPreparationFailure(category))
             if active:
-                raise ExecutionCoordinatorConflict("configuration material is unavailable")
+                raise preparation_failure[0]
             missing_plan = False
             try:
                 plan_record = stores.activity_history.get_plan(run.plan_id)

@@ -1,5 +1,10 @@
 """Postgres schema foundation for durable control-plane operations."""
 
+from .command_diagnostic_upgrade import (
+    CommandDiagnosticUpgradePolicy, CommandDiagnosticUpgradePlan, CommandDiagnosticUpgradeResult,
+    CommandDiagnosticUpgradeInspection, CommandDiagnosticUpgradeError, CommandDiagnosticUpgradeUncertain,
+    upgrade_command_diagnostics, inspect_command_diagnostic_upgrade,
+)
 from .workspace_permission_upgrade import (
     WorkspacePermissionUpgradePlan, WorkspacePermissionUpgradeResult,
     WorkspacePermissionUpgradeInspection, WorkspacePermissionUpgradeError,
@@ -74,6 +79,9 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 )
 
 __all__ = [
+    "CommandDiagnosticUpgradePolicy", "CommandDiagnosticUpgradePlan", "CommandDiagnosticUpgradeResult",
+    "CommandDiagnosticUpgradeInspection", "CommandDiagnosticUpgradeError", "CommandDiagnosticUpgradeUncertain",
+    "upgrade_command_diagnostics", "inspect_command_diagnostic_upgrade",
     "WorkspacePermissionUpgradePlan", "WorkspacePermissionUpgradeResult",
     "WorkspacePermissionUpgradeInspection", "WorkspacePermissionUpgradeError",
     "WorkspacePermissionUpgradeUncertain", "upgrade_workspace_permissions",

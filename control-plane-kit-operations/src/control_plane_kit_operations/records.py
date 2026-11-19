@@ -1209,6 +1209,37 @@ def _canonical_timestamp_instant(value: object, field_name: str) -> datetime:
 
 
 @dataclass(frozen=True)
+class ExecutionCommandDiagnostic:
+    """Immutable bounded preparation evidence, independent of lifecycle results."""
+
+    phase: str
+    category: str
+    occurred_at: str
+    last_committed_event_ordinal: int
+
+    def __post_init__(self) -> None:
+        if (type(self.phase) is not str or self.phase != "context-preparation"
+                or type(self.category) is not str
+                or self.category not in ("evidence-capacity", "material-unavailable")
+                or type(self.last_committed_event_ordinal) is not int
+                or not 1 <= self.last_committed_event_ordinal <= 2**63 - 1):
+            raise OperationsRecordError("execution command diagnostic is invalid")
+        _canonical_timestamp_instant(self.occurred_at, "diagnostic timestamp")
+
+    def descriptor(self) -> dict[str, object]:
+        return {"phase": self.phase, "category": self.category,
+            "occurred_at": self.occurred_at,
+            "last_committed_event_ordinal": self.last_committed_event_ordinal}
+
+    @classmethod
+    def from_descriptor(cls, value: object) -> ExecutionCommandDiagnostic:
+        if type(value) is not dict or set(value) != {
+                "phase", "category", "occurred_at", "last_committed_event_ordinal"}:
+            raise OperationsRecordError("execution command diagnostic is malformed")
+        return cls(**value)
+
+
+@dataclass(frozen=True)
 class ExecutionCommandReceiptRecord:
     """Durable admission and optional completion of one coordinator command."""
 
@@ -1225,6 +1256,7 @@ class ExecutionCommandReceiptRecord:
     completed_at: str | None = None
     result: ExecutionCommandResultRecord | None = None
     managed_intent: ManagedExecutionCommandIntent | None = None
+    diagnostic: ExecutionCommandDiagnostic | None = None
 
     def __post_init__(self) -> None:
         _validate_run_id(self.run_id, "run_id")
@@ -1257,6 +1289,13 @@ class ExecutionCommandReceiptRecord:
         if self.intent_fingerprint != expected_fingerprint:
             raise OperationsRecordError("execution command fingerprint is invalid")
         admitted_at = _canonical_timestamp_instant(self.admitted_at, "admitted_at")
+        if self.diagnostic is not None:
+            if (type(self.diagnostic) is not ExecutionCommandDiagnostic
+                    or self.status is not ExecutionCommandReceiptStatus.INCOMPLETE):
+                raise OperationsRecordError("diagnostic requires an incomplete command")
+            self.diagnostic.__post_init__()
+            if _canonical_timestamp_instant(self.diagnostic.occurred_at, "diagnostic timestamp") < admitted_at:
+                raise OperationsRecordError("diagnostic precedes command admission")
         if (
             not isinstance(self.initial_run, ActivityRunRecord)
             or self.initial_run.run_id != self.run_id

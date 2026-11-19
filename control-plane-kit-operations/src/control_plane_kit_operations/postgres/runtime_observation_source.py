@@ -12,22 +12,24 @@ from .runtime_authority_store import RuntimeAuthorityStore
 from .runtime_effect_origin_store import RuntimeEffectOriginStore
 
 
-def original_observation_source(connection, intent_record):
+def original_observation_source(connection, intent_record, *, receipt_identity_reader=None):
     try:
         if intent_record.intent.kind is not RuntimeEffectKind.REALIZE_ACTIVITY:
             raise ExecutionInvocationConflict()
-        return _original_observation_source(connection, intent_record)
+        return _original_observation_source(connection, intent_record, receipt_identity_reader=receipt_identity_reader)
     except ExecutionInvocationControlError:
         raise
     except (KeyError, ValueError, TypeError, AttributeError):
         raise ExecutionInvocationConflict() from None
 
 
-def _original_observation_source(connection, intent_record):
+def _original_observation_source(connection, intent_record, *, receipt_identity_reader=None):
     marker = PostgresExecutionStore(connection).original_final_invocation(intent_record.identity,
         original_event_id=intent_record.original_start_event.event_id,
-        request_fingerprint=intent_record.request_fingerprint, kind=Kind.PREPARED_RUNTIME_DISPATCH)
-    origin = RuntimeEffectOriginStore(connection).get(intent_record.identity)
+        request_fingerprint=intent_record.request_fingerprint, kind=Kind.PREPARED_RUNTIME_DISPATCH,
+        receipt_identity_reader=receipt_identity_reader)
+    origin = RuntimeEffectOriginStore(connection).get(intent_record.identity,
+        receipt_identity_reader=receipt_identity_reader)
     if (marker is None) == (origin is None):
         raise ExecutionInvocationConflict()
     original = marker if marker is not None else origin

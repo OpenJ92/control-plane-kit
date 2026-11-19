@@ -12,11 +12,13 @@ from control_plane_kit_operations.postgres.current_schema_verification import _C
 WORKSPACE_SOURCE_SHA256 = "c8cc42059c06c898275ba19aa2a6bf8df3d0e93474bb23340bab7b49bcfc9141"
 PROVIDER_SOURCE_SHA256 = "7505500ae7c663a3cc1265a16fc19abc103c45284e38a2ab297a13cdf276e061"
 HISTORICAL_TARGET_SHA256 = "7288fee837b51ffd6e470ed33395159aa143804665e7e9aac0f219cc57fb43de"
-FRESH_CURRENT_SHA256 = "75b6b900f70a170376c1133af7a066df11b27a147c29075230c26a94ab219d25"
+PRE_COMMAND_DIAGNOSTIC_SHA256 = "75b6b900f70a170376c1133af7a066df11b27a147c29075230c26a94ab219d25"
+FRESH_CURRENT_SHA256 = "47db4dbe188b09d0a60a0bdee0fc678a49d463335e631fd359ca35d7c6091415"
 
 
 def historical_sql(name):
     expected = {
+        "pre_command_diagnostics": "d6a2c0f03db48afbd1a4d1f97b6a873dd331cbc381f376868fcc74e0a8a1d3d8",
         "pre_workspace_permissions": "a38cb3590078ab33454ff26c14a9e1a3f3705aff01834533209aada14aa03dc1",
         "pre_provider_policy_commands": "fe63d2f4171a0672d4b0b3a111a25ba6e8bfd7258bc7c9853570eb2ea8c7bdde",
     }[name]
