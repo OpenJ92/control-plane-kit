@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 import tomllib
 from typing import Iterable, Mapping
 
@@ -583,9 +584,25 @@ def _check_acceptance(
             except (OSError, UnicodeError):
                 findings.append("covering Servers gate is unavailable")
                 continue
-            for path in (contract.command_path, contract.residue_command_path):
-                if not re.search(r"^sh " + re.escape(path.as_posix()) + r"\s*$", gate, re.MULTILINE):
-                    findings.append(f"normal Servers gate does not include {path}")
+            expected_smoke = [
+                "CPK_SERVER_SMOKE_PROFILE=wrapped-source",
+                "CPK_SERVERS_TEST_IMAGE=$IMAGE",
+                "CPK_SERVER_BUILD_IMAGE=1", "sh", contract.command_path.as_posix(),
+            ]
+            expected_residue = ["sh", contract.residue_command_path.as_posix()]
+            # This is the reviewed normal entrance, not arbitrary shell evaluation.
+            # Join shell continuations, then require whole command tokens. Prefixes
+            # such as comments, false &&, or a different profile cannot earn coverage.
+            lines = gate.replace("\\\n", "").splitlines()
+            commands = []
+            for line in lines:
+                try:
+                    commands.append(shlex.split(line, comments=True))
+                except ValueError:
+                    continue  # Other shell bodies are not candidate entrances.
+            for expected in (expected_smoke, expected_residue):
+                if commands.count(expected) != 1:
+                    findings.append(f"normal Servers gate does not include exact invocation: {expected[-1]}")
     return tuple(sorted(value.name for value in contracts))
 
 

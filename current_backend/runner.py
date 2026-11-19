@@ -50,6 +50,11 @@ STAGE_ORDER = (
     "docker-residue",
 )
 PACKAGE_STAGE_ORDER = (*STAGE_ORDER[:4], "server-sdk", *STAGE_ORDER[4:])
+SERVERS_ACCEPTANCE_EVIDENCE = (
+    "receiver acceptance: normal installed dependency provenance passed",
+    "cpk-server image smoke passed",
+    "control-plane-kit-servers Docker residue audit passed",
+)
 _INTEGRITY = re.compile(
     r"^package-integrity contract=1 tests=(?P<tests>[0-9]+) "
     r"mocks=(?P<mocks>[0-9]+) approved_skips=(?P<skips>[0-9]+)$"
@@ -179,6 +184,8 @@ class CommandOutcome:
     exit_code: int
     integrity: PackageIntegrityEvidence | None
     integrity_lines: int
+    process_id: int | None = None
+    acceptance_evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -195,6 +202,8 @@ class StageResult:
     metrics: Mapping[str, int] | None = None
     covered_by: str | None = None
     cleanup_status: str | None = None
+    process_id: int | None = None
+    acceptance_evidence: tuple[str, ...] = ()
 
     def to_document(self) -> dict[str, object]:
         value: dict[str, object] = {
@@ -219,6 +228,10 @@ class StageResult:
             value["execution_identity"] = self.identity
         if self.cleanup_status is not None:
             value["cleanup_status"] = self.cleanup_status
+        if self.process_id is not None:
+            value["process_id"] = self.process_id
+        if self.acceptance_evidence:
+            value["acceptance_evidence"] = list(self.acceptance_evidence)
         return value
 
 
@@ -404,7 +417,7 @@ def execute_gate(
     runner_commit: str | None = None,
     plan: GatePlan | None = None,
     finalize_report: bool = True,
-    cleanup_observer: Callable[[GateStage], str] | None = None,
+    cleanup_observer: Callable[[GateStage, CommandOutcome], str] | None = None,
 ) -> BackendGateReport:
     plan = plan or build_gate_plan(runner_root, backend, contracts)
     plan.validate()
@@ -470,6 +483,9 @@ def execute_gate(
                 detail = "package integrity evidence is missing or ambiguous"
             elif outcome.exit_code != 0:
                 detail = f"command exited with status {outcome.exit_code}"
+            elif plan.independent_packages and stage.identity == "server-products" and outcome.acceptance_evidence != SERVERS_ACCEPTANCE_EVIDENCE:
+                status = "failed"
+                detail = "normal Servers acceptance terminal evidence is missing"
             result = StageResult(
                 identity=stage.identity,
                 kind=stage.kind,
@@ -480,12 +496,14 @@ def execute_gate(
                 status=status,
                 detail=detail,
                 integrity=outcome.integrity if stage.kind == "package" else None,
+                process_id=outcome.process_id,
+                acceptance_evidence=outcome.acceptance_evidence,
             )
-            if plan.independent_packages and stage.identity == "operations":
-                cleanup = (cleanup_observer or _operations_cleanup_status)(stage)
+            if plan.independent_packages and stage.identity in {"operations", "server-sdk", "secrets"}:
+                cleanup = (cleanup_observer or _stage_cleanup_status)(stage, outcome)
                 result = replace(result, cleanup_status=cleanup)
                 if cleanup != "verified-absent":
-                    result = replace(result, status="failed", detail=result.detail or "Operations resource cleanup is failed or uncertain")
+                    result = replace(result, status="failed", detail=result.detail or "owning resource cleanup is failed or uncertain")
         results.append(result)
         if result.status != "passed":
             first_failed = stage.identity
@@ -514,11 +532,28 @@ def execute_gate(
     return report
 
 
-def _operations_cleanup_status(stage: GateStage) -> str:
+def _stage_cleanup_status(stage: GateStage, outcome: CommandOutcome) -> str:
     environment = dict(stage.environment)
-    targets = (("container", environment["CPK_OPERATIONS_TEST_POSTGRES_CONTAINER"]), ("network", environment["CPK_OPERATIONS_TEST_NETWORK_NAME"]))
+    if stage.identity == "operations":
+        targets = (("container", environment["CPK_OPERATIONS_TEST_POSTGRES_CONTAINER"]), ("network", environment["CPK_OPERATIONS_TEST_NETWORK_NAME"]))
+    elif stage.identity == "secrets":
+        targets = (("container", environment["CPK_SECRETS_TEST_CONTAINER"]),)
+    elif stage.identity == "server-sdk":
+        # Selected SDK's normal executable uses RUN_ID=$$; Popen's exec'd script
+        # PID is that shell identity. Do not infer it from a parent PID or scan.
+        pid = outcome.process_id
+        if type(pid) is not int or pid <= 0:
+            return "uncertain"
+        targets = tuple(("container", f"cpk-server-sdk-{variant}-{pid}") for variant in ("base", "verification", "fastapi")) + (("image", f"control-plane-kit-server-sdk-test:{pid}"),)
+    else:
+        return "uncertain"
     for kind, name in targets:
-        command = ("docker", "container", "ls", "-a", "--format", "{{.Names}}") if kind == "container" else ("docker", "network", "ls", "--format", "{{.Name}}")
+        if kind == "container":
+            command = ("docker", "container", "ls", "-a", "--filter", f"name=^/{name}$", "--format", "{{.Names}}")
+        elif kind == "network":
+            command = ("docker", "network", "ls", "--filter", f"name=^{name}$", "--format", "{{.Name}}")
+        else:
+            command = ("docker", "image", "ls", "--filter", f"reference={name}", "--format", "{{.Repository}}:{{.Tag}}")
         try:
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=30, check=False)
         except (OSError, subprocess.TimeoutExpired):
@@ -545,9 +580,17 @@ def execute_command(stage: GateStage, cwd: Path, output: TextIO) -> CommandOutco
     )
     assert process.stdout is not None
     evidence: list[PackageIntegrityEvidence] = []
+    acceptance_phase = 0
+    last_line = ""
     with process.stdout:
         for line in process.stdout:
             print(line, end="", file=output, flush=True)
+            last_line = line.rstrip("\r\n")
+            if stage.identity == "server-products":
+                if acceptance_phase == 0 and last_line == SERVERS_ACCEPTANCE_EVIDENCE[0]:
+                    acceptance_phase = 1
+                elif acceptance_phase == 1 and last_line == SERVERS_ACCEPTANCE_EVIDENCE[1]:
+                    acceptance_phase = 2
             match = _INTEGRITY.fullmatch(line.rstrip("\r\n"))
             if match is not None:
                 evidence.append(
@@ -562,6 +605,8 @@ def execute_command(stage: GateStage, cwd: Path, output: TextIO) -> CommandOutco
         exit_code=exit_code,
         integrity=evidence[0] if len(evidence) == 1 else None,
         integrity_lines=len(evidence),
+        process_id=process.pid,
+        acceptance_evidence=SERVERS_ACCEPTANCE_EVIDENCE if acceptance_phase == 2 and last_line == SERVERS_ACCEPTANCE_EVIDENCE[2] else (),
     )
 
 

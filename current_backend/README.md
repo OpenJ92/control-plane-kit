@@ -152,14 +152,26 @@ The modern plan adds the SDK's normal owning suite. The normal complete Servers
 two report entries identify `covered_by: server-products` and the same execution
 identity, without another command or duplicate integrity counts. Coverage is
 allowed only for the normal complete command and admitted environment, after
-that invocation passes. Early-return modes, unknown coverage and prior-run
+that invocation passes. The source check recognizes the exact continued
+`wrapped-source`/controller/build assignments. Execution must also emit the
+existing normal installed-dependency witness followed by smoke completion,
+and finish with the existing residue-audit terminal line. These fixed,
+non-secret lines are retained as evidence from that same subprocess; merely
+leaving an invocation in an unreachable branch cannot earn coverage.
+Early-return modes, unknown coverage and prior-run
 receipt reuse are not supported. The legacy plan retains its separate commands.
 
 Preflight errors write a bounded failed report with no invented completed
 stage. Reports finalize after temporary-source cleanup; failure/uncertainty
 preserves the primary failure and cannot become PASS. Exact named Operations
 container/network absence is observed after its invocation, including failure.
-The Servers residue audit is not claimed to cover unrelated owners. This tooling
+Secrets' assigned container and SDK's three containers plus test-image tag are
+also observed because those owners suppress removal errors. SDK names derive
+only from the actual executed shell PID, which is recorded; missing identity,
+query failure or residue prevents PASS. No cleanup mutation is performed by
+these observations. Interpreters' existing owning exit already propagates its
+checked cleanup failure; Core uses Docker's `--rm` lifecycle. The Servers
+residue audit is not claimed to cover unrelated owners. This tooling
 does not repair shared resources or perform broad Docker cleanup.
 
 ## Owning validator tests

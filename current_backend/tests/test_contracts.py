@@ -23,6 +23,22 @@ SECRETS_COMMIT = "3" * 40
 
 
 class BackendContractTests(unittest.TestCase):
+    def test_normal_smoke_invocation_requires_exact_source_profile_and_build(self) -> None:
+        changes = (
+            ("CPK_SERVER_BUILD_IMAGE=1", "CPK_SERVER_BUILD_IMAGE=0"),
+            ("CPK_SERVER_SMOKE_PROFILE=wrapped-source", "CPK_SERVER_SMOKE_PROFILE=published-baseline"),
+            ("CPK_SERVER_SMOKE_PROFILE=", "# CPK_SERVER_SMOKE_PROFILE="),
+            ("CPK_SERVER_SMOKE_PROFILE=", "false && CPK_SERVER_SMOKE_PROFILE="),
+            ("sh scripts/cpk_server_image_smoke.sh", "sh scripts/cpk_server_image_smoke.sh --skip"),
+        )
+        for old, new in changes:
+            with self.subTest(new=new), _backend_fixture() as fixture:
+                fixture.independent()
+                gate = fixture.path("control-plane-kit-servers") / "test.sh"
+                gate.write_text(gate.read_text().replace(old, new))
+                with self.assertRaisesRegex(BackendContractError, "exact invocation"):
+                    validate_backend(fixture.backend, fixture.contracts)
+
     def test_independent_contract_preserves_six_protocols_and_sdk_ownership(self) -> None:
         with _backend_fixture() as fixture:
             fixture.independent()
@@ -322,7 +338,7 @@ class _Fixture:
                 content = _project(surface.repository, tuple(d for d in dependencies if not d.startswith("control-plane-kit-secrets")), optional=tuple(d for d in dependencies if d.startswith("control-plane-kit-secrets")))
             _write(path, content)
         _write(self.path("control-plane-kit-server-sdk") / "src/control_plane_kit_server_sdk/model.py", "from control_plane_kit_core.model import RuntimeEffectRequest\n")
-        _write(self.path("control-plane-kit-servers") / "test.sh", "#!/bin/sh\nsh scripts/cpk_server_image_smoke.sh\nsh scripts/docker_residue_audit.sh\n")
+        _write(self.path("control-plane-kit-servers") / "test.sh", '#!/bin/sh\nCPK_SERVER_SMOKE_PROFILE=wrapped-source CPK_SERVERS_TEST_IMAGE="$IMAGE" \\\nCPK_SERVER_BUILD_IMAGE=1 sh scripts/cpk_server_image_smoke.sh\nsh scripts/docker_residue_audit.sh\n')
 
 
 @contextmanager
