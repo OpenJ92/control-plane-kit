@@ -39,6 +39,7 @@ from control_plane_kit_core.topology.validation import (
     ValidationFinding,
     ValidationSeverity,
     validate_graph,
+    management_ingress_for_health_read,
 )
 from control_plane_kit_core.topology.changes import (
     AddedChange,
@@ -48,6 +49,7 @@ from control_plane_kit_core.topology.changes import (
     ConfigurationArtifactsValue,
     DelegationVerifierProjectionValue,
     SecretDeliveriesValue,
+    RuntimeAuthorityDeliveriesValue,
     DiffSubject,
     DiffValue,
     EdgeValue,
@@ -61,6 +63,7 @@ from control_plane_kit_core.topology.changes import (
     PublicIngressValue,
     RemovedChange,
     RuntimeValue,
+    RuntimeManagementValue,
     SocketContractValue,
     StringTupleValue,
     StructuralChange,
@@ -74,6 +77,8 @@ from control_plane_kit_core.topology.compiler import compile_recipe, compile_top
 from control_plane_kit_core.types import SocketBinding
 
 __all__ = [
+    "RuntimeManagementValue",
+    "management_ingress_for_health_read",
     "AddedChange",
     "AmbiguityReason",
     "AmbiguousChange",
@@ -81,6 +86,7 @@ __all__ = [
     "ConfigurationArtifactsValue",
     "DelegationVerifierProjectionValue",
     "SecretDeliveriesValue",
+    "RuntimeAuthorityDeliveriesValue",
     "BlockSpecVariantCodec",
     "DEFAULT_GRAPH_CODEC",
     "DeploymentGraph",

@@ -128,9 +128,11 @@ JOIN cpk_delegation_signing_keys AS workload_key
 JOIN cpk_secret_use_authorizations AS transit_auth
   ON transit_auth.authorization_id=attempt.transit_authorization_id
  AND transit_auth.workspace_id=attempt.workspace_id
+ AND transit_auth.authorization_kind='operational'
 JOIN cpk_secret_use_authorizations AS workload_auth
   ON workload_auth.authorization_id=attempt.workload_authorization_id
  AND workload_auth.workspace_id=attempt.workspace_id
+ AND workload_auth.authorization_kind='operational'
 """
 
 

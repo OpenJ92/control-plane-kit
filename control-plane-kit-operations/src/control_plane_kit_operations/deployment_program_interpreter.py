@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
 
 from control_plane_kit_core.policies import ApprovalPolicy, InstanceAccessPolicy
 from control_plane_kit_core.topology import (
@@ -20,6 +22,7 @@ from control_plane_kit_operations.approvals import (
 from control_plane_kit_operations.deployment_program import (
     DeploymentProgramReference,
     PrepareDeploymentProgram,
+    SavedDesiredTopologyRevision,
 )
 from control_plane_kit_operations.deployment_program_projections import (
     DeploymentApprovalRequired,
@@ -36,6 +39,7 @@ from control_plane_kit_operations.planning import (
     RequestActivityPlan,
     SetDesiredGraph,
 )
+from control_plane_kit_operations.saved_deployment_preparation import SavedPreparationError
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
@@ -66,58 +70,101 @@ class DeploymentProgram:
         desired_graphs: DesiredGraphCommandService,
         planning: ActivityPlanningCommandService,
         approvals: ApprovalCommandService,
+        *, saved_preparations=None,
     ) -> None:
         self._operations = operations
         self._desired_graphs = desired_graphs
         self._planning = planning
         self._approvals = approvals
+        self._saved_preparations = saved_preparations
 
     def prepare(
         self,
         command: PrepareDeploymentProgram,
     ) -> DeploymentProgramProjection:
         _authorize(command)
-        _validate_desired(command)
+        if type(command.desired) is not SavedDesiredTopologyRevision:
+            _validate_desired(command)
         keys = _child_keys(command)
-        session_result = _execute_state(
-            self._operations,
-            StartOperationSession(
-                workspace_id=command.context.workspace_id,
-                actor_id=command.context.actor_id,
-                title=command.title,
-                idempotency_key=keys["session"],
-                metadata={
-                    "deployment_prepare_intent_sha256": _intent_digest(command)
-                },
-            ),
-            OperationCommandError,
-        )
-        session_id = session_result.session.session_id
-        expected_desired = command.expected_desired
-        desired_result = _execute_state(
-            self._desired_graphs,
-            SetDesiredGraph(
-                session_id=session_id,
-                workspace_id=command.context.workspace_id,
-                actor_id=command.context.actor_id,
-                graph=command.desired,
-                expected_desired_graph_id=(
-                    None
-                    if expected_desired is None
-                    else expected_desired.authored_graph_id
+        if type(command.desired) is SavedDesiredTopologyRevision:
+            if self._saved_preparations is None:
+                raise DeploymentProgramStateConflict("saved preparation service is unavailable")
+            failed = False
+            try:
+                session_result = self._saved_preparations.start(command, session_key=keys["session"])
+            except SavedPreparationError:
+                failed = True
+            if failed:
+                raise DeploymentProgramStateConflict("deployment preparation state is unavailable")
+            session_id = session_result.session.session_id
+            desired_graph_id = command.expected_desired.authored_graph_id
+            desired_projection_id = command.expected_desired.realized_projection_id
+            desired_generation = command.expected_desired_graph_revision
+        else:
+            session_result = _execute_state(
+                self._operations,
+                StartOperationSession(
+                    workspace_id=command.context.workspace_id,
+                    actor_id=command.context.actor_id,
+                    title=command.title,
+                    idempotency_key=keys["session"],
+                    metadata={
+                        "deployment_prepare_intent_sha256": _intent_digest(command)
+                    },
                 ),
-                expected_desired_realized_projection_id=(
-                    None
-                    if expected_desired is None
-                    else expected_desired.realized_projection_id
-                ),
-                expected_desired_graph_revision=(
-                    command.expected_desired_graph_revision
-                ),
-                idempotency_key=keys["desired"],
-            ),
-            DesiredGraphCommandError,
-        )
+                OperationCommandError,
+            )
+            session_id = session_result.session.session_id
+            expected_desired = command.expected_desired
+            child = SetDesiredGraph(
+                    session_id=session_id,
+                    workspace_id=command.context.workspace_id,
+                    actor_id=command.context.actor_id,
+                    graph=command.desired,
+                    expected_desired_graph_id=(
+                        None
+                        if expected_desired is None
+                        else expected_desired.authored_graph_id
+                    ),
+                    expected_desired_realized_projection_id=(
+                        None
+                        if expected_desired is None
+                        else expected_desired.realized_projection_id
+                    ),
+                    expected_desired_graph_revision=(
+                        command.expected_desired_graph_revision
+                    ),
+                    idempotency_key=keys["desired"],
+                    proposed_graph_id=command.proposed_graph_id,
+                )
+            old_receipt = False
+            if getattr(session_result, "replayed", False):
+                receipt = self._desired_graphs._retained_child_action(session_id, keys["desired"].value)
+                if (receipt is not None and receipt.payload.get("workspace_id") == command.context.workspace_id
+                        and "receiver_lifecycle" not in receipt.payload):
+                    # This exact old owned receipt selects its original bytes.
+                    # execute still proves its fingerprint and retained graph;
+                    # fresh refusal is never retried with omitted expectations.
+                    old_receipt = True
+            if not old_receipt:
+                try:
+                    expectation = ReceiverLifecycleExpectation(
+                        command.expected_current.authored_graph_id,
+                        command.expected_current.realized_projection_id,
+                        None if expected_desired is None else expected_desired.authored_graph_id,
+                        None if expected_desired is None else expected_desired.realized_projection_id,
+                        command.expected_desired_graph_revision)
+                except ValueError:
+                    raise DeploymentProgramStateConflict("receiver expectation is malformed") from None
+                child = replace(child, receiver_lifecycle=expectation)
+            desired_result = _execute_state(
+                self._desired_graphs,
+                child,
+                DesiredGraphCommandError,
+            )
+            desired_graph_id = desired_result.graph_version_id
+            desired_projection_id = desired_result.desired_realized_projection_id
+            desired_generation = desired_result.desired_graph_revision
         planning_result = _execute_state(
             self._planning,
             RequestActivityPlan(
@@ -130,14 +177,16 @@ class DeploymentProgram:
                 expected_current_realized_projection_id=(
                     command.expected_current.realized_projection_id
                 ),
-                expected_desired_graph_id=desired_result.graph_version_id,
+                expected_desired_graph_id=desired_graph_id,
                 expected_desired_realized_projection_id=(
-                    desired_result.desired_realized_projection_id
+                    desired_projection_id
                 ),
                 expected_desired_graph_revision=(
-                    desired_result.desired_graph_revision
+                    desired_generation
                 ),
                 idempotency_key=keys["plan"],
+                http_verification_intent=command.http_verification_intent,
+                managed_verification=command.managed_verification,
             ),
             ActivityPlanningError,
         )
@@ -145,10 +194,10 @@ class DeploymentProgram:
             command.context.workspace_id,
             planning_result.plan_record.plan_id,
         )
-        if isinstance(planning_result.transition, NoOpDeployment):
-            return DeploymentNoChanges(reference)
         if not planning_result.plan_record.plan.ready_for_execution:
             return DeploymentReviewBlocked(reference)
+        if isinstance(planning_result.transition, NoOpDeployment):
+            return DeploymentNoChanges(reference)
         approval_result = _execute_approval(
             self._approvals,
             RequestApproval(
@@ -224,25 +273,30 @@ def _execute_approval(service: ApprovalCommandService, command: RequestApproval)
 
 
 def _intent_digest(command: PrepareDeploymentProgram) -> str:
-    return _sha256(
-        {
-            "profile": "deployment-program-prepare.v1",
-            "workspace_id": command.context.workspace_id,
-            "actor_id": command.context.actor_id,
-            "desired": DEFAULT_GRAPH_CODEC.encode(command.desired),
-            "expected_current": _lineage(command.expected_current),
-            "expected_desired": (
-                None
-                if command.expected_desired is None
-                else _lineage(command.expected_desired)
-            ),
-            "expected_desired_graph_revision": (
-                command.expected_desired_graph_revision
-            ),
-            "title": command.title,
-            "approval_comment": command.approval_comment,
-        }
-    )
+    intent = {
+        "profile": "deployment-program-prepare.v1",
+        "workspace_id": command.context.workspace_id,
+        "actor_id": command.context.actor_id,
+        "desired": DEFAULT_GRAPH_CODEC.encode(command.desired),
+        "expected_current": _lineage(command.expected_current),
+        "expected_desired": (
+            None
+            if command.expected_desired is None
+            else _lineage(command.expected_desired)
+        ),
+        "expected_desired_graph_revision": (
+            command.expected_desired_graph_revision
+        ),
+        "title": command.title,
+        "approval_comment": command.approval_comment,
+    }
+    if command.proposed_graph_id is not None:
+        intent["proposed_graph_id"] = command.proposed_graph_id
+    if command.http_verification_intent is not None:
+        intent["http_verification_intent"] = command.http_verification_intent.value
+    if command.managed_verification is not None:
+        intent["managed_verification"] = command.managed_verification.value
+    return _sha256(intent)
 
 
 def _child_keys(command: PrepareDeploymentProgram) -> dict[str, IdempotencyKey]:

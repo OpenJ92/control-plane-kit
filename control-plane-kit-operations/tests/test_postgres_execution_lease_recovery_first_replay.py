@@ -175,7 +175,9 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 ("approval", "request-a"),
                 ("journal", RecoveryDecisionKind.RENEW_ACTIVE_CLAIM),
                 ("approval", "request-a"),
+                ("approval", "request-a"),
                 ("journal", RecoveryDecisionKind.RENEW_ACTIVE_CLAIM),
+                ("approval", "request-a"),
             ],
         )
 
@@ -269,7 +271,7 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 opened,
                 action,
             )
-            self.assertEqual(stores.execution.add_run(run), run)
+            self.assertEqual(stores.execution._add_run(run), run)
             self.assertEqual(stores.execution.add_event(decision), decision)
             self.assertEqual(stores.execution.add_event(opened), opened)
             self.assertEqual(stores.activity_history.add_action(action), action)
@@ -559,7 +561,8 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                     after[1][-2][4]["recovery"],
                     result.decision_event.recovery.descriptor(),
                 )
-                self.assertEqual(after[2][0][0], "recovery-action-a")
+                self.assertEqual(after[2][:-1], before[2])
+                self.assertEqual(after[2][-1][0], "recovery-action-a")
 
     def test_exact_replay_survives_session_close_without_clock_or_ids(self) -> None:
         self.require_service()
@@ -599,6 +602,7 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
 
     def test_active_claim_can_be_renewed_twice_on_one_retained_run(self) -> None:
         self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        initial_actions = self.snapshot()[2]
         first = self.service(
             "decision-a", "consequence-a", "action-a"
         ).execute(
@@ -621,6 +625,7 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         self.assertEqual(first.request.claim.fence.generation, 8)
         self.assertEqual(second.request.claim.fence.generation, 9)
         snapshot = self.snapshot()
+        self.assertEqual(snapshot[2][:-2], initial_actions)
         self.assertEqual(len(snapshot[3]), 1)
         self.assertEqual(
             tuple(row[0] for row in snapshot[1][-4:]),
@@ -628,11 +633,12 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         )
         self.assertEqual(
             tuple(row[0] for row in snapshot[2]),
-            ("action-a", "action-b"),
+            tuple(row[0] for row in initial_actions) + ("action-a", "action-b"),
         )
 
     def test_expired_replacement_can_be_renewed_without_a_retry_run(self) -> None:
         self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+        initial_actions = self.snapshot()[2]
         first = self.service(
             "decision-a", "consequence-a", "action-a"
         ).execute(
@@ -658,6 +664,7 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         self.assertEqual(first.retained_run, second.retained_run)
         self.assertEqual(second.request.claim.fence.generation, 9)
         snapshot = self.snapshot()
+        self.assertEqual(snapshot[2][:-2], initial_actions)
         self.assertEqual(len(snapshot[3]), 1)
         self.assertEqual(
             tuple(row[0] for row in snapshot[1][-4:]),
@@ -665,7 +672,7 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         )
         self.assertEqual(
             tuple(row[0] for row in snapshot[2]),
-            ("action-a", "action-b"),
+            tuple(row[0] for row in initial_actions) + ("action-a", "action-b"),
         )
 
     def test_active_renewal_can_continue_through_start_failure_and_recovery(
@@ -1437,24 +1444,19 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         def fail_gateway_read(*_args, **_kwargs):
             raise AssertionError("recovery read or locked mutable gateway rotation")
 
-        for name in originals:
-            setattr(GatewayKeyRotationStore, name, fail_gateway_read)
-        try:
-            for subject_kind in ("activity-plan", "gateway-key-rotation"):
-                with self.subTest(subject=subject_kind):
-                    self.reset_truth(
-                        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
-                        approval_subject=subject_kind,
-                    )
-                    result = self.service(
-                        "decision-a", "consequence-a", "action-a"
-                    ).execute(
-                        self.command(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
-                    )
+        for subject_kind in ("activity-plan", "gateway-key-rotation"):
+            with self.subTest(subject=subject_kind):
+                self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                    approval_subject=subject_kind)
+                for name in originals:
+                    setattr(GatewayKeyRotationStore, name, fail_gateway_read)
+                try:
+                    result = self.service("decision-a", "consequence-a", "action-a").execute(
+                        self.command(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM))
                     self.assertFalse(result.replayed)
-        finally:
-            for name, method in originals.items():
-                setattr(GatewayKeyRotationStore, name, method)
+                finally:
+                    for name, method in originals.items():
+                        setattr(GatewayKeyRotationStore, name, method)
 
         self.reset_truth(
             RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,

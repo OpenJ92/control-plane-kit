@@ -135,6 +135,24 @@ class ImagePullAuthorityStore:
         )
         return self.get(workspace_id, authority_id)
 
+    def _configuration_image_authorities(self, workspace_id, image, read):
+        # OCI repository syntax admits at most 128 nonempty components within
+        # 255 characters. One active row per exact scope plus the registry row
+        # therefore has a domain-derived upper bound of 129; 130 is a sentinel.
+        columns = (("authority_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("authority", "json", 16384), ("admitted_by", "text", 2048),
+            ("admitted_at", "time", 64), ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_image_pull_authorities", columns,
+            "workspace_id=%s AND registry=%s AND status='active' AND "
+            "(repository IS NULL OR repository=%s OR left(%s,length(repository)+1)=repository||'/')",
+            (workspace_id, image.registry, image.repository, image.repository), maximum=129,
+            order="repository NULLS FIRST,authority_id", point=False)
+        authorities = tuple(_row_to_authority(row) for row in rows)
+        if any(value.workspace_id != workspace_id or value.status is not RegisteredImagePullAuthorityStatus.ACTIVE
+                or not value.authority.permits(image) for value in authorities):
+            raise ProductRegistrationConflict("image pull authority selection is invalid")
+        return authorities
+
     def _get_by_id(
         self,
         workspace_id: str,

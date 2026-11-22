@@ -27,8 +27,13 @@ from control_plane_kit_operations.gateway_key_rotations import (
 from control_plane_kit_operations.lifecycle import (
     ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
+    PauseActivityRun,
+    ResumeActivityRun,
+    RunLifecycleCommandService,
+    RunLifecycleError,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 
 class CountingIds:
@@ -60,6 +65,9 @@ class GatewayKeyRotationOverlapPreparationTests(
     def reset_truth(self) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.seed_graph_and_keys()
+        self._origin_counts = {table: self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in ("cpk_activity_events", "cpk_activity_plans", "cpk_activity_runs",
+                "cpk_execution_requests", "cpk_observations", "cpk_operation_sessions")}
         self.seed_rotation_approval()
 
     def unit_of_work(self) -> PostgresUnitOfWork:
@@ -185,6 +193,53 @@ class GatewayKeyRotationOverlapPreparationTests(
         self.assertEqual(self._count("cpk_execution_requests"), 1)
         self.assertEqual(self._count("cpk_activity_runs"), 1)
 
+    def test_fresh_resume_preserves_parent_approval_and_exact_child_receipts(self):
+        from psycopg.types.json import Jsonb
+        from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
+        result = self.program().prepare(self.command())
+        checkpoint = result.checkpoint
+        self.assertIsNotNone(checkpoint)
+        with self.unit_of_work() as uow:
+            approval = uow.stores.activity_history.get_approval_request(checkpoint.approval_request_id)
+            request = uow.stores.execution.get_request(checkpoint.execution_request_id)
+        self.assertNotEqual(approval.session_id, checkpoint.session_id)
+        # Later rotation checkpoint consistency belongs to the rotation owner.
+        # Original approval/publication/admission receipts remain authoritative.
+        self.connection.execute("UPDATE cpk_gateway_key_rotation_deployments "
+            "SET desired_revision=desired_revision+1 WHERE rotation_id=%s AND phase='overlap'",
+            (self.rotation_id,))
+        # Preparation has advanced the rotation's version/status and retained
+        # its child checkpoint. Its original approval still governs this child.
+        ids = CountingIds("retained-child")
+        lifecycle = RunLifecycleCommandService(self.unit_of_work,
+            clock=lambda: "2026-08-02T02:10:00Z", id_factory=ids)
+        authority = self.command().worker_authority
+        fence = result.handoff.fence
+        lifecycle.execute(PauseActivityRun(checkpoint.run_id, authority, fence, IdempotencyKey("pause-child")))
+        resumed = lifecycle.execute(ResumeActivityRun(checkpoint.run_id, authority, fence, IdempotencyKey("resume-child")))
+        self.assertIs(resumed.run.status, ActivityRunStatus.RUNNING)
+        lifecycle.execute(PauseActivityRun(checkpoint.run_id, authority, fence, IdempotencyKey("pause-child-again")))
+        with self.unit_of_work() as uow:
+            receipt = uow.stores.activity_history.action_for_idempotency(checkpoint.session_id, request.idempotency.key)
+            before = uow.stores.execution.events_for_run(checkpoint.run_id)
+        for field in ("plan_id", "execution_request_id", "approval_request_id", "approval_decision_id",
+                      "desired_realized_projection_id"):
+            with self.subTest(field=field):
+                self.connection.execute("UPDATE cpk_operation_actions SET payload=payload || %s WHERE action_id=%s",
+                    (Jsonb({field: "foreign-child"}), receipt.action_id))
+                count = ids.count
+                try:
+                    with self.assertRaises(RunLifecycleError):
+                        lifecycle.execute(ResumeActivityRun(checkpoint.run_id, authority, fence,
+                            IdempotencyKey("refuse-" + field)))
+                    self.assertEqual(ids.count, count)
+                    with self.unit_of_work() as uow:
+                        self.assertEqual(uow.stores.execution.events_for_run(checkpoint.run_id), before)
+                        self.assertIs(uow.stores.execution.get_run(checkpoint.run_id).status, ActivityRunStatus.PAUSED)
+                finally:
+                    self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+                        (Jsonb(receipt.payload), receipt.action_id))
+
     def test_restart_after_each_commit_recovers_exact_identities(self) -> None:
         # Read rotation, start session, publish, plan, admit, claim, start, checkpoint.
         for commit_number in range(1, 9):
@@ -271,7 +326,8 @@ class GatewayKeyRotationOverlapPreparationTests(
         }
         if table not in allowed:
             raise AssertionError("test table is not allowlisted")
-        return self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        # Exact child delta; retain the independently accepted bootstrap history.
+        return self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0] - self._origin_counts[table]
 
     def _child_counts(self) -> tuple[int, ...]:
         return tuple(

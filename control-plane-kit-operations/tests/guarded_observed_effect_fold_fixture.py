@@ -74,7 +74,10 @@ class GuardedObservedEffectFoldFixture(AtomicEffectAttemptFoldFixture):
         )
         changes = {}
         if authority_ref is False:
-            changes.update(authority_ref=None, authority_deliveries=())
+            changes.update(
+                authority_ref=None, authority_deliveries=(),
+                products=tuple(replace(product, runtime_authority_deliveries=()) for product in intent.products),
+            )
         if runtime_kind is not None:
             changes["runtime_kind"] = runtime_kind
         return replace(intent, **changes) if changes else intent

@@ -36,6 +36,69 @@ used by CI. Establish that checkout before invoking the suite. The suite mounts
 it read-only into the test container; do not install it into host Python or
 substitute another coordinate.
 
+For focused Operations evidence, the same Docker gate accepts repeatable unittest
+name-pattern filters, for example:
+
+```bash
+./control-plane-kit-operations/test.sh -k PostgresConfigurationPreparationTests -k PostgresConfigurationEvolvedReplayTests
+```
+
+Quote patterns containing shell metacharacters. Filters are forwarded as literal
+arguments without evaluation. The gate retains integrity checks, Docker/Postgres,
+the pinned sibling, installation, cleanup, and its normal compile/import phases
+and failure exit. A selected run is focused evidence, never full package
+acceptance; no arguments retain full serial discovery.
+
+### Complete Operations CI shards
+
+Operations CI runs four isolated hosted workers and retains the required
+`control-plane-kit-operations` result as their aggregate. Each worker invokes
+the same complete Docker lifecycle, including integrity, exact clean
+architecture-testing dependency, installation, PostgreSQL, compile and clean
+import checks. A local serial invocation and focused `-k` invocation remain
+available. Test durations are reported in the normal run; no separate profiling
+gate is required.
+
+Each worker flushes a numeric `completed`/`selected` progress line at startup,
+every 100 completed tests and termination. Completed counts include failed and
+skipped tests; they do not mean passed tests or estimate time remaining. Class
+setup failures do not count tests that never started. These log lines do not
+guarantee live access to GitHub logs through its API or mobile clients.
+
+The explicit worker entrance is:
+
+```bash
+./control-plane-kit-operations/test.sh --shard 0 4 /tmp/operations-shard-reports
+```
+
+Use a fresh report directory. Shard mode cannot be combined with `-k`.
+Concurrent local invocations require separate Docker/PostgreSQL resources;
+the default network/container names must not be shared. CI uses a separate
+hosted machine for each worker. Never parallelize tests within a worker or use
+one database for multiple workers: some fixtures truncate shared tables.
+
+Every worker discovers the full suite inside its installed-source container.
+Whole collection-origin module suites are assigned using SHA-256 of the UTF-8
+Operations-package-relative POSIX path (for example `tests/test_example.py`),
+the first four digest bytes interpreted as an unsigned big-endian integer,
+modulo the worker count. Relative suite order and imported/inherited cases are
+preserved. No permanent manual module map or defining-class filter is used.
+
+Bounded reports identify each occurrence by origin, ordinal and unittest ID,
+and distinguish actual terminal results, including approved skips, from planned
+selection. All jobs must pass every harness phase. The aggregate also requires
+identical source/dependency/input coordinates and full discovery, with exact
+exhaustive occurrence coverage. Missing, cancelled, empty, inconsistent or
+failed workers cannot earn acceptance. A single shard is partial evidence.
+Standard fixture adjacency can change when modules are filtered; failures must
+be understood rather than hidden by weakening fixture or concurrency laws.
+
+Four workers are an initial scheduling choice, not a promised speedup. Evaluate
+slowest-worker elapsed time separately from total runner usage before changing
+the count or optimizing fixtures. The historical Current Backend lock and its
+package report remain unchanged; its pinned Operations suite is not acceptance
+of the current PR source.
+
 For the repository-owned composed backend gate, use its documented command:
 
 ```bash
@@ -46,6 +109,25 @@ Run broader or external suites only when the governing issue or PR explicitly
 owns that evidence.
 
 ## Apparatus Stop Rule
+
+### Adjacent Issue Batch Acceptance
+
+Adjacent Core/Operations issues normally share one PR with separate ordered commits.
+Keep each issue's test context, source design, required focused target-red/green
+evidence and independent review. Run local tests throughout implementation at the
+useful scope; broader local checks remain appropriate when warranted. The batching
+constraint concerns slow GitHub CI: consolidate one combined full Operations CI run
+on the completed batch, together with other required affected checks and integration/
+parity/live evidence. Issue or commit boundaries alone do not require full remote
+reruns; failures, material changes after validation or unresolved review concerns
+may justify them. Batching must not delay local feedback.
+
+Mandatory milestone gates still delimit batches. Do not defer a gate past its
+architectural boundary, weaken tests or claim acceptance from focused evidence.
+Record the commits and issue laws covered. Cross-repository packages keep their
+owning gates, and consequential-action authorization remains unchanged.
+
+### Missing Or Failed Apparatus
 
 Before invoking a suite, verify only its documented source/image/checkout
 prerequisites. If the suite is missing, cannot start, lacks a required checkout

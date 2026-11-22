@@ -118,7 +118,7 @@ class PostgresEffectAttemptIntentStoreTests(
                 attempt.original_start_event,
             )
             self.assertEqual(
-                stores.effect_attempt_intents.insert(record),
+                stores.effect_attempt_intents._insert(record),
                 record,
             )
             unit_of_work.commit()
@@ -173,7 +173,7 @@ class PostgresEffectAttemptIntentStoreTests(
                 ),
                 "request_id",
             ),
-            ("content", self.intent(products=()), "request_fingerprint"),
+            ("content", self.intent(products=(), process_delivery=False), "request_fingerprint"),
         )
         for label, candidate, drifted_coordinate in alternate_intents:
             with self.subTest(copied_column_drift=label):
@@ -343,7 +343,7 @@ class PostgresEffectAttemptIntentStoreTests(
                 ),
                 attempt.original_start_event,
             )
-            inserted = unit_of_work.stores.effect_attempt_intents.insert(record)
+            inserted = unit_of_work.stores.effect_attempt_intents._insert(record)
             self.assertIs(type(inserted), EffectAttemptIntentRecord)
             self.assertEqual(inserted, record)
 

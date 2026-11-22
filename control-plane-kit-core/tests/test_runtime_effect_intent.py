@@ -45,6 +45,7 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.secret_selections import SecretVersionSelection
 from control_plane_kit_core.verification import (
     PostgresPasswordAuthentication,
     PostgresQueryCheck,
@@ -54,7 +55,7 @@ from control_plane_kit_core.verification import (
 
 MODULE = "control_plane_kit_core.runtime_effect_observation"
 INTENT_DOMAIN = b"control-plane-kit.runtime-effect-intent.v1\x00"
-PRODUCT_MATERIAL_CANONICAL = b'{"node_id":"api","product":{"description":null,"display_name":null,"identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"},"image":{"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platforms":[{"architecture":"amd64","os":"linux","variant":null}],"provenance":{"build":"build-a"},"registry":"ghcr.io","repository":"openj92/control-plane-kit-servers/hello-server","tag":"stable"},"kind":"container-server","product_family":"server","runtime_contract":{"capabilities":[],"configuration_artifacts":[],"lifecycle":{"compute":"ephemeral","data":[],"ownership":"owned"},"provider_ports":[{"container_port":5432,"provider_socket":"database"},{"container_port":5433,"provider_socket":"database-alt"},{"container_port":8000,"provider_socket":"http"}],"public_environment":[],"retained_data_mounts":[],"secret_deliveries":[{"environment_name":"APP_CONTROL_TOKEN","intent":"application.control-token","kind":"environment","reference_id":"secret://local/workspace-a/app/token"}],"sockets":{"providers":{"database":{"protocol":{"application":"postgres","transport":"tcp"}},"database-alt":{"protocol":{"application":"postgres","transport":"tcp"}},"http":{"protocol":{"application":"http","transport":"tcp"}}},"requirements":{}},"verification":{"checks":[{"authentication":{"database":"app","kind":"password","password_reference_id":"secret://local/workspace-a/postgres/password","username":"app"},"check_id":"database-ready","kind":"postgres-query","operation":"select-one","policy":{"interval_seconds":1,"maximum_attempts":1,"maximum_evidence_bytes":16384,"timeout_seconds":5},"provider_socket":"database"}]}}},"public_environment":[{"kind":"public-static","name":"HELLO_MESSAGE","value":"Hello from graph"}],"pull_authority":{"credential_reference":"secret://local/workspace-a/oci/pull","registry":"ghcr.io","repository":"openj92"},"reference":{"descriptor_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"}},"runtime_id":"docker","socket_environment":[{"edge_id":"upstream.internal->api.upstream","kind":"socket-derived","name":"UPSTREAM_URL","value":"http://upstream:8080"}]}'
+PRODUCT_MATERIAL_CANONICAL = b'{"node_id":"api","product":{"description":null,"display_name":null,"identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"},"image":{"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platforms":[{"architecture":"amd64","os":"linux","variant":null}],"provenance":{"build":"build-a"},"registry":"ghcr.io","repository":"openj92/control-plane-kit-servers/hello-server","tag":"stable"},"kind":"container-server","product_family":"server","runtime_contract":{"capabilities":[],"configuration_artifacts":[],"lifecycle":{"compute":"ephemeral","data":[],"ownership":"owned"},"provider_ports":[{"container_port":5432,"provider_socket":"database"},{"container_port":5433,"provider_socket":"database-alt"},{"container_port":8000,"provider_socket":"http"}],"public_environment":[],"retained_data_mounts":[],"secret_deliveries":[{"environment_name":"APP_CONTROL_TOKEN","intent":"application.control-token","kind":"environment","reference_id":"secret://local/workspace-a/app/token"}],"sockets":{"providers":{"database":{"protocol":{"application":"postgres","transport":"tcp"}},"database-alt":{"protocol":{"application":"postgres","transport":"tcp"}},"http":{"protocol":{"application":"http","transport":"tcp"}}},"requirements":{}},"verification":{"checks":[{"authentication":{"database":"app","kind":"password","password_reference_id":"secret://local/workspace-a/postgres/password","username":"app"},"check_id":"database-ready","kind":"postgres-query","operation":"select-one","policy":{"interval_seconds":1,"maximum_attempts":1,"maximum_evidence_bytes":16384,"timeout_seconds":5},"provider_socket":"database"}]}}},"public_environment":[{"kind":"public-static","name":"HELLO_MESSAGE","value":"Hello from graph"}],"pull_authority":{"credential_reference":"secret://local/workspace-a/oci/pull","registry":"ghcr.io","repository":"openj92"},"reference":{"descriptor_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"}},"runtime_id":"docker","secret_selections":[{"intent":"application.control-token","reference_id":"secret://local/workspace-a/app/token","version_id":"version-1"}],"socket_environment":[{"edge_id":"upstream.internal->api.upstream","kind":"socket-derived","name":"UPSTREAM_URL","value":"http://upstream:8080"}]}'
 
 
 def _language():
@@ -190,6 +191,7 @@ def _product_material(
         runtime_id=runtime_id,
         reference=ProductReference(identity, ProductDescriptorDigest(descriptor_digest)),
         product=product,
+        secret_selections=(SecretVersionSelection(SecretReference(delivery_reference), secret_use_intent, "version-1"),),
         public_environment=(
             PublicStaticEnvironmentBinding(public_name, public_value),
         ),
@@ -257,7 +259,7 @@ def _request(
         operation=StartNode(NodeTarget("api")),
         authority_ref=delivery.authority_ref if complete else None,
         authority_deliveries=(delivery,) if complete else (),
-        products=(_product_material(),) if complete else (),
+        products=(replace(_product_material(), runtime_authority_deliveries=(delivery,)),) if complete else (_product_material(),),
     )
 
 
@@ -386,11 +388,13 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                 )
                 self.assertEqual(intent, canonical)
 
-    def test_noncanonical_product_fixture_retains_accepted_literal_golden(self) -> None:
+    def test_material_golden_and_historical_selected_only_intent_are_distinct(self) -> None:
         language = _language()
         intent = language.runtime_effect_intent_for_request(_request())
-        descriptor = intent.descriptor()
-        product_descriptor = descriptor["products"][0]
+        # Preserve the literal no-power material and historical raw descriptor.
+        # The selected-only historical shape is no longer a valid typed intent.
+        product_descriptor = _product_material().descriptor()
+        descriptor = {**intent.descriptor(), "products": [product_descriptor]}
         canonical = rfc8785.dumps(descriptor)
         product_canonical = rfc8785.dumps(product_descriptor)
 
@@ -421,23 +425,25 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             },
         )
         self.assertEqual(product_canonical, PRODUCT_MATERIAL_CANONICAL)
-        self.assertEqual(len(product_canonical), 2_226)
+        self.assertEqual(len(product_canonical), 2_366)
         self.assertEqual(
             hashlib.sha256(product_canonical).hexdigest(),
-            "f7da31e6a9d0b4cd5838570253b5d691f1fd1965cc4e26aecf98fea5cd80db81",
+            "50933da4e8ee4e0511a321af04327751e72fff8a4626bf6a8786be31fccb06b8",
         )
-        self.assertEqual(len(canonical), 3_005)
+        self.assertEqual(len(canonical), 3_145)
         self.assertEqual(
             hashlib.sha256(canonical).hexdigest(),
-            "f06647243f28bbe5e0200f9a85c27630fabbf2e42669f85e47cdb4390d3cd48d",
+            "3d7571fb355b8e8bea13b8b2a638a33073df13af5502ef6e8a20712c4ae725b3",
         )
-        self.assertEqual(
+        with self.assertRaises(RuntimeEffectContractError):
+            replace(intent, products=(_product_material(),))
+        self.assertNotEqual(
             language.runtime_effect_intent_fingerprint(intent),
-            "fa6e2d2c44210d027421b9f25f5cf0481a8345d9727fd5f0b27fd90aaa9ccda0",
+            "57d8b7f83e3f563700c7ccc34a8e242309b71e98333b6e3570ee695d557cd4f6",
         )
         self.assertEqual(
             hashlib.sha256(INTENT_DOMAIN + canonical).hexdigest(),
-            "fa6e2d2c44210d027421b9f25f5cf0481a8345d9727fd5f0b27fd90aaa9ccda0",
+            "57d8b7f83e3f563700c7ccc34a8e242309b71e98333b6e3570ee695d557cd4f6",
         )
         self.assertEqual(
             intent.products[0].product.runtime_contract.sockets.provider_names(),
@@ -451,15 +457,17 @@ class RuntimeEffectIntentTests(unittest.TestCase):
 
         self.assertEqual(
             canonical,
-            b'{"activity_id":"activity-a","authority_deliveries":[],"authority_ref":null,"kind":"realize-activity","operation":{"kind":"start-node","target":{"kind":"node","node_id":"api"}},"products":[],"runtime_kind":"docker","source":{"base_graph_id":"graph-base","desired_graph_id":"graph-desired","plan_id":"plan-a","request_id":"request-a","run_id":"run-a","workspace_id":"workspace-a"}}',
+            b'{"activity_id":"activity-a","authority_deliveries":[],"authority_ref":null,"kind":"realize-activity","operation":{"kind":"start-node","target":{"kind":"node","node_id":"api"}},"products":['
+            + PRODUCT_MATERIAL_CANONICAL
+            + b'],"runtime_kind":"docker","source":{"base_graph_id":"graph-base","desired_graph_id":"graph-desired","plan_id":"plan-a","request_id":"request-a","run_id":"run-a","workspace_id":"workspace-a"}}',
         )
         self.assertEqual(
             language.runtime_effect_intent_fingerprint(intent),
-            "01524d40ae572390e1ce15c7e201e2555ab5f0a175fec0243a759ba5f8709128",
+            "176f26b9c207504a1c777823d423efa10511584df3cebd282ebee6bbdf70f56f",
         )
         self.assertEqual(
             hashlib.sha256(INTENT_DOMAIN + canonical).hexdigest(),
-            "01524d40ae572390e1ce15c7e201e2555ab5f0a175fec0243a759ba5f8709128",
+            "176f26b9c207504a1c777823d423efa10511584df3cebd282ebee6bbdf70f56f",
         )
         self.assertEqual(len(language.runtime_effect_intent_fingerprint(intent)), 64)
 
@@ -467,6 +475,15 @@ class RuntimeEffectIntentTests(unittest.TestCase):
         language = _language()
         intent = language.runtime_effect_intent_for_request(_request())
         baseline = language.runtime_effect_intent_fingerprint(intent)
+
+        def declared_material(**changes):
+            return replace(_product_material(**changes), runtime_authority_deliveries=intent.authority_deliveries)
+
+        def paired_deliveries(deliveries, *, authority_ref=intent.authority_ref):
+            return replace(
+                intent, authority_ref=authority_ref, authority_deliveries=deliveries,
+                products=(replace(intent.products[0], runtime_authority_deliveries=deliveries),),
+            )
         other_delivery = RuntimeAuthorityAccessDelivery(
             RuntimeAuthorityReference("local-docker"),
             RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
@@ -497,21 +514,18 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                 source=replace(intent.source, desired_graph_id="graph-desired-b"),
             ),
             "activity_id": replace(intent, activity_id=ActivityId("activity-b")),
-            "operation": replace(intent, operation=StopNode(NodeTarget("api"))),
-            "authority_ref": replace(
-                intent,
+            "operation": replace(intent, operation=StopNode(NodeTarget("api")), authority_deliveries=()),
+            "authority_ref": paired_deliveries(
+                (other_delivery,),
                 authority_ref=other_delivery.authority_ref,
-                authority_deliveries=(other_delivery,),
             ),
-            "authority_deliveries": replace(intent, authority_deliveries=()),
-            "products": replace(intent, products=(_product_material(node_id="api-b"),)),
-            "authority_delivery_kind": replace(
-                intent,
-                authority_deliveries=(other_delivery_kind,),
+            "authority_deliveries": paired_deliveries(()),
+            "products": replace(intent, operation=StartNode(NodeTarget("api-b")), products=(declared_material(node_id="api-b"),)),
+            "authority_delivery_kind": paired_deliveries(
+                (other_delivery_kind,),
             ),
-            "authority_delivery_secret_label": replace(
-                intent,
-                authority_deliveries=(
+            "authority_delivery_secret_label": paired_deliveries(
+                (
                     RuntimeAuthorityAccessDelivery(
                         intent.authority_ref,
                         RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
@@ -525,9 +539,8 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                     ),
                 ),
             ),
-            "authority_delivery_secret_reference": replace(
-                intent,
-                authority_deliveries=(
+            "authority_delivery_secret_reference": paired_deliveries(
+                (
                     RuntimeAuthorityAccessDelivery(
                         intent.authority_ref,
                         RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
@@ -542,71 +555,71 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                 ),
             ),
             "product_runtime_id": replace(
-                intent, products=(_product_material(runtime_id="docker-b"),)
+                intent, products=(declared_material(runtime_id="docker-b"),)
             ),
             "product_reference_identity": replace(
-                intent, products=(_product_material(product_name="hello-worker"),)
+                intent, products=(declared_material(product_name="hello-worker"),)
             ),
             "product_reference_namespace": replace(
                 intent,
-                products=(_product_material(product_namespace="example"),),
+                products=(declared_material(product_namespace="example"),),
             ),
             "product_reference_revision": replace(
                 intent,
-                products=(_product_material(contract_revision=2),),
+                products=(declared_material(contract_revision=2),),
             ),
             "product_reference_digest": replace(
-                intent, products=(_product_material(descriptor_digest="c" * 64),)
+                intent, products=(declared_material(descriptor_digest="c" * 64),)
             ),
             "product_image_registry": replace(
-                intent, products=(_product_material(image_registry="registry.example"),)
+                intent, products=(declared_material(image_registry="registry.example"),)
             ),
             "product_image_repository": replace(
                 intent,
-                products=(_product_material(image_repository="openj92/hello-worker"),),
+                products=(declared_material(image_repository="openj92/hello-worker"),),
             ),
             "product_image_digest": replace(
                 intent,
-                products=(_product_material(image_digest="sha256:" + "c" * 64),),
+                products=(declared_material(image_digest="sha256:" + "c" * 64),),
             ),
             "product_image_tag": replace(
-                intent, products=(_product_material(image_tag="candidate"),)
+                intent, products=(declared_material(image_tag="candidate"),)
             ),
             "product_image_platform": replace(
                 intent,
-                products=(_product_material(image_architecture="arm64"),),
+                products=(declared_material(image_architecture="arm64"),),
             ),
             "product_image_provenance": replace(
                 intent,
-                products=(_product_material(image_provenance="build-b"),),
+                products=(declared_material(image_provenance="build-b"),),
             ),
             "product_runtime_contract": replace(
-                intent, products=(_product_material(provider_port=8001),)
+                intent, products=(declared_material(provider_port=8001),)
             ),
             "product_provider_socket_identity": replace(
                 intent,
-                products=(_product_material(provider_socket_name="admin"),),
+                products=(declared_material(provider_socket_name="admin"),),
             ),
             "product_provider_socket_protocol": replace(
                 intent,
-                products=(_product_material(provider_socket_protocol=Protocol.TCP),),
+                products=(declared_material(provider_socket_protocol=Protocol.TCP),),
             ),
             "product_secret_delivery": replace(
                 intent,
                 products=(
-                    _product_material(
+                    declared_material(
                         delivery_reference="secret://local/workspace-a/app/token-b"
                     ),
                 ),
             ),
             "product_secret_environment_name": replace(
                 intent,
-                products=(_product_material(secret_environment_name="CONTROL_TOKEN"),),
+                products=(declared_material(secret_environment_name="CONTROL_TOKEN"),),
             ),
             "product_secret_use_intent": replace(
                 intent,
                 products=(
-                    _product_material(
+                    declared_material(
                         secret_use_intent=SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY
                     ),
                 ),
@@ -614,7 +627,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             "product_verification_material": replace(
                 intent,
                 products=(
-                    _product_material(
+                    declared_material(
                         verification_reference=(
                             "secret://local/workspace-a/postgres/password-b"
                         )
@@ -623,47 +636,47 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             ),
             "product_verification_check_id": replace(
                 intent,
-                products=(_product_material(verification_check_id="database-live"),),
+                products=(declared_material(verification_check_id="database-live"),),
             ),
             "product_verification_socket": replace(
                 intent,
-                products=(_product_material(verification_socket="database-alt"),),
+                products=(declared_material(verification_socket="database-alt"),),
             ),
             "product_verification_database": replace(
                 intent,
-                products=(_product_material(verification_database="control"),),
+                products=(declared_material(verification_database="control"),),
             ),
             "product_verification_username": replace(
                 intent,
-                products=(_product_material(verification_username="control"),),
+                products=(declared_material(verification_username="control"),),
             ),
             "product_public_environment_name": replace(
-                intent, products=(_product_material(public_name="GREETING"),)
+                intent, products=(declared_material(public_name="GREETING"),)
             ),
             "product_public_environment_value": replace(
-                intent, products=(_product_material(public_value="Hello again"),)
+                intent, products=(declared_material(public_value="Hello again"),)
             ),
             "product_socket_environment_name": replace(
-                intent, products=(_product_material(socket_name="BACKEND_URL"),)
+                intent, products=(declared_material(socket_name="BACKEND_URL"),)
             ),
             "product_socket_environment_value": replace(
                 intent,
-                products=(_product_material(socket_value="http://upstream:8081"),),
+                products=(declared_material(socket_value="http://upstream:8081"),),
             ),
             "product_socket_environment_edge": replace(
                 intent,
-                products=(_product_material(socket_edge="upstream.other->api.upstream"),),
+                products=(declared_material(socket_edge="upstream.other->api.upstream"),),
             ),
             "product_pull_registry": replace(
-                intent, products=(_product_material(pull_registry="registry.example"),)
+                intent, products=(declared_material(pull_registry="registry.example"),)
             ),
             "product_pull_repository": replace(
-                intent, products=(_product_material(pull_repository="openj92/private"),)
+                intent, products=(declared_material(pull_repository="openj92/private"),)
             ),
             "product_pull_credential": replace(
                 intent,
                 products=(
-                    _product_material(
+                    declared_material(
                         pull_reference="secret://local/workspace-a/oci/pull-b"
                     ),
                 ),
@@ -676,7 +689,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                     language.runtime_effect_intent_fingerprint(candidate),
                     baseline,
                 )
-        self.assertEqual({value.value for value in RuntimeEffectKind}, {"realize-activity"})
+        self.assertEqual({value.value for value in RuntimeEffectKind}, {"realize-activity", "configuration-activity.v1"})
 
     def test_projection_and_fingerprint_require_exact_nominal_values(self) -> None:
         language = _language()
@@ -749,6 +762,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                 ("authority_ref", True),
                 ("authority_deliveries", True),
                 ("products", True),
+                ("configuration_instances", True),
             ),
         )
         self.assertTrue(language.RuntimeEffectIntentSource.__dataclass_params__.frozen)
@@ -788,7 +802,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             for index in range(2_048)
         )
         intent = language.runtime_effect_intent_for_request(
-            replace(request, products=products)
+            replace(request, operation=StopNode(NodeTarget("api")), products=products)
         )
         self.assertGreater(len(rfc8785.dumps(intent.descriptor())), 1_048_576)
 

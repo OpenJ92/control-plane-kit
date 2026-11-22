@@ -203,50 +203,55 @@ class FailedRunCompensationStore:
             """,
             (program_id,),
         ).fetchall()
-        try:
-            program = FailedRunCompensationProgram.from_descriptor(
-                json.loads(bytes(row[15]).decode("ascii"))
-            )
-            record = FailedRunCompensationRecord(
-                program_id=row[0],
-                workspace_id=row[1],
-                request_id=row[2],
-                run_id=row[3],
-                plan_id=row[4],
-                session_id=row[5],
-                action_id=row[6],
-                event_id=row[7],
-                actor_id=row[8],
-                reason=row[9],
-                source_failure=_failure(row[10]),
-                authority_reference_fingerprint=row[11],
-                command_fingerprint=row[12],
-                evidence_fingerprint=row[13],
-                program_fingerprint=row[14],
-                created_at=decode_postgres_timestamp(row[16]),
-            )
-        except (TypeError, ValueError) as error:
-            raise OperationsRecordError(
-                "failed-run compensation row is invalid"
-            ) from error
-        if (
-            record.program_id != program.program_id
-            or record.workspace_id != program.evidence.lineage.workspace_id
-            or record.request_id != program.evidence.lineage.request_id
-            or record.run_id != program.evidence.lineage.run_id.value
-            or record.plan_id != program.evidence.lineage.plan_id
-            or record.reason != program.evidence.reason.value
-            or _fingerprint(_failure_descriptor(record.source_failure))
-            != program.evidence.source_failure_fingerprint
-            or record.evidence_fingerprint != _fingerprint(program.evidence.descriptor())
-            or record.program_fingerprint != program.fingerprint()
-            or tuple(_step_descriptor(step) for step in step_rows)
-            != tuple(step.descriptor() for step in program.steps)
-        ):
-            raise OperationsRecordError(
-                "failed-run compensation row is incongruent"
-            )
-        return record, program
+        return _records_from_rows(row, step_rows)
+
+
+def _records_from_rows(row, step_rows):
+    """Decode original program/step association after caller-bounded retrieval."""
+    try:
+        program = FailedRunCompensationProgram.from_descriptor(
+            json.loads(bytes(row[15]).decode("ascii"))
+        )
+        record = FailedRunCompensationRecord(
+            program_id=row[0],
+            workspace_id=row[1],
+            request_id=row[2],
+            run_id=row[3],
+            plan_id=row[4],
+            session_id=row[5],
+            action_id=row[6],
+            event_id=row[7],
+            actor_id=row[8],
+            reason=row[9],
+            source_failure=_failure(row[10]),
+            authority_reference_fingerprint=row[11],
+            command_fingerprint=row[12],
+            evidence_fingerprint=row[13],
+            program_fingerprint=row[14],
+            created_at=decode_postgres_timestamp(row[16]),
+        )
+    except (TypeError, ValueError) as error:
+        raise OperationsRecordError(
+            "failed-run compensation row is invalid"
+        ) from error
+    if (
+        record.program_id != program.program_id
+        or record.workspace_id != program.evidence.lineage.workspace_id
+        or record.request_id != program.evidence.lineage.request_id
+        or record.run_id != program.evidence.lineage.run_id.value
+        or record.plan_id != program.evidence.lineage.plan_id
+        or record.reason != program.evidence.reason.value
+        or _fingerprint(_failure_descriptor(record.source_failure))
+        != program.evidence.source_failure_fingerprint
+        or record.evidence_fingerprint != _fingerprint(program.evidence.descriptor())
+        or record.program_fingerprint != program.fingerprint()
+        or tuple(_step_descriptor(step) for step in step_rows)
+        != tuple(step.descriptor() for step in program.steps)
+    ):
+        raise OperationsRecordError(
+            "failed-run compensation row is incongruent"
+        )
+    return record, program
 
 
 def _successful_effect(row: object) -> SuccessfulEffectEvidence:

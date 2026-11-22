@@ -7,6 +7,7 @@ import json
 from control_plane_kit_core.algebra import BlockSpec
 from control_plane_kit_core.topology.graph import DeploymentGraph, Node
 from control_plane_kit_core.topology.changes import (
+    SecretSelectionsValue,
     AddedChange,
     AmbiguityReason,
     AmbiguousChange,
@@ -16,6 +17,7 @@ from control_plane_kit_core.topology.changes import (
     ConfigurationArtifactsValue,
     DelegationVerifierProjectionValue,
     SecretDeliveriesValue,
+    RuntimeAuthorityDeliveriesValue,
     EnvironmentBindingsValue,
     FieldSubject,
     GraphDiff,
@@ -25,6 +27,7 @@ from control_plane_kit_core.topology.changes import (
     PublicIngressValue,
     RemovedChange,
     RuntimeValue,
+    RuntimeManagementValue,
     SocketContractValue,
     StringTupleValue,
     StructuralChange,
@@ -133,6 +136,14 @@ def _diff_runtimes(
                     FieldSubject(subject, StructuralField.RUNTIME_AUTHORITY),
                     MetadataValue(_runtime_authority_value(before)),
                     MetadataValue(_runtime_authority_value(after)),
+                )
+            )
+        if before.management != after.management:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.RUNTIME_MANAGEMENT),
+                    RuntimeManagementValue(before.management),
+                    RuntimeManagementValue(after.management),
                 )
             )
         if before.metadata != after.metadata:
@@ -268,6 +279,17 @@ def _diff_nodes(
                     SecretDeliveriesValue(after.secret_deliveries),
                 )
             )
+        if before.secret_selections != after.secret_selections:
+            changes.append(ModifiedChange(
+                FieldSubject(subject, StructuralField.SECRET_SELECTIONS),
+                SecretSelectionsValue(before.secret_selections),
+                SecretSelectionsValue(after.secret_selections)))
+        if before.runtime_authority_deliveries != after.runtime_authority_deliveries:
+            changes.append(ModifiedChange(
+                FieldSubject(subject, StructuralField.RUNTIME_AUTHORITY_DELIVERIES),
+                RuntimeAuthorityDeliveriesValue(before.runtime_authority_deliveries),
+                RuntimeAuthorityDeliveriesValue(after.runtime_authority_deliveries),
+            ))
         if before.delegation_verifier_projection != after.delegation_verifier_projection:
             changes.append(
                 ModifiedChange(

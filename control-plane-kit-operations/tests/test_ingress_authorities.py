@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 import unittest
 
@@ -10,12 +11,16 @@ from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     PublicIngressLifecycle,
 )
-from control_plane_kit_core.secrets import SecretCustodyReceipt, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretCustodyReceipt, SecretReference, SecretFileDelivery, SecretFileMode,
+    SecretFilePathBinding, SecretUseIntent, SecretEnvironmentDelivery, SecretReferenceEnvironmentDelivery,
+)
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareIngressTeardownActionKind,
     CloudflareOwnedIngressResource,
     CloudflareTunnelTokenDeliveryStep,
     CloudflareZoneIngressAuthority,
+    CloudflareZoneIngressAuthorityCodec,
     GeneratedSecretPurpose,
     GeneratedSecretRecordingConflict,
     IngressAuthorityAuthorizationDenied,
@@ -48,6 +53,59 @@ from control_plane_kit_operations.read_pages import (
 
 
 class IngressAuthorityValueTests(unittest.TestCase):
+    def test_generated_connector_token_is_one_owner_read_only_file_delivery(self):
+        reference = SecretReference("secret://cloudflare/openj92/cpk-gateway-001-tunnel-token")
+        plan = cloudflare_tunnel_token_delivery_plan(
+            authority=self.cloudflare_authority(), resource=self.cloudflare_resource(),
+            connector_node_id="cloudflared-001", tunnel_token_ref=reference,
+        )
+        self.assertIs(type(plan.secret_delivery), SecretFileDelivery)
+        self.assertEqual(plan.secret_delivery, SecretFileDelivery(
+            "/run/secrets/cloudflare-tunnel-token", reference,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, SecretFileMode.OWNER_READ_ONLY,
+            SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
+        ))
+        self.assertEqual(require_cloudflared_tunnel_token_delivery((plan.secret_delivery,)), plan.secret_delivery)
+
+    def test_configured_token_file_refuses_ambiguous_or_misdirected_reserved_slots(self):
+        reference = SecretReference("secret://cloudflare/openj92/tunnel")
+        valid = SecretFileDelivery("/run/secrets/cloudflare-tunnel-token", reference,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, path_binding=SecretFilePathBinding("TUNNEL_TOKEN_FILE"))
+        wrong = (
+            SecretEnvironmentDelivery("TUNNEL_TOKEN", reference, SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN),
+            SecretReferenceEnvironmentDelivery("TUNNEL_TOKEN_FILE", reference),
+            replace(valid, target_path="/run/secrets/wrong"),
+            replace(valid, intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN),
+            replace(valid, path_binding=None),
+        )
+        for value in wrong:
+            for deliveries in ((value,), (valid, value)):
+                with self.subTest(deliveries=deliveries), self.assertRaises(IngressAuthorityRegistrationError):
+                    require_cloudflared_tunnel_token_delivery(deliveries)
+
+    def test_exact_hostname_authority_roundtrips_and_matches_only_its_host(self) -> None:
+        authority = replace(self.cloudflare_authority(),
+                            allowed_hostname_pattern="cpk-child.openj92.dev")
+        codec = CloudflareZoneIngressAuthorityCodec()
+        self.assertEqual(codec.decode(codec.encode(authority)), authority)
+        self.assertTrue(authority.allows_hostname("cpk-child.openj92.dev"))
+        for hostname in ("cpk-other.openj92.dev", "cpk-child-2.openj92.dev",
+                         "nested.cpk-child.openj92.dev", "cpk-child.example.com"):
+            with self.subTest(hostname=hostname):
+                self.assertFalse(authority.allows_hostname(hostname))
+
+    def test_exact_hostname_support_preserves_zone_and_pattern_restrictions(self) -> None:
+        for pattern in ("openj92.dev", "cpk-child.example.com", "nested.cpk-child.openj92.dev",
+                        "CPK-child.openj92.dev", "-child.openj92.dev", "child-.openj92.dev",
+                        "child..openj92.dev", "child.openj92.dev.", "*.openj92.dev",
+                        "cpk-**.openj92.dev"):
+            with self.subTest(pattern=pattern):
+                with self.assertRaises(IngressAuthorityRegistrationError):
+                    replace(self.cloudflare_authority(), allowed_hostname_pattern=pattern)
+        wildcard = self.cloudflare_authority()
+        self.assertTrue(wildcard.allows_hostname("cpk-gateway-001.openj92.dev"))
+        self.assertFalse(wildcard.allows_hostname("cpk-child.openj92.dev"))
+
     def test_cloudflare_zone_authority_descriptor_is_secret_free(self) -> None:
         authority = CloudflareZoneIngressAuthority(
             account_id="account-openj92",
@@ -255,8 +313,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertEqual(
             descriptor["secret_delivery"],
             {
-                "kind": "environment",
-                "environment_name": "TUNNEL_TOKEN",
+                "kind": "file",
+                "target_path": "/run/secrets/cloudflare-tunnel-token",
+                "file_mode": "0400",
+                "path_binding": {"environment_name": "TUNNEL_TOKEN_FILE"},
                 "reference_id": (
                     "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
                 ),
@@ -436,6 +496,26 @@ class IngressAuthorityStoreTests(unittest.TestCase):
 
     def unit_of_work(self) -> PostgresUnitOfWork:
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
+
+    def test_exact_hostname_registration_preserves_its_narrow_authority(self) -> None:
+        authority = replace(self.cloudflare_authority(),
+                            allowed_hostname_pattern="cpk-child.openj92.dev")
+        registered = IngressAuthorityRegistrationService(self.unit_of_work).register(
+            RegisterIngressAuthorityCommand(
+                workspace_id="workspace-a",
+                authority_ref=IngressAuthorityReference("exact-child-ingress"),
+                authority=authority,
+                admitted_by="operator-a",
+                admitted_at="2026-07-27T22:50:00.000001Z",
+                actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
+            )
+        )
+        with self.unit_of_work() as unit_of_work:
+            stored, = unit_of_work.stores.ingress_authorities.list_active("workspace-a")
+            self.assertEqual(stored, registered)
+            self.assertEqual(stored.authority, authority)
+            self.assertTrue(stored.authority.allows_hostname("cpk-child.openj92.dev"))
+            self.assertFalse(stored.authority.allows_hostname("cpk-other.openj92.dev"))
 
     def test_service_registers_workspace_scoped_ingress_authority(self) -> None:
         service = IngressAuthorityRegistrationService(self.unit_of_work)

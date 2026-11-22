@@ -401,6 +401,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
         rows = {
             ("forward", "started", None): "step_started",
             ("forward", "succeeded", None): "step_succeeded",
+            ("forward", "not_ready", None): "step_observation_not_ready",
             ("forward", "failed", None): "step_failed",
             ("forward", "unsupported", None): "step_unsupported",
             ("forward", "uncertain", None): "step_uncertain",
@@ -451,6 +452,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
             not in {
                 EffectAttemptTransitionKind.RECONCILED,
                 EffectAttemptTransitionKind.ABANDONED,
+                EffectAttemptTransitionKind.NOT_READY,
             }
         }
         expected_keys = {
@@ -467,7 +469,11 @@ class EffectRecoveryContractTests(unittest.TestCase):
             for phase in ("forward", "compensation")
         }
 
-        self.assertEqual(len(rows), 16)
+        # Native completed reads have a forward-only waiting disposition. They
+        # are not compensation effects; retain every original phase row.
+        expected_keys.add(("forward", "not_ready", None))
+        self.assertNotIn(("compensation", "not_ready", None), rows)
+        self.assertEqual(len(rows), 17)
         self.assertEqual(set(rows), expected_keys)
         for key, value in rows.items():
             with self.subTest(key=key):

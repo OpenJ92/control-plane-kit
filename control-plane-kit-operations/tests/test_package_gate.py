@@ -57,6 +57,29 @@ def _workflow_step(job: str, name: str) -> str:
 
 
 class OperationsPackageGateTests(unittest.TestCase):
+    def test_shard_mode_retains_full_gate_and_explicit_report_mount(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result, events = self._run_gate(arguments=("--shard", "0", "4", directory))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual([event for event in events if event.startswith("phase:")],
+                ["phase:integrity", "phase:postgres", "phase:unittest", "phase:compile", "phase:clean-import"])
+            behavior = next(event for event in events if event.startswith("run:unittest:"))
+            self.assertIn(f"{directory}:/reports", behavior)
+            self.assertIn("CPK_SHARD_INDEX=0", behavior)
+            self.assertIn("CPK_SHARD_COUNT=4", behavior)
+            self.assertIn("CPK_OPERATIONS_SUITE_HELPER=/test-support/operations_suite.py", behavior)
+            self.assertIn("full acceptance requires the aggregate", result.stdout)
+
+    def test_mixed_or_invalid_shard_arguments_stop_before_apparatus(self) -> None:
+        for arguments in (("--shard", "0", "4", "/tmp/unused", "-k", "Case"),
+                          ("--shard", "4", "4", "/tmp/unused"),
+                          ("--shard", "0", "0", "/tmp/unused"),
+                          ("--shard", "0:1", "4", "/tmp/unused")):
+            with self.subTest(arguments=arguments):
+                result, events = self._run_gate(arguments=arguments)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(events, [])
+
     def test_ci_checks_out_exact_architecture_testing_source(self) -> None:
         workflow = _workflow_path().read_text(encoding="utf-8")
         core_job, operations_job = workflow.split("\n  operations:\n", 1)
@@ -441,6 +464,7 @@ class OperationsPackageGateTests(unittest.TestCase):
         health_status: str = "healthy",
         architecture_commit: str = ARCHITECTURE_TESTING_COMMIT,
         architecture_dirty: bool = False,
+        arguments: tuple[str, ...] = (),
     ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
@@ -538,6 +562,10 @@ class OperationsPackageGateTests(unittest.TestCase):
                     #!/bin/sh
                     set -eu
 
+                    if [ "$1" = "-C" ] && [ "$2" = "$FAKE_REPOSITORY_ROOT" ] && [ "$3" = "rev-parse" ] && [ "$4" = "HEAD" ]; then
+                      printf '%s\n' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                      exit 0
+                    fi
                     if [ "$1" != "-C" ] || [ "$2" != "$FAKE_ARCHITECTURE_ROOT" ]; then
                       exit 98
                     fi
@@ -572,13 +600,14 @@ class OperationsPackageGateTests(unittest.TestCase):
                     "FAKE_DOCKER_LOG_STATUS": str(log_status),
                     "FAKE_DOCKER_HEALTH_STATUS": health_status,
                     "FAKE_ARCHITECTURE_ROOT": str(architecture_root),
+                    "FAKE_REPOSITORY_ROOT": str(REPOSITORY_ROOT),
                     "FAKE_ARCHITECTURE_COMMIT": architecture_commit,
                     "FAKE_ARCHITECTURE_DIRTY": "1" if architecture_dirty else "0",
                     "CPK_ARCHITECTURE_TESTING_ROOT": str(architecture_root),
                 }
             )
             result = subprocess.run(
-                ["sh", str(PACKAGE_ROOT / "test.sh")],
+                ["sh", str(PACKAGE_ROOT / "test.sh"), *arguments],
                 cwd=PACKAGE_ROOT,
                 env=environment,
                 capture_output=True,

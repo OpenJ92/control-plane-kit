@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import re
 
 from control_plane_kit_core.delegation_keys import (
     DelegationKeyAlgorithm,
@@ -113,6 +114,20 @@ class DelegationSigningKeyStore:
         if value is None:
             raise DelegationSigningKeyNotFound("delegation signing key was not found")
         return value
+
+    def get_by_registration(self, workspace_id, purpose, registration_id, *, for_share=False):
+        """Exact original identity; historical reads do not require active status."""
+        if (type(purpose) is not DelegationKeyPurpose or type(for_share) is not bool
+                or type(registration_id) is not str or re.fullmatch(r"dkey_[0-9a-f]{64}", registration_id) is None):
+            raise DelegationSigningKeyNotFound("delegation signing registration is unavailable")
+        if for_share:
+            self._lock_purpose(workspace_id, purpose, shared=True)
+        row = self._connection.execute(_SELECT
+            + " WHERE workspace_id=%s AND purpose=%s AND registration_id=%s"
+            + (" FOR SHARE" if for_share else ""), (workspace_id, purpose.value, registration_id)).fetchone()
+        if row is None:
+            raise DelegationSigningKeyNotFound("delegation signing registration is unavailable")
+        return _row(row)
 
     def require_active(
         self,
@@ -238,7 +253,15 @@ class DelegationSigningKeyStore:
         workspace_id: str,
         purpose: DelegationKeyPurpose,
         issuer: str,
+        *,
+        limit: int | None = None,
     ) -> tuple[RegisteredDelegationSigningKey, ...]:
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 100):
+            raise ValueError("verification limit must be between 1 and 100")
+        limit_clause = "" if limit is None else "LIMIT %s"
+        parameters = (workspace_id, purpose.value, issuer)
+        if limit is not None:
+            parameters += (limit,)
         rows = self._connection.execute(
             f"""
             {_SELECT}
@@ -247,8 +270,9 @@ class DelegationSigningKeyStore:
               AND issuer = %s
               AND status IN ('active', 'verify-only')
             ORDER BY key_id
+            {limit_clause}
             """,
-            (workspace_id, purpose.value, issuer),
+            parameters,
         ).fetchall()
         return tuple(_row(row) for row in rows)
 

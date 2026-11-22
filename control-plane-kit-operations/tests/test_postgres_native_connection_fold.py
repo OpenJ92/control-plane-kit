@@ -1,0 +1,492 @@
+"""Native acceptance laws at the existing transaction and persistence owners.
+
+Predecessor events are fixture setup, not evidence of deployment creation.
+Raw observations are recording-port values, not live provider evidence.
+"""
+from dataclasses import replace
+import unittest
+from unittest import mock
+
+import rfc8785
+from psycopg.types.json import Jsonb
+
+from control_plane_kit_core import RuntimeEffectResult
+from control_plane_kit_core.operations import ActivityEventKind, ActivityRunStatus
+from control_plane_kit_core.planning import (
+    ManagementBootstrapStage, ObserveManagementBootstrap, compile_graph_activity_plan,
+    derive_schedule, project_activity_journal,
+)
+from control_plane_kit_core.planning.saga import SagaStepId
+from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
+from control_plane_kit_operations import effect_attempt_fold as commands
+from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.effect_attempt_fold import (
+    EffectAttemptFoldConflict, EffectAttemptFoldDenied, ExistingFold, FoldEffectAttempt, NewlyFolded,
+)
+from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
+from control_plane_kit_operations.effect_outcome_evidence import (
+    ExecutionEffectOutcome, NativeConnectionObservation, NativeConnectionOutcome,
+    NativeConnectionDiagnostic,
+    effect_outcome_failure, effect_outcome_transition,
+)
+from control_plane_kit_operations.postgres import PostgresExecutionStore
+from control_plane_kit_operations.postgres.effect_outcome_store import EffectAttemptOutcomeStore
+from control_plane_kit_operations.postgres.runtime_authority_store import RuntimeAuthorityStore
+from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, encode_stored_activity_plan
+from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+from control_plane_kit_operations.workflows import InvalidOperationCommand
+from tests.execution_lease_recovery_fixture import Sequence
+from tests.health_effect_start_fixture import HealthEffectStartValues, trusted_health_context
+from tests.postgres_health_effect_start_fixture import PostgresHealthEffectStartFixture
+from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT_LOCK
+
+
+class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffectStartFixture, unittest.TestCase):
+    def native_history(self, *, workspace="workspace-a", limit=100, cursor=None):
+        from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, RunReadScope
+        with self.unit_of_work().run_events_snapshot() as snapshot:
+            return snapshot.run_events(ReadPageRequest(ReadCollection.RUN_EVENTS,
+                RunReadScope(workspace, self.started.state.identity.run_id.value), limit, cursor))
+
+    def fold_diagnostic(self):
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            return self.service().execute_native(self.command(replace(
+                self.raw(kind=NativeConnectionOutcome.UNKNOWN),
+                diagnostic=NativeConnectionDiagnostic.SNAPSHOT_CHANGED)))
+
+    def test_native_history_projects_exact_diagnostic_without_changing_page_or_event(self):
+        result = self.fold_diagnostic()
+        event = result.attempt.latest_transition_event
+        page = self.native_history()
+        projected = next(item for item in page.items if item["event_id"] == event.event_id)
+        self.assertEqual(projected["native_connection"], dict(status="available",
+            acceptance_reason="unknown", diagnostic="snapshot-changed"))
+        self.assertEqual(projected["payload"], event.evidence.descriptor())
+        self.assertIsNone(projected["failure"])
+        gathered, cursor = [], None
+        while True:
+            part = self.native_history(limit=1, cursor=cursor)
+            gathered.extend(part.items)
+            cursor = part.next_cursor
+            if cursor is None:
+                break
+        self.assertEqual(tuple(gathered), page.items)
+        from control_plane_kit_operations.read_services.errors import ReadModelError
+        with self.assertRaises(ReadModelError):
+            self.native_history(workspace="foreign-workspace")
+
+    def test_native_history_omits_verified_legacy_diagnostic(self):
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            self.service().execute_native(self.command(self.raw(kind=NativeConnectionOutcome.UNKNOWN)))
+        self.assertTrue(all("native_connection" not in event for event in self.native_history().items))
+
+    def test_native_history_batches_only_emitted_eligible_events_with_constant_queries(self):
+        from control_plane_kit_operations.read_pages import (
+            ReadCollection, ReadPageRequest, RunReadScope, ReadPage, ReadPageCandidate, OrdinalReadCursor)
+        event = self.fold_diagnostic().attempt.latest_transition_event
+        scope = RunReadScope("workspace-a", event.run_id)
+        # Synthetic event pages exercise missing proof at page scale; they do
+        # not claim those events were produced by the execution lifecycle.
+        counts = []
+        for size in (1, 100):
+            request = ReadPageRequest(ReadCollection.RUN_EVENTS, scope, size)
+            candidates = tuple(ReadPageCandidate(replace(event, event_id=f"page-{index}",
+                ordinal=event.ordinal + index), OrdinalReadCursor(ReadCollection.RUN_EVENTS,
+                    scope, event.ordinal + index, f"page-{index}")) for index in range(size + 1))
+            page = ReadPage.from_candidates(request, candidates)
+            with self.unit_of_work().run_events_snapshot() as snapshot:
+                real = snapshot._connection
+                calls = []
+                class CountingConnection:
+                    def execute(self, sql, parameters=()):
+                        calls.append((sql, parameters))
+                        return real.execute(sql, parameters)
+                snapshot._connection = CountingConnection()
+                with mock.patch.object(snapshot, "event_page", return_value=page):
+                    projected = snapshot.run_events(request)
+            reads = [(sql, parameters) for sql, parameters in calls if "cpk_effect_attempt_outcomes" in sql]
+            self.assertEqual(len(reads), 1)
+            self.assertNotIn(f"page-{size}", reads[0][1])
+            self.assertEqual(len(projected.items), size)
+            self.assertTrue(all(item["native_connection"] == dict(status="unavailable")
+                for item in projected.items))
+            self.assertEqual(projected.next_cursor, page.next_cursor)
+            counts.append(len(calls))
+        self.assertEqual(counts[0], counts[1])
+
+        with self.unit_of_work().run_events_snapshot() as snapshot:
+            from control_plane_kit_operations.postgres import ingress_history_read
+            original_rows = ingress_history_read.bounded_rows
+            calls = []
+            def traced(*args, **kwargs):
+                calls.append(args[1])
+                return original_rows(*args, **kwargs)
+            # The first real page has only unrelated events. Its lookahead
+            # must not cause a native outcome query either.
+            with mock.patch.object(ingress_history_read, "bounded_rows", side_effect=traced):
+                snapshot.run_events(ReadPageRequest(ReadCollection.RUN_EVENTS, scope, 1))
+            self.assertFalse(any("cpk_effect_attempt_outcomes" in table for table in calls))
+
+    def test_native_history_rejects_mismatched_commitment_and_missing_outcome(self):
+        event = self.fold_diagnostic().attempt.latest_transition_event
+        before = self.connection.execute("SELECT preimage FROM cpk_effect_attempt_outcomes "
+            "WHERE direct_event_id=%s", (event.event_id,)).fetchone()[0]
+        changed = before.replace(b"snapshot-changed", b"sample-invalid")
+        self.assertNotEqual(before, changed)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (changed, event.event_id))
+        item = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(item["native_connection"], dict(status="unavailable"))
+        self.connection.execute("DELETE FROM cpk_effect_attempt_outcomes WHERE direct_event_id=%s", (event.event_id,))
+        item = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(item["native_connection"], dict(status="unavailable"))
+
+    def test_native_history_unavailable_proof_preserves_base_event_but_not_corrupt_page(self):
+        result = self.fold_diagnostic()
+        event = result.attempt.latest_transition_event
+        before = self.native_history()
+        row = self.connection.execute("SELECT preimage FROM cpk_effect_attempt_outcomes "
+            "WHERE direct_event_id=%s", (event.event_id,)).fetchone()
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (b"{}", event.event_id))
+        after = self.native_history()
+        projected = next(item for item in after.items if item["event_id"] == event.event_id)
+        self.assertEqual(projected.pop("native_connection"), dict(status="unavailable"))
+        expected = dict(next(item for item in before.items if item["event_id"] == event.event_id))
+        expected.pop("native_connection")
+        self.assertEqual(projected, expected)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (row[0], event.event_id))
+        nested = b"[" * 1500 + b"0" + b"]" * 1500
+        self.assertLess(len(nested), 8192)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE direct_event_id=%s", (nested, event.event_id))
+        projected = next(item for item in self.native_history().items if item["event_id"] == event.event_id)
+        self.assertEqual(projected.pop("native_connection"), dict(status="unavailable"))
+        self.assertEqual(projected, expected)
+        self.connection.execute("UPDATE cpk_activity_events SET occurred_at='infinity' WHERE event_id=%s",
+            (event.event_id,))
+        from control_plane_kit_operations.read_services.errors import ReadModelError
+        with self.assertRaises(ReadModelError):
+            self.native_history()
+
+    def test_unsampled_diagnostic_roundtrips_and_replays_without_changing_event_evidence(self):
+        raw = replace(self.raw(kind=NativeConnectionOutcome.UNKNOWN),
+            diagnostic=NativeConnectionDiagnostic.SNAPSHOT_CHANGED)
+        command = self.command(raw)
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            result = self.service().execute_native(command)
+        event = result.attempt.latest_transition_event
+        self.assertEqual(set(event.evidence.descriptor()), {"effect_attempt"})
+        self.assertEqual(event.kind.value, "step_observation_not_ready")
+        self.assertIsNone(event.failure)
+        with self.unit_of_work() as uow:
+            retained = uow.stores.effect_outcomes.get(self.started.state.identity, event.event_id)
+        self.assertEqual(retained, result.outcome_record)
+        self.assertEqual(retained.outcome.observation, raw)
+        before = self.native_snapshot()
+        with self.observed_time("2030-01-01T01:00:00Z"):
+            replay = self.service().execute_native(command)
+        self.assertEqual(replay.outcome_record, retained)
+        self.assertEqual(self.native_snapshot(), before)
+
+    def test_distinct_latest_run_is_locked_before_started_attempt_and_refuses_without_writes(self):
+        self.seed_distinct_latest_run()
+        identity = self.started.state.identity
+        before = self.native_snapshot()
+        def execute(uow):
+            return EffectAttemptFoldService(uow, id_factory=Sequence("must-not-allocate")).execute_native(self.command())
+        with self.blocked_command(RUN_LOCK, ("run-later",), execute) as future:
+            self.assert_row_lockable(ATTEMPT_LOCK,
+                (identity.run_id.value, identity.activity_id, identity.attempt))
+        with self.assertRaises(EffectAttemptFoldConflict):
+            future.result(timeout=1)
+        self.assertEqual(self.native_snapshot(), before)
+
+    def health_context(self, **options):
+        _, _, current, desired, _ = super().health_context(
+            stage=ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
+        graph = desired.graph
+        desired = validate_graph(replace(graph, runtimes={**graph.runtimes,
+            "docker": replace(graph.runtimes["docker"],
+                authority_ref=RuntimeAuthorityReference("native-docker"))}))
+        desired.require_valid()
+        plan = compile_graph_activity_plan(current, desired)
+        selected, = (item for item in plan.activities
+            if type(item.operation) is ObserveManagementBootstrap
+            and item.operation.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED)
+        return plan, selected, current, desired, None
+
+    def health_start_value(self, **options):
+        # Native connection has no signed-health target or product enrichment.
+        command = HealthEffectStartValues.health_start_value(self, **options)
+        graph = DEFAULT_GRAPH_CODEC.decode(self.projections["health-desired"].graph_descriptor)
+        intent = replace(command.intent, authority_ref=graph.runtimes["docker"].authority_ref)
+        return replace(command, intent=intent,
+            transition=replace(command.transition, request_fingerprint=runtime_effect_intent_fingerprint(intent)))
+
+    def setUp(self):
+        super().setUp()
+        with self.unit_of_work() as uow:
+            self.runtime_authority = uow.stores.runtime_authorities.register(
+                workspace_id="workspace-a", authority_ref=self.start_value.intent.authority_ref,
+                runtime_kind=self.start_value.intent.runtime_kind, authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a", admitted_at="2026-08-01T11:00:00Z")
+            uow.commit()
+        with self.observed_time("2030-01-01T00:00:00Z"):
+            self.started = EffectAttemptStartService(self.unit_of_work,
+                id_factory=Sequence("native-original")).execute(self.start_value).attempt
+        with self.unit_of_work() as uow:
+            self.intent_record = uow.stores.effect_attempt_intents.get(self.started.state.identity)
+
+    def raw(self, *, kind=NativeConnectionOutcome.CONNECTED, end="2030-01-01T00:00:01Z"):
+        if kind is NativeConnectionOutcome.UNKNOWN:
+            return NativeConnectionObservation(kind, "native-original", self.health_activity.activity_id.value)
+        return NativeConnectionObservation(kind, "native-original", self.health_activity.activity_id.value,
+            "c" * 64, "2030-01-01T00:00:00Z", end,
+            2**64 - 1 if kind is NativeConnectionOutcome.CONNECTED else 0,
+            "11111111-1111-4111-8111-111111111111")
+
+    def command(self, raw=None, **changes):
+        command_type = getattr(commands, "FoldNativeConnectionObservation", None)
+        self.assertIsNotNone(command_type, "raw native observation acceptance command is missing")
+        return command_type(**(dict(request_id="request-a", identity=self.started.state.identity,
+            observation=self.raw() if raw is None else raw, context=trusted_health_context(),
+            authority=self.start_value.authority, fence=self.start_value.fence,
+            intent_record=self.intent_record, runtime_authority=self.runtime_authority) | changes))
+
+    def service(self, ids=None):
+        service = EffectAttemptFoldService(self.unit_of_work,
+            id_factory=Sequence("native-completed") if ids is None else ids)
+        self.assertTrue(callable(getattr(service, "execute_native", None)),
+            "database-time native fold entrance is missing")
+        return service
+
+    def native_snapshot(self):
+        return (self.health_snapshot(), tuple(self.connection.execute(
+            "SELECT * FROM cpk_effect_attempt_outcomes ORDER BY 1, 2, 3").fetchall()))
+
+    def test_database_acceptance_preserves_sample_and_replay_never_reclassifies(self):
+        command = self.command(self.raw(end="2030-01-01T00:00:00.999999999Z"))
+        service = self.service()
+        with self.observed_time("2030-01-01T00:00:11Z"):
+            result = service.execute_native(command)
+        self.assertIs(type(result), NewlyFolded)
+        self.assertEqual(result.attempt.state.status.value, "not_ready")
+        outcome = result.outcome_record.outcome
+        self.assertEqual(outcome.acceptance_reason, "stale-at-acceptance")
+        self.assertEqual(outcome.observation, command.observation)
+        self.assertEqual(outcome.accepted_at, result.attempt.latest_transition_event.occurred_at)
+        self.assertEqual(outcome.accepted_at, "2030-01-01T00:00:11Z")
+        self.assertIsNone(result.attempt.latest_transition_event.failure)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.effect_outcomes.get(self.started.state.identity,
+                result.attempt.latest_transition_event.event_id), result.outcome_record)
+        before, ids = self.native_snapshot(), Sequence("must-not-allocate")
+        with self.forbid_fresh_health(), mock.patch.object(PostgresExecutionStore,
+                "get_latest_run_for_request_for_update", side_effect=AssertionError("terminal replay read latest run")), \
+                mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request",
+                side_effect=AssertionError("terminal replay located latest run")), \
+                mock.patch.object(RuntimeAuthorityStore,
+                "get_active_for_update", side_effect=AssertionError("replay reloaded current runtime authority")):
+            replay = self.service(ids).execute_native(command)
+            self.assertEqual(replay, ExistingFold(result.attempt, result.outcome_record))
+            with self.assertRaises(EffectAttemptFoldConflict):
+                self.service(ids).execute_native(replace(command, observation=self.raw()))
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.native_snapshot(), before)
+
+    def test_acceptance_clock_is_sampled_after_current_runtime_authority_lock(self):
+        command, service = self.command(), self.service()
+        calls = []
+        original = RuntimeAuthorityStore.get_active_for_update
+        def authority(store, *args, **kwargs):
+            value = original(store, *args, **kwargs)
+            calls.append("authority")
+            return value
+        with self.observed_time("2030-01-01T00:00:11Z"):
+            observe = PostgresExecutionStore.observe_request_lease_for_update
+            def clock(store, request_id):
+                self.assertIn("authority", calls,
+                    "native freshness was sampled before current authority serialization")
+                calls.append("clock")
+                return observe(store, request_id)
+            with mock.patch.object(RuntimeAuthorityStore, "get_active_for_update", authority), \
+                    mock.patch.object(PostgresExecutionStore, "observe_request_lease_for_update", clock):
+                result = service.execute_native(command)
+        self.assertEqual(result.attempt.state.status.value, "succeeded")
+        self.assertEqual(calls, ["authority", "clock"])
+        self.assertEqual(result.outcome_record.outcome.observation.ready_connections, 2**64 - 1)
+
+    def test_completed_unknown_waits_without_failure_compensation_or_automatic_next_read(self):
+        command, service = self.command(self.raw(kind=NativeConnectionOutcome.UNKNOWN)), self.service()
+        with self.unit_of_work() as uow:
+            before = project_activity_journal(self.health_plan, activity_journal_events(
+                uow.stores.execution.events_for_run("run-a")))
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            result = service.execute_native(command)
+        with self.unit_of_work() as uow:
+            run = uow.stores.execution.get_run("run-a")
+            events = uow.stores.execution.events_for_run("run-a")
+        self.assertIs(run.status, ActivityRunStatus.RUNNING)
+        self.assertIs(events[-1].kind, ActivityEventKind.STEP_OBSERVATION_NOT_READY)
+        self.assertEqual(result.attempt.state.status.value, "not_ready")
+        journal = project_activity_journal(self.health_plan, activity_journal_events(events))
+        schedule = derive_schedule(self.health_plan, journal.state)
+        native_id = self.health_activity.activity_id
+        self.assertEqual(journal.state.step(SagaStepId(native_id.value)).status.value, "waiting")
+        self.assertEqual(journal.state.completion_order, before.state.completion_order)
+        self.assertFalse(schedule.successful)
+        self.assertNotIn(native_id, tuple(item.activity_id for item in (*schedule.ready, *schedule.running)))
+        # PATH has the same creation dependencies as CONNECTED; it is lawful
+        # independent progress. Gateway ingress readiness waits on PATH, while
+        # workload obligations also retain their native connection dependency.
+        path, = (item for item in self.health_plan.activities
+            if type(item.operation) is ObserveManagementBootstrap
+            and item.operation.stage is ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
+        ingress, = (item for item in self.health_plan.activities
+            if type(item.operation) is ObserveManagementBootstrap
+            and item.operation.stage is ManagementBootstrapStage.GATEWAY_INGRESS_READY)
+        self.assertIn(path.activity_id, tuple(item.activity_id for item in schedule.ready))
+        self.assertNotIn(ingress.activity_id, tuple(item.activity_id for item in schedule.ready))
+        native_dependents = tuple(item for item in self.health_plan.activities
+            if any(dependency.predecessor == native_id for dependency in item.dependencies))
+        self.assertTrue(native_dependents, "fixture must retain actual native-dependent obligations")
+        for dependent in native_dependents:
+            self.assertNotIn(dependent.activity_id, tuple(item.activity_id for item in schedule.ready))
+        self.assertEqual(self.health_counts(), (1, 1, 0, 0))
+        self.assertFalse(any(event.kind in (ActivityEventKind.RUN_FAILED,
+            ActivityEventKind.RUN_COMPENSATION_STARTED) for event in events))
+
+    def test_invalid_correlation_context_and_expired_acceptance_leave_no_outcome(self):
+        command, service = self.command(), self.service()
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            before = self.native_snapshot()
+            for changes in (
+                {"observation": replace(command.observation, effect_id="foreign-start")},
+                {"observation": replace(command.observation, sample_end="2030-01-01T00:00:03Z")},
+                {"context": trusted_health_context(workspace="foreign-workspace")},
+                {"context": trusted_health_context(scopes=())},
+                {"fence": replace(command.fence, generation=command.fence.generation + 1)},
+                {"runtime_authority": replace(command.runtime_authority, registration_id="foreign")},
+            ):
+                with self.subTest(changes=changes), self.assertRaises((InvalidOperationCommand,
+                        EffectAttemptFoldDenied, EffectAttemptFoldConflict)):
+                    service.execute_native(replace(command, **changes))
+                self.assertEqual(self.native_snapshot(), before)
+        with self.observed_time("2030-01-01T00:10:01Z"):
+            before = self.native_snapshot()
+            with self.assertRaises(EffectAttemptFoldDenied):
+                service.execute_native(command)
+            self.assertEqual(self.native_snapshot(), before)
+
+    def test_generic_mutation_success_cannot_complete_the_native_connection_operation(self):
+        outcome = ExecutionEffectOutcome(self.started.state.identity,
+            self.started.state.request_fingerprint, RuntimeEffectResult.succeeded("native-original"))
+        command = FoldEffectAttempt("request-a", effect_outcome_transition(outcome),
+            self.start_value.authority, self.start_value.fence, effect_outcome_failure(outcome), outcome)
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            before = self.native_snapshot()
+            with self.assertRaises((EffectAttemptFoldDenied, EffectAttemptFoldConflict)):
+                EffectAttemptFoldService(self.unit_of_work,
+                    id_factory=Sequence("must-not-persist")).execute(command)
+            self.assertEqual(self.native_snapshot(), before)
+
+    def test_revoked_current_runtime_denies_first_acceptance_without_writing(self):
+        command, service = self.command(), self.service()
+        with self.unit_of_work() as uow:
+            uow.stores.runtime_authorities.revoke("workspace-a", self.runtime_authority.authority_ref)
+            uow.commit()
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            before = self.native_snapshot()
+            with self.assertRaises(EffectAttemptFoldDenied):
+                service.execute_native(command)
+            self.assertEqual(self.native_snapshot(), before)
+
+    def test_native_fold_cannot_borrow_a_real_signed_stage_intent(self):
+        command, service = self.command(), self.service()
+        path, = (item for item in self.health_plan.activities
+            if type(item.operation) is ObserveManagementBootstrap
+            and item.operation.stage is ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
+        start = self.health_start_value(activity=path)
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            # Independent PATH is legitimately ready; create its real signed
+            # owner record as the negative, rather than forging an intent tree.
+            signed = EffectAttemptStartService(self.unit_of_work,
+                id_factory=Sequence("path-original", "path-request", "path-transit", "path-workload"),
+                health_receiver_decoders=self.health_receiver_decoders()).execute_health(
+                    self.health_command(start=start))
+            with self.unit_of_work() as uow:
+                foreign = uow.stores.effect_attempt_intents.get(signed.start.attempt.state.identity)
+            before = self.native_snapshot()
+            with self.assertRaises((InvalidOperationCommand, EffectAttemptFoldConflict, EffectAttemptFoldDenied)):
+                service.execute_native(replace(command, intent_record=foreign))
+            with self.assertRaises((InvalidOperationCommand, EffectAttemptFoldConflict, EffectAttemptFoldDenied)):
+                service.execute_native(replace(command, identity=foreign.identity, intent_record=foreign,
+                    observation=replace(command.observation, effect_id=foreign.original_start_event.event_id,
+                        activity_id=foreign.identity.activity_id)))
+            self.assertEqual(self.native_snapshot(), before)
+
+    def test_outcome_write_failure_rolls_back_event_attempt_and_acceptance(self):
+        command, service = self.command(), self.service()
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            before = self.native_snapshot()
+            with mock.patch.object(EffectAttemptOutcomeStore, "insert", side_effect=RuntimeError("injected write failure")):
+                with self.assertRaisesRegex(RuntimeError, "injected write failure"):
+                    service.execute_native(command)
+            self.assertEqual(self.native_snapshot(), before)
+
+    def test_first_acceptance_requires_current_approval_and_complete_canonical_plan(self):
+        command, service = self.command(), self.service()
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            self.connection.execute("UPDATE cpk_approval_decisions SET decision='rejected' "
+                "WHERE decision_id='approval-decision-a'")
+            before = self.native_snapshot()
+            with self.assertRaises((EffectAttemptFoldDenied, EffectAttemptFoldConflict)):
+                service.execute_native(command)
+            self.assertEqual(self.native_snapshot(), before)
+            self.connection.execute("UPDATE cpk_approval_decisions SET decision='approved' "
+                "WHERE decision_id='approval-decision-a'")
+            # Remove a final leaf so the graph remains well formed while the
+            # selected native operation and its pins are unchanged.
+            leaf = self.health_plan.activities[-1]
+            self.assertNotEqual(leaf.activity_id, self.health_activity.activity_id)
+            shortened = replace(self.health_plan, activities=self.health_plan.activities[:-1])
+            self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id='plan-a'",
+                (Jsonb(encode_stored_activity_plan(shortened,
+                    profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)),))
+            before = self.native_snapshot()
+            with self.assertRaises((EffectAttemptFoldDenied, EffectAttemptFoldConflict)):
+                service.execute_native(command)
+            self.assertEqual(self.native_snapshot(), before)
+
+    def test_retained_acceptance_codec_rejects_tampered_reason_time_and_decimal_count(self):
+        command, service = self.command(), self.service()
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            result = service.execute_native(command)
+        retained = result.outcome_record.outcome.acceptance_descriptor()
+        identity = self.started.state.identity
+        coordinates = (identity.run_id.value, identity.activity_id, identity.attempt)
+        for changed in (
+            retained | {"acceptance_reason": "stale-at-acceptance"},
+            retained | {"accepted_at": "2030-01-01T00:00:03Z"},
+            retained | {"observation": retained["observation"] | {
+                "ready_connections": "0" + retained["observation"]["ready_connections"]}},
+            retained | {"unexpected": "field"},
+        ):
+            with self.subTest(changed=changed):
+                self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+                    "WHERE run_id=%s AND activity_id=%s AND attempt=%s",
+                    (rfc8785.dumps(changed), *coordinates))
+                with self.unit_of_work() as uow, self.assertRaises(OperationsRecordError):
+                    uow.stores.effect_outcomes.get(identity, result.attempt.latest_transition_event.event_id)
+        self.connection.execute("UPDATE cpk_effect_attempt_outcomes SET preimage=%s "
+            "WHERE run_id=%s AND activity_id=%s AND attempt=%s", (rfc8785.dumps(retained), *coordinates))
+        self.connection.execute("UPDATE cpk_activity_events SET occurred_at='2030-01-01T00:00:03Z' "
+            "WHERE event_id=%s", (result.attempt.latest_transition_event.event_id,))
+        with self.unit_of_work() as uow, self.assertRaises(OperationsRecordError):
+            uow.stores.effect_outcomes.get(identity, result.attempt.latest_transition_event.event_id)

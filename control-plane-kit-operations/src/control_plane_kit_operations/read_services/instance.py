@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import SecretProviderId
@@ -12,26 +13,32 @@ from control_plane_kit_core.topology import (
     GraphDescriptorCodec,
 )
 from control_plane_kit_operations.read_pages import (
+    ReadCursor,
     ReadPage,
     ReadPageRequest,
 )
 
+from .product_directory import _ProductDirectoryReadProjection
 from .authority_secrets import _AuthoritySecretReadProjection
 from .gateway_security import _GatewaySecurityReadProjection
-from .models import FocusedDetailReadModel
+from .models import FocusedDetailReadModel, OperatorOverviewReadModel
+from .operator_overview import _OperatorOverviewReadProjection
 from .observations import (
     ObservationFreshnessPolicy,
     _ObservationReadProjection,
 )
 from .operations_history import _OperationsHistoryReadProjection
 from .protocols import (
+    ProvisionAttemptStore,
     ActivityHistoryStore,
     DelegationSigningKeyStore,
     ExecutionStore,
     GatewayProbeStore,
+    GenerationAttemptStore,
     GraphTopologyStore,
     IngressAuthorityStore,
     ObservedStateStore,
+    RegisteredProductStore,
     RuntimeAuthorityDeliveryStore,
     RuntimeAuthorityStore,
     SecretProviderStore,
@@ -45,6 +52,13 @@ from .workspace_graph import (
     WorkspaceSummary,
     _WorkspaceGraphReadProjection,
 )
+
+
+from .desired_topology_drafts import _DesiredTopologyDraftReadProjection
+from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftStore
+from .protocols import SavedPreparationSourceStore
+from control_plane_kit_operations.revision_history import RevisionHistoryStore
+from .revision_history import _RevisionHistoryReadProjection
 
 
 class InstanceReadService:
@@ -61,10 +75,16 @@ class InstanceReadService:
         runtime_authority_store: RuntimeAuthorityStore | None = None,
         runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
         ingress_authority_store: IngressAuthorityStore | None = None,
+        registered_product_store: RegisteredProductStore | None = None,
         secret_provider_store: SecretProviderStore | None = None,
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
         delegation_signing_key_store: DelegationSigningKeyStore | None = None,
+        generation_attempt_store: GenerationAttemptStore | None = None,
+        provision_attempt_store: ProvisionAttemptStore | None = None,
+        desired_topology_draft_store: DesiredTopologyDraftStore | None = None,
+        saved_preparation_source_store: SavedPreparationSourceStore | None = None,
+        revision_history_store: RevisionHistoryStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -73,6 +93,15 @@ class InstanceReadService:
             workspace_store,
             graph_topology_store,
             graph_codec=graph_codec,
+        )
+        self._desired_topology_drafts = _DesiredTopologyDraftReadProjection(
+            self._workspace_graph.require_workspace, graph_topology_store, desired_topology_draft_store,
+            revision_history_store,
+        )
+        self._revision_history = _RevisionHistoryReadProjection(self._workspace_graph.require_workspace, revision_history_store)
+        self._operator_overview = _OperatorOverviewReadProjection(
+            workspace_store, graph_topology_store, activity_history_store, execution_store,
+            desired_topology_draft_store, saved_preparation_source_store,
         )
         self._operations_history = _OperationsHistoryReadProjection(
             self._workspace_graph.require_workspace,
@@ -87,6 +116,7 @@ class InstanceReadService:
             clock=clock,
             freshness=observation_freshness,
         )
+        self._product_directory = _ProductDirectoryReadProjection(self._workspace_graph.require_workspace, registered_product_store)
         self._authority_secrets = _AuthoritySecretReadProjection(
             self._workspace_graph.require_workspace,
             runtime_authority_store=runtime_authority_store,
@@ -94,15 +124,40 @@ class InstanceReadService:
             ingress_authority_store=ingress_authority_store,
             secret_provider_store=secret_provider_store,
             secret_reference_store=secret_reference_store,
+            provision_attempt_store=provision_attempt_store,
         )
         self._gateway_security = _GatewaySecurityReadProjection(
             self._workspace_graph.require_workspace,
             gateway_probe_store=gateway_probe_store,
             delegation_signing_key_store=delegation_signing_key_store,
+            generation_attempt_store=generation_attempt_store,
         )
+
+    def desired_topology_drafts(self, request: ReadPageRequest):
+        return self._desired_topology_drafts.page(request)
+
+    def desired_topology_draft_revision(self, workspace_id: str, draft_id: str, revision: int):
+        return self._desired_topology_drafts.detail(workspace_id, draft_id, revision)
+
+    def desired_topology_draft_revision_metadata(self, workspace_id: str, draft_id: str, revision: int):
+        return self._desired_topology_drafts.metadata(workspace_id, draft_id, revision)
+
+    def desired_topology_draft_revision_history(self, request: ReadPageRequest):
+        return self._revision_history.page(request)
+
+    def products(self, request):
+        return self._product_directory.page(request)
+
+    def product_detail(self, workspace_id, digest):
+        return self._product_directory.detail(workspace_id, digest)
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)
+
+    def operator_overview(
+        self, workspace_id: str, *, limit: int = 50, after: ReadCursor | None = None,
+    ) -> OperatorOverviewReadModel:
+        return self._operator_overview.read(workspace_id, limit=limit, after=after)
 
     def current_graph(self, workspace_id: str) -> GraphPointerReadModel:
         return self._workspace_graph.current_graph(workspace_id)
@@ -306,6 +361,21 @@ class InstanceReadService:
         return self._gateway_security.gateway_verifier_configuration(
             workspace_id,
             gateway_node_id,
+        )
+
+    def secret_material_provision(self, workspace_id: str, request_id: str):
+        return self._authority_secrets.secret_material_provision(workspace_id, request_id)
+
+    def delegation_key_generation(self, workspace_id: str, request_id: str):
+        return self._gateway_security.delegation_key_generation(workspace_id, request_id)
+
+    def workload_verifier_configuration(
+        self,
+        workspace_id: str,
+        purposes: tuple[DelegationKeyPurpose, ...],
+    ) -> FocusedDetailReadModel:
+        return self._gateway_security.workload_verifier_configuration(
+            workspace_id, purposes,
         )
 
     def control_surface(

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+from control_plane_kit_core.operations.lifecycle import ExecutionRequestStatus
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservationRequest,
@@ -42,6 +43,7 @@ class RuntimeEffectObserver(Protocol):
         self,
         request: RuntimeEffectObservationRequest,
         authority: RegisteredRuntimeAuthority | None,
+        *, invocations: object | None = None,
     ) -> RuntimeEffectObservationResult: ...
 
 
@@ -59,6 +61,44 @@ class ReconcileEffectAttempt:
             raise InvalidOperationCommand(
                 "effect attempt reconciliation command is invalid"
             )
+
+
+def _require_current_claim(
+    command: ReconcileEffectAttempt,
+    request,
+    run,
+    attempt,
+) -> None:
+    if (
+        request.identity.request_id != command.request_id
+        or run.run_id != command.identity.run_id.value
+        or run.admission.request_id != request.identity.request_id
+        or run.plan_id != request.identity.plan_id
+        or attempt.state.identity != command.identity
+    ):
+        raise EffectAttemptReconciliationConflict("effect attempt reconciliation truth is invalid")
+    claim = request.claim
+    if (
+        request.status is not ExecutionRequestStatus.CLAIMED
+        or claim is None
+        or claim.fence != command.fence
+    ):
+        raise EffectAttemptReconciliationDenied("effect attempt reconciliation authority is invalid")
+
+
+def _require_historical_lineage(
+    command: ReconcileEffectAttempt,
+    attempt,
+) -> None:
+    historical = attempt.state.fence
+    if attempt.state.recovery_decision is not None or (
+        command.fence.generation < historical.generation
+        or (
+            command.fence.generation == historical.generation
+            and command.fence.worker_id != historical.worker_id
+        )
+    ):
+        raise EffectAttemptReconciliationConflict("effect attempt reconciliation is incongruent")
 
 
 def _valid_reconcile_command(command: object) -> bool:

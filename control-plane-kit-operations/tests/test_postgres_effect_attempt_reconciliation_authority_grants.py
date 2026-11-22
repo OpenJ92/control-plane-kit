@@ -7,6 +7,7 @@ from unittest import mock
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_operations import effect_attempt_reconciliation_interpreter
+from control_plane_kit_operations.runtime_effects import OperationalSecretUse
 from control_plane_kit_operations.effect_attempt_reconciliation import (
     EffectAttemptReconciliationConflict,
     EffectAttemptReconciliationDenied,
@@ -75,6 +76,184 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
     PostgresEffectAttemptReconciliationFixture,
     unittest.TestCase,
 ):
+    def _seed_version_node_reconciliation(self):
+        from control_plane_kit_core.operations import (
+            EffectAttemptIdentity, EffectAttemptTransition, EffectAttemptTransitionKind, RunId,
+        )
+        from control_plane_kit_core.planning import StartNode
+        from control_plane_kit_core.runtime_effect_observation import (
+            runtime_effect_intent_fingerprint, runtime_effect_intent_for_request,
+        )
+        from control_plane_kit_core.secret_selections import SecretVersionSelection
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+        from control_plane_kit_operations.effect_attempt_start import NewlyStarted, StartEffectAttempt
+        from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+        from control_plane_kit_operations.lifecycle import (
+            ClaimAndOpenActivityRun, ExecutionLeaseDuration, StartActivityRun,
+        )
+        from control_plane_kit_operations.runtime_effects import _runtime_effect_intent_for_context
+        from control_plane_kit_operations.workflows import IdempotencyKey
+        from tests.graph_lineage_fixture import execution_graph
+        from tests import test_execution_coordinator as coordinator_fixture
+        from tests.test_secret_version_dispatch import selected_context
+
+        # Reuse real node-plan admission and lifecycle owners. The inherited
+        # reconciliation fixture intentionally owns StartRuntime, not this law.
+        template = selected_context()
+        engine = coordinator_fixture.ExecutionCoordinatorTests()
+        engine.database_url, engine.connection = self.database_url, self.connection
+        engine.tracker = coordinator_fixture.TrackingUnitOfWorkFactory(self.database_url)
+        engine.reset_execution_request(plan=template.plan_record.plan,
+            base_graph=execution_graph("current", runtime_id="runtime-a"),
+            desired_graph=DEFAULT_GRAPH_CODEC.decode(template.desired_graph.graph_descriptor),
+            product_document=template.registered_products[0].descriptor_document)
+        authority = self.authority(scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
+        opened = engine.lifecycle_with_ids("run-a", "version-open", "version-claim").execute(
+            ClaimAndOpenActivityRun("request-a", authority, ExecutionLeaseDuration(600),
+                IdempotencyKey("version-claim")))
+        fence = ExecutionLeaseFence(opened.request.claim.worker_id, opened.request.claim.generation)
+        engine.lifecycle_with_ids("version-run-start", "version-run-start-action").execute(
+            StartActivityRun("run-a", authority, fence, IdempotencyKey("version-run-start")))
+        with self.unit_of_work() as unit:
+            stores = unit.stores
+            plan = stores.activity_history.get_plan("plan-a")
+            activity, = plan.plan.activities
+            context = replace(template, activity=activity, plan_record=plan,
+                request=stores.execution.get_request("request-a"), run=stores.execution.get_run("run-a"),
+                base_graph=stores.realized_graphs.get(plan.base_realized_projection_id),
+                desired_graph=stores.realized_graphs.get(plan.desired_realized_projection_id),
+                registered_products=stores.registered_products.list_active("workspace-a"),
+                authority=authority, fence=fence)
+        intent = _runtime_effect_intent_for_context(context, activity)
+        self._admit_version_reconciliation_material(intent)
+        identity = EffectAttemptIdentity(RunId("run-a"), activity.activity_id.value, 1)
+        transition = EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
+            identity, request_fingerprint=runtime_effect_intent_fingerprint(intent))
+        started = self.start_service("version-node-start").execute(StartEffectAttempt(
+            "request-a", transition, intent, authority, fence))
+        self.assertIs(type(started), NewlyStarted)
+        current = started.attempt
+        with self.unit_of_work() as unit:
+            retained = unit.stores.effect_attempt_intents.get(identity)
+            persisted = unit.stores.effect_attempts.get(identity)
+        request = self.runtime_request(current, intent)
+        material, = request.products
+        self.assertIs(type(intent.operation), StartNode)
+        self.assertEqual(intent.operation, activity.operation)
+        self.assertEqual(intent.operation.target.node_id, material.node_id)
+        self.assertEqual(material.runtime_id, "runtime-a")
+        self.assertEqual(material.runtime_id,
+            DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor).node("api").runtime_id)
+        self.assertTrue(material.secret_selections)
+        self.assertTrue(all(type(value) is SecretVersionSelection for value in material.secret_selections))
+        self.assertEqual(retained.intent, intent)
+        self.assertEqual(persisted, current)
+        self.assertEqual(retained.original_start_event, current.original_start_event)
+        self.assertEqual(runtime_effect_intent_for_request(request), intent)
+        self.assertEqual(current.state.request_fingerprint, runtime_effect_intent_fingerprint(intent))
+        self.assertEqual(retained.request_fingerprint, current.state.request_fingerprint)
+        self.assertEqual(current.original_start_event.evidence, self.evidence_for(current.state))
+        return current, intent, fence
+
+    def _admit_version_reconciliation_material(self, intent):
+        from control_plane_kit_core.secrets import (
+            SecretProviderEndpointReference, SecretProviderId, SecretReference, SecretUseIntent,
+        )
+        from control_plane_kit_operations.secret_providers import (
+            RegisterSecretProviderCommand, RegisterSecretReferenceCommand,
+            SecretProviderKind, SecretProviderRegistrationService,
+        )
+        uses = set()
+        for material in intent.products:
+            uses.update((selection.reference, selection.intent) for selection in material.secret_selections)
+            if material.pull_authority is not None:
+                uses.add((material.pull_authority.credential_reference, SecretUseIntent.OCI_PULL_CREDENTIAL))
+            for check in material.product.runtime_contract.verification.checks:
+                authentication = getattr(check, "authentication", None)
+                if authentication is not None:
+                    uses.add((authentication.password_reference, SecretUseIntent.POSTGRES_PASSWORD))
+        reference = SecretReference("secret://provider-a/application/token")
+        use = SecretUseIntent.APPLICATION_CONTROL_TOKEN
+        self.assertEqual(uses, {(reference, use)})
+        service = SecretProviderRegistrationService(self.unit_of_work)
+        provider = service.register_provider(RegisterSecretProviderCommand(
+            workspace_id="workspace-a", provider_id=SecretProviderId("provider-a"),
+            provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
+            display_name="Version recovery fixture provider",
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference("secret://bootstrap/provider-a/client-token"),
+            allowed_reference_prefixes=(SecretReference("secret://provider-a/application"),),
+            allowed_intents=(use,), admitted_by="operator-a", admitted_at="2030-01-01T00:00:00Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
+        service.register_reference(RegisterSecretReferenceCommand(
+            workspace_id="workspace-a", reference=reference,
+            provider_registration_id=provider.registration_id, allowed_intents=(use,),
+            admitted_by="operator-a", admitted_at="2030-01-01T00:00:01Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)))
+
+    def test_version_observation_unqualified_refuses_before_authorization_and_observer(self):
+        from tests.test_secret_version_dispatch import registration
+        for registered in (False, True):
+            with self.subTest(explicit_registration=registered):
+                current, intent, fence = self._seed_version_node_reconciliation()
+                observer = FailIfObserver("unqualified version observer was invoked")
+                fold = FailIfFold("unqualified observer reached fold")
+                port = registration(observer, exact_version_execute=True,
+                    exact_version_execute_with_authority=True) if registered else observer
+                before = self.complete_reconciliation_snapshot()
+                with self.assertRaises(EffectAttemptReconciliationDenied):
+                    self.reconciliation_service(port, fold_service=fold).execute(
+                        self.reconciliation_command(current, generation=fence.generation,
+                            scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE)))
+                self.assertEqual(observer.calls, [])
+                self.assertEqual(fold.calls, [])
+                self.assertEqual(self.authorization_rows(), ())
+                self.assertEqual(self.complete_reconciliation_snapshot(), before)
+
+    def test_version_observation_reuses_original_consumer_correlation_without_redispatch(self):
+        from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+        from control_plane_kit_core.secret_installation import secret_material_selection_fingerprint
+        from control_plane_kit_operations import secret_providers
+        from tests.test_secret_version_dispatch import registration
+        command_type = getattr(secret_providers, "AuthorizeSecretVersionUse", None)
+        correlation_for = getattr(secret_providers, "secret_version_use_correlation_for", None)
+        self.assertIsNotNone(command_type, "missing version-bound authorization command")
+        self.assertIsNotNone(correlation_for, "missing version-bound correlation")
+        from control_plane_kit_core.secret_version_grants import SecretVersionResolutionGrant
+        story = self.observed_story("observed-failed")
+        current, intent, fence = self._seed_version_node_reconciliation()
+        command = self.reconciliation_command(current, generation=fence.generation,
+            scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
+        request = self.runtime_request(current, intent)
+        selection, = request.products[0].secret_selections
+        values = dict(workspace_id=intent.source.workspace_id, selection=selection,
+            actor_subject=command.authority.worker_id, operation_id=intent.source.request_id,
+            run_id=current.state.identity.run_id.value, activity_id=current.state.identity.activity_id,
+            effect_id=current.original_start_event.event_id,
+            request_fingerprint=runtime_effect_intent_fingerprint(intent),
+            selection_fingerprint=secret_material_selection_fingerprint(request))
+        authorized = SecretUseAuthorizationService(self.unit_of_work).authorize_version_resolution(
+            command_type(**values, correlation_id=correlation_for(**values), session_id=None,
+                requested_at="2030-01-01T00:00:02Z", actor_scopes=command.authority.scopes))
+        observer = self.observer_for(story, current, intent)
+        fold = FailIfFold("observation reached the separately gated receipt/fold boundary")
+        with self.assertRaises(AssertionError) as caught:
+            self.reconciliation_service(registration(observer, exact_version_observe=True),
+                fold_service=fold).execute(command)
+        self.assertIs(caught.exception, fold.error)
+        self.assertEqual(len(observer.calls), 1)
+        observed_request, authority = observer.calls[0]
+        self.assertIsNone(authority)
+        self.assertEqual(observed_request.intent, intent)
+        consumers = [grant for grant in observed_request.runtime_request.secret_resolution_grants
+            if type(grant) is SecretVersionResolutionGrant]
+        self.assertEqual(consumers, [authorized])
+        self.assertIsNone(consumers[0].session_id)
+        self.assertEqual(observed_request.effect_id, current.original_start_event.event_id)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM cpk_secret_use_authorizations WHERE authorization_kind='consumer-version'"
+        ).fetchone(), (1,))
+
     def test_control_active_authority_and_secret_authorization_are_total(self) -> None:
         story = self.observed_story()
         current, intent, _record, authority = self.seed_reconciliation_source(
@@ -83,7 +262,8 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
         )
         uses = self.required_secret_uses(current, intent, authority)
         self.assertGreater(len(uses), 0)
-        self.assertEqual(tuple(sorted(set(uses), key=lambda value: (value[0].reference_id, value[1].value))), uses)
+        self.assertTrue(all(type(use) is OperationalSecretUse for use in uses))
+        self.assertEqual(tuple(sorted(set(uses), key=lambda value: (value.reference.reference_id, value.intent.value))), uses)
         self.admit_secret_uses(uses)
         service = SecretUseAuthorizationService(self.unit_of_work)
         command = self.reconciliation_command(
@@ -95,25 +275,25 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
                 self.authorization_command(
                     current,
                     intent,
-                    reference,
-                    use_intent,
+                    use.reference,
+                    use.intent,
                     command=command,
                 )
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         replayed = tuple(
             service.authorize_resolution(
                 self.authorization_command(
                     current,
                     intent,
-                    reference,
-                    use_intent,
+                    use.reference,
+                    use.intent,
                     command=command,
                     requested_at="2030-01-01T00:00:09Z",
                 )
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertEqual(replayed, grants)
         self.assertEqual(len(self.authorization_rows()), len(uses))
@@ -386,11 +566,11 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=command,
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertEqual(tuple(authorization_commands), expected_commands)
         self.assertTrue(
@@ -435,12 +615,12 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=command,
                 requested_at="2030-01-01T00:00:09Z",
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertEqual(tuple(authorization_commands), expected_retry_commands)
         self.assertEqual(self.authorization_rows(), first)
@@ -501,8 +681,8 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=command,
                 requested_at=(
                     "2030-01-01T00:00:02Z"
@@ -510,7 +690,7 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
                     else "2030-01-01T00:00:09Z"
                 ),
             )
-            for position, (reference, use_intent) in enumerate(uses)
+            for position, use in enumerate(uses)
         )
         self.assertEqual(
             tuple(_authorization_row_projection(row) for row in first_actor_rows),
@@ -546,12 +726,12 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.authorization_command(
                 current,
                 intent,
-                reference,
-                use_intent,
+                use.reference,
+                use.intent,
                 command=changed_actor,
                 requested_at="2030-01-01T00:00:10Z",
             )
-            for reference, use_intent in uses
+            for use in uses
         )
         self.assertTrue(
             all(

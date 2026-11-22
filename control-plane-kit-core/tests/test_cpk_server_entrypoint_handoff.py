@@ -57,8 +57,6 @@ def _program() -> DeploymentProgramBoundary:
 def _transaction_rule(role: ControlPlaneServiceRole) -> ServiceTransactionBoundary:
     if role is ControlPlaneServiceRole.READS:
         return ServiceTransactionBoundary(role, StoreParticipation.READ_ONLY)
-    if role is ControlPlaneServiceRole.AUTHORIZATION:
-        return ServiceTransactionBoundary(role, StoreParticipation.NONE)
     if role is ControlPlaneServiceRole.EXECUTION:
         return ServiceTransactionBoundary(
             role,

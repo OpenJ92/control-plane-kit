@@ -234,7 +234,10 @@ class PostgresGuardedObservedEffectFoldAuthorityTests(
                 elif fault == "drifted":
                     observed = self.intent_record(
                         current,
-                        intent=replace(intent, authority_ref=None, authority_deliveries=()),
+                        intent=replace(
+                            intent, authority_ref=None, authority_deliveries=(),
+                            products=tuple(replace(product, runtime_authority_deliveries=()) for product in intent.products),
+                        ),
                     )
                 else:
                     observed = replace(

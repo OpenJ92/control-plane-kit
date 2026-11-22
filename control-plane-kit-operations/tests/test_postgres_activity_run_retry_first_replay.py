@@ -581,22 +581,20 @@ class PostgresActivityRunRetryFirstReplayTests(
         def fail_gateway_read(*_args, **_kwargs):
             raise AssertionError("retry read or locked mutable gateway rotation")
 
-        for name in originals:
-            setattr(GatewayKeyRotationStore, name, fail_gateway_read)
-        try:
-            for subject in ("activity-plan", "gateway-key-rotation"):
-                with self.subTest(subject=subject):
-                    self.reset_retry_truth(approval_subject=subject)
+        for subject in ("activity-plan", "gateway-key-rotation"):
+            with self.subTest(subject=subject):
+                self.reset_retry_truth(approval_subject=subject)
+                for name in originals:
+                    setattr(GatewayKeyRotationStore, name, fail_gateway_read)
+                try:
                     result = self.retry_service(
-                        f"run-{subject}",
-                        f"decision-{subject}",
-                        f"opened-{subject}",
-                        f"action-{subject}",
+                        f"run-{subject}", f"decision-{subject}",
+                        f"opened-{subject}", f"action-{subject}",
                     ).execute(self.retry_command(key=f"retry-{subject}"))
                     self.assertFalse(result.replayed)
-        finally:
-            for name, method in originals.items():
-                setattr(GatewayKeyRotationStore, name, method)
+                finally:
+                    for name, method in originals.items():
+                        setattr(GatewayKeyRotationStore, name, method)
 
     def test_retry_delegates_approval_and_journal_to_shared_support(self) -> None:
         self.require_retry_service()
@@ -633,7 +631,9 @@ class PostgresActivityRunRetryFirstReplayTests(
                 ("approval", "request-a"),
                 ("journal", RecoveryDecisionKind.RETRY_AS_NEW_RUN),
                 ("approval", "request-a"),
+                ("approval", "request-a"),
                 ("journal", RecoveryDecisionKind.RETRY_AS_NEW_RUN),
+                ("approval", "request-a"),
             ],
         )
 

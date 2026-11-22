@@ -49,6 +49,7 @@ class PostgresActivityRunRetryConcurrencyTests(
     def test_same_key_concurrent_commands_converge_on_one_result(self) -> None:
         self.require_retry_service()
         self.reset_retry_truth()
+        initial_actions = self.snapshot()[2]
         barrier = threading.Barrier(2)
         observations = 0
         observation_lock = threading.Lock()
@@ -95,11 +96,13 @@ class PostgresActivityRunRetryConcurrencyTests(
             sum(row[2] == "recovery_decision_recorded" for row in snapshot[1]),
             1,
         )
-        self.assertEqual(len(snapshot[2]), 1)
+        self.assertEqual(snapshot[2][:-1], initial_actions)
+        self.assertEqual(len(snapshot[2]), len(initial_actions) + 1)
 
     def test_distinct_keys_racing_one_prior_create_one_successor(self) -> None:
         self.require_retry_service()
         self.reset_retry_truth()
+        initial_actions = self.snapshot()[2]
         barrier = threading.Barrier(2)
 
         def execute(prefix: str):
@@ -139,7 +142,8 @@ class PostgresActivityRunRetryConcurrencyTests(
         )
         snapshot = self.snapshot()
         self.assertEqual(len(snapshot[3]), 2)
-        self.assertEqual(len(snapshot[2]), 1)
+        self.assertEqual(snapshot[2][:-1], initial_actions)
+        self.assertEqual(len(snapshot[2]), len(initial_actions) + 1)
 
     def test_distinct_key_race_forces_both_winner_identities(self) -> None:
         self.require_retry_service()
@@ -149,6 +153,7 @@ class PostgresActivityRunRetryConcurrencyTests(
 
     def _force_distinct_winner(self, winner: str, loser: str) -> None:
         self.reset_retry_truth()
+        initial_actions = self.snapshot()[2]
         blocker = psycopg.connect(self.database_url)
         blocker.execute(
             "SELECT request_id FROM cpk_execution_requests "
@@ -210,7 +215,8 @@ class PostgresActivityRunRetryConcurrencyTests(
         ])
         self.assertEqual(loser_ids.calls, [])
         self.assertEqual(len(self.snapshot()[3]), 2)
-        self.assertEqual(len(self.snapshot()[2]), 1)
+        self.assertEqual(self.snapshot()[2][:-1], initial_actions)
+        self.assertEqual(len(self.snapshot()[2]), len(initial_actions) + 1)
 
     def test_run_remains_free_while_retry_waits_on_request(self) -> None:
         self.require_retry_service()

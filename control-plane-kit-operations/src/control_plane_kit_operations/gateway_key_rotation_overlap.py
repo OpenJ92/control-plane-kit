@@ -13,7 +13,6 @@ from control_plane_kit_operations.desired_realized_projections import (
     DesiredRealizedProjectionPublicationError,
     DesiredRealizedProjectionPublicationResult,
     PublishDesiredRealizedProjection,
-    prepare_desired_realized_projection_publication,
     publish_desired_realized_projection_in_unit_of_work,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
@@ -25,6 +24,7 @@ from control_plane_kit_operations.gateway_key_rotation_projection import (
     GatewayKeyRotationProjectionConflict,
     build_gateway_key_rotation_projection_publication,
     derive_gateway_key_rotation_projection_graph,
+    prepare_gateway_key_rotation_projection_publication,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
@@ -134,19 +134,17 @@ class GatewayKeyRotationOverlapProjectionService:
         with self._unit_of_work_factory() as unit_of_work:
             created_at = self._clock()
             try:
-                prepare_desired_realized_projection_publication(
-                    unit_of_work,
-                    command.session_id,
-                    command.idempotency_key.value,
-                )
+                prepared = prepare_gateway_key_rotation_projection_publication(unit_of_work, command)
                 publication_command = self._publication_command(
                     unit_of_work,
                     command,
+                    prepared=prepared,
                     created_at=created_at,
                 )
                 publication = publish_desired_realized_projection_in_unit_of_work(
                     unit_of_work,
                     publication_command,
+                    prepared=prepared,
                     created_at=created_at,
                     action_id=self._action_id_factory(),
                 )
@@ -173,12 +171,14 @@ class GatewayKeyRotationOverlapProjectionService:
         unit_of_work: Any,
         command: PublishGatewayKeyRotationOverlapProjection,
         *,
+        prepared,
         created_at: str,
     ) -> PublishDesiredRealizedProjection:
         try:
             return build_gateway_key_rotation_projection_publication(
                 unit_of_work,
                 command,
+                prepared=prepared,
                 phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
                 created_at=created_at,
             )

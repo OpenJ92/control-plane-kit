@@ -7,6 +7,7 @@ from control_plane_kit_core.operations import (
     HttpApiContract,
     HttpAuthScope,
     HttpOperationSafety,
+    HttpSchemaRef,
     InvalidReadProjectionContract,
     McpStreamableHttpContract,
     ReadProjectionContract,
@@ -20,6 +21,100 @@ from control_plane_kit_core.operations import (
 
 
 class ReadProjectionContractTests(unittest.TestCase):
+    def test_workspace_inventory_is_a_bounded_read_without_target_workspace(self):
+        projection = canonical_operator_read_projection_set().projection("read.workspaces")
+        self.assertFalse(projection.requires_workspace_scope)
+        self.assertTrue(projection.paged)
+        self.assertEqual(projection.max_page_size, 100)
+        route = HttpApiContract(operator_read_http_routes()).route("read.workspaces")
+        self.assertEqual(route.path_template, "/workspaces")
+        self.assertEqual(route.auth_scope, HttpAuthScope.READ)
+        self.assertEqual(route.safety, HttpOperationSafety.READ_ONLY)
+        self.assertEqual(route.request_schema, HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384))
+        self.assertEqual(route.response_schema, HttpSchemaRef("WorkspaceInventoryPage", max_bytes=1048576))
+
+    def test_operator_overview_is_one_closed_http_mcp_read_projection(self) -> None:
+        projections = canonical_operator_read_projection_set()
+        http_api = HttpApiContract(operator_read_http_routes())
+        parity = operator_read_projection_parity(
+            http_api,
+            McpStreamableHttpContract(),
+        )
+
+        with self.subTest(boundary="projection"):
+            self.assertEqual(
+                [
+                    (
+                        projection.operation_id,
+                        projection.kind.value,
+                        projection.response_schema,
+                        projection.policy.value,
+                        projection.requires_workspace_scope,
+                        projection.paged,
+                        projection.max_page_size,
+                    )
+                    for projection in projections.projections
+                    if projection.operation_id == "read.operator-overview"
+                ],
+                [
+                    (
+                        "read.operator-overview",
+                        "operator-overview",
+                        "OperatorOverviewReadResponse",
+                        "redacted-operator-overview",
+                        True,
+                        True,
+                        100,
+                    )
+                ],
+            )
+        with self.subTest(boundary="http"):
+            self.assertEqual(
+                [
+                    (
+                        route.route_id,
+                        route.method.value,
+                        route.path_template,
+                        route.response_schema,
+                        route.auth_scope.value,
+                        route.safety.value,
+                    )
+                    for route in http_api.routes
+                    if route.route_id == "read.operator-overview"
+                ],
+                [
+                    (
+                        "read.operator-overview",
+                        "GET",
+                        "/workspaces/{workspace_id}/overview",
+                        HttpSchemaRef("OperatorOverviewReadResponse", max_bytes=65536),
+                        "read",
+                        "read-only",
+                    )
+                ],
+            )
+        with self.subTest(boundary="mcp-parity"):
+            self.assertEqual(
+                [
+                    (
+                        binding.operation_id,
+                        binding.http_route_id,
+                        binding.mcp_tool_name,
+                        binding.projection_schema,
+                    )
+                    for binding in parity.projections
+                    if binding.operation_id == "read.operator-overview"
+                ],
+                [
+                    (
+                        "read.operator-overview",
+                        "read.operator-overview",
+                        "get_operator_overview",
+                        "OperatorOverviewReadResponse",
+                    )
+                ],
+            )
+
     def test_gateway_probe_timeline_uses_the_common_page_bound(self) -> None:
         projection = canonical_operator_read_projection_set().projection(
             "read.gateway-probe-timeline"
@@ -30,6 +125,12 @@ class ReadProjectionContractTests(unittest.TestCase):
 
     def test_canonical_projection_set_is_closed_bounded_and_read_only(self) -> None:
         projections = canonical_operator_read_projection_set()
+        ordinary = tuple(projection for projection in projections.projections
+            if projection.service_role is ControlPlaneServiceRole.READS)
+        history_attempts = getattr(ReadProjectionKind, "DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS", None)
+        history_preparations = getattr(ReadProjectionKind, "DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS", None)
+        self.assertIsNotNone(history_attempts, "missing revision history attempts projection")
+        self.assertIsNotNone(history_preparations, "missing revision history preparations projection")
 
         self.assertEqual(
             [
@@ -41,7 +142,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     projection.requires_workspace_scope,
                     projection.paged,
                 )
-                for projection in projections.projections
+                for projection in ordinary
             ],
             [
                 (
@@ -77,6 +178,11 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.delegation-key-generation", ReadProjectionKind.DELEGATION_KEY_GENERATION,
+                    "GeneratedDelegationKeyReceipt", ReadProjectionPolicy.AUTHORIZED_GENERATION_RECEIPT,
+                    True, False,
+                ),
+                (
                     "read.delegation-keys",
                     ReadProjectionKind.DELEGATION_KEYS,
                     "DelegationSigningKeyCollectionReadResponse",
@@ -91,6 +197,54 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
                     True,
                     False,
+                ),
+                (
+                    "read.desired-topology-draft-revision",
+                    ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION,
+                    "DesiredTopologyDraftRevisionReadResponse",
+                    ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+                    True,
+                    False,
+                ),
+                (
+                    "read.desired-topology-draft-revision-attempts",
+                    history_attempts,
+                    "DesiredTopologyDraftRevisionAttemptsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
+                    "read.desired-topology-draft-revision-metadata",
+                    ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_METADATA,
+                    "DesiredTopologyDraftRevisionMetadataReadResponse",
+                    ReadProjectionPolicy.CONFIGURATION_ARTIFACT_METADATA,
+                    True,
+                    False,
+                ),
+                (
+                    "read.desired-topology-draft-revision-preparations",
+                    history_preparations,
+                    "DesiredTopologyDraftRevisionPreparationsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
+                    "read.desired-topology-draft-revisions",
+                    ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
+                    "DesiredTopologyDraftRevisionsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
+                    "read.desired-topology-drafts",
+                    ReadProjectionKind.DESIRED_TOPOLOGY_DRAFTS,
+                    "DesiredTopologyDraftsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
                 ),
                 (
                     "read.gateway-probe-detail",
@@ -157,6 +311,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.operator-overview",
+                    ReadProjectionKind.OPERATOR_OVERVIEW,
+                    "OperatorOverviewReadResponse",
+                    ReadProjectionPolicy.REDACTED_OPERATOR_OVERVIEW,
+                    True,
+                    True,
+                ),
+                (
                     "read.pending-approvals",
                     ReadProjectionKind.PENDING_APPROVALS,
                     "PendingApprovalsReadResponse",
@@ -179,6 +341,17 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
                     True,
                     True,
+                ),
+                ("read.product-detail", ReadProjectionKind.REGISTERED_PRODUCT_DETAIL, "RegisteredProductDetailReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, True, False),
+                ("read.product-topology-preview", ReadProjectionKind.PRODUCT_TOPOLOGY_PREVIEW, "ProductTopologyPreviewResponse", ReadProjectionPolicy.PUBLIC_PRODUCT_TOPOLOGY_PROPOSAL, True, False),
+                ("read.products", ReadProjectionKind.REGISTERED_PRODUCTS, "RegisteredProductsReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, True, True),
+                (
+                    "read.receiver-authoring-context",
+                    getattr(ReadProjectionKind, "RECEIVER_AUTHORING_CONTEXT", None),
+                    "ReceiverAuthoringContextReadResponse",
+                    getattr(ReadProjectionPolicy, "PUBLIC_RECEIVER_AUTHORING_CONTEXT", None),
+                    True,
+                    False,
                 ),
                 (
                     "read.run-events",
@@ -217,6 +390,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionKind.RUNTIME_AUTHORITY_DETAIL,
                     "RuntimeAuthorityDetailReadResponse",
                     ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+                    True,
+                    False,
+                ),
+                (
+                    "read.secret-material-provision",
+                    ReadProjectionKind.SECRET_MATERIAL_PROVISION,
+                    "ProvisionedSecretMaterialReceipt",
+                    ReadProjectionPolicy.AUTHORIZED_PROVISION_RECEIPT,
                     True,
                     False,
                 ),
@@ -285,6 +466,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.workload-verifier-configuration",
+                    ReadProjectionKind.WORKLOAD_VERIFIER_CONFIGURATION,
+                    "WorkloadVerifierConfigurationReadResponse",
+                    ReadProjectionPolicy.PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION,
+                    True,
+                    False,
+                ),
+                (
                     "read.workspace",
                     ReadProjectionKind.WORKSPACE,
                     "WorkspaceReadResponse",
@@ -292,18 +481,21 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                     False,
                 ),
+                ("read.workspaces", ReadProjectionKind.WORKSPACES,
+                    "WorkspaceInventoryPage", ReadProjectionPolicy.AUTHORIZED_WORKSPACE_INVENTORY,
+                    False, True),
             ],
         )
         self.assertTrue(
             all(
                 projection.service_role is ControlPlaneServiceRole.READS
-                for projection in projections.projections
+                for projection in ordinary
             )
         )
         self.assertTrue(
             all(
                 projection.auth_scope is HttpAuthScope.READ
-                for projection in projections.projections
+                for projection in ordinary
             )
         )
         self.assertTrue(

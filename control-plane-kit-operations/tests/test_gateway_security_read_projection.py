@@ -295,6 +295,7 @@ class _GatewaySecuritySpy:
             "gateway_probe_timeline": object(),
             "gateway_probe_detail": object(),
             "delegation_signing_keys": object(),
+            "delegation_key_generation": object(),
             "gateway_verifier_configuration": object(),
         }
 
@@ -309,6 +310,10 @@ class _GatewaySecuritySpy:
     def delegation_signing_keys(self, request: object) -> object:
         self.calls.append(("delegation_signing_keys", request))
         return self.results["delegation_signing_keys"]
+
+    def delegation_key_generation(self, workspace_id: str, request_id: str) -> object:
+        self.calls.append(("delegation_key_generation", workspace_id, request_id))
+        return self.results["delegation_key_generation"]
 
     def gateway_verifier_configuration(
         self,
@@ -704,11 +709,13 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
             "gateway_probe_timeline": ("self", "request"),
             "gateway_probe_detail": ("self", "workspace_id", "probe_id"),
             "delegation_signing_keys": ("self", "request"),
+            "delegation_key_generation": ("self", "workspace_id", "request_id"),
             "gateway_verifier_configuration": (
                 "self",
                 "workspace_id",
                 "gateway_node_id",
             ),
+            "workload_verifier_configuration": ("self", "workspace_id", "purposes"),
         }
         self.assertEqual(
             {name for name in vars(owner) if not name.startswith("_")},
@@ -758,6 +765,7 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
             ("gateway_probe_timeline", (request,)),
             ("gateway_probe_detail", ("workspace-a", "probe-a")),
             ("delegation_signing_keys", (request,)),
+            ("delegation_key_generation", ("workspace-a", "request-a")),
             (
                 "gateway_verifier_configuration",
                 ("workspace-a", "gateway-a"),

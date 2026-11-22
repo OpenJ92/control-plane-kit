@@ -18,9 +18,27 @@ class ReadProjectionKind(StrEnum):
     """Closed operator read projection identities."""
 
     WORKSPACE = "workspace"
+    WORKSPACES = "workspaces"
+    PROVIDER_POLICY_COMMAND = "provider-policy-command"
+    PROVIDER_POLICY_GRANT = "provider-policy-grant"
+    PROVIDER_POLICY_GRANTS = "provider-policy-grants"
+    WORKSPACE_PERMISSIONS = "workspace-permissions"
+    WORKSPACE_PERMISSION = "workspace-permission"
+    WORKSPACE_PERMISSION_HISTORY = "workspace-permission-history"
+    MANAGED_RUNTIME_ASSIGNMENTS = "managed-runtime-assignments"
+    MANAGED_RUNTIME_ASSIGNMENT = "managed-runtime-assignment"
+    MANAGED_RUNTIME_ASSIGNMENT_HISTORY = "managed-runtime-assignment-history"
+    RECEIVER_AUTHORING_CONTEXT = "receiver-authoring-context"
     CURRENT_GRAPH = "current-graph"
     DESIRED_GRAPH = "desired-graph"
     OPERATOR_GRAPH = "operator-graph"
+    DESIRED_TOPOLOGY_DRAFTS = "desired-topology-drafts"
+    DESIRED_TOPOLOGY_DRAFT_REVISIONS = "desired-topology-draft-revisions"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_METADATA = "desired-topology-draft-revision-metadata"
+    DESIRED_TOPOLOGY_DRAFT_REVISION = "desired-topology-draft-revision"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS = "desired-topology-draft-revision-preparations"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS = "desired-topology-draft-revision-attempts"
+    OPERATOR_OVERVIEW = "operator-overview"
     ACTIVITY_TIMELINE = "activity-timeline"
     OPEN_SESSIONS = "open-sessions"
     SESSION_DETAIL = "session-detail"
@@ -40,12 +58,18 @@ class ReadProjectionKind(StrEnum):
     RUNTIME_AUTHORITY_DELIVERY_DETAIL = "runtime-authority-delivery-detail"
     INGRESS_AUTHORITIES = "ingress-authorities"
     INGRESS_AUTHORITY_DETAIL = "ingress-authority-detail"
+    REGISTERED_PRODUCTS = "registered-products"
+    REGISTERED_PRODUCT_DETAIL = "registered-product-detail"
+    PRODUCT_TOPOLOGY_PREVIEW = "product-topology-preview"
     SECRET_PROVIDERS = "secret-providers"
     SECRET_PROVIDER_DETAIL = "secret-provider-detail"
     SECRET_REFERENCES = "secret-references"
     SECRET_REFERENCE_DETAIL = "secret-reference-detail"
     DELEGATION_KEYS = "delegation-keys"
+    DELEGATION_KEY_GENERATION = "delegation-key-generation"
+    SECRET_MATERIAL_PROVISION = "secret-material-provision"
     GATEWAY_VERIFIER_CONFIGURATION = "gateway-verifier-configuration"
+    WORKLOAD_VERIFIER_CONFIGURATION = "workload-verifier-configuration"
     GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
     GATEWAY_PROBE_TIMELINE = "gateway-probe-timeline"
 
@@ -53,8 +77,17 @@ class ReadProjectionKind(StrEnum):
 class ReadProjectionPolicy(StrEnum):
     """Closed projection redaction and evidence policy."""
 
+    REDACTED_PRODUCT_DIRECTORY = "redacted-product-directory"
+    PUBLIC_PRODUCT_TOPOLOGY_PROPOSAL = "public-product-topology-proposal"
     REDACTED_WORKSPACE = "redacted-workspace"
+    AUTHORIZED_WORKSPACE_INVENTORY = "authorized-workspace-inventory"
+    AUTHORIZED_WORKSPACE_ADMINISTRATION = "authorized-workspace-administration"
+    AUTHORIZED_PROVIDER_POLICY_ADMINISTRATION = (
+        "authorized-provider-policy-administration"
+    )
+    CONFIGURATION_ARTIFACT_METADATA = "configuration-artifact-metadata"
     REDACTED_GRAPH_DESCRIPTOR = "redacted-graph-descriptor"
+    REDACTED_OPERATOR_OVERVIEW = "redacted-operator-overview"
     REDACTED_CONTROL_SURFACE = "redacted-control-surface"
     REDACTED_PAGED_HISTORY = "redacted-paged-history"
     PINNED_PLAN_AND_RECOVERY = "pinned-plan-and-recovery"
@@ -65,7 +98,11 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_SECRET_PROVIDER = "redacted-secret-provider"
     REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
     REDACTED_DELEGATION_KEY = "redacted-delegation-key"
+    AUTHORIZED_GENERATION_RECEIPT = "authorized-generation-receipt"
+    AUTHORIZED_PROVISION_RECEIPT = "authorized-provision-receipt"
     PUBLIC_GATEWAY_VERIFIER_CONFIGURATION = "public-gateway-verifier-configuration"
+    PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION = "public-workload-verifier-configuration"
+    PUBLIC_RECEIVER_AUTHORING_CONTEXT = "public-receiver-authoring-context"
     DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
 
@@ -80,6 +117,8 @@ class ReadProjectionContract:
     policy: ReadProjectionPolicy
     auth_scope: HttpAuthScope
     safety: HttpOperationSafety
+    # Scopes the target to a workspace; authority still follows auth_scope and
+    # the owner policy. This flag alone does not require ordinary membership.
     requires_workspace_scope: bool
     paged: bool
     max_page_size: int | None = None
@@ -94,15 +133,20 @@ class ReadProjectionContract:
             raise InvalidReadProjectionContract(
                 "service_role must be ControlPlaneServiceRole"
             )
-        if self.service_role is not ControlPlaneServiceRole.READS:
-            raise InvalidReadProjectionContract("read projections use reads service")
         _validate_identity(self.response_schema, "response_schema")
         if not isinstance(self.policy, ReadProjectionPolicy):
             raise InvalidReadProjectionContract(
                 "policy must be ReadProjectionPolicy"
             )
-        if self.auth_scope is not HttpAuthScope.READ:
-            raise InvalidReadProjectionContract("read projections require read auth")
+        if not isinstance(self.auth_scope, HttpAuthScope):
+            raise InvalidReadProjectionContract("auth_scope must be HttpAuthScope")
+        if (self.service_role, self.auth_scope) not in {
+            (ControlPlaneServiceRole.READS, HttpAuthScope.READ),
+            (ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN),
+        }:
+            raise InvalidReadProjectionContract(
+                "read projections require reads/read or authorization/admin"
+            )
         if self.safety is not HttpOperationSafety.READ_ONLY:
             raise InvalidReadProjectionContract("read projections must be read-only")
         _validate_bool(self.requires_workspace_scope, "requires_workspace_scope")
@@ -263,12 +307,12 @@ def canonical_operator_read_projection_set() -> ReadProjectionSet:
             ReadProjectionContract(
                 operation_id=definition.operation_id,
                 kind=definition.kind,
-                service_role=ControlPlaneServiceRole.READS,
+                service_role=definition.service_role,
                 response_schema=definition.response_schema,
                 policy=definition.policy,
-                auth_scope=HttpAuthScope.READ,
+                auth_scope=definition.auth_scope,
                 safety=HttpOperationSafety.READ_ONLY,
-                requires_workspace_scope=True,
+                requires_workspace_scope=definition.requires_workspace_scope,
                 paged=definition.paged,
                 max_page_size=definition.max_page_size,
             )
@@ -285,9 +329,77 @@ class _ProjectionDefinition:
     policy: ReadProjectionPolicy
     paged: bool = False
     max_page_size: int | None = None
+    service_role: ControlPlaneServiceRole = ControlPlaneServiceRole.READS
+    auth_scope: HttpAuthScope = HttpAuthScope.READ
+    requires_workspace_scope: bool = True
 
 
 _CANONICAL_PROJECTIONS = (
+    _ProjectionDefinition("read.workspaces", ReadProjectionKind.WORKSPACES,
+        "WorkspaceInventoryPage", ReadProjectionPolicy.AUTHORIZED_WORKSPACE_INVENTORY,
+        paged=True, max_page_size=100, requires_workspace_scope=False),
+    *tuple(
+        _ProjectionDefinition(
+            "read." + kind.value,
+            kind,
+            schema,
+            ReadProjectionPolicy.AUTHORIZED_PROVIDER_POLICY_ADMINISTRATION,
+            paged=paged,
+            max_page_size=100 if paged else None,
+            service_role=ControlPlaneServiceRole.AUTHORIZATION,
+            auth_scope=HttpAuthScope.ADMIN,
+            requires_workspace_scope=False,
+        )
+        for kind, schema, paged in (
+            (
+                ReadProjectionKind.PROVIDER_POLICY_COMMAND,
+                "ProviderPolicyCommandRecordResponse",
+                False,
+            ),
+            (
+                ReadProjectionKind.PROVIDER_POLICY_GRANT,
+                "ProviderPolicyGrantReadResponse",
+                False,
+            ),
+            (
+                ReadProjectionKind.PROVIDER_POLICY_GRANTS,
+                "ProviderPolicyGrantPageResponse",
+                True,
+            ),
+        )
+    ),
+    *tuple(_ProjectionDefinition(
+        "read." + kind.value, kind, schema,
+        ReadProjectionPolicy.AUTHORIZED_WORKSPACE_ADMINISTRATION,
+        paged=paged, max_page_size=10 if paged else None,
+        service_role=ControlPlaneServiceRole.AUTHORIZATION,
+        auth_scope=HttpAuthScope.ADMIN,
+    ) for kind, schema, paged in (
+        (ReadProjectionKind.WORKSPACE_PERMISSIONS, "WorkspacePermissionPage", True),
+        (ReadProjectionKind.WORKSPACE_PERMISSION, "WorkspacePermissionRecord", False),
+        (ReadProjectionKind.WORKSPACE_PERMISSION_HISTORY, "WorkspacePermissionPage", True),
+        (ReadProjectionKind.MANAGED_RUNTIME_ASSIGNMENTS, "ManagedRuntimeAssignmentPage", True),
+        (ReadProjectionKind.MANAGED_RUNTIME_ASSIGNMENT, "ManagedRuntimeAssignment", False),
+        (ReadProjectionKind.MANAGED_RUNTIME_ASSIGNMENT_HISTORY, "ManagedRuntimeAssignmentPage", True),
+    )),
+    _ProjectionDefinition(
+        "read.secret-material-provision", ReadProjectionKind.SECRET_MATERIAL_PROVISION,
+        "ProvisionedSecretMaterialReceipt", ReadProjectionPolicy.AUTHORIZED_PROVISION_RECEIPT,
+    ),
+    _ProjectionDefinition(
+        "read.delegation-key-generation", ReadProjectionKind.DELEGATION_KEY_GENERATION,
+        "GeneratedDelegationKeyReceipt", ReadProjectionPolicy.AUTHORIZED_GENERATION_RECEIPT,
+    ),
+    _ProjectionDefinition("read.products", ReadProjectionKind.REGISTERED_PRODUCTS, "RegisteredProductsReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY, paged=True, max_page_size=100),
+    _ProjectionDefinition("read.product-detail", ReadProjectionKind.REGISTERED_PRODUCT_DETAIL, "RegisteredProductDetailReadResponse", ReadProjectionPolicy.REDACTED_PRODUCT_DIRECTORY),
+    _ProjectionDefinition("read.product-topology-preview", ReadProjectionKind.PRODUCT_TOPOLOGY_PREVIEW,
+        "ProductTopologyPreviewResponse", ReadProjectionPolicy.PUBLIC_PRODUCT_TOPOLOGY_PROPOSAL),
+    _ProjectionDefinition(
+        "read.receiver-authoring-context",
+        ReadProjectionKind.RECEIVER_AUTHORING_CONTEXT,
+        "ReceiverAuthoringContextReadResponse",
+        ReadProjectionPolicy.PUBLIC_RECEIVER_AUTHORING_CONTEXT,
+    ),
     _ProjectionDefinition(
         "read.delegation-keys",
         ReadProjectionKind.DELEGATION_KEYS,
@@ -301,6 +413,12 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.GATEWAY_VERIFIER_CONFIGURATION,
         "GatewayVerifierConfigurationReadResponse",
         ReadProjectionPolicy.PUBLIC_GATEWAY_VERIFIER_CONFIGURATION,
+    ),
+    _ProjectionDefinition(
+        "read.workload-verifier-configuration",
+        ReadProjectionKind.WORKLOAD_VERIFIER_CONFIGURATION,
+        "WorkloadVerifierConfigurationReadResponse",
+        ReadProjectionPolicy.PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION,
     ),
     _ProjectionDefinition(
         "read.gateway-probe-detail",
@@ -447,6 +565,62 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OPERATOR_GRAPH,
         "OperatorGraphReadResponse",
         ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-drafts",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFTS,
+        "DesiredTopologyDraftsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision-preparations",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS,
+        "DesiredTopologyDraftRevisionPreparationsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=10,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision-attempts",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS,
+        "DesiredTopologyDraftRevisionAttemptsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=10,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revisions",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
+        "DesiredTopologyDraftRevisionsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION,
+        "DesiredTopologyDraftRevisionReadResponse",
+        ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+        paged=False,
+        max_page_size=None,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision-metadata",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_METADATA,
+        "DesiredTopologyDraftRevisionMetadataReadResponse",
+        ReadProjectionPolicy.CONFIGURATION_ARTIFACT_METADATA,
+        paged=False,
+        max_page_size=None,
+    ),
+    _ProjectionDefinition(
+        "read.operator-overview",
+        ReadProjectionKind.OPERATOR_OVERVIEW,
+        "OperatorOverviewReadResponse",
+        ReadProjectionPolicy.REDACTED_OPERATOR_OVERVIEW,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.pending-approvals",

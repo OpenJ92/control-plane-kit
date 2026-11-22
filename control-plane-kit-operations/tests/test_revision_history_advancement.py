@@ -1,0 +1,200 @@
+"""#1773 historical receipts originate from the existing advancement owner."""
+import unittest
+
+from psycopg.types.json import Jsonb
+
+import control_plane_kit_operations as operations
+import test_current_graph_advancement as advancement_fixture
+from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftRecord, DesiredTopologyDraftRevisionRecord
+from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest
+
+
+class RevisionHistoryAdvancementTests(unittest.TestCase):
+    def setUp(self):
+        scope_type = getattr(operations, "RevisionReadScope", None)
+        self.assertIsNotNone(scope_type, "missing revision history scope")
+        self.scope = scope_type("workspace-a", "history-draft", 1)
+        self.collection = getattr(ReadCollection, "DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS", None)
+        self.assertIsNotNone(self.collection, "missing revision history attempts")
+        # Reuse fixture setup and actual command; do not inherit/recollect its tests.
+        self.fixture = advancement_fixture.CurrentGraphAdvancementTests()
+        self.addCleanup(self.cleanup_fixture)
+        self.fixture.setUp()
+        with self.fixture.unit_of_work() as uow:
+            self.assertIsNotNone(getattr(uow.stores, "revision_history", None), "missing revision history owner")
+            store = uow.stores.desired_topology_drafts
+            store.create(DesiredTopologyDraftRecord("workspace-a", "history-draft", "History", 1,
+                                                   "operator-a", "2026-07-22T12:00:00Z"))
+            store.append(DesiredTopologyDraftRevisionRecord("workspace-a", "history-draft", 1,
+                "graph-desired", "operator-a", "2026-07-22T12:00:00Z"), expected_head_revision=None)
+            uow.commit()
+        self.fixture.seed_succeeded_run()
+
+    def cleanup_fixture(self):
+        self.assertTrue(self.fixture.doCleanups(), "nested advancement fixture cleanup failed")
+
+    def remove_zero_slot_header(self, result):
+        # Privileged test corruption: remove only this genuine zero-slot
+        # header before its witness, without disabling any foreign key.
+        connection = self.fixture.connection
+        self.assertEqual(connection.execute("SELECT workspace_id,pinned_revision,event_id,slot_count "
+            "FROM cpk_configuration_acceptances WHERE action_id=%s",
+            (result.action.action_id,)).fetchall(),
+            [("workspace-a", result.desired_graph_revision, result.event.event_id, 0)])
+        self.assertEqual(connection.execute("SELECT count(*) FROM cpk_configuration_accepted_slots "
+            "WHERE workspace_id='workspace-a' AND pinned_revision=%s",
+            (result.desired_graph_revision,)).fetchone(), (0,))
+        self.assertEqual(connection.execute("DELETE FROM cpk_configuration_acceptances WHERE action_id=%s",
+            (result.action.action_id,)).rowcount, 1)
+
+    def page(self):
+        with self.fixture.unit_of_work() as uow:
+            return uow.stores.revision_history.page(ReadPageRequest(self.collection, self.scope, 10)).descriptor()
+
+    def accepted(self):
+        return self.fixture.service("event-advance", "action-advance").execute(self.fixture.command())
+
+    def test_accepted_receipt_preserves_nonzero_microseconds(self):
+        result = advancement_fixture.CurrentGraphAdvancementCommandService(
+            self.fixture.unit_of_work, clock=lambda: "2026-07-22T13:05:00.123456Z",
+            id_factory=advancement_fixture.Sequence("event-advance", "action-advance"),
+        ).execute(self.fixture.command())
+        self.assertEqual(self.page()["items"][0]["advancement"], {
+            "state": "accepted", "receipt": {"event_id": result.event.event_id,
+                "action_id": result.action.action_id, "occurred_at": "2026-07-22T13:05:00.123456Z",
+                "to_realized_projection_digest": self.fixture.desired_projection.projection_digest}})
+
+    def test_success_without_receipt_is_none_recorded_then_real_acceptance_survives_pointer_change(self):
+        row = self.page()["items"][0]
+        self.assertEqual(row["advancement"], {"state": "none-recorded", "receipt": None})
+        self.assertEqual(row["source"]["state"], "unavailable")
+        result = self.accepted()
+        accepted = self.page()["items"][0]["advancement"]
+        self.assertEqual(accepted, {"state": "accepted", "receipt": {
+            "event_id": result.event.event_id, "action_id": result.action.action_id,
+            "occurred_at": "2026-07-22T13:05:00.000000Z",
+            "to_realized_projection_digest": self.fixture.desired_projection.projection_digest}})
+        with self.fixture.unit_of_work() as uow:
+            uow.stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            uow.commit()
+        self.assertEqual(self.page()["items"][0]["advancement"], accepted)
+
+    def test_event_without_action_is_unavailable(self):
+        result = self.accepted()
+        with self.fixture.connection.transaction():
+            self.remove_zero_slot_header(result)
+            self.assertEqual(self.fixture.connection.execute(
+                "DELETE FROM cpk_operation_actions WHERE action_id=%s", (result.action.action_id,)).rowcount, 1)
+        self.assertEqual(self.fixture.connection.execute(
+            "SELECT count(*) FROM cpk_activity_events WHERE event_id=%s", (result.event.event_id,)).fetchone(), (1,))
+        self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
+
+    def test_accepted_history_survives_current_claim_rotation_and_removal(self):
+        self.accepted()
+        accepted = self.page()["items"][0]["advancement"]
+        self.assertEqual(accepted["state"], "accepted")
+        self.fixture.connection.execute("UPDATE cpk_execution_requests "
+            "SET claim_worker_id='later-worker', claim_generation=2 WHERE request_id='request-a'")
+        self.assertEqual(self.page()["items"][0]["advancement"], accepted)
+        self.fixture.connection.execute("UPDATE cpk_execution_requests SET status='cancelled', "
+            "claim_worker_id=NULL,claim_generation=NULL,claimed_at=NULL,lease_expires_at=NULL "
+            "WHERE request_id='request-a'")
+        self.assertEqual(self.page()["items"][0]["advancement"], accepted)
+        self.assertEqual(self.fixture.connection.execute("SELECT status,claim_worker_id,claim_generation "
+            "FROM cpk_execution_requests WHERE request_id='request-a'").fetchone(), ("cancelled", None, None))
+
+    def test_action_without_event_is_unavailable(self):
+        result = self.accepted()
+        with self.fixture.connection.transaction():
+            self.remove_zero_slot_header(result)
+            self.assertEqual(self.fixture.connection.execute(
+                "DELETE FROM cpk_activity_events WHERE event_id=%s", (result.event.event_id,)).rowcount, 1)
+        self.assertEqual(self.fixture.connection.execute(
+            "SELECT count(*) FROM cpk_operation_actions WHERE action_id=%s", (result.action.action_id,)).fetchone(), (1,))
+        self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
+
+    def test_duplicate_candidates_on_either_side_are_not_arbitrarily_selected(self):
+        result = self.accepted()
+        # Typed copies are deliberately corrupt reader premises, not accepted
+        # receipts manufactured through the now-closed generic writers.
+        self.assertEqual(self.fixture.connection.execute(
+            "INSERT INTO cpk_activity_events (event_id,run_id,ordinal,event_type,occurred_at,payload,"
+            "advancement_workspace_id,advancement_request_id,advancement_plan_id,advancement_revision) "
+            "SELECT 'event-duplicate',run_id,ordinal+1,event_type,occurred_at,payload,advancement_workspace_id,"
+            "advancement_request_id,advancement_plan_id,advancement_revision FROM cpk_activity_events WHERE event_id=%s",
+            (result.event.event_id,)).rowcount, 1)
+        self.assertEqual(self.page()["items"][0]["advancement"]["state"], "unavailable")
+        self.fixture.connection.execute("DELETE FROM cpk_activity_events WHERE event_id='event-duplicate'")
+        self.assertEqual(self.fixture.connection.execute(
+            "INSERT INTO cpk_operation_actions (action_id,session_id,ordinal,action_type,"
+            "actor_id,payload,created_at,idempotency_key,intent_fingerprint,advancement_workspace_id,"
+            "advancement_request_id,advancement_plan_id,advancement_run_id,advancement_revision) "
+            "SELECT 'action-duplicate',session_id,ordinal+1,action_type,actor_id,payload,created_at,"
+            "'duplicate',intent_fingerprint,advancement_workspace_id,advancement_request_id,"
+            "advancement_plan_id,advancement_run_id,advancement_revision FROM cpk_operation_actions WHERE action_id=%s",
+            (result.action.action_id,)).rowcount, 1)
+        self.assertEqual(self.page()["items"][0]["advancement"]["state"], "unavailable")
+
+    def test_false_request_plan_transition_time_and_oversized_evidence_fail_closed_without_writes(self):
+        result = self.accepted()
+        original = dict(result.action.payload)
+        for key, value in (("execution_request_id", "other-request"), ("plan_id", "other-plan"),
+                           ("run_id", "other-run"), ("claim_generation", 0),
+                           ("event_id", "other-event"), ("workspace_id", "other-workspace"),
+                           ("from_authored_graph_id", "other-base"),
+                           ("from_realized_projection_id", "other-base-projection"),
+                           ("to_authored_graph_id", "other-desired-graph"),
+                           ("to_realized_projection_id", "other-desired-projection"),
+                           ("to_realized_projection_digest", "0" * 64),
+                           ("desired_graph_revision", 999), ("extra", "private-canary" * 7000)):
+            payload = {**original, key: value}
+            self.fixture.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id='action-advance'",
+                                            (Jsonb(payload),))
+            with self.subTest(field=key):
+                descriptor = self.page()
+                self.assertEqual(descriptor["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
+                self.assertNotIn("private-canary", repr(descriptor))
+                self.assertEqual(self.fixture.connection.execute(
+                    "SELECT payload FROM cpk_operation_actions WHERE action_id='action-advance'").fetchone()[0], payload)
+        self.fixture.connection.execute("UPDATE cpk_operation_actions SET payload=%s, created_at='2026-07-22T13:06:00Z' "
+                                        "WHERE action_id='action-advance'", (Jsonb(original),))
+        self.assertEqual(self.page()["items"][0]["advancement"]["state"], "unavailable")
+        self.fixture.connection.execute("UPDATE cpk_operation_actions SET created_at='2026-07-22T13:05:00Z' "
+                                        "WHERE action_id='action-advance'")
+        raw = self.fixture.connection.execute("SELECT payload FROM cpk_activity_events WHERE event_id='event-advance'").fetchone()[0]
+        for key, value in (("workspace_id", "other-workspace"), ("run_id", "other-run"),
+                           ("plan_id", "other-plan"), ("from_authored_graph_id", "other-base"),
+                           ("from_realized_projection_id", "other-base-projection"),
+                           ("to_authored_graph_id", "other-desired-graph"),
+                           ("to_realized_projection_id", "other-desired-projection"),
+                           ("to_realized_projection_digest", "0" * 64), ("desired_graph_revision", 999)):
+            payload = {**raw, "evidence": {**raw["evidence"], key: value}}
+            self.fixture.connection.execute("UPDATE cpk_activity_events SET payload=%s WHERE event_id='event-advance'",
+                                            (Jsonb(payload),))
+            with self.subTest(event_field=key):
+                self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
+                self.assertEqual(self.fixture.connection.execute(
+                    "SELECT payload FROM cpk_activity_events WHERE event_id='event-advance'").fetchone()[0], payload)
+        self.fixture.connection.execute("UPDATE cpk_activity_events SET payload=%s, occurred_at='2026-07-22T13:06:00Z' "
+                                        "WHERE event_id='event-advance'", (Jsonb(raw),))
+        self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
+        self.fixture.connection.execute("UPDATE cpk_activity_events SET occurred_at='2026-07-22T13:05:00Z' "
+                                        "WHERE event_id='event-advance'")
+        self.fixture.connection.execute("UPDATE cpk_activity_events SET payload=%s WHERE event_id='event-advance'",
+                                        (Jsonb({**raw, "extra": "private-canary" * 7000}),))
+        self.assertEqual(self.page()["items"][0]["advancement"]["state"], "unavailable")
+
+    def test_receipt_probes_have_the_reviewed_partial_index_keys_and_predicates(self):
+        definitions = dict(self.fixture.connection.execute("SELECT indexname,indexdef FROM pg_indexes "
+                                                           "WHERE schemaname=current_schema()").fetchall())
+        names = ("cpk_activity_events_current_graph_advancement", "cpk_operation_actions_current_graph_advancement")
+        for name in names:
+            self.assertIn(name, definitions, "missing bounded receipt lookup index")
+        event = definitions[names[0]]
+        action = definitions[names[1]]
+        self.assertIn("(run_id, event_id)", event)
+        self.assertIn("event_type = 'current_graph_advanced'", event)
+        self.assertIn("session_id,", action)
+        self.assertIn("payload ->> 'run_id'", action)
+        self.assertIn("action_id)", action)
+        self.assertIn("action_type = 'advance-current-graph'", action)

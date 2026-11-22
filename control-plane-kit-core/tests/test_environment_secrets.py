@@ -305,6 +305,28 @@ class SecretContractTests(unittest.TestCase):
             values,
         )
 
+        for purpose_value, target, environment_name in (
+            ("secrets.custody-root-key", "/run/secrets/custody-root", "MASTER_KEY_FILE"),
+            ("secrets.provider-credentials-document", "/run/secrets/provider-credentials", "CREDENTIALS_FILE"),
+        ):
+            with self.subTest(purpose=purpose_value):
+                self.assertIn(purpose_value, {intent.value for intent in SecretUseIntent})
+                delivery = SecretFileDelivery(
+                    target,
+                    SecretReference("secret://provider-a/bootstrap/material"),
+                    SecretUseIntent(purpose_value),
+                    SecretFileMode.OWNER_READ_ONLY,
+                    SecretFilePathBinding(environment_name),
+                )
+                descriptor = delivery.descriptor()
+                self.assertEqual(descriptor, {
+                    "kind": "file", "target_path": target,
+                    "reference_id": "secret://provider-a/bootstrap/material",
+                    "intent": purpose_value, "file_mode": "0400",
+                    "path_binding": {"environment_name": environment_name},
+                })
+                self.assertEqual(secret_delivery_from_descriptor(descriptor), delivery)
+
     def test_secret_file_targets_are_closed_to_protected_namespace(self) -> None:
         for target in (
             "/etc/service/password",

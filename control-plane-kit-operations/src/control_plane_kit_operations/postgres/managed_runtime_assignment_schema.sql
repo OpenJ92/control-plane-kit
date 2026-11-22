@@ -1,0 +1,42 @@
+CREATE TABLE cpk_managed_runtime_assignments (
+    assignment_id text NOT NULL,
+    installation_id text NOT NULL,
+    workspace_id text NOT NULL,
+    runtime_id text NOT NULL,
+    authority_ref text NOT NULL,
+    registration_id text NOT NULL,
+    capability_id text NOT NULL,
+    status text NOT NULL,
+    revision bigint NOT NULL,
+    runtime_kind text DEFAULT 'docker'::text NOT NULL,
+    CONSTRAINT cpk_managed_runtime_assignments_pkey PRIMARY KEY (assignment_id),
+    CONSTRAINT cpk_managed_runtime_assignments_scope_key UNIQUE (installation_id, workspace_id, runtime_id, authority_ref),
+    CONSTRAINT cpk_managed_runtime_assignments_assignment_id_check CHECK (((octet_length(assignment_id) >= 1) AND (octet_length(assignment_id) <= 512))),
+    CONSTRAINT cpk_managed_runtime_assignments_installation_id_check CHECK (((octet_length(installation_id) >= 1) AND (octet_length(installation_id) <= 512))),
+    CONSTRAINT cpk_managed_runtime_assignments_workspace_id_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 512))),
+    CONSTRAINT cpk_managed_runtime_assignments_runtime_id_check CHECK (((octet_length(runtime_id) >= 1) AND (octet_length(runtime_id) <= 512))),
+    CONSTRAINT cpk_managed_runtime_assignments_authority_ref_check CHECK (((octet_length(authority_ref) >= 1) AND (octet_length(authority_ref) <= 128))),
+    CONSTRAINT cpk_managed_runtime_assignments_registration_id_check CHECK (((octet_length(registration_id) >= 1) AND (octet_length(registration_id) <= 512))),
+    CONSTRAINT cpk_managed_runtime_assignments_capability_id_check CHECK (((octet_length(capability_id) >= 1) AND (octet_length(capability_id) <= 128))),
+    CONSTRAINT cpk_managed_runtime_assignments_status_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text]))),
+    CONSTRAINT cpk_managed_runtime_assignments_revision_check CHECK ((revision >= 0)),
+    CONSTRAINT cpk_managed_runtime_assignments_runtime_kind_check CHECK ((runtime_kind = 'docker'::text)),
+    CONSTRAINT cpk_managed_runtime_assignments_installation_fk FOREIGN KEY (installation_id) REFERENCES cpk_workspace_permission_installation (installation_id),
+    CONSTRAINT cpk_managed_runtime_assignments_registration_fk FOREIGN KEY (registration_id, workspace_id, authority_ref, runtime_kind) REFERENCES cpk_runtime_authorities (registration_id, workspace_id, authority_ref, runtime_kind)
+);
+
+CREATE TABLE cpk_managed_runtime_assignment_receipts (
+    assignment_id text NOT NULL,
+    revision bigint NOT NULL,
+    idempotency_key text,
+    intent_fingerprint text,
+    receipt jsonb NOT NULL,
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_pkey PRIMARY KEY (assignment_id, revision),
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_command_key UNIQUE (assignment_id, idempotency_key),
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_revision_check CHECK ((revision > 0)),
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_idempotency_key_check CHECK (((octet_length(idempotency_key) >= 1) AND (octet_length(idempotency_key) <= 200))),
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_fingerprint_check CHECK ((intent_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_command_shape_check CHECK (((idempotency_key IS NULL) = (intent_fingerprint IS NULL))),
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_receipt_check CHECK (((jsonb_typeof(receipt) = 'object'::text) AND (octet_length((receipt)::text) <= 32768))),
+    CONSTRAINT cpk_managed_runtime_assignment_receipts_assignment_fk FOREIGN KEY (assignment_id) REFERENCES cpk_managed_runtime_assignments (assignment_id)
+);

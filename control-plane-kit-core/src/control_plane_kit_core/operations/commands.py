@@ -52,8 +52,11 @@ class OperatorCommandKind(StrEnum):
     REGISTER_SECRET_PROVIDER = "register-secret-provider"
     REVOKE_SECRET_PROVIDER = "revoke-secret-provider"
     REGISTER_SECRET_REFERENCE = "register-secret-reference"
+    PROVISION_SECRET_MATERIAL = "provision-secret-material"
     REVOKE_SECRET_REFERENCE = "revoke-secret-reference"
     REGISTER_DELEGATION_KEY = "register-delegation-key"
+    GENERATE_DELEGATION_KEY = "generate-delegation-key"
+    RECONCILE_DELEGATION_KEY_GENERATION = "reconcile-delegation-key-generation"
     ACTIVATE_DELEGATION_KEY = "activate-delegation-key"
     RETIRE_DELEGATION_KEY = "retire-delegation-key"
     REVOKE_DELEGATION_KEY = "revoke-delegation-key"
@@ -61,6 +64,10 @@ class OperatorCommandKind(StrEnum):
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
     RECORD_OPERATION_ACTION = "record-operation-action"
+    CREATE_DESIRED_TOPOLOGY_DRAFT = "create-desired-topology-draft"
+    REVISE_DESIRED_TOPOLOGY_DRAFT = "revise-desired-topology-draft"
+    SELECT_DESIRED_TOPOLOGY_DRAFT = "select-desired-topology-draft"
+    DELETE_DESIRED_TOPOLOGY_DRAFT = "delete-desired-topology-draft"
     SET_DESIRED_GRAPH = "set-desired-graph"
     PUBLISH_DESIRED_REALIZED_PROJECTION = "publish-desired-realized-projection"
     REQUEST_ACTIVITY_PLAN = "request-activity-plan"
@@ -84,11 +91,15 @@ class CommandPayloadPolicy(StrEnum):
     INGRESS_AUTHORITY_REFERENCE = "ingress-authority-reference"
     SECRET_PROVIDER_REFERENCE = "secret-provider-reference"
     SECRET_REFERENCE = "secret-reference"
+    CONFIDENTIAL_EPHEMERAL = "confidential-ephemeral"
     DELEGATION_KEY_REFERENCE = "delegation-key-reference"
     GATEWAY_PROBE_REFERENCE = "gateway-probe-reference"
 
 
 _KIND_FAMILY = {
+    OperatorCommandKind.PROVISION_SECRET_MATERIAL: OperatorCommandFamily.SECRET_PROVIDER,
+    OperatorCommandKind.GENERATE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
+    OperatorCommandKind.RECONCILE_DELEGATION_KEY_GENERATION: OperatorCommandFamily.DELEGATION_KEY,
     OperatorCommandKind.CREATE_WORKSPACE: OperatorCommandFamily.WORKSPACE,
     OperatorCommandKind.IMPORT_PRODUCT_DESCRIPTOR: (
         OperatorCommandFamily.PRODUCT_REGISTRATION
@@ -132,6 +143,10 @@ _KIND_FAMILY = {
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.RECORD_OPERATION_ACTION: OperatorCommandFamily.OPERATION_SESSION,
+    OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
+    OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
+    OperatorCommandKind.SELECT_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
+    OperatorCommandKind.DELETE_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
     OperatorCommandKind.SET_DESIRED_GRAPH: OperatorCommandFamily.DESIRED_GRAPH,
     OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION: (
         OperatorCommandFamily.DESIRED_GRAPH
@@ -426,6 +441,27 @@ class _CommandDefinition:
 
 _CANONICAL_COMMANDS = (
     _CommandDefinition(
+        "secret-material.provision", OperatorCommandKind.PROVISION_SECRET_MATERIAL,
+        OperatorCommandFamily.SECRET_PROVIDER, DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.EXECUTION, "ProvisionSecretMaterialRequest",
+        "ProvisionedSecretMaterialReceipt", ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.CONFIDENTIAL_EPHEMERAL, requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "delegation-key.generate", OperatorCommandKind.GENERATE_DELEGATION_KEY,
+        OperatorCommandFamily.DELEGATION_KEY, DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.EXECUTION, "GenerateDelegationKeyRequest",
+        "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE, requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "delegation-key-generation.reconcile", OperatorCommandKind.RECONCILE_DELEGATION_KEY_GENERATION,
+        OperatorCommandFamily.DELEGATION_KEY, DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.EXECUTION, "ReconcileDelegationKeyGenerationRequest",
+        "GeneratedDelegationKeyReceipt", ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE, requires_open_session=False,
+    ),
+    _CommandDefinition(
         "delegation-key.register",
         OperatorCommandKind.REGISTER_DELEGATION_KEY,
         OperatorCommandFamily.DELEGATION_KEY,
@@ -675,6 +711,54 @@ _CANONICAL_COMMANDS = (
         "ApprovalRequestResult",
         ApprovalPolicy.SUBMITS_FOR_APPROVAL,
         CommandPayloadPolicy.APPROVAL_RISK_EVIDENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.create",
+        OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "CreateDesiredTopologyDraft",
+        "DesiredTopologyDraftResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.revise",
+        OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "ReviseDesiredTopologyDraft",
+        "DesiredTopologyDraftResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.select",
+        OperatorCommandKind.SELECT_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "SelectDesiredTopologyDraft",
+        "DesiredTopologyDraftSelectionResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.delete",
+        OperatorCommandKind.DELETE_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "DeleteDesiredTopologyDraft",
+        "DesiredTopologyDraftDeletionResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
         requires_open_session=True,
     ),
     _CommandDefinition(

@@ -26,6 +26,8 @@ ReadPageRequest = getattr(operations, "ReadPageRequest", None)
 RunReadScope = getattr(operations, "RunReadScope", None)
 SessionReadScope = getattr(operations, "SessionReadScope", None)
 TemporalReadCursor = getattr(operations, "TemporalReadCursor", None)
+DraftReadScope = getattr(operations, "DraftReadScope", None)
+RevisionReadScope = getattr(operations, "RevisionReadScope", None)
 WorkspaceReadScope = getattr(operations, "WorkspaceReadScope", None)
 read_collection_spec = getattr(operations, "read_collection_spec", None)
 read_cursor_from_mapping = getattr(operations, "read_cursor_from_mapping", None)
@@ -211,7 +213,12 @@ class ReadPageContractTests(unittest.TestCase):
 
     def test_literal_collection_table_is_source_pinned(self) -> None:
         self.require_contract()
+        self.assertIsNotNone(RevisionReadScope, "missing revision history scope")
         rows = (
+            ("DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS", "desired-topology-draft-revision-preparations", "read.desired-topology-draft-revision-preparations", RevisionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
+            ("DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS", "desired-topology-draft-revision-attempts", "read.desired-topology-draft-revision-attempts", RevisionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "run_id")),
+            ("DESIRED_TOPOLOGY_DRAFTS", "desired-topology-drafts", "read.desired-topology-drafts", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "draft_id")),
+            ("DESIRED_TOPOLOGY_DRAFT_REVISIONS", "desired-topology-draft-revisions", "read.desired-topology-draft-revisions", DraftReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("revision", "graph_id")),
             ("ACTIVITY_SESSIONS", "activity-sessions", "read.activity", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
             ("OPEN_SESSIONS", "open-sessions", "read.sessions", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
             ("SESSION_ACTIONS", "session-actions", "read.session-actions", SessionReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("ordinal", "action_id")),
@@ -224,16 +231,17 @@ class ReadPageContractTests(unittest.TestCase):
             ("RUNTIME_AUTHORITIES", "runtime-authorities", "read.runtime-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
             ("RUNTIME_AUTHORITY_DELIVERIES", "runtime-authority-deliveries", "read.runtime-authority-deliveries", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
             ("INGRESS_AUTHORITIES", "ingress-authorities", "read.ingress-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
+            ("REGISTERED_PRODUCTS", "registered-products", "read.products", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("descriptor_sha256",)),
             ("SECRET_PROVIDERS", "secret-providers", "read.secret-providers", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("provider_id",)),
             ("SECRET_REFERENCES", "secret-references", "read.secret-references", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("registration_id",)),
             ("DELEGATION_SIGNING_KEYS", "delegation-signing-keys", "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
             ("GATEWAY_PROBES", "gateway-probes", "read.gateway-probe-timeline", WorkspaceReadScope, EpochReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
         )
-        self.assertEqual(len(READ_COLLECTION_SPECS), 16)
-        self.assertEqual(len(ReadCollection), 16)
+        self.assertEqual(len(READ_COLLECTION_SPECS), 21)
+        self.assertEqual(len(ReadCollection), 21)
         self.assertEqual(
             len({spec.route_id for spec in READ_COLLECTION_SPECS}),
-            16,
+            21,
         )
         for name, wire, route, scope, cursor, order, position in rows:
             collection = getattr(ReadCollection, name)

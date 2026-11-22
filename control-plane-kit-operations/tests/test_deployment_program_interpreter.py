@@ -88,6 +88,28 @@ class RecordingService:
 
 
 class DeploymentProgramInterpreterTests(unittest.TestCase):
+    def test_prepare_forwards_one_typed_managed_intent_to_planning(self):
+        from control_plane_kit_operations.plan_derivation import ManagedVerificationPlanningIntent
+        intent = ManagedVerificationPlanningIntent.AUTHENTICATED_LOCAL_POSTGRES_AND_HTTP
+        command = replace(self.command(), managed_verification=intent)
+        program, trace = self.program()
+        program.prepare(command)
+        child = next(value for stage, value in trace if stage == "planning")
+        self.assertIs(child.managed_verification, intent)
+        self.assertIsNone(child.http_verification_intent)
+        self.assertEqual(command.descriptor()["managed_verification"], intent.value)
+
+    def test_prepare_forwards_one_typed_http_sample_intent_to_planning(self):
+        from control_plane_kit_operations import planning
+        intent = getattr(planning, "HttpVerificationPlanningIntent", None)
+        self.assertIsNotNone(intent, "typed sample planning intent is missing")
+        command = replace(self.command(), http_verification_intent=intent.AUTHENTICATED_SAMPLES)
+        program, trace = self.program()
+        program.prepare(command)
+        child = next(value for stage, value in trace if stage == "planning")
+        self.assertIs(child.http_verification_intent, intent.AUTHENTICATED_SAMPLES)
+        self.assertEqual(command.descriptor()["http_verification_intent"], "authenticated-samples")
+
     def module(self):
         try:
             return importlib.import_module(
@@ -529,7 +551,7 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
         constructor = inspect.signature(self.module().DeploymentProgram)
         self.assertEqual(
             tuple(constructor.parameters),
-            ("operations", "desired_graphs", "planning", "approvals"),
+            ("operations", "desired_graphs", "planning", "approvals", "saved_preparations"),
         )
         annotations = inspect.get_annotations(
             self.module().DeploymentProgram.prepare,
@@ -547,6 +569,7 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
         source = source_path.read_text(encoding="utf-8")
         allowed_imports = {
             "__future__",
+            "dataclasses",
             "hashlib",
             "json",
             "control_plane_kit_core.policies",
@@ -556,7 +579,9 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
             "control_plane_kit_operations.deployment_program_projections",
             "control_plane_kit_operations.deployment_transitions",
             "control_plane_kit_operations.planning",
+            "control_plane_kit_operations.receiver_lifecycle",
             "control_plane_kit_operations.workflows",
+            "control_plane_kit_operations.saved_deployment_preparation",
         }
         self.assertEqual(self._imported_modules(source), allowed_imports)
         hostile_sources = (

@@ -563,6 +563,13 @@ class GatewayKeyRotationService:
         if not isinstance(command, RequestGatewayKeyRotation):
             raise TypeError("command must be RequestGatewayKeyRotation")
         _scope(command.actor_scopes)
+        if type(command.purpose) is not DelegationKeyPurpose or command.purpose not in (
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+        ):
+            raise GatewayKeyRotationError("rotation purpose is unsupported")
         validate_canonical_utc_timestamp(command.requested_at)
         candidate = _candidate(command)
         with self._unit_of_work_factory() as uow:
@@ -1057,17 +1064,8 @@ def gateway_key_rotation_approval_subject(
 
     if not isinstance(rotation, GatewayKeyRotation):
         raise TypeError("rotation approval subject requires GatewayKeyRotation")
-    return GatewayKeyRotationApprovalSubject(
-        rotation_id=rotation.rotation_id,
-        workspace_id=rotation.workspace_id,
-        gateway_node_id=rotation.gateway_node_id,
-        purpose=rotation.purpose,
-        issuer=rotation.issuer,
-        old_key_id=rotation.old_key_id,
-        maximum_grant_lifetime_seconds=rotation.maximum_grant_lifetime_seconds,
-        clock_skew_seconds=rotation.clock_skew_seconds,
-        rotation_intent_digest=rotation.intent_fingerprint,
-    )
+    from control_plane_kit_operations._gateway_child_association import _rotation_review_subject
+    return _rotation_review_subject(rotation)
 
 
 def _validate_approval_evidence(uow, current, command) -> None:

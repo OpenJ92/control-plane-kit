@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from control_plane_kit_operations.secret_material_provision_attempts import SecretMaterialProvisionAttempt
+
+
+class ProvisionAttemptStore(Protocol):
+    def get(self, workspace_id: str, request_id: str) -> SecretMaterialProvisionAttempt: ...
+
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
@@ -11,25 +17,44 @@ from control_plane_kit_core.secrets import SecretProviderId
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKey,
 )
+from control_plane_kit_operations.delegation_key_generation_attempts import DelegationKeyGenerationAttempt
 from control_plane_kit_operations.read_pages import ReadPage, ReadPageRequest
+from control_plane_kit_operations.products import RegisteredProduct
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
     ActivityRunRecord,
     ApprovalRequestRecord,
+    ExecutionCommandReceiptRecord,
     GraphVersionRecord,
     ObservationRecord,
     OperationSessionRecord,
+    SavedPreparationSourceRecord,
     WorkspaceRecord,
 )
+
+
 from control_plane_kit_operations.secret_providers import (
     RegisteredSecretProvider,
     RegisteredSecretReference,
 )
 
 
+class SavedPreparationSourceStore(Protocol):
+    def get(self, workspace_id: str, session_id: str) -> SavedPreparationSourceRecord | None: ...
+
+
+class GenerationAttemptStore(Protocol):
+    def get(self, workspace_id: str, request_id: str) -> DelegationKeyGenerationAttempt: ...
+
+
 class WorkspaceStore(Protocol):
     def get(self, workspace_id: str) -> WorkspaceRecord: ...
+
+
+class RegisteredProductStore(Protocol):
+    def directory_page(self, request: ReadPageRequest) -> ReadPage[dict[str, object]]: ...
+    def directory_detail(self, workspace_id: str, digest: str) -> RegisteredProduct: ...
 
 
 class GraphTopologyStore(Protocol):
@@ -37,6 +62,13 @@ class GraphTopologyStore(Protocol):
 
 
 class ActivityHistoryStore(Protocol):
+    def overview_plans(
+        self, workspace_id: str, desired_graph_id: str,
+        desired_realized_projection_id: str, desired_graph_revision: int,
+    ) -> tuple[ActivityPlanRecord, ...]: ...
+    def overview_pending_approvals(
+        self, plan_id: str,
+    ) -> tuple[ApprovalRequestRecord, ...]: ...
     def get_session(self, session_id: str) -> OperationSessionRecord: ...
     def sessions_for_workspace(
         self, workspace_id: str
@@ -59,6 +91,10 @@ class ActivityHistoryStore(Protocol):
 
 
 class ExecutionStore(Protocol):
+    def overview_runs(self, plan_id: str) -> tuple[ActivityRunRecord, ...] | None: ...
+    def overview_receipts(
+        self, run_id: str,
+    ) -> tuple[ExecutionCommandReceiptRecord, ...]: ...
     def get_request(self, request_id: str) -> object: ...
     def get_run(self, run_id: str) -> ActivityRunRecord: ...
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...
@@ -146,4 +182,6 @@ class DelegationSigningKeyStore(Protocol):
         workspace_id: str,
         purpose: DelegationKeyPurpose,
         issuer: str,
+        *,
+        limit: int | None = None,
     ) -> tuple[RegisteredDelegationSigningKey, ...]: ...

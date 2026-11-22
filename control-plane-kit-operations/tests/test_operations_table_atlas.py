@@ -400,10 +400,11 @@ class OperationsTableAtlasTests(unittest.TestCase):
         multi_table_sccs = _multi_table_sccs(graph)
 
         self.assertEqual(_parse_graph_edges(text), expected_edges)
-        self.assertEqual(len(multi_table_sccs), 1)
+        self.assertEqual(len(multi_table_sccs), 4)
         self.assertEqual(
-            _parse_marker(text, "multi-table-scc"),
-            multi_table_sccs[0],
+            {_parse_marker(text, "multi-table-scc"), _parse_marker(text, "draft-catalogue-scc"),
+             _parse_marker(text, "receiver-storage-scc"), _parse_marker(text, "configuration-protection-scc")},
+            set(multi_table_sccs),
         )
         self.assertEqual(
             _parse_marker(text, "self-reference"),

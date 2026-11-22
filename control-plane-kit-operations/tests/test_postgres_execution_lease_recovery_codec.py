@@ -583,6 +583,8 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                     '2026-08-15T03:55:00Z')
             """
         )
+        from tests.receiver_scope_history_fixture import empty_plan_payload, insert_recorded_request
+        from psycopg.types.json import Jsonb
         self.connection.execute(
             """
             INSERT INTO cpk_activity_plans
@@ -590,9 +592,9 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                base_realized_projection_id, desired_realized_projection_id,
                status, created_at, payload)
             VALUES ('plan-a', 'session-a', 'graph-current', 'graph-desired',
-                    %s, %s, 'planned', '2026-08-15T03:56:00Z', '{}'::jsonb)
+                    %s, %s, 'planned', '2026-08-15T03:56:00Z', %s)
             """,
-            (lineage["graph-current"], lineage["graph-desired"]),
+            (lineage["graph-current"], lineage["graph-desired"], Jsonb(empty_plan_payload())),
         )
         self.connection.execute(
             """
@@ -615,26 +617,9 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                     'approved', 'plan:approve', '2026-08-15T03:58:00Z')
             """
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', %s,
-                    'operator-a', '2026-08-15T03:59:00Z', 'approval-request-a',
-                    'approval-decision-a', 'execute-a', 'fingerprint-a',
-                    %s, %s, %s, %s)
-            """,
-            (
-                request_status,
-                claim_worker_id,
-                claim_generation,
-                claimed_at,
-                lease_expires_at,
-            ),
-        )
+        insert_recorded_request(self.connection, status=request_status, requested_at="2026-08-15T03:59:00Z",
+            claim_worker_id=claim_worker_id, claim_generation=claim_generation,
+            claimed_at=claimed_at, lease_expires_at=lease_expires_at)
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs

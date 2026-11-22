@@ -156,12 +156,18 @@ class HttpApiRouteContract:
             raise InvalidHttpApiContract("errors must be HttpErrorContract")
 
         if self.safety is HttpOperationSafety.READ_ONLY:
-            if self.method is not HttpMethod.GET:
-                raise InvalidHttpApiContract("read-only routes must use GET")
-            if self.service_role is not ControlPlaneServiceRole.READS:
-                raise InvalidHttpApiContract("read-only routes must use reads service")
-            if self.auth_scope is not HttpAuthScope.READ:
-                raise InvalidHttpApiContract("read-only routes require read scope")
+            if self.method not in {HttpMethod.GET, HttpMethod.POST}:
+                raise InvalidHttpApiContract("read-only routes must use GET or an explicit POST query")
+            if (self.service_role, self.auth_scope) not in {
+                (ControlPlaneServiceRole.READS, HttpAuthScope.READ),
+                (ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN),
+            }:
+                raise InvalidHttpApiContract(
+                    "read-only routes require reads/read or authorization/admin"
+                )
+            if self.method is HttpMethod.POST and (self.service_role, self.auth_scope) != (
+                    ControlPlaneServiceRole.READS, HttpAuthScope.READ):
+                raise InvalidHttpApiContract("read-only POST queries require reads/read")
         elif self.safety is HttpOperationSafety.COMMAND:
             if self.method is HttpMethod.GET:
                 raise InvalidHttpApiContract("command routes must not use GET")
@@ -303,10 +309,16 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
     return tuple(
         _read_route(route_id, path, response_schema)
         for route_id, path, response_schema in (
+            ("read.workspaces", "/workspaces", "WorkspaceInventoryPage"),
             (
                 "read.workspace",
                 "/workspaces/{workspace_id}",
                 "WorkspaceReadResponse",
+            ),
+            (
+                "read.receiver-authoring-context",
+                "/workspaces/{workspace_id}/receiver-authoring-context",
+                "ReceiverAuthoringContextReadResponse",
             ),
             (
                 "read.current-graph",
@@ -317,6 +329,41 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "read.desired-graph",
                 "/workspaces/{workspace_id}/graphs/desired",
                 "GraphReadResponse",
+            ),
+            (
+                "read.desired-topology-drafts",
+                "/workspaces/{workspace_id}/desired-topology-drafts",
+                "DesiredTopologyDraftsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revisions",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
+                "DesiredTopologyDraftRevisionsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}",
+                "DesiredTopologyDraftRevisionReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision-metadata",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/metadata",
+                "DesiredTopologyDraftRevisionMetadataReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision-preparations",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations",
+                "DesiredTopologyDraftRevisionPreparationsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision-attempts",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts",
+                "DesiredTopologyDraftRevisionAttemptsReadResponse",
+            ),
+            (
+                "read.operator-overview",
+                "/workspaces/{workspace_id}/overview",
+                "OperatorOverviewReadResponse",
             ),
             (
                 "read.operator-graph",
@@ -379,9 +426,24 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "DelegationSigningKeyCollectionReadResponse",
             ),
             (
+                "read.delegation-key-generation",
+                "/workspaces/{workspace_id}/delegation-key-generations/{request_id}",
+                "GeneratedDelegationKeyReceipt",
+            ),
+            (
+                "read.secret-material-provision",
+                "/workspaces/{workspace_id}/secret-material-provisions/{request_id}",
+                "ProvisionedSecretMaterialReceipt",
+            ),
+            (
                 "read.gateway-verifier-configuration",
                 "/workspaces/{workspace_id}/gateways/{gateway_node_id}/verifier-configuration",
                 "GatewayVerifierConfigurationReadResponse",
+            ),
+            (
+                "read.workload-verifier-configuration",
+                "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}",
+                "WorkloadVerifierConfigurationReadResponse",
             ),
             (
                 "read.pending-approvals",
@@ -438,6 +500,9 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
                 "RuntimeAuthorityDeliveryDetailReadResponse",
             ),
+            ("read.products", "/workspaces/{workspace_id}/products", "RegisteredProductsReadResponse"),
+            ("read.product-detail", "/workspaces/{workspace_id}/products/{descriptor_sha256}", "RegisteredProductDetailReadResponse"),
+            ("read.product-topology-preview", "/workspaces/{workspace_id}/topology-authoring/preview", "ProductTopologyPreviewResponse"),
             (
                 "read.secret-providers",
                 "/workspaces/{workspace_id}/secret-providers",
@@ -457,6 +522,64 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "read.secret-reference-detail",
                 "/workspaces/{workspace_id}/secret-references/{registration_id}",
                 "SecretReferenceDetailReadResponse",
+            ),
+        )
+    ) + tuple(
+        HttpApiRouteContract(
+            route_id=route_id, method=HttpMethod.GET, path_template=path,
+            service_role=ControlPlaneServiceRole.AUTHORIZATION,
+            auth_scope=HttpAuthScope.ADMIN, safety=HttpOperationSafety.READ_ONLY,
+            request_schema=HttpSchemaRef("WorkspaceAdministrationReadRequest"),
+            response_schema=HttpSchemaRef(schema, max_bytes=1048576 if schema.endswith("Page") else 65536),
+            errors=HttpErrorContract(statuses=(400, 401, 403, 404, 409, 413, 503)),
+        )
+        for route_id, path, schema in (
+            ("read.workspace-permissions", "/workspaces/{workspace_id}/permissions", "WorkspacePermissionPage"),
+            ("read.workspace-permission", "/workspaces/{workspace_id}/permissions/inspect", "WorkspacePermissionRecord"),
+            ("read.workspace-permission-history", "/workspaces/{workspace_id}/permissions/history", "WorkspacePermissionPage"),
+            ("read.managed-runtime-assignments", "/workspaces/{workspace_id}/runtime-management", "ManagedRuntimeAssignmentPage"),
+            ("read.managed-runtime-assignment", "/workspaces/{workspace_id}/runtime-management/inspect", "ManagedRuntimeAssignment"),
+            ("read.managed-runtime-assignment-history", "/workspaces/{workspace_id}/runtime-management/history", "ManagedRuntimeAssignmentPage"),
+        )
+    ) + tuple(
+        HttpApiRouteContract(
+            route_id=route_id,
+            method=HttpMethod.GET,
+            path_template=path,
+            service_role=ControlPlaneServiceRole.AUTHORIZATION,
+            auth_scope=HttpAuthScope.ADMIN,
+            safety=HttpOperationSafety.READ_ONLY,
+            request_schema=HttpSchemaRef(request_schema),
+            response_schema=HttpSchemaRef(
+                response_schema,
+                max_bytes=(
+                    1048576
+                    if response_schema == "ProviderPolicyGrantPageResponse"
+                    else 65536
+                ),
+            ),
+            errors=HttpErrorContract(
+                statuses=(400, 401, 403, 404, 409, 413, 503)
+            ),
+        )
+        for route_id, path, request_schema, response_schema in (
+            (
+                "read.provider-policy-command",
+                "/administration/provider-policies/{logical_provider_id}/commands/{command_id}",
+                "ProviderPolicyCommandReadRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
+            (
+                "read.provider-policy-grant",
+                "/administration/provider-policies/{logical_provider_id}/grants/{grant_id}",
+                "ProviderPolicyGrantReadRequest",
+                "ProviderPolicyGrantReadResponse",
+            ),
+            (
+                "read.provider-policy-grants",
+                "/administration/provider-policies/{logical_provider_id}/grants",
+                "ProviderPolicyGrantListRequest",
+                "ProviderPolicyGrantPageResponse",
             ),
         )
     )
@@ -484,6 +607,48 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
             request_schema,
             response_schema,
         ) in (
+            ("command.workspace-administration.create", "/administration/workspaces",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "CreateWorkspaceAsAdministratorRequest", "WorkspaceAdministrationResult"),
+            ("command.workspace-permission.grant", "/workspaces/{workspace_id}/permissions/grant",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "GrantWorkspacePermissionsRequest", "WorkspacePermissionResult"),
+            ("command.workspace-permission.revoke", "/workspaces/{workspace_id}/permissions/revoke",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "RevokeWorkspacePermissionsRequest", "WorkspacePermissionResult"),
+            ("command.managed-runtime-access.grant", "/workspaces/{workspace_id}/runtime-management/grant",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "GrantManagedRuntimeAccessRequest", "ManagedRuntimeAssignmentResult"),
+            ("command.managed-runtime-access.revoke", "/workspaces/{workspace_id}/runtime-management/revoke",
+                ControlPlaneServiceRole.AUTHORIZATION, HttpAuthScope.ADMIN, HttpOperationSafety.COMMAND,
+                "RevokeManagedRuntimeAccessRequest", "ManagedRuntimeAssignmentResult"),
+            (
+                "command.provider-policy.grant",
+                "/administration/provider-policies/{logical_provider_id}/grants",
+                ControlPlaneServiceRole.AUTHORIZATION,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "GrantProviderPolicyRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
+            (
+                "command.provider-policy.revoke",
+                "/administration/provider-policies/{logical_provider_id}/grants/{grant_id}/revoke",
+                ControlPlaneServiceRole.AUTHORIZATION,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RevokeProviderPolicyRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
+            (
+                "command.provider-policy.reconcile",
+                "/administration/provider-policies/{logical_provider_id}/commands/{command_id}/reconcile",
+                ControlPlaneServiceRole.AUTHORIZATION,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ReconcileProviderPolicyRequest",
+                "ProviderPolicyCommandRecordResponse",
+            ),
             (
                 "command.delegation-key.register",
                 "/workspaces/{workspace_id}/delegation-keys",
@@ -528,6 +693,27 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "GatewayProbeCommandRequest",
                 "GatewayProbeCommandResponse",
+            ),
+            (
+                "command.delegation-key.generate",
+                "/workspaces/{workspace_id}/delegation-keys/generate",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "GenerateDelegationKeyRequest", "GeneratedDelegationKeyReceipt",
+            ),
+            (
+                "command.secret-material.provision",
+                "/workspaces/{workspace_id}/secret-material/provision",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ProvisionSecretMaterialRequest", "ProvisionedSecretMaterialReceipt",
+            ),
+            (
+                "command.delegation-key-generation.reconcile",
+                "/workspaces/{workspace_id}/delegation-key-generations/{request_id}/reconcile",
+                ControlPlaneServiceRole.EXECUTION, HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "ReconcileDelegationKeyGenerationRequest", "GeneratedDelegationKeyReceipt",
             ),
             (
                 "command.workspace.create",
@@ -683,6 +869,42 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "OperationCommandResult",
             ),
             (
+                "command.desired-topology-draft.create",
+                "/workspaces/{workspace_id}/desired-topology-drafts",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "CreateDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftResult",
+            ),
+            (
+                "command.desired-topology-draft.revise",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "ReviseDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftResult",
+            ),
+            (
+                "command.desired-topology-draft.select",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/select",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "SelectDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftSelectionResult",
+            ),
+            (
+                "command.desired-topology-draft.delete",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/delete",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "DeleteDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftDeletionResult",
+            ),
+            (
                 "command.desired-graph.set",
                 "/workspaces/{workspace_id}/graphs/desired",
                 ControlPlaneServiceRole.PLANNING,
@@ -764,6 +986,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "ExecutionRunResponse",
             ),
             (
+                "command.deployment.reobserve-connector",
+                "/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector",
+                ControlPlaneServiceRole.EXECUTION,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "ReobserveConnectorConnectionRequest",
+                "ExecutionRunResponse",
+            ),
+            (
                 "command.graph.advance-current",
                 "/workspaces/{workspace_id}/runs/{run_id}/advance-current-graph",
                 ControlPlaneServiceRole.LIFECYCLE,
@@ -792,12 +1023,24 @@ def _read_route(
 ) -> HttpApiRouteContract:
     return HttpApiRouteContract(
         route_id=route_id,
-        method=HttpMethod.GET,
+        method=HttpMethod.POST if route_id == "read.product-topology-preview" else HttpMethod.GET,
         path_template=path_template,
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
-        response_schema=HttpSchemaRef(response_schema),
+        request_schema=HttpSchemaRef("ProductTopologyPreviewRequest", max_bytes=1048576)
+        if route_id == "read.product-topology-preview" else HttpSchemaRef("WorkspaceInventoryReadRequest", max_bytes=16384)
+        if route_id == "read.workspaces" else HttpSchemaRef("ReceiverAuthoringContextReadRequest", max_bytes=16384)
+        if route_id == "read.receiver-authoring-context" else HttpSchemaRef("EmptyRequest", max_bytes=1024),
+        response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
+            "read.receiver-authoring-context",
+            "read.product-topology-preview",
+            "read.workspaces",
+            "read.products", "read.product-detail",
+            "read.desired-topology-draft-revision-metadata",
+            "read.desired-topology-draft-revision-preparations",
+            "read.desired-topology-draft-revision-attempts",
+        } else 65536),
     )
 
 
@@ -818,8 +1061,12 @@ def _command_route(
         service_role=service_role,
         auth_scope=auth_scope,
         safety=safety,
-        request_schema=HttpSchemaRef(request_schema),
+        request_schema=HttpSchemaRef(request_schema, max_bytes=1048576
+            if route_id == "command.desired-topology-draft.create" else 98304
+            if route_id == "command.secret-material.provision" else 65536),
         response_schema=HttpSchemaRef(response_schema),
+        errors=HttpErrorContract(statuses=(400, 401, 403, 404, 409, 413, 503))
+        if service_role is ControlPlaneServiceRole.AUTHORIZATION else HttpErrorContract(),
     )
 
 

@@ -22,6 +22,7 @@ EXPECTED_OWNERSHIP = """Postgres stores
     - observations
     - authority_secrets
     - gateway_security
+    - product_directory
   -> InstanceReadService (explicit composition only)
     -> CpkServerReadService
       -> shared CpkServerOperationsApplication
@@ -35,7 +36,13 @@ gateway verifier configuration
   includes: bounded public_key_pem, derived public environment
   disclosure: purpose-limited public verification material, not a secret
 all read surfaces
-  forbid: private-key bytes, private-key references, provider credentials, resolved secret values"""
+  forbid: private-key bytes, provider credentials, resolved secret values
+exact delegation-key generation receipt
+  requires: workspace visibility and delegation-key:read
+  includes: authorized destination reference, validated public key/version, distinct provider/admission status
+  omits: provider endpoint/credential references and raw provider responses
+other read surfaces
+  forbid: private-key references"""
 
 FORBIDDEN_CLAIMS = (
     "Postgres stores\n  -> InstanceReadService",

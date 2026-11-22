@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import concurrent.futures
+from dataclasses import replace
 import inspect
 import os
 import unittest
 
 import psycopg
+from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+from tests.test_runtime_effect_translation import _admitted_node_delivery
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.algebra import (
@@ -98,8 +102,49 @@ class Sequence:
         return self._values.pop(0)
 
 
-class ExecutionAdmissionTests(unittest.TestCase):
-    def setUp(self) -> None:
+from tests.lifecycle_lock_fixture import LifecycleLockFixture, LIFECYCLE_LOCK, SESSION_LOCK, WORKSPACE_LOCK
+
+
+class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
+    def test_http_sample_profile_cannot_admit_even_an_otherwise_ready_approved_plan(self):
+        from psycopg.types.json import Jsonb
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, encode_stored_activity_plan
+        profile = getattr(PlanDerivationProfile, "MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1", None)
+        self.assertIsNotNone(profile, "explicit sample profile is missing")
+        self.assertTrue(self._base_plan.ready_for_execution)
+        self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id='plan-a'",
+            (Jsonb(encode_stored_activity_plan(self._base_plan, profile=profile)),))
+        with self.assertRaises(ExecutionAdmissionDenied):
+            self.admission_service().execute(self.command())
+        self.operation_service("other-session", "other-session-action").execute(
+            StartOperationSession("workspace-a", "operator-a", "Other session", IdempotencyKey("other-session")))
+        with self.unit_of_work() as uow:
+            original = uow.stores.activity_history.get_plan("plan-a")
+            uow.stores.activity_history.add_plan(replace(original, plan_id="other-plan", session_id="other-session"))
+            uow.commit()
+        from control_plane_kit_operations.admission import ExecutionAdmissionError
+        with self.assertRaises(ExecutionAdmissionError) as caught:
+            self.admission_service().execute(replace(self.command(), plan_id="other-plan"))
+        self.assertIsInstance(caught.exception, ExecutionAdmissionConflict)
+        self.assertEqual(str(caught.exception), "plan belongs to another session")
+        for relation in ("cpk_execution_requests", "cpk_activity_runs", "cpk_effect_attempts"):
+            self.assertEqual(self.connection.execute(f"SELECT count(*) FROM {relation}").fetchone()[0], 0)
+
+    def test_admission_takes_both_command_keys_then_lifecycle_before_existing_rows(self):
+        self.database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
+        def execute(uow):
+            return ExecutionAdmissionCommandService(uow, clock=lambda: "2026-07-22T12:04:00Z",
+                id_factory=Sequence("request-lock", "action-lock")).execute(self.command())
+        with self.blocked_command(LIFECYCLE_LOCK, ("receiver-lifecycle:workspace-a",), execute) as future:
+            self.assert_row_lockable(SESSION_LOCK, ("session-a",))
+            self.assert_row_lockable(WORKSPACE_LOCK, ("workspace-a",))
+            self.assert_advisory_available("operation-action:session-a:execute-a", available=False)
+            self.assert_advisory_available("execution-admission:workspace-a:execute-a", available=False)
+        self.assertFalse(future.result(timeout=1).replayed)
+
+    def setUp(self, *, accepted_origin=None) -> None:
+        if accepted_origin not in (None, "empty", "runtime"):
+            raise ValueError("unknown fixture origin")
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
             raise RuntimeError(
@@ -107,14 +152,21 @@ class ExecutionAdmissionTests(unittest.TestCase):
                 "./control-plane-kit-operations/test.sh so Docker starts Postgres."
             )
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.document = ProductDescriptorCodec().encode_document(
             self.product("hello-server")
         )
+        if accepted_origin is not None:
+            from tests.accepted_graph_origin_fixture import initialize_receiver_fixture_origin
+            self.database_url = database_url
+            initialize_receiver_fixture_origin(self, runtime_graph=(
+                self.empty_graph("current") if accepted_origin == "runtime" else None))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
+            if accepted_origin is None:
+                stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
             current = GraphVersionRecord.from_graph(
                 graph_id="graph-current",
                 workspace_id="workspace-a",
@@ -126,14 +178,16 @@ class ExecutionAdmissionTests(unittest.TestCase):
             desired = GraphVersionRecord.from_graph(
                 graph_id="graph-desired",
                 workspace_id="workspace-a",
-                version=2,
+                version=3 if accepted_origin == "runtime" else 2,
                 graph=self.product_graph(),
                 created_by="operator-a",
                 created_at="2026-07-22T12:00:30Z",
             )
-            stores.graphs.save(current)
+            if accepted_origin is None:
+                stores.graphs.save(current)
             stores.graphs.save(desired)
-            stores.workspaces.set_current_graph("workspace-a", current.graph_id)
+            if accepted_origin is None:
+                stores.workspaces.set_current_graph("workspace-a", current.graph_id)
             stores.workspaces.set_desired_graph("workspace-a", desired.graph_id)
             unit_of_work.commit()
         self.operation_service("session-a", "action-start").execute(
@@ -203,6 +257,86 @@ class ExecutionAdmissionTests(unittest.TestCase):
             idempotency_key=IdempotencyKey(key),
             readiness=readiness,
         )
+
+    def _seed_authority_delivery_plan(self, *, teardown=False):
+        admission = _admitted_node_delivery()
+        block = instantiate_product(
+            self.document.product, "app",
+            ProductInstanceConfiguration(runtime_authority_deliveries=(admission.delivery,)),
+        )
+        current = compile_topology(DeploymentTopology(
+            "current", DockerRuntime(authority_ref=admission.authority_ref)))
+        desired = compile_topology(DeploymentTopology(
+            "desired", DockerRuntime(authority_ref=admission.authority_ref, children=(block,))))
+        if teardown:
+            current, desired = desired, current
+        self.seed_graphs("delivery-base", current, "delivery-desired", desired)
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.workspaces.set_current_graph("workspace-a", "delivery-base")
+            stores.workspaces.set_desired_graph("workspace-a", "delivery-desired")
+            stores.runtime_authorities.register(
+                workspace_id="workspace-a", authority_ref=admission.authority_ref,
+                runtime_kind=RuntimeKind.DOCKER, authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a", admitted_at="2026-07-22T12:01:00Z",
+            )
+            stores.runtime_authority_deliveries.register(
+                workspace_id="workspace-a", delivery=admission.delivery,
+                admitted_by="operator-a", admitted_at="2026-07-22T12:01:00Z",
+            )
+            unit_of_work.commit()
+        self.seed_plan_truth(
+            plan_id="delivery-plan", approval_request_id="delivery-approval",
+            approval_decision_id="delivery-decision", base_graph_id="delivery-base",
+            desired_graph_id="delivery-desired",
+            plan=compile_activity_plan(diff_graphs(validate_graph(current), validate_graph(desired))),
+        )
+        command = self.command(
+            plan_id="delivery-plan", approval_request_id="delivery-approval",
+            scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE),
+        )
+        return admission, command
+
+    def test_revocation_after_approval_blocks_new_execution_but_preserves_receipt(self) -> None:
+        admission, command = self._seed_authority_delivery_plan()
+        accepted = self.admission_service("delivery-execution", "delivery-action").execute(command)
+        with self.unit_of_work() as unit_of_work:
+            approved_plan = unit_of_work.stores.activity_history.get_plan("delivery-plan")
+        # A distinct approved plan isolates revoked delivery admission from the
+        # existing one-active-request-per-plan constraint. Keep the first receipt.
+        self.seed_plan_truth(
+            plan_id="revoked-plan", approval_request_id="revoked-approval",
+            approval_decision_id="revoked-decision", plan=approved_plan.plan,
+            base_graph_id=approved_plan.base_graph_id,
+            desired_graph_id=approved_plan.desired_graph_id,
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.runtime_authority_deliveries.revoke(
+                "workspace-a", admission.authority_ref)
+            unit_of_work.commit()
+        replay = self.admission_service("unused", "unused").execute(command)
+        self.assertEqual(replay.request, accepted.request)
+        with self.assertRaises(ExecutionAdmissionDenied):
+            self.admission_service("rejected-execution", "rejected-action").execute(
+                self.command(
+                    plan_id="revoked-plan", approval_request_id="revoked-approval",
+                    scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE),
+                    key="fresh-after-revocation",
+                )
+            )
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(KeyError):
+                unit_of_work.stores.execution.get_request("rejected-execution")
+
+    def test_revoked_process_delivery_does_not_block_approved_teardown(self) -> None:
+        admission, command = self._seed_authority_delivery_plan(teardown=True)
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.runtime_authority_deliveries.revoke(
+                "workspace-a", admission.authority_ref)
+            unit_of_work.commit()
+        accepted = self.admission_service("teardown-execution", "teardown-action").execute(command)
+        self.assertIs(accepted.request.status, ExecutionRequestStatus.QUEUED)
+        self.assertEqual(accepted.request.identity.plan_id, "delivery-plan")
 
     def test_approved_current_plan_is_atomically_admitted_without_effect_dependency(
         self,
@@ -438,6 +572,42 @@ class ExecutionAdmissionTests(unittest.TestCase):
                     approval_request_id="approval-request-rejected",
                 )
             )
+
+    def test_cleanup_without_exact_proposal_is_refused_before_clock_ids_or_writes(self) -> None:
+        from tests.configuration_instance_fixture import configuration_cleanup_activity
+
+        activity = configuration_cleanup_activity()
+        self.seed_plan_truth(
+            plan_id="plan-cleanup",
+            approval_request_id="approval-cleanup",
+            approval_decision_id="decision-cleanup",
+            plan=ActivityPlan((activity,)),
+        )
+        before = self.connection.execute(
+            "SELECT action_id FROM cpk_operation_actions ORDER BY action_id"
+        ).fetchall()
+        calls = []
+
+        def forbidden_value():
+            calls.append("clock-or-id")
+            raise AssertionError("cleanup refusal must precede clock and ID allocation")
+
+        service = ExecutionAdmissionCommandService(
+            self.unit_of_work, clock=forbidden_value, id_factory=forbidden_value,
+        )
+        with self.assertRaisesRegex(ExecutionAdmissionConflict, "cleanup requires its exact approved proposal"):
+            service.execute(self.command(
+                plan_id="plan-cleanup", approval_request_id="approval-cleanup",
+                scopes=(PolicyScope.PLAN_EXECUTE,),
+            ))
+        self.assertEqual(calls, [])
+        self.assertEqual(self.connection.execute(
+            "SELECT action_id FROM cpk_operation_actions ORDER BY action_id"
+        ).fetchall(), before)
+        with self.unit_of_work() as unit_of_work:
+            self.assertIsNone(unit_of_work.stores.execution.request_for_idempotency(
+                "workspace-a", "execute-a",
+            ))
 
     def test_empty_plan_is_valid_planning_truth_but_not_executable_work(self) -> None:
         self.seed_plan_truth(

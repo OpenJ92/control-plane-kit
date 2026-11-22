@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import importlib
 import itertools
+import json
 import os
 import unittest
 
@@ -16,9 +18,11 @@ from control_plane_kit_core.identity import (
 )
 from control_plane_kit_core.planning import planning_scenarios
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations.approvals import ApprovalCommandService
-from control_plane_kit_operations.deployment_program import PrepareDeploymentProgram
+from control_plane_kit_operations.deployment_program import (
+    InvalidDeploymentProgramContract, PrepareDeploymentProgram, SavedDesiredTopologyRevision,
+)
 from control_plane_kit_operations.deployment_program_projections import (
     DeploymentApprovalRequired,
     DeploymentNoChanges,
@@ -63,6 +67,27 @@ class FailAfter:
 
 
 class DeploymentProgramPreparationTests(unittest.TestCase):
+    def test_prepare_parent_intent_conflicts_omitted_to_explicit_and_back(self):
+        from control_plane_kit_operations import planning
+        intent = getattr(planning, "HttpVerificationPlanningIntent", None)
+        self.assertIsNotNone(intent, "typed sample planning intent is missing")
+        for explicit_first in (False, True):
+            with self.subTest(explicit_first=explicit_first):
+                self._reset()
+                scenario = self.scenario("no-change")
+                current = self.setup_workspace(scenario.current_graph)
+                command = self.command(scenario.desired_graph, current)
+                explicit = replace(command, http_verification_intent=intent.AUTHENTICATED_SAMPLES)
+                first, changed = (explicit, command) if explicit_first else (command, explicit)
+                result = self.program().prepare(first)
+                self.assertIsInstance(result, DeploymentReviewBlocked if explicit_first else DeploymentNoChanges)
+                before = self._counts()
+                self.assertEqual(before["cpk_approval_requests"], 0)
+                self.assertEqual(self.program().prepare(first), result)
+                with self.assertRaises(self.module().DeploymentProgramStateConflict):
+                    self.program().prepare(changed)
+                self.assertEqual(self._counts(), before)
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -199,6 +224,57 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
             for value in planning_scenarios()
             if value.scenario_id == scenario_id
         )
+
+    def test_inline_proposed_identity_reaches_persisted_plan_and_approval_unchanged(self):
+        scenario = self.scenario("fresh-deployment")
+        current = self.setup_workspace(scenario.current_graph)
+        command = replace(self.command(scenario.desired_graph, current),
+                          proposed_graph_id="client-prepared-revision")
+        result = self.program().prepare(command)
+        self.assertIsInstance(result, DeploymentApprovalRequired)
+        stored = self.connection.execute(
+            "SELECT graph_descriptor FROM cpk_graph_versions WHERE graph_id = %s",
+            ("client-prepared-revision",)).fetchone()
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored[0], DEFAULT_GRAPH_CODEC.encode(command.desired))
+        self.assertEqual(self.connection.execute(
+            "SELECT desired_graph_id FROM cpk_activity_plans").fetchall(),
+            [("client-prepared-revision",)])
+        before = self._counts()
+        replay = self.program().prepare(command)
+        self.assertEqual(replay, result)
+        self.assertEqual(self._counts(), before)
+        with self.assertRaises(self.module().DeploymentProgramStateConflict):
+            self.program().prepare(replace(command, proposed_graph_id="different-proposal"))
+        self.assertEqual(self._counts(), before)
+
+    def test_omitted_proposal_preserves_historical_prepare_intent_digest(self):
+        scenario = self.scenario("no-change")
+        current = self.setup_workspace(scenario.current_graph)
+        command = self.command(scenario.desired_graph, current)
+        legacy = {
+            "profile": "deployment-program-prepare.v1", "workspace_id": "workspace-a",
+            "actor_id": "operator-a", "desired": DEFAULT_GRAPH_CODEC.encode(command.desired),
+            "expected_current": {"authored_graph_id": current.authored_graph_id,
+                                 "realized_projection_id": current.realized_projection_id},
+            "expected_desired": None, "expected_desired_graph_revision": 0,
+            "title": command.title, "approval_comment": command.approval_comment,
+        }
+        expected = hashlib.sha256(json.dumps(legacy, sort_keys=True,
+            separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+        self.program().prepare(command)
+        metadata = self.connection.execute("SELECT metadata FROM cpk_operation_sessions").fetchone()[0]
+        self.assertEqual(metadata["deployment_prepare_intent_sha256"], expected)
+
+    def test_saved_prepare_cannot_override_an_existing_authored_identity(self):
+        current = self.setup_workspace(DeploymentGraph("current"))
+        command = replace(self.command(DeploymentGraph("desired"), current),
+            desired=SavedDesiredTopologyRevision("saved-draft", 1),
+            expected_desired=current, expected_desired_graph_revision=1)
+        before = self._counts()
+        with self.assertRaises(InvalidDeploymentProgramContract):
+            replace(command, proposed_graph_id="pretend-new-identity")
+        self.assertEqual(self._counts(), before)
 
     def test_scenario_matrix_replays_exact_terminal_projection(self) -> None:
         cases = (
@@ -382,8 +458,10 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
         scenario = self.scenario("fresh-deployment")
         cases = (
             ("stale-desired", (1, 1, 1, 1)),
-            ("missing-current", (1, 2, 2, 2)),
-            ("malformed-current", (1, 2, 2, 2)),
+            # #1903 strengthens G1: original current admission precedes child
+            # graph/action publication, including unavailable retained material.
+            ("missing-current", (1, 1, 1, 1)),
+            ("malformed-current", (1, 1, 1, 1)),
         )
         for case, partial_counts in cases:
             with self.subTest(case=case):

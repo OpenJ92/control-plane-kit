@@ -73,6 +73,7 @@ from control_plane_kit_operations.delegation_key_generation import (
     DelegationKeyGenerationEvidence,
     DelegationKeyGenerationService,
     GenerateDelegationSigningKey,
+    admit_generated_in_unit_of_work,
 )
 from control_plane_kit_operations.postgres import (
     DelegationSigningKeyStore,
@@ -856,13 +857,23 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
         self.assertTrue(
             hasattr(provider_store, "require_active_registration_for_update")
         )
-        generated_source = inspect.getsource(
+        wrapper_source = inspect.getsource(
             DelegationKeyGenerationService.admit_generated
         )
+        self.assertLess(
+            wrapper_source.index("with self._unit_of_work_factory()"),
+            wrapper_source.index("admit_generated_in_unit_of_work"),
+        )
+        self.assertLess(
+            wrapper_source.index("admit_generated_in_unit_of_work"),
+            wrapper_source.index("unit_of_work.commit()"),
+        )
+        generated_source = inspect.getsource(admit_generated_in_unit_of_work)
         self.assertLess(
             generated_source.index("lock_purpose_for_lifecycle"),
             generated_source.index("secret_references.register"),
         )
+        self.assertNotIn(".commit(", generated_source)
 
     def test_key_lifecycle_and_authority_selection_use_opposite_purpose_locks(
         self,

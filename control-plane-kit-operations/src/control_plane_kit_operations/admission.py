@@ -20,11 +20,13 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import (
     ActivityId,
+    CleanupConfigurationInstances,
+    ManagementObservationError,
     PlannedActivity,
     ReconcileNode,
     RiskLevel,
+    StartNode,
     SwitchSocketConnection,
-    compile_activity_plan,
 )
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.topology import (
@@ -32,7 +34,6 @@ from control_plane_kit_core.topology import (
     DeploymentGraph,
     GraphDescriptorError,
     GraphValidationError,
-    diff_graphs,
     validate_graph,
 )
 from control_plane_kit_core.types import Protocol, SocketBinding
@@ -60,10 +61,16 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionKind,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.runtime_authorities import (
+    RuntimeAuthorityRegistrationError,
+    _admitted_runtime_authority_deliveries,
+)
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
 )
+from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.plan_derivation import PlanDerivationError, derive_activity_plan
 
 
 class ExecutionAdmissionError(RuntimeError):
@@ -211,11 +218,18 @@ class ExecutionAdmissionCommandService:
         clock: Callable[[], str],
         id_factory: Callable[[], str],
         policy: ApprovalPolicy | None = None,
+        http_sample_support=None,
+        http_sample_registration=None,
+        managed_verification_support=None,
+        managed_verification_registration=None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
         self._id_factory = id_factory
         self._policy = policy or ApprovalPolicy()
+        self._http_sample_support, self._http_sample_registration = http_sample_support, http_sample_registration
+        self._managed_verification_support = managed_verification_support
+        self._managed_verification_registration = managed_verification_registration
 
     def execute(self, command: RequestPlanExecution) -> ExecutionAdmissionResult:
         fingerprint = _fingerprint(command)
@@ -247,6 +261,7 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionIdempotencyConflict(
                     "idempotency key is already owned by another session action"
                 )
+            lifecycle_guard = stores.graphs.lock_receiver_lifecycle(command.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
                 workspace = stores.workspaces.get_for_update(command.workspace_id)
@@ -271,10 +286,35 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionConflict(
                     "only planned activity plans may be admitted"
                 )
+            from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+            if plan.derivation_profile is PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1:
+                from control_plane_kit_operations.runtime_adapter_registration import require_http_sample_execution_support
+                try:
+                    require_http_sample_execution_support(self._http_sample_support, self._http_sample_registration)
+                except Exception:
+                    raise ExecutionAdmissionDenied("HTTP sample execution admission is unavailable") from None
+            if plan.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1:
+                from control_plane_kit_operations.runtime_adapter_registration import require_managed_verification_execution_support
+                try:
+                    require_managed_verification_execution_support(self._managed_verification_support,
+                        self._managed_verification_registration)
+                except Exception:
+                    raise ExecutionAdmissionDenied("managed verification execution admission is unavailable") from None
             if not plan.plan.activities:
                 raise ExecutionAdmissionConflict(
                     "activity plan contains no executable changes"
                 )
+            cleanup = any(type(activity.operation) is CleanupConfigurationInstances
+                for activity in plan.plan.activities)
+            if cleanup:
+                from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+                from control_plane_kit_operations.configuration_cleanup import configuration_cleanup_proposal_fingerprint
+                if (plan.derivation_profile not in (PlanDerivationProfile.CONFIGURATION_CLEANUP_V1,
+                        PlanDerivationProfile.CONFIGURATION_CLEANUP_V2)
+                        or plan.cleanup_proposal is None
+                        or approval.subject != ActivityPlanApprovalSubject(plan.plan_id,
+                            proposal_fingerprint=configuration_cleanup_proposal_fingerprint(plan.cleanup_proposal))):
+                    raise ExecutionAdmissionConflict("cleanup requires its exact approved proposal")
             if not plan.plan.ready_for_execution:
                 raise ExecutionAdmissionConflict("plan contains unresolved review blockers")
             decision = history.approval_decision_for_request(
@@ -358,6 +398,55 @@ class ExecutionAdmissionCommandService:
                 plan.desired_graph_id,
                 command.workspace_id,
             )
+            _require_receiver_execution_provenance(stores, workspace,
+                plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
+            if plan.derivation_profile in (PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,
+                    PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1):
+                from control_plane_kit_operations.http_sample_execution import require_http_sample_plan_support
+                from control_plane_kit_operations.managed_verification_execution import require_managed_verification_plan_support
+                from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
+                try:
+                    from control_plane_kit_operations.graph_authoring import product_references_in_graph
+                    references = sorted(set(product_references_in_graph(current)) | set(product_references_in_graph(desired)),
+                        key=lambda reference: reference.descriptor_sha256.value)
+                    products = tuple(stores.registered_products.get_for_update(command.workspace_id, reference)
+                        for reference in references)
+                    if any(product.status.value != "active" for product in products):
+                        raise ValueError
+                    runtime_refs = sorted({runtime.authority_ref for runtime in desired.runtimes.values()
+                        if runtime.authority_ref is not None}, key=lambda reference: reference.reference_id)
+                    authorities = tuple(stores.runtime_authorities.get_active_for_update(command.workspace_id, reference)
+                        for reference in runtime_refs)
+                    if runtime_management_execution_is_unsupported(current, desired, plan.plan,
+                            registered_products=products, derivation_profile=plan.derivation_profile):
+                        raise ValueError
+                    mixed = plan.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+                    require_support = require_managed_verification_plan_support if mixed else require_http_sample_plan_support
+                    require_support(workspace_id=command.workspace_id, plan=plan,
+                        current=stores.realized_graphs.get(base_projection_id),
+                        desired=stores.realized_graphs.get(desired_projection_id), products=products,
+                        runtime_authorities=authorities,
+                        support=self._managed_verification_support if mixed else self._http_sample_support)
+                except Exception:
+                    message = ("managed verification execution admission is unavailable" if
+                        plan.derivation_profile is PlanDerivationProfile.MANAGED_SQL_HTTP_BOOTSTRAP_V1
+                        else "HTTP sample execution admission is unavailable")
+                    raise ExecutionAdmissionDenied(message) from None
+            if cleanup:
+                from control_plane_kit_operations.configuration_cleanup_planning import revalidate_cleanup_proposal
+                try:
+                    revalidate_cleanup_proposal(stores, plan)
+                    runtime_id = plan.plan.activities[0].operation.instances[0].runtime_id
+                    runtime, other = current.runtimes.get(runtime_id), desired.runtimes.get(runtime_id)
+                    if (runtime is None or other is None or runtime.authority_ref is None
+                            or (runtime.kind, runtime.authority_ref) != (other.kind, other.authority_ref)):
+                        raise ValueError("cleanup runtime pins differ")
+                    registration = stores.runtime_authorities.get_active_for_update(
+                        command.workspace_id, runtime.authority_ref)
+                    if registration.runtime_kind is not runtime.kind:
+                        raise ValueError("cleanup runtime registration differs")
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    raise ExecutionAdmissionConflict("cleanup execution evidence is unavailable") from None
             if rotation_subject is not None:
                 _require_gateway_rotation_child_authorization(
                     stores,
@@ -369,6 +458,26 @@ class ExecutionAdmissionCommandService:
                     desired=desired,
                 )
             _require_authority_use_scopes(command.actor_scopes, current, desired)
+            delivery_admissions = None
+            delivery_denied = False
+            try:
+                for activity in plan.plan.activities:
+                    if not isinstance(activity.operation, (StartNode, ReconcileNode)):
+                        continue
+                    node = desired.nodes[activity.operation.target.node_id]
+                    if not node.runtime_authority_deliveries:
+                        continue
+                    if delivery_admissions is None:
+                        delivery_admissions = stores.runtime_authority_deliveries.list_active(command.workspace_id)
+                    _admitted_runtime_authority_deliveries(
+                        node.runtime_authority_deliveries, delivery_admissions,
+                        workspace_id=command.workspace_id,
+                        authority_ref=desired.runtimes[node.runtime_id].authority_ref,
+                    )
+            except (KeyError, RuntimeAuthorityRegistrationError):
+                delivery_denied = True
+            if delivery_denied:
+                raise ExecutionAdmissionDenied("planned process authority is not admitted")
             required = _readiness_required(plan.plan.activities, current, desired)
             supplied = {item.activity_id for item in command.readiness}
             unexpected = supplied - required
@@ -386,7 +495,7 @@ class ExecutionAdmissionCommandService:
 
             ordinal = history.next_action_ordinal(command.session_id)
             requested_at = self._clock()
-            request = stores.execution.add_request(
+            request = stores.execution._admit_request(
                 ExecutionRequestRecord(
                     identity=ExecutionRequestIdentity(
                         request_id=self._id_factory(),
@@ -403,7 +512,8 @@ class ExecutionAdmissionCommandService:
                         command.idempotency_key.value,
                         fingerprint,
                     ),
-                )
+                ),
+                lifecycle_guard=lifecycle_guard,
             )
             action = history.add_action(
                 OperationActionRecord(
@@ -429,8 +539,25 @@ class ExecutionAdmissionCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
+            _require_receiver_execution_provenance(stores, workspace,
+                plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
             unit_of_work.commit()
             return ExecutionAdmissionResult(request, action)
+
+
+def _require_receiver_execution_provenance(stores, workspace, base_id, base_projection,
+                                          desired_id, desired_projection):
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_reference
+    try:
+        if stores.workspaces.get(workspace.workspace_id) != workspace:
+            raise ValueError("receiver workspace changed")
+        _validate_receiver_reference(stores, workspace, base_id, base_projection)
+        _validate_receiver_reference(stores, workspace, desired_id, desired_projection)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise ExecutionAdmissionConflict("receiver execution provenance is unavailable")
 
 
 def _require_gateway_rotation_child_authorization(
@@ -470,20 +597,13 @@ def _require_gateway_rotation_child_authorization(
         )
     if rotation.new_key_id is None:
         raise ExecutionAdmissionConflict("rotation lacks replacement key identity")
-    if (
-        rotation.approval_request_id != approval.request_id
-        or rotation.approval_decision_id != decision.decision_id
-        or approval.required_scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-        or approval.max_risk is not RiskLevel.HIGH
-        or approval.destructive is not True
-        or decision.request_id != approval.request_id
-        or decision.decision is not ApprovalDecisionKind.APPROVED
-        or decision.scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-    ):
+    from control_plane_kit_operations._gateway_child_association import _require_rotation_approval
+    try:
+        _require_rotation_approval(stores.activity_history, rotation, approval, decision)
+    except ValueError as error:
         raise ExecutionAdmissionDenied(
             "rotation approval evidence does not authorize deployment child"
-        )
-    _require_rotation_approval_action(stores.activity_history, approval, subject)
+        ) from error
     if (
         rotation.workspace_id != workspace.workspace_id
         or plan.base_graph_id != plan.desired_graph_id
@@ -541,50 +661,26 @@ def _require_gateway_rotation_child_authorization(
         plan=plan,
         phase=phase,
     )
+    derivation_invalid = False
     try:
         validated_current = validate_graph(current)
         validated_current.require_valid()
         validated_desired = validate_graph(desired)
         validated_desired.require_valid()
-        canonical_plan = compile_activity_plan(
-            diff_graphs(validated_current, validated_desired)
+        canonical_plan = derive_activity_plan(
+            Deploy(validated_current, validated_desired), profile=plan.derivation_profile,
         )
     except GraphValidationError as error:
         raise ExecutionAdmissionConflict(
             "rotation child graph cannot enter canonical planning"
         ) from error
+    except (PlanDerivationError, ManagementObservationError):
+        derivation_invalid = True
+    if derivation_invalid:
+        raise ExecutionAdmissionConflict("rotation child plan derivation is invalid")
     if plan.plan != canonical_plan:
         raise ExecutionAdmissionConflict(
             "rotation child plan differs from canonical realized projection diff"
-        )
-
-
-def _require_rotation_approval_action(
-    history: Any,
-    approval: ApprovalRequestRecord,
-    subject: GatewayKeyRotationApprovalSubject,
-) -> None:
-    if approval.idempotency_key is None:
-        raise ExecutionAdmissionDenied(
-            "rotation approval request is missing durable action correlation"
-        )
-    action = history.action_for_idempotency(
-        approval.session_id,
-        approval.idempotency_key,
-    )
-    if (
-        action is None
-        or action.action_type is not OperatorCommandKind.REQUEST_APPROVAL
-        or action.payload.get("request_id") != approval.request_id
-        or action.payload.get("subject_kind") != subject.kind.value
-        or action.payload.get("subject_id") != subject.subject_id
-        or action.payload.get("review_digest") != subject.review_digest
-        or action.payload.get("required_scope") != approval.required_scope.value
-        or action.payload.get("max_risk") != approval.max_risk.value
-        or action.payload.get("destructive") is not approval.destructive
-    ):
-        raise ExecutionAdmissionDenied(
-            "rotation approval request action evidence is incomplete"
         )
 
 
@@ -595,31 +691,15 @@ def _require_rotation_publication_action(
     plan: ActivityPlanRecord,
     phase: GatewayKeyRotationDeploymentPhase,
 ) -> None:
-    actions = tuple(
-        action
-        for action in history.actions_for_session(plan.session_id)
-        if action.action_type
-        is OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION
-        and action.payload.get("desired_realized_projection_id")
-        == plan.desired_realized_projection_id
-    )
-    if len(actions) != 1:
-        raise ExecutionAdmissionDenied(
-            f"rotation {phase.value} publication evidence is missing or ambiguous"
-        )
-    evidence = actions[0].payload
-    if (
-        evidence.get("workspace_id") != rotation.workspace_id
-        or evidence.get("authored_graph_id") != plan.base_graph_id
-        or evidence.get("previous_realized_projection_id")
-        != plan.base_realized_projection_id
-        or evidence.get("desired_graph_revision") != plan.desired_graph_revision
-        or evidence.get("source_operation_id") != rotation.rotation_id
-        or evidence.get("source_operation_version") != rotation.version
-    ):
+    from control_plane_kit_operations._gateway_child_association import _rotation_publication_version
+    try:
+        version = _rotation_publication_version(history, rotation, plan)
+        if version != rotation.version:
+            raise ValueError("publication version changed")
+    except ValueError as error:
         raise ExecutionAdmissionDenied(
             f"rotation {phase.value} publication evidence does not match child lineage"
-        )
+        ) from error
 
 
 def _require_authority_use_scopes(

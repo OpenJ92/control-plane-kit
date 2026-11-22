@@ -52,6 +52,7 @@ class PolicyDecisionTests(unittest.TestCase):
             "secret-provider:read",
             "secret-provider:use",
             "secret-provider:revoke",
+            "secret-material:provision",
             "delegation-key:generate",
             "delegation-key:register",
             "delegation-key:read",

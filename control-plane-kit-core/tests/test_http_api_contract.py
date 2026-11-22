@@ -10,23 +10,48 @@ from control_plane_kit_core.operations import (
     HttpOperationSafety,
     HttpSchemaRef,
     InvalidHttpApiContract,
+    operator_command_http_routes,
     operator_read_http_routes,
 )
 
 
 class HttpApiContractTests(unittest.TestCase):
+    def test_connector_reobservation_declares_authenticated_bounded_command(self) -> None:
+        route = next(route for route in operator_command_http_routes()
+            if route.route_id == "command.deployment.reobserve-connector")
+        self.assertEqual(route, HttpApiRouteContract(
+            route_id="command.deployment.reobserve-connector",
+            method=HttpMethod.POST,
+            path_template="/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector",
+            service_role=ControlPlaneServiceRole.EXECUTION,
+            auth_scope=HttpAuthScope.EXECUTION_RUN,
+            safety=HttpOperationSafety.COMMAND,
+            request_schema=HttpSchemaRef("ReobserveConnectorConnectionRequest"),
+            response_schema=HttpSchemaRef("ExecutionRunResponse"),
+        ))
+        self.assertEqual(HttpApiRouteContract.from_descriptor(route.descriptor()), route)
+
     def test_operator_read_routes_preserve_frozen_route_inventory(self) -> None:
-        contract = HttpApiContract(operator_read_http_routes())
+        contract = HttpApiContract(tuple(route for route in operator_read_http_routes()
+            if route.service_role is ControlPlaneServiceRole.READS))
 
         self.assertEqual(
             [(route.method.value, route.path_template) for route in contract.routes],
             [
+                ("GET", "/workspaces"),
                 ("GET", "/workspaces/{workspace_id}"),
                 ("GET", "/workspaces/{workspace_id}/activity"),
                 ("GET", "/workspaces/{workspace_id}/approvals/pending"),
                 ("GET", "/workspaces/{workspace_id}/approvals/{approval_id}"),
                 ("GET", "/workspaces/{workspace_id}/control-surface"),
+                ("GET", "/workspaces/{workspace_id}/delegation-key-generations/{request_id}"),
                 ("GET", "/workspaces/{workspace_id}/delegation-keys"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/metadata"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations"),
                 ("GET", "/workspaces/{workspace_id}/gateway-probes"),
                 ("GET", "/workspaces/{workspace_id}/gateway-probes/{probe_id}"),
                 (
@@ -39,8 +64,12 @@ class HttpApiContractTests(unittest.TestCase):
                 ("GET", "/workspaces/{workspace_id}/ingress-authorities/{authority_ref}"),
                 ("GET", "/workspaces/{workspace_id}/observed-state"),
                 ("GET", "/workspaces/{workspace_id}/operator-graph"),
+                ("GET", "/workspaces/{workspace_id}/overview"),
                 ("GET", "/workspaces/{workspace_id}/plans/{plan_id}"),
                 ("GET", "/workspaces/{workspace_id}/plans/{plan_id}/runs"),
+                ("GET", "/workspaces/{workspace_id}/products"),
+                ("GET", "/workspaces/{workspace_id}/products/{descriptor_sha256}"),
+                ("GET", "/workspaces/{workspace_id}/receiver-authoring-context"),
                 ("GET", "/workspaces/{workspace_id}/runs/{run_id}/events"),
                 ("GET", "/workspaces/{workspace_id}/runtime-authorities"),
                 ("GET", "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}"),
@@ -49,6 +78,7 @@ class HttpApiContractTests(unittest.TestCase):
                     "GET",
                     "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
                 ),
+                ("GET", "/workspaces/{workspace_id}/secret-material-provisions/{request_id}"),
                 ("GET", "/workspaces/{workspace_id}/secret-providers"),
                 (
                     "GET",
@@ -73,6 +103,8 @@ class HttpApiContractTests(unittest.TestCase):
                     "GET",
                     "/workspaces/{workspace_id}/sessions/{session_id}/plans",
                 ),
+                ("POST", "/workspaces/{workspace_id}/topology-authoring/preview"),
+                ("GET", "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}"),
             ],
         )
         self.assertEqual(
@@ -132,12 +164,23 @@ class HttpApiContractTests(unittest.TestCase):
         self.assertEqual(
             [route["path_template"] for route in descriptor["routes"]],
             [
+                "/administration/provider-policies/{logical_provider_id}/commands/{command_id}",
+                "/administration/provider-policies/{logical_provider_id}/grants",
+                "/administration/provider-policies/{logical_provider_id}/grants/{grant_id}",
+                "/workspaces",
                 "/workspaces/{workspace_id}",
                 "/workspaces/{workspace_id}/activity",
                 "/workspaces/{workspace_id}/approvals/pending",
                 "/workspaces/{workspace_id}/approvals/{approval_id}",
                 "/workspaces/{workspace_id}/control-surface",
+                "/workspaces/{workspace_id}/delegation-key-generations/{request_id}",
                 "/workspaces/{workspace_id}/delegation-keys",
+                "/workspaces/{workspace_id}/desired-topology-drafts",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/metadata",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations",
                 "/workspaces/{workspace_id}/gateway-probes",
                 "/workspaces/{workspace_id}/gateway-probes/{probe_id}",
                 "/workspaces/{workspace_id}/gateways/{gateway_node_id}/verifier-configuration",
@@ -147,13 +190,24 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/ingress-authorities/{authority_ref}",
                 "/workspaces/{workspace_id}/observed-state",
                 "/workspaces/{workspace_id}/operator-graph",
+                "/workspaces/{workspace_id}/overview",
+                "/workspaces/{workspace_id}/permissions",
+                "/workspaces/{workspace_id}/permissions/history",
+                "/workspaces/{workspace_id}/permissions/inspect",
                 "/workspaces/{workspace_id}/plans/{plan_id}",
                 "/workspaces/{workspace_id}/plans/{plan_id}/runs",
+                "/workspaces/{workspace_id}/products",
+                "/workspaces/{workspace_id}/products/{descriptor_sha256}",
+                "/workspaces/{workspace_id}/receiver-authoring-context",
                 "/workspaces/{workspace_id}/runs/{run_id}/events",
                 "/workspaces/{workspace_id}/runtime-authorities",
                 "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}",
                 "/workspaces/{workspace_id}/runtime-authority-deliveries",
                 "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
+                "/workspaces/{workspace_id}/runtime-management",
+                "/workspaces/{workspace_id}/runtime-management/history",
+                "/workspaces/{workspace_id}/runtime-management/inspect",
+                "/workspaces/{workspace_id}/secret-material-provisions/{request_id}",
                 "/workspaces/{workspace_id}/secret-providers",
                 "/workspaces/{workspace_id}/secret-providers/{provider_id}",
                 "/workspaces/{workspace_id}/secret-references",
@@ -163,6 +217,8 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/sessions/{session_id}/actions",
                 "/workspaces/{workspace_id}/sessions/{session_id}/approvals",
                 "/workspaces/{workspace_id}/sessions/{session_id}/plans",
+                "/workspaces/{workspace_id}/topology-authoring/preview",
+                "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}",
             ],
         )
         self.assertEqual(HttpApiContract.from_descriptor(descriptor), contract)
@@ -199,12 +255,19 @@ class HttpApiContractTests(unittest.TestCase):
         with self.assertRaises(InvalidHttpApiContract):
             HttpApiRouteContract(
                 route_id="read.bad",
-                method=HttpMethod.POST,
+                method=HttpMethod.DELETE,
                 path_template="/workspaces/{workspace_id}",
                 service_role=ControlPlaneServiceRole.READS,
                 auth_scope=HttpAuthScope.READ,
                 safety=HttpOperationSafety.READ_ONLY,
             )
+
+        preview = next(route for route in operator_read_http_routes()
+            if route.route_id == "read.product-topology-preview")
+        self.assertEqual(HttpApiRouteContract.from_descriptor(preview.descriptor()), preview)
+        with self.assertRaises(InvalidHttpApiContract):
+            HttpApiRouteContract.from_descriptor({**preview.descriptor(),
+                "service_role": "authorization", "auth_scope": "admin"})
 
         with self.assertRaises(InvalidHttpApiContract):
             HttpApiRouteContract(
