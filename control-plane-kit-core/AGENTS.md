@@ -25,6 +25,11 @@ It does not own Postgres stores, durable execution, HTTP/MCP servers, Docker or
 cloud interpreters, package-owned products, provider truth, or live effects.
 It must not import `control_plane_kit_operations` or external CPK repositories.
 
+A runtime record groups nodes. A runtime authority reference selects the
+workspace registration the interpreter may use. Keep those concepts distinct
+when validating drafts and planning executable activities. The
+[Hello example](../README.md#start-with-one-deployment) uses both.
+
 ## Tests
 
 Run executable validation only through:

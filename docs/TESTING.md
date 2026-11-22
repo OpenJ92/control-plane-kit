@@ -162,6 +162,17 @@ Normal package suites are repeatable. One-shot execution, exclusive leases,
 sealed wrappers, hash ledgers, and exhaustive inventory evidence apply only
 when a shared/provider/destructive gate explicitly requires them.
 
+## Example: qualifying the installed Hello workflow
+
+A fresh MCP client reading back the intended workspace and revision proves
+client access to that installation. A worker run and its resulting Current
+graph establish the recorded deployment outcome. An HTTP request through mux
+returning the expected greeting establishes the application route. To claim
+public reachability, make the request through the intended public hostname.
+Record which installation supplied each observation. A disposable run can
+qualify the code before installation; a later installed run has its own
+workspace, grant, plan and provider evidence.
+
 ## Evidence Classes
 
 ### Package
