@@ -23,7 +23,7 @@ class RuntimeEffectOriginStore:
     def __init__(self, connection):
         self._connection = connection
 
-    def get(self, identity):
+    def get(self, identity, *, receipt_identity_reader=None):
         if type(identity) is not EffectAttemptIdentity:
             raise OperationsRecordError("original runtime identity is invalid")
         identity.__post_init__()
@@ -33,7 +33,7 @@ class RuntimeEffectOriginStore:
             return None
         if len(rows) != 1:
             raise OperationsRecordError("original runtime selection is ambiguous")
-        return self._read(rows[0])
+        return self._read(rows[0], receipt_identity_reader=receipt_identity_reader)
 
     def insert_absent(self, record):
         self._require_owners(record, fresh=True)
@@ -46,14 +46,14 @@ class RuntimeEffectOriginStore:
             raise OperationsRecordError("original runtime selection already exists")
         return record
 
-    def _read(self, row):
+    def _read(self, row, *, receipt_identity_reader=None):
         record = RuntimeEffectOriginRecord.from_descriptor(row[-1])
         if row != _values(record):
             raise OperationsRecordError("original runtime selection is incongruent")
-        self._require_owners(record)
+        self._require_owners(record, receipt_identity_reader=receipt_identity_reader)
         return record
 
-    def _require_owners(self, record, *, fresh=False):
+    def _require_owners(self, record, *, fresh=False, receipt_identity_reader=None):
         from .execution import PostgresExecutionStore
         if type(record) is not RuntimeEffectOriginRecord:
             raise OperationsRecordError("original runtime selection is invalid")
@@ -61,7 +61,11 @@ class RuntimeEffectOriginStore:
         execution = PostgresExecutionStore(self._connection)
         original = EffectAttemptIntentStore(self._connection).get(record.identity)
         attempt = EffectAttemptStore(self._connection).get(record.identity)
-        parent = execution.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+        if fresh and receipt_identity_reader is not None:
+            raise OperationsRecordError("historical projection cannot admit runtime effects")
+        parent = (execution.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+            if receipt_identity_reader is None else receipt_identity_reader(self._connection,
+                record.command.run_id, record.command.idempotency_key))
         run = execution.get_run(record.command.run_id)
         request = execution.get_request(run.admission.request_id)
         runtime = RuntimeAuthorityStore(self._connection).get_registration(record.workspace_id,
@@ -95,7 +99,7 @@ def _values(record):
         record.original_event_id, record.runtime_registration_id, record.descriptor())
 
 
-def validate_runtime_effect_origin_rows(connection):
+def validate_runtime_effect_origin_rows(connection, *, receipt_identity_reader=None):
     from .current_data_validation import CurrentRowDrift
     store, after = RuntimeEffectOriginStore(connection), None
     try:
@@ -105,7 +109,7 @@ def validate_runtime_effect_origin_rows(connection):
                 + ' ORDER BY run_id COLLATE "C",activity_id COLLATE "C",attempt LIMIT 100',
                 () if after is None else after).fetchall()
             for row in rows:
-                store._read(row)
+                store._read(row, receipt_identity_reader=receipt_identity_reader)
                 after = row[:3]
             if len(rows) < 100:
                 return

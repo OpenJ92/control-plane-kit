@@ -59,6 +59,8 @@ CREATE TABLE cpk_execution_command_receipts (
     completed_at timestamp with time zone,
     result jsonb,
     managed_intent jsonb,
+    diagnostic jsonb,
+    CONSTRAINT cpk_execution_command_receipts_diagnostic_check CHECK (((diagnostic IS NULL) OR ((receipt_status = 'incomplete'::text) AND (jsonb_typeof(diagnostic) = 'object'::text) AND (octet_length((diagnostic)::text) <= 1024)))),
     CONSTRAINT cpk_execution_command_receipts_managed_intent_check CHECK (((managed_intent IS NULL) OR ((jsonb_typeof(managed_intent) = 'object'::text) AND (octet_length((managed_intent)::text) <= 8192)))),
     CONSTRAINT cpk_execution_command_receipts_idempotency_key_check CHECK (((char_length(idempotency_key) >= 1) AND (char_length(idempotency_key) <= 200))),
     CONSTRAINT cpk_execution_command_receipts_intent_fingerprint_check CHECK (((intent_fingerprint COLLATE "C") ~ '^[0-9a-f]{64}$'::text)),

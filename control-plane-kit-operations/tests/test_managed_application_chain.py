@@ -359,7 +359,9 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
         self.connection = psycopg.connect(database_url, autocommit=True)
         self.addCleanup(self.connection.close)
         install_schema(self.connection)
-        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.connection.execute(
+            "TRUNCATE TABLE cpk_workspaces, cpk_workspace_permission_installation CASCADE"
+        )
         self.tracker = TrackingUnitOfWorkFactory(database_url)
         self.unit_of_work = self.tracker
         self.health = RecordingManagedHealth(self)
@@ -654,7 +656,7 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
     def check_initial_prepared(self):
         self.assertEqual(self.plan_descriptor["desired_graph_id"], self.authored_revision)
 
-    async def prepare_and_start(self):
+    async def prepare_and_start(self, *, start_run=True):
         self.require_managed_interface()
         self.app = self.application()
         workspace = await self.invoke("command.workspace.create", ControlPlaneServiceRole.PLANNING,
@@ -701,9 +703,10 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
             path={"workspace_id": "workspace-a", "run_id": self.request_id}, principal=self.worker,
             payload={"lease_duration_seconds": 1800, "idempotency_key": "claim"})
         self.run_id, self.generation = claimed["run_id"], claimed["claim_generation"]
-        await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
-            path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
-            payload={"claim_generation": self.generation, "idempotency_key": "start"})
+        if start_run:
+            await self.invoke("command.run.start", ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": self.run_id}, principal=self.worker,
+                payload={"claim_generation": self.generation, "idempotency_key": "start"})
 
     async def execute_one(self):
         self.execution_number += 1
@@ -751,6 +754,31 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
 
 
 class ManagedApplicationChainTests(ManagedApplicationFixture):
+    def test_fixture_resets_installation_identity_between_cases(self):
+        import control_plane_kit_operations as operations
+        from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind
+        from control_plane_kit_operations.workflows import IdempotencyKey
+
+        admin = PrincipalIdentity("fixture-isolation", "admin", PrincipalKind.OPERATOR)
+
+        def initialize(fixture, installation):
+            policy = operations.WorkspaceAdministrationPolicy(installation, (admin,), (admin,))
+            service = operations.WorkspacePermissionCommandService(fixture.unit_of_work,
+                administration_policy=policy, clock=now, id_factory=fixture.ids["session"])
+            return service.initialize(policy.authorize(AuthenticatedPrincipal(admin)),
+                idempotency_key=IdempotencyKey("initialize"))
+
+        initialize(self, "fixture-first")
+        with self.assertRaises(operations.WorkspacePermissionConflict):
+            initialize(self, "fixture-second")
+        following = ManagedApplicationFixture()
+        self.addCleanup(following.doCleanups)
+        following.setUp()
+        initialize(following, "fixture-second")
+        self.assertEqual(following.connection.execute(
+            "SELECT installation_id FROM cpk_workspace_permission_installation"
+        ).fetchall(), [("fixture-second",)])
+
     async def test_empty_deployment_waits_then_explicit_reads_finish_without_recreating(self):
         await self.reach_native_wait()
         first = self.native_attempt(1)

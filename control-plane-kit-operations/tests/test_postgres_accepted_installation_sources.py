@@ -710,8 +710,11 @@ class PostgresTwoIngressAcceptanceTests(ManagedApplicationFixture):
             self.assertEqual(changed.rowcount, 1)
         self.assertIsNone(read())
         before = self.rows("cpk_effect_attempts")
-        with self.assertRaisesRegex(ExecutionCoordinatorConflict, "configuration material is unavailable"):
+        from control_plane_kit_operations.coordinator import ExecutionCommandPreparationFailure
+        with self.assertRaises(ExecutionCommandPreparationFailure) as caught:
             await self.execute_one()
+        self.assertEqual(caught.exception.category, "material-unavailable")
+        self.assertEqual(caught.exception.diagnostic_status, "recorded")
         self.assertEqual(self.rows("cpk_effect_attempts"), before)
         self.assertEqual(captured, [])
         self.assertEqual(self.health.native_reads, [])

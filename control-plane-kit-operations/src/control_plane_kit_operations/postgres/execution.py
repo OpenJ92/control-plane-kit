@@ -47,6 +47,7 @@ from control_plane_kit_operations.records import (
     ClaimIdentity,
     ExecutionIdempotency,
     CoordinatorStatus,
+    ExecutionCommandDiagnostic,
     ExecutionCommandReceiptRecord,
     ExecutionCommandReceiptStatus,
     ExecutionCommandResultRecord,
@@ -372,7 +373,8 @@ class PostgresExecutionStore:
         _require_invocation_owners(self, record)
         return record
 
-    def original_final_invocation(self, identity, *, original_event_id, request_fingerprint, kind):
+    def original_final_invocation(self, identity, *, original_event_id, request_fingerprint, kind,
+            receipt_identity_reader=None):
         """Bounded original candidates; malformed history never becomes absence."""
         from control_plane_kit_core.operations import EffectAttemptIdentity
         if (type(identity) is not EffectAttemptIdentity or kind not in (
@@ -404,7 +406,7 @@ class PostgresExecutionStore:
         if (record.original_event_id != original_event_id
                 or record.request_fingerprint != request_fingerprint):
             raise ExecutionInvocationConflict(record.invocation_id)
-        _require_invocation_owners(self, record)
+        _require_invocation_owners(self, record, receipt_identity_reader=receipt_identity_reader)
         return record
 
     def ordinary_verification_invocations(self, marker, profile):
@@ -529,6 +531,8 @@ class PostgresExecutionStore:
     ) -> ExecutionCommandReceiptRecord:
         if type(record) is not ExecutionCommandReceiptRecord:
             raise OperationsRecordError("execution command receipt must be typed")
+        if record.diagnostic is not None:
+            raise OperationsRecordError("diagnostic requires the fenced first-write owner")
         sql = """
             INSERT INTO cpk_execution_command_receipts
               (run_id, idempotency_key, intent_fingerprint, worker_id,
@@ -578,8 +582,8 @@ class PostgresExecutionStore:
                 read.query("SELECT 1 FROM cpk_execution_command_receipts WHERE " + where + " FOR UPDATE",
                     params, records=1, octets=1, cells=1)
             names = ("run_id", "idempotency_key", "intent_fingerprint", "worker_id", "authority_scopes",
-                "claim_generation", "max_effects", "admitted_at", "initial_run", "receipt_status", "completed_at", "result", "managed_intent")
-            columns = tuple((name, "json" if name in ("authority_scopes", "initial_run", "result", "managed_intent")
+                "claim_generation", "max_effects", "admitted_at", "initial_run", "receipt_status", "completed_at", "result", "managed_intent", "diagnostic")
+            columns = tuple((name, "json" if name in ("authority_scopes", "initial_run", "result", "managed_intent", "diagnostic")
                 else "time" if name in ("admitted_at", "completed_at") else "int" if name == "claim_generation"
                 else "text", 65536) for name in names)
             rows = read.bounded_rows("cpk_execution_command_receipts", columns, where, params)
@@ -589,7 +593,7 @@ class PostgresExecutionStore:
             f"""
             SELECT run_id, idempotency_key, intent_fingerprint, worker_id,
                    authority_scopes, claim_generation, max_effects, admitted_at,
-                   initial_run, receipt_status, completed_at, result, managed_intent
+                   initial_run, receipt_status, completed_at, result, managed_intent, diagnostic
             FROM cpk_execution_command_receipts
             WHERE run_id = %s AND idempotency_key = %s
             {lock}
@@ -614,22 +618,22 @@ class PostgresExecutionStore:
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
             names = ("run_id", "idempotency_key", "intent_fingerprint", "worker_id", "authority_scopes",
-                "claim_generation", "max_effects", "admitted_at", "initial_run", "receipt_status", "completed_at", "result", "managed_intent")
+                "claim_generation", "max_effects", "admitted_at", "initial_run", "receipt_status", "completed_at", "result", "managed_intent", "diagnostic")
             valid = " AND ".join(f"({name} IS NULL OR octet_length({name}::text)<=65536)" for name in names)
             projection = ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in names)
             rows = read.query("WITH updated AS (UPDATE cpk_execution_command_receipts "
                 "SET receipt_status='completed', completed_at=%s, result=%s::jsonb "
                 "WHERE run_id=%s AND idempotency_key=%s AND intent_fingerprint=%s "
-                "AND receipt_status='incomplete' AND completed_at IS NULL AND result IS NULL "
+                "AND receipt_status='incomplete' AND completed_at IS NULL AND result IS NULL AND diagnostic IS NULL "
                 "RETURNING *) SELECT " + projection + f",({valid}) FROM updated",
                 (encode_postgres_timestamp(completed_at), _json(_result_descriptor(result)),
-                    run_id, idempotency_key, intent_fingerprint), records=1, octets=13 * 65536 + 1, cells=14)
+                    run_id, idempotency_key, intent_fingerprint), records=1, octets=14 * 65536 + 1, cells=15)
             if not rows:
                 return None
             if rows[0][-1] is not True:
                 raise OperationsRecordError("execution command receipt is unavailable")
             values = list(rows[0][:-1])
-            for index in (4, 8, 11, 12):
+            for index in (4, 8, 11, 12, 13):
                 values[index] = None if values[index] is None else json.loads(values[index])
             for index in (7, 10):
                 values[index] = None if values[index] is None else datetime.fromisoformat(values[index])
@@ -646,9 +650,10 @@ class PostgresExecutionStore:
               AND receipt_status = 'incomplete'
               AND completed_at IS NULL
               AND result IS NULL
+              AND diagnostic IS NULL
             RETURNING run_id, idempotency_key, intent_fingerprint, worker_id,
                       authority_scopes, claim_generation, max_effects, admitted_at,
-                      initial_run, receipt_status, completed_at, result, managed_intent
+                      initial_run, receipt_status, completed_at, result, managed_intent, diagnostic
             """,
             (
                 encode_postgres_timestamp(completed_at),
@@ -659,6 +664,61 @@ class PostgresExecutionStore:
             ),
         ).fetchone()
         return None if row is None else _command_receipt(row)
+
+    def command_diagnostic_frontier(self, run_id: str) -> tuple[int, str]:
+        """Read one committed event; callers hold request/run locks when writing."""
+        _require_run_id(run_id)
+        row = self._connection.execute(
+            "SELECT ordinal, occurred_at FROM cpk_activity_events "
+            "WHERE run_id=%s ORDER BY ordinal DESC LIMIT 1", (run_id,)).fetchone()
+        if row is None:
+            raise OperationsRecordError("diagnostic event frontier is unavailable")
+        return row[0], decode_postgres_timestamp(row[1])
+
+    def record_command_diagnostic(self, run_id: str, idempotency_key: str, *,
+            intent_fingerprint: str, fence: ExecutionLeaseFence,
+            diagnostic: ExecutionCommandDiagnostic) -> ExecutionCommandReceiptRecord:
+        """One immutable fact under current claim ownership; caller owns commit."""
+        if type(diagnostic) is not ExecutionCommandDiagnostic or type(fence) is not ExecutionLeaseFence:
+            raise OperationsRecordError("execution command diagnostic identity is invalid")
+        diagnostic.__post_init__()
+        self.lock_command_idempotency(run_id, idempotency_key)
+        locator = self.get_run(run_id)
+        request = self.get_request_for_update(locator.admission.request_id)
+        run = self.get_run_for_update(run_id)
+        receipt = self.command_receipt_for_idempotency(run_id, idempotency_key, for_update=True)
+        # Observe after every potentially blocking ownership lock, not before it.
+        observation = self.observe_request_lease_for_update(request.identity.request_id)
+        request = observation.request
+        if (receipt is None or receipt.status is not ExecutionCommandReceiptStatus.INCOMPLETE
+                or receipt.intent_fingerprint != intent_fingerprint
+                or receipt.worker_id != fence.worker_id or receipt.claim_generation != fence.generation
+                or PolicyScope.EXECUTION_OPERATE not in receipt.authority_scopes
+                or request.status is not ExecutionRequestStatus.CLAIMED or request.claim is None
+                or request.claim.fence != fence or observation.expired
+                or run.status not in (ActivityRunStatus.CLAIMED, ActivityRunStatus.RUNNING)
+                or run.admission != receipt.initial_run.admission or run.plan_id != receipt.initial_run.plan_id
+                or run.retry != receipt.initial_run.retry or run.created_at != receipt.initial_run.created_at
+                or run.admission.request_id != request.identity.request_id
+                or run.plan_id != request.identity.plan_id
+                or (receipt.managed_intent is not None
+                    and receipt.managed_intent.workspace_id != request.identity.workspace_id)):
+            raise OperationsRecordError("execution command diagnostic ownership is invalid")
+        if receipt.diagnostic is not None:
+            if receipt.diagnostic != diagnostic:
+                raise OperationsRecordError("execution command diagnostic conflicts with retained evidence")
+            return receipt
+        instant = lambda value: datetime.fromisoformat(value.replace("Z", "+00:00"))
+        frontier, event_at = self.command_diagnostic_frontier(run_id)
+        if (diagnostic.last_committed_event_ordinal != frontier
+                or not max(instant(receipt.admitted_at), instant(request.claim.claimed_at), instant(event_at))
+                    <= instant(diagnostic.occurred_at) <= instant(observation.observed_at)
+                or instant(diagnostic.occurred_at) >= instant(request.claim.lease_expires_at)):
+            raise OperationsRecordError("execution command diagnostic frontier is invalid")
+        self._connection.execute(
+            "UPDATE cpk_execution_command_receipts SET diagnostic=%s::jsonb "
+            "WHERE run_id=%s AND idempotency_key=%s", (_json(diagnostic.descriptor()), run_id, idempotency_key))
+        return self.command_receipt_for_idempotency(run_id, idempotency_key)
 
     def get_request(self, request_id: str) -> ExecutionRequestRecord:
         from .configuration_cleanup_phase_read_bounds import _phase_context
@@ -1158,7 +1218,7 @@ class PostgresExecutionStore:
             """
             SELECT run_id, idempotency_key, intent_fingerprint, worker_id,
                    authority_scopes, claim_generation, max_effects, admitted_at,
-                   initial_run, receipt_status, completed_at, result, managed_intent
+                   initial_run, receipt_status, completed_at, result, managed_intent, diagnostic
             FROM cpk_execution_command_receipts AS receipt
             WHERE receipt.run_id = %s
               AND (
@@ -1544,7 +1604,53 @@ def _result_from_descriptor(value: object) -> ExecutionCommandResultRecord:
         ) from None
 
 
+def historical_command_receipt_identity(connection, run_id, idempotency_key):
+    """Identity-only projection for an already verified pre-diagnostic schema.
+
+    Not a current receipt read or schema fallback; upgrade validators select it
+    explicitly after exact historical contract admission. It cannot write.
+    """
+    _require_run_id(run_id)
+    _require_command_key(idempotency_key)
+    row = connection.execute("SELECT run_id,idempotency_key,intent_fingerprint,worker_id,"
+        "authority_scopes,claim_generation,max_effects,admitted_at,initial_run,receipt_status,"
+        "completed_at,result,managed_intent FROM cpk_execution_command_receipts "
+        "WHERE run_id=%s AND idempotency_key=%s", (run_id, idempotency_key)).fetchone()
+    return None if row is None else _command_receipt((*row, None))
+
+
+def validate_command_diagnostic_rows(connection) -> None:
+    """Validate retained facts even when a command has no invocation children."""
+    from .current_data_validation import CurrentRowDrift
+    store = PostgresExecutionStore(connection)
+    after = ("", "")
+    try:
+        while True:
+            rows = connection.execute(
+                "SELECT run_id,idempotency_key FROM cpk_execution_command_receipts "
+                "WHERE diagnostic IS NOT NULL AND (run_id,idempotency_key)>(%s,%s) "
+                "ORDER BY run_id,idempotency_key LIMIT 100", after).fetchall()
+            for run_id, key in rows:
+                receipt = store.command_receipt_for_idempotency(run_id, key)
+                run = store.get_run(run_id)
+                diagnostic = receipt.diagnostic
+                event = connection.execute("SELECT occurred_at FROM cpk_activity_events "
+                    "WHERE run_id=%s AND ordinal=%s", (run_id, diagnostic.last_committed_event_ordinal)).fetchone()
+                if (event is None or run.admission != receipt.initial_run.admission
+                        or run.plan_id != receipt.initial_run.plan_id or run.retry != receipt.initial_run.retry
+                        or run.created_at != receipt.initial_run.created_at
+                        or event[0] > encode_postgres_timestamp(diagnostic.occurred_at)):
+                    raise OperationsRecordError("retained command diagnostic is incongruent")
+            if len(rows) < 100:
+                return
+            after = rows[-1]
+    except (KeyError, ValueError, TypeError, AttributeError):
+        raise CurrentRowDrift("retained execution command diagnostic is invalid") from None
+
+
 def _command_receipt(row: tuple[Any, ...]) -> ExecutionCommandReceiptRecord:
+    if type(row) is not tuple or len(row) != 14:
+        raise OperationsRecordError("persisted execution command receipt is malformed")
     scopes = row[4]
     if type(scopes) is not list:
         raise OperationsRecordError("persisted execution command scopes are malformed")
@@ -1563,6 +1669,7 @@ def _command_receipt(row: tuple[Any, ...]) -> ExecutionCommandReceiptRecord:
             completed_at=_decode_optional_timestamp(row[10]),
             result=None if row[11] is None else _result_from_descriptor(row[11]),
             managed_intent=None if row[12] is None else ManagedExecutionCommandIntent.from_descriptor(row[12]),
+            diagnostic=None if row[13] is None else ExecutionCommandDiagnostic.from_descriptor(row[13]),
         )
     except (TypeError, ValueError):
         raise OperationsRecordError(
@@ -1795,7 +1902,7 @@ def _invocation_row(row):
         raise ExecutionInvocationConflict() from None
 
 
-def _require_invocation_owners(store, record, *, fresh=False):
+def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_reader=None):
     """Check immutable joins; semantic permission remains with the admitting owner."""
     from control_plane_kit_core.operations import EffectAttemptIdentity
     from control_plane_kit_core.planning import ActivityId
@@ -1805,9 +1912,14 @@ def _require_invocation_owners(store, record, *, fresh=False):
     from .secret_provider_store import SecretUseAuthorizationStore
     try:
         from .ingress_invocation_store import require_ingress_invocation_owner
-        if require_ingress_invocation_owner(store._connection, record, fresh=fresh):
+        if require_ingress_invocation_owner(store._connection, record, fresh=fresh,
+                receipt_identity_reader=receipt_identity_reader):
             return
-        parent = store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+        if fresh and receipt_identity_reader is not None:
+            raise ExecutionInvocationConflict(record.invocation_id)
+        parent = (store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+            if receipt_identity_reader is None else receipt_identity_reader(store._connection,
+                record.command.run_id, record.command.idempotency_key))
         if (parent is None or parent.intent_fingerprint != record.command.intent_fingerprint
                 or parent.managed_intent is None or parent.managed_intent.workspace_id != record.workspace_id
                 or (fresh and parent.status is not ExecutionCommandReceiptStatus.INCOMPLETE)):
@@ -1856,7 +1968,8 @@ def _require_invocation_owners(store, record, *, fresh=False):
             else:
                 original = store.original_final_invocation(identity,
                     original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                    kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                    kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
+                        receipt_identity_reader=receipt_identity_reader)
                 if original is None or original.command != record.command:
                     raise ExecutionInvocationConflict(record.invocation_id)
             runtime = RuntimeAuthorityStore(store._connection).get_registration(
@@ -1869,7 +1982,8 @@ def _require_invocation_owners(store, record, *, fresh=False):
                 raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.RECONCILIATION_OBSERVATION:
             from .runtime_observation_source import original_observation_source
-            original, _, _, target = original_observation_source(store._connection, intent)
+            original, _, _, target = original_observation_source(store._connection, intent,
+                        receipt_identity_reader=receipt_identity_reader)
             if original.command == record.command or record.target_fingerprint != target:
                 raise ExecutionInvocationConflict(record.invocation_id)
 
@@ -1885,7 +1999,8 @@ def _require_invocation_owners(store, record, *, fresh=False):
                     from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
                     original = store.original_final_invocation(identity,
                         original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                        kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION)
+                        kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
+                        receipt_identity_reader=receipt_identity_reader)
                     if original is None or original.command != record.command:
                         raise ExecutionInvocationConflict(record.invocation_id)
                     runtime = RuntimeAuthorityStore(store._connection).get_registration(
@@ -1913,18 +2028,21 @@ def _require_invocation_owners(store, record, *, fresh=False):
             if record.attempt is not None and authorized.effect_id == record.original_event_id:
                 original_marker = store.original_final_invocation(identity,
                     original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH)
+                    kind=ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH,
+                        receipt_identity_reader=receipt_identity_reader)
                 origin = None
                 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
                 if original_marker is None and intent.intent.kind is RuntimeEffectKind.REALIZE_ACTIVITY:
                     from .runtime_effect_origin_store import RuntimeEffectOriginStore
-                    origin = RuntimeEffectOriginStore(store._connection).get(identity)
+                    origin = RuntimeEffectOriginStore(store._connection).get(identity,
+                        receipt_identity_reader=receipt_identity_reader)
                 original_command = original_marker.command if original_marker is not None else (
                     None if origin is None else origin.command)
                 if original_command is not None and original_command != record.command:
                     from .runtime_observation_source import original_observation_source
                     from control_plane_kit_operations.runtime_secret_uses import OperationalSecretUse
-                    _, _, observation_profile, _ = original_observation_source(store._connection, intent)
+                    _, _, observation_profile, _ = original_observation_source(store._connection, intent,
+                        receipt_identity_reader=receipt_identity_reader)
                     if (OperationalSecretUse(authorized.reference, authorized.intent) not in observation_profile.required_uses
                             or authorized.probe_id is not None):
                         raise ExecutionInvocationConflict(record.invocation_id)
@@ -1949,7 +2067,7 @@ def _require_invocation_owners(store, record, *, fresh=False):
         raise ExecutionInvocationConflict(record.invocation_id) from None
 
 
-def validate_execution_invocation_rows(connection):
+def validate_execution_invocation_rows(connection, *, receipt_identity_reader=None):
     """Bounded exact-data verification for the final schema, never repair."""
     from .current_data_validation import CurrentRowDrift
     store, after = PostgresExecutionStore(connection), None
@@ -1961,7 +2079,7 @@ def validate_execution_invocation_rows(connection):
                 () if after is None else (after,)).fetchall()
             for row in rows:
                 record = _invocation_row(row)
-                _require_invocation_owners(store, record)
+                _require_invocation_owners(store, record, receipt_identity_reader=receipt_identity_reader)
                 after = record.invocation_id
             if len(rows) < 100:
                 return

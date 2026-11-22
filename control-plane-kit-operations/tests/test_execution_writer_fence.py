@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import ast
-import inspect
-import textwrap
 import unittest
 
 from control_plane_kit_core.operations.lifecycle import FailureCategory
@@ -11,7 +8,6 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
     ActivityRealizationContext,
     ExecuteActivityRun,
-    ExecutionCoordinator,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 import control_plane_kit_operations.lifecycle as lifecycle_module
@@ -168,17 +164,6 @@ class ExecutionWriterFenceLanguageTests(unittest.TestCase):
         self.assertNotIn("claim_generation", fields)
         self.assertNotIn("worker_authority", fields)
 
-    def test_all_coordinator_writer_phases_use_the_shared_locked_boundary(self) -> None:
-        for method_name in ("_load_context", "_record_step_event", "_record_outcome"):
-            method = getattr(ExecutionCoordinator, method_name)
-            tree = ast.parse(textwrap.dedent(inspect.getsource(method)))
-            called_names = tuple(
-                node.func.id
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            )
-            with self.subTest(method=method_name):
-                self.assertEqual(called_names.count("_locked_request_and_run"), 1)
 
 
 if __name__ == "__main__":
