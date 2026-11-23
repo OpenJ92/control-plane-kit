@@ -171,6 +171,32 @@ Normal package suites are repeatable. One-shot execution, exclusive leases,
 sealed wrappers, hash ledgers, and exhaustive inventory evidence apply only
 when a shared/provider/destructive gate explicitly requires them.
 
+## Evidence for an installed Hello workflow
+
+Record the installation, image, MCP profile, workspace and revision with each
+observation. Tool discovery identifies advertised operations. A fresh
+authenticated read verifies access to the intended workspace. The run and
+Current graph describe what CPK recorded. A request through mux that returns
+the configured greeting verifies the private application route. Public access
+requires that greeting over HTTPS at the intended application hostname.
+Signed checks through the management route provide separate evidence.
+
+Rowan reported that the fresh #431 sibling completed all five activities in
+the private Hello run. Current matched Desired, and a client on the workload
+network received HTTP 200 with the expected “Hello, world!” heading through
+mux. In the later #421 ingress attempt, Rowan reported gateway startup and
+management ingress allocation. Connector startup, Current advancement and the
+public greeting remained unverified. [Recorded handoffs](https://github.com/OpenJ92/control-plane-kit/issues/2119#issuecomment-7112321181)
+
+Keep disposable receipts with their original scenarios. In #409 the standard
+MCP client prepared a fresh managed PostgreSQL/HTTP graph. A fresh reader
+correlated its saved revision, preparation session, 13-activity plan and
+pending approval. Its runs page was empty. In #410 a human reviewer using a
+synthetic identity approved a different, ten-activity retained Hello/mux plan
+in the website. A fresh operator MCP client read back that decision. Provider
+effects were disabled in the website witness.
+[#409 planning receipt](https://github.com/OpenJ92/control-plane-kit-servers/issues/409#issuecomment-7111996771) · [#410 website receipt](https://github.com/OpenJ92/control-plane-kit-servers/issues/410#issuecomment-6925793266)
+
 ## Evidence Classes
 
 ### Package
