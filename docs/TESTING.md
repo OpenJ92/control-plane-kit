@@ -105,6 +105,15 @@ For the repository-owned composed backend gate, use its documented command:
 ./current-backend-test.sh --report /tmp/current-backend-report.json
 ```
 
+For changes owned by `current_backend`, its focused Docker unit entrance is
+`./current-backend-test.sh --unit-only`. This runs the existing validator tests
+with temporary Git fixtures, not application or runtime scenarios, and cannot
+produce a full-backend acceptance report. See `current_backend/README.md` for
+explicit legacy/v2 lock-contract pairing, the exact clean Git prerequisite,
+the selected/consumed Core tree equality boundary, and the separately reviewed
+material composition command. The unchanged default historical lock is not
+evidence of a newly selected Operations candidate.
+
 Run broader or external suites only when the governing issue or PR explicitly
 owns that evidence.
 

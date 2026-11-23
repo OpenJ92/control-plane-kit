@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 
 
 LOCK_SCHEMA = "cpk.current-backend-lock.v1"
+PACKAGE_LOCK_SCHEMA = "cpk.current-backend-lock.v2"
+ARCHITECTURE_ROLE = "control-plane-kit-architecture-testing"
 COORDINATE_SCHEMA = "cpk-servers.coordinates"
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
@@ -26,10 +28,29 @@ _EXPECTED_UPSTREAMS = {
     "control-plane-kit-interpreters": "control_plane_kit_interpreters_commit",
     "control-plane-kit-secrets": "control_plane_kit_secrets_commit",
 }
+PACKAGE_UPSTREAMS = {
+    "control-plane-kit-core": "control_plane_kit_core_commit",
+    "control-plane-kit-operations": "control_plane_kit_operations_commit",
+    "control-plane-kit-server-sdk": "control_plane_kit_server_sdk_commit",
+    "control-plane-kit-interpreters": "control_plane_kit_interpreters_commit",
+    "control-plane-kit-secrets": "control_plane_kit_secrets_commit",
+}
+PACKAGE_ROOTS = {
+    "control-plane-kit-core": "control-plane-kit-core",
+    "control-plane-kit-operations": "control-plane-kit-operations",
+}
+
+
+def repository_identity(role: str) -> str:
+    return "OpenJ92/" + ("control-plane-kit" if role in PACKAGE_ROOTS else role)
 
 
 class BackendLockError(RuntimeError):
     """The current-backend source lock or materialization is invalid."""
+
+
+class BackendCleanupError(BackendLockError):
+    """An owned temporary source could not be removed; primary error is chained."""
 
 
 @dataclass(frozen=True)
@@ -61,9 +82,10 @@ class BackendLock:
     server_products: RepositorySpec
     coordinates_path: Path
     upstreams: tuple[RepositorySpec, ...]
+    architecture_testing: RepositorySpec | None = None
 
     def __post_init__(self) -> None:
-        if self.schema != LOCK_SCHEMA:
+        if self.schema not in {LOCK_SCHEMA, PACKAGE_LOCK_SCHEMA}:
             raise BackendLockError("backend lock schema is unsupported")
         if self.server_products.name != "control-plane-kit-servers":
             raise BackendLockError("server-products root identity is required")
@@ -75,13 +97,29 @@ class BackendLock:
         names = tuple(spec.name for spec in self.upstreams)
         if len(names) != len(set(names)):
             raise BackendLockError("backend lock has duplicate distributions")
-        if set(names) != set(_EXPECTED_UPSTREAMS):
+        expected = PACKAGE_UPSTREAMS if self.schema == PACKAGE_LOCK_SCHEMA else _EXPECTED_UPSTREAMS
+        if set(names) != set(expected):
             raise BackendLockError("backend lock upstream inventory is incomplete")
         for spec in self.upstreams:
             if spec.commit is not None:
                 raise BackendLockError("upstream commits must come from coordinates")
-            if spec.coordinate_key != _EXPECTED_UPSTREAMS[spec.name]:
+            if spec.coordinate_key != expected[spec.name]:
                 raise BackendLockError("upstream coordinate key is inconsistent")
+        if self.schema == PACKAGE_LOCK_SCHEMA:
+            prerequisite = self.architecture_testing
+            if prerequisite is None or prerequisite.name != ARCHITECTURE_ROLE or prerequisite.commit is None or prerequisite.coordinate_key is not None:
+                raise BackendLockError("exact architecture prerequisite is required")
+            if self.coordinates_path.as_posix() != "coordinates/server-products.json":
+                raise BackendLockError("package coordinates path is inconsistent")
+            for spec in (*self.upstreams, self.server_products, prerequisite):
+                if spec.identity != repository_identity(spec.name):
+                    raise BackendLockError("package repository identity is inconsistent")
+        elif self.architecture_testing is not None:
+            raise BackendLockError("legacy lock cannot declare package prerequisites")
+
+    @property
+    def sources(self) -> tuple[RepositorySpec, ...]:
+        return (*self.upstreams, self.server_products, *((self.architecture_testing,) if self.architecture_testing else ()))
 
     def with_server_products_commit(self, commit: str) -> "BackendLock":
         return replace(
@@ -97,6 +135,10 @@ class ResolvedRepository:
     url: str
     commit: str
     object_store: Path
+    tree: str = ""
+    package_root: str = "."
+    package_tree: str = ""
+    consumed_core_tree: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,12 +154,16 @@ class ResolvedBackend:
 
     def to_document(self) -> dict[str, object]:
         return {
-            "schema": "cpk.current-backend-sources.v1",
+            "schema": "cpk.current-backend-sources.v2" if self.lock.schema == PACKAGE_LOCK_SCHEMA else "cpk.current-backend-sources.v1",
             "repositories": [
                 {
                     "name": repository.name,
                     "identity": repository.identity,
                     "commit": repository.commit,
+                    "tree": repository.tree,
+                    "package_root": repository.package_root,
+                    "package_tree": repository.package_tree,
+                    "consumed_core_tree": repository.consumed_core_tree,
                 }
                 for repository in sorted(
                     self.repositories, key=lambda value: value.name
@@ -130,6 +176,8 @@ class ResolvedBackend:
 class MaterializedBackend:
     root: Path
     repositories: Mapping[str, Path]
+    schema: str = LOCK_SCHEMA
+    sources: tuple[ResolvedRepository, ...] = ()
 
     def path_for(self, name: str) -> Path:
         try:
@@ -147,7 +195,8 @@ def load_backend_lock(path: Path) -> BackendLock:
         raise BackendLockError("backend lock could not be read") from error
     if not isinstance(raw, dict):
         raise BackendLockError("backend lock must be an object")
-    _require_exact_keys(raw, {"schema", "server_products", "upstreams"}, "lock")
+    modern = raw.get("schema") == PACKAGE_LOCK_SCHEMA
+    _require_exact_keys(raw, {"schema", "server_products", "upstreams"} | ({"architecture_testing"} if modern else set()), "lock")
     server = _parse_repository(raw["server_products"], root=True)
     server_raw = raw["server_products"]
     assert isinstance(server_raw, dict)
@@ -158,11 +207,19 @@ def load_backend_lock(path: Path) -> BackendLock:
     if not isinstance(upstream_raw, list):
         raise BackendLockError("upstreams must be a list")
     upstreams = tuple(_parse_repository(value, root=False) for value in upstream_raw)
+    prerequisite = None
+    if modern:
+        value = raw["architecture_testing"]
+        if not isinstance(value, dict):
+            raise BackendLockError("architecture prerequisite must be an object")
+        _require_exact_keys(value, {"name", "identity", "url", "commit"}, "prerequisite")
+        prerequisite = _parse_repository({**value, "coordinates_path": "unused"}, root=True)
     return BackendLock(
         schema=_required_text(raw["schema"], "schema"),
         server_products=server,
         coordinates_path=Path(coordinates),
         upstreams=upstreams,
+        architecture_testing=prerequisite,
     )
 
 
@@ -170,7 +227,7 @@ def resolve_local_backend(
     lock: BackendLock,
     repository_paths: Mapping[str, Path],
 ) -> ResolvedBackend:
-    expected_names = {lock.server_products.name, *(spec.name for spec in lock.upstreams)}
+    expected_names = {spec.name for spec in lock.sources}
     if set(repository_paths) != expected_names:
         raise BackendLockError("local repository path inventory is inconsistent")
 
@@ -182,11 +239,23 @@ def resolve_local_backend(
     commits = _read_upstream_commits(lock, server_path, server_commit)
 
     resolved: list[ResolvedRepository] = []
-    for spec in (*lock.upstreams, lock.server_products):
+    for spec in lock.sources:
         path = Path(repository_paths[spec.name]).resolve()
         _verify_repository(path, spec)
-        commit = server_commit if spec is lock.server_products else commits[spec.name]
+        commit = spec.commit or commits[spec.name]
         _require_git_object(path, commit)
+        tree = _git_text(path, ("rev-parse", f"{commit}^{{tree}}"), "source tree is unavailable").strip()
+        package_root = PACKAGE_ROOTS.get(spec.name, ".")
+        package_tree = tree if package_root == "." else _git_text(path, ("rev-parse", f"{commit}:{package_root}"), "package root is unavailable").strip()
+        if _git_text(path, ("cat-file", "-t", package_tree), "package tree is unavailable").strip() != "tree":
+            raise BackendLockError("package root is not a tree")
+        consumed = None
+        if spec.name == "control-plane-kit-operations":
+            consumed = _git_text(path, ("rev-parse", f"{commit}:control-plane-kit-core"), "consumed Core is unavailable").strip()
+            harness = _git_text(path, ("show", f"{commit}:control-plane-kit-operations/test.sh"), "Operations harness is unavailable")
+            declared = re.findall(r'^ARCHITECTURE_TESTING_COMMIT="([0-9a-f]{40})"$', harness, re.MULTILINE)
+            if lock.architecture_testing is None or declared != [lock.architecture_testing.commit]:
+                raise BackendLockError("architecture prerequisite does not match Operations harness")
         resolved.append(
             ResolvedRepository(
                 name=spec.name,
@@ -194,9 +263,14 @@ def resolve_local_backend(
                 url=spec.url,
                 commit=commit,
                 object_store=path,
+                tree=tree, package_root=package_root, package_tree=package_tree,
+                consumed_core_tree=consumed,
             )
         )
-    return ResolvedBackend(lock=lock, repositories=tuple(resolved))
+    result = ResolvedBackend(lock=lock, repositories=tuple(resolved))
+    if lock.schema == PACKAGE_LOCK_SCHEMA and result.repository("control-plane-kit-core").package_tree != result.repository("control-plane-kit-operations").consumed_core_tree:
+        raise BackendLockError("consumed Core differs from selected Core package tree")
+    return result
 
 
 class ClonedBackend(AbstractContextManager["ClonedBackend"]):
@@ -222,9 +296,11 @@ class ClonedBackend(AbstractContextManager["ClonedBackend"]):
             _fetch_exact_repository(server, server_commit, server_path)
             commits = _read_upstream_commits(self.lock, server_path, server_commit)
             paths: dict[str, Path] = {server.name: server_path}
-            for spec in self.lock.upstreams:
+            for spec in self.lock.sources:
+                if spec is server:
+                    continue
                 path = self.root / spec.name
-                _fetch_exact_repository(spec, commits[spec.name], path)
+                _fetch_exact_repository(spec, spec.commit or commits[spec.name], path)
                 paths[spec.name] = path
             self._backend = resolve_local_backend(self.lock, paths)
             return self
@@ -233,7 +309,7 @@ class ClonedBackend(AbstractContextManager["ClonedBackend"]):
             raise
 
     def __exit__(self, *args: object) -> None:
-        shutil.rmtree(self.root, ignore_errors=True)
+        _remove_owned(self.root)
 
 
 def clone_backend(lock: BackendLock) -> ClonedBackend:
@@ -259,10 +335,28 @@ def materialize_backend(
             if len(archive) > MAX_ARCHIVE_BYTES:
                 raise BackendLockError("source archive exceeds bounded size")
             safe_extract_tar(archive, destination)
+            if repository.name == ARCHITECTURE_ROLE or (backend.lock.schema == PACKAGE_LOCK_SCHEMA and repository.name == "control-plane-kit-servers"):
+                # Both owning harnesses read Git identity. Fetch the exact object
+                # into an independent store: a clone of an unborn/fetch-only HEAD
+                # does not reliably transfer its unadvertised selected commit.
+                _remove_owned(destination)
+                _run_git(root, ("init", "--quiet", destination.as_posix()))
+                _run_git(destination, ("remote", "add", "origin", repository.url))
+                _run_git(destination, ("fetch", "--quiet", "--depth=1", repository.object_store.as_posix(), repository.commit))
+                _run_git(destination, ("-c", "core.hooksPath=/dev/null", "checkout", "--quiet", "--detach", repository.commit))
+                if _git_text(destination, ("status", "--porcelain", "--untracked-files=all"), "prerequisite cleanliness is unavailable").strip():
+                    raise BackendLockError("owned source checkout is not clean")
             paths[repository.name] = destination
-        yield MaterializedBackend(root=root, repositories=dict(paths))
+        yield MaterializedBackend(root=root, repositories=dict(paths), schema=backend.lock.schema, sources=backend.repositories)
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        _remove_owned(root)
+
+
+def _remove_owned(root: Path) -> None:
+    try:
+        shutil.rmtree(root)
+    except OSError as error:
+        raise BackendCleanupError("owned source cleanup could not be verified") from error
 
 
 def safe_extract_tar(content: bytes, destination: Path) -> None:

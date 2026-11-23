@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -22,6 +23,65 @@ SECRETS_COMMIT = "3" * 40
 
 
 class BackendContractTests(unittest.TestCase):
+    def test_normal_smoke_invocation_requires_exact_source_profile_and_build(self) -> None:
+        changes = (
+            ("CPK_SERVER_BUILD_IMAGE=1", "CPK_SERVER_BUILD_IMAGE=0"),
+            ("CPK_SERVER_SMOKE_PROFILE=wrapped-source", "CPK_SERVER_SMOKE_PROFILE=published-baseline"),
+            ("CPK_SERVER_SMOKE_PROFILE=", "# CPK_SERVER_SMOKE_PROFILE="),
+            ("CPK_SERVER_SMOKE_PROFILE=", "false && CPK_SERVER_SMOKE_PROFILE="),
+            ("sh scripts/cpk_server_image_smoke.sh", "sh scripts/cpk_server_image_smoke.sh --skip"),
+        )
+        for old, new in changes:
+            with self.subTest(new=new), _backend_fixture() as fixture:
+                fixture.independent()
+                gate = fixture.path("control-plane-kit-servers") / "test.sh"
+                gate.write_text(gate.read_text().replace(old, new))
+                with self.assertRaisesRegex(BackendContractError, "exact invocation"):
+                    validate_backend(fixture.backend, fixture.contracts)
+
+    def test_independent_contract_preserves_six_protocols_and_sdk_ownership(self) -> None:
+        with _backend_fixture() as fixture:
+            fixture.independent()
+            report = validate_backend(fixture.backend, fixture.contracts)
+            self.assertEqual(len(report.protocols), 6)
+            self.assertIn(("server-sdk", "core"), report.import_edges)
+            self.assertIn(("secrets", "server-sdk"), report.declared_edges)
+
+    def test_independent_contract_rejects_swapped_fragments_even_at_equal_commit(self) -> None:
+        with _backend_fixture() as fixture:
+            fixture.independent(equal_core_operations=True)
+            project = fixture.path("control-plane-kit-servers") / "pyproject.toml"
+            project.write_text(project.read_text().replace("subdirectory=control-plane-kit-core", "subdirectory=control-plane-kit-operations"))
+            with self.assertRaisesRegex(BackendContractError, "distribution/subdirectory mismatch"):
+                validate_backend(fixture.backend, fixture.contracts)
+
+    def test_independent_contract_rejects_foreign_malformed_and_extra_fragments(self) -> None:
+        changes = (("github.com/OpenJ92/", "github.com/foreign/"), (".zip#subdirectory=control-plane-kit-core", ".zip#subdirectory=control-plane-kit-core&extra=1"), (".zip#subdirectory=control-plane-kit-core", ".zip#subdirectory=../control-plane-kit-core"), ("https://github.com/", "http://github.com/"))
+        for old, new in changes:
+            with self.subTest(new=new), _backend_fixture() as fixture:
+                fixture.independent()
+                project = fixture.path("control-plane-kit-servers") / "pyproject.toml"
+                project.write_text(project.read_text().replace(old, new))
+                with self.assertRaisesRegex(BackendContractError, "archive pin"):
+                    validate_backend(fixture.backend, fixture.contracts)
+
+    def test_independent_inventory_excludes_only_nonselected_sibling(self) -> None:
+        with _backend_fixture() as fixture:
+            fixture.independent()
+            core = fixture.path("control-plane-kit-core")
+            # The unselected sibling exists in both archives but is not double counted.
+            validate_backend(fixture.backend, fixture.contracts)
+            _write(core / "control-plane-kit-extra/src/extra.py", "VALUE=1\n")
+            with self.assertRaisesRegex(BackendContractError, "current source has no owner"):
+                validate_backend(fixture.backend, fixture.contracts)
+
+    def test_profiles_cannot_be_mixed(self) -> None:
+        with _backend_fixture() as fixture:
+            legacy = fixture.contracts
+            fixture.independent()
+            with self.assertRaisesRegex(BackendContractError, "profiles do not match"):
+                validate_backend(fixture.backend, legacy)
+
     def test_closed_contract_fixture_is_coherent(self) -> None:
         with _backend_fixture() as fixture:
             report = validate_backend(fixture.backend, fixture.contracts)
@@ -247,6 +307,38 @@ class _Fixture:
 
     def path(self, repository: str) -> Path:
         return self.paths[repository]
+
+    def independent(self, *, equal_core_operations: bool = False) -> None:
+        coordination = self.paths.pop("control-plane-kit")
+        for role in ("control-plane-kit-core", "control-plane-kit-operations"):
+            destination = self.root / role
+            shutil.copytree(coordination, destination)
+            self.paths[role] = destination
+        for role in ("control-plane-kit-server-sdk", "control-plane-kit-architecture-testing"):
+            self.paths[role] = self.root / role
+            self.paths[role].mkdir()
+        self.contracts = load_backend_contracts(Path(__file__).resolve().parents[2] / "current-backend.packages.contracts.json")
+        self.backend = MaterializedBackend(root=self.root, repositories=self.paths, schema="cpk.current-backend-lock.v2")
+        commits = {"control-plane-kit-core": CORE_COMMIT, "control-plane-kit-operations": CORE_COMMIT if equal_core_operations else "6" * 40, "control-plane-kit-interpreters": INTERPRETERS_COMMIT, "control-plane-kit-secrets": SECRETS_COMMIT, "control-plane-kit-server-sdk": "7" * 40}
+        keys = {"control-plane-kit-core": "control_plane_kit_core_commit", "control-plane-kit-operations": "control_plane_kit_operations_commit", "control-plane-kit-interpreters": "control_plane_kit_interpreters_commit", "control-plane-kit-secrets": "control_plane_kit_secrets_commit", "control-plane-kit-server-sdk": "control_plane_kit_server_sdk_commit"}
+        coordinates_path = self.path("control-plane-kit-servers") / "coordinates/server-products.json"
+        coordinates = json.loads(coordinates_path.read_text())
+        coordinates["upstreams"] = {keys[name]: commit for name, commit in commits.items()}
+        coordinates_path.write_text(json.dumps(coordinates))
+        for surface in self.contracts.pin_surfaces:
+            dependencies = []
+            for role in sorted(surface.coordinate_repositories):
+                split = role in ("control-plane-kit-core", "control-plane-kit-operations")
+                repository = "control-plane-kit" if split else role
+                dependency = _archive_dependency(role, repository, commits[role])
+                dependencies.append(dependency + ("#subdirectory=" + role if split else ""))
+            path = self.path(surface.repository) / surface.path
+            content = _project(surface.repository, tuple(dependencies)) if path.name == "pyproject.toml" else "\n".join(dependencies)
+            if surface.repository == "control-plane-kit-interpreters":
+                content = _project(surface.repository, tuple(d for d in dependencies if not d.startswith("control-plane-kit-secrets")), optional=tuple(d for d in dependencies if d.startswith("control-plane-kit-secrets")))
+            _write(path, content)
+        _write(self.path("control-plane-kit-server-sdk") / "src/control_plane_kit_server_sdk/model.py", "from control_plane_kit_core.model import RuntimeEffectRequest\n")
+        _write(self.path("control-plane-kit-servers") / "test.sh", '#!/bin/sh\nCPK_SERVER_SMOKE_PROFILE=wrapped-source CPK_SERVERS_TEST_IMAGE="$IMAGE" \\\nCPK_SERVER_BUILD_IMAGE=1 sh scripts/cpk_server_image_smoke.sh\nsh scripts/docker_residue_audit.sh\n')
 
 
 @contextmanager

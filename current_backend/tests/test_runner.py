@@ -6,7 +6,9 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import tempfile
+import subprocess
 import unittest
+from unittest.mock import patch
 
 from current_backend.runner import (
     BackendGateError,
@@ -16,6 +18,12 @@ from current_backend.runner import (
     build_gate_plan,
     execute_gate,
     _stage_environment,
+    CommandOutcome,
+    PackageIntegrityEvidence,
+    main,
+    execute_command,
+    _stage_cleanup_status,
+    SERVERS_ACCEPTANCE_EVIDENCE,
 )
 from current_backend.source_lock import (
     ResolvedBackend,
@@ -26,6 +34,153 @@ from current_backend.tests.test_contracts import _backend_fixture
 
 
 class BackendGateRunnerTests(unittest.TestCase):
+    def test_covered_evidence_requires_executed_normal_path_not_disabled_source_tokens(self) -> None:
+        for mode in ("normal", "disabled", "early-exit", "missing", "out-of-order", "nonzero"):
+            with self.subTest(mode=mode), _runner_fixture() as fixture:
+                fixture.backend_fixture.independent()
+                servers = fixture.backend.path_for("control-plane-kit-servers")
+                gate = servers / "test.sh"
+                body = gate.read_text()
+                if mode == "disabled":
+                    body = "#!/bin/sh\nif false; then\n" + "\n".join(body.splitlines()[1:-1]) + "\nfi\n" + body.splitlines()[-1] + "\n"
+                elif mode == "early-exit":
+                    body = "#!/bin/sh\nexit 0\n" + "\n".join(body.splitlines()[1:]) + "\n"
+                # These are the existing owner's small command fixtures, not
+                # application behavior. Actual subprocess output earns coverage.
+                body = body.replace("#!/bin/sh\n", "#!/bin/sh\nset -eu\nIMAGE=unit-controller\necho 'package-integrity contract=1 tests=17 mocks=0 approved_skips=0'\n", 1)
+                gate.write_text(body)
+                gate.chmod(0o700)
+                smoke = servers / "scripts/cpk_server_image_smoke.sh"
+                emitted = list(SERVERS_ACCEPTANCE_EVIDENCE[:2])
+                if mode == "missing":
+                    emitted = emitted[1:]
+                elif mode == "out-of-order":
+                    emitted.reverse()
+                smoke.write_text(smoke.read_text() + "\n" + "\n".join("echo '" + line + "'" for line in emitted) + "\n")
+                if mode == "nonzero":
+                    gate.write_text(gate.read_text() + "exit 7\n")
+                (servers / "scripts/docker_residue_audit.sh").write_text("#!/bin/sh\necho '" + SERVERS_ACCEPTANCE_EVIDENCE[2] + "'\n")
+                def execute(stage, cwd, output):
+                    if stage.identity == "server-products":
+                        return execute_command(stage, cwd, output)
+                    return CommandOutcome(0, PackageIntegrityEvidence(17, 0, 0), 1)
+                report = execute_gate(runner_root=fixture.root, resolved=fixture._resolved(), backend=fixture.backend, contracts=fixture.contracts, report_path=fixture.report_path, output=io.StringIO(), runner_commit="9" * 40, command_executor=execute, cleanup_observer=lambda stage, outcome: "verified-absent")
+                self.assertEqual(report.status, "passed" if mode == "normal" else "failed")
+                if mode != "normal":
+                    self.assertEqual(report.first_failed_stage, "server-products")
+                    self.assertEqual(report.stages[-1].detail, "command exited with status 7" if mode == "nonzero" else "normal Servers acceptance terminal evidence is missing")
+
+    def test_successful_secrets_and_sdk_commands_cannot_hide_uncertain_cleanup(self) -> None:
+        for owner in ("secrets", "server-sdk"):
+            for status in ("uncertain", "residue"):
+                with self.subTest(owner=owner, status=status), _runner_fixture() as fixture:
+                    fixture.backend_fixture.independent()
+                    def execute(stage, cwd, output):
+                        return CommandOutcome(0, PackageIntegrityEvidence(17, 0, 0), 1)
+                    report = execute_gate(runner_root=fixture.root, resolved=fixture._resolved(), backend=fixture.backend, contracts=fixture.contracts, report_path=fixture.report_path, output=io.StringIO(), runner_commit="9" * 40, command_executor=execute, cleanup_observer=lambda stage, outcome: status if stage.identity == owner else "verified-absent")
+                    self.assertEqual(report.first_failed_stage, owner)
+                    self.assertEqual(report.stages[-1].cleanup_status, status)
+
+    def test_cleanup_observer_uses_exact_names_and_refuses_unknown_sdk_pid(self) -> None:
+        with _runner_fixture() as fixture:
+            fixture.backend_fixture.independent()
+            plan = build_gate_plan(fixture.root, fixture.backend, fixture.contracts)
+            sdk = next(stage for stage in plan.stages if stage.identity == "server-sdk")
+            secrets = next(stage for stage in plan.stages if stage.identity == "secrets")
+            unknown = CommandOutcome(0, None, 0)
+            self.assertEqual(_stage_cleanup_status(sdk, unknown), "uncertain")
+            outcome = replace(unknown, process_id=12345)
+            calls = []
+            def observe(command, **kwargs):
+                calls.append(command)
+                return subprocess.CompletedProcess(command, 0, "")
+            with patch("current_backend.runner.subprocess.run", side_effect=observe):
+                self.assertEqual(_stage_cleanup_status(sdk, outcome), "verified-absent")
+            self.assertEqual(len(calls), 4)
+            self.assertIn("reference=control-plane-kit-server-sdk-test:12345", calls[-1])
+            self.assertIn("name=^/cpk-server-sdk-base-12345$", calls[0])
+            def image_residue(command, **kwargs):
+                return subprocess.CompletedProcess(command, 0, "control-plane-kit-server-sdk-test:12345\n" if command[1] == "image" else "")
+            with patch("current_backend.runner.subprocess.run", side_effect=image_residue):
+                self.assertEqual(_stage_cleanup_status(sdk, outcome), "residue")
+            name = dict(secrets.environment)["CPK_SECRETS_TEST_CONTAINER"]
+            with patch("current_backend.runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, name + "\n")):
+                self.assertEqual(_stage_cleanup_status(secrets, unknown), "residue")
+            with patch("current_backend.runner.subprocess.run", return_value=subprocess.CompletedProcess([], 1, "")):
+                self.assertEqual(_stage_cleanup_status(secrets, unknown), "uncertain")
+            with patch("current_backend.runner.subprocess.run", side_effect=OSError("daemon unavailable")):
+                self.assertEqual(_stage_cleanup_status(secrets, unknown), "uncertain")
+
+    def test_modern_plan_uses_selected_packages_and_one_normal_servers_invocation(self) -> None:
+        with _runner_fixture() as fixture:
+            fixture.backend_fixture.independent()
+            plan = build_gate_plan(fixture.root, fixture.backend, fixture.contracts)
+            selected = {stage.identity: stage for stage in plan.stages}
+            self.assertEqual(selected["core"].repository, "control-plane-kit-core")
+            self.assertEqual(selected["operations"].repository, "control-plane-kit-operations")
+            self.assertIn("CPK_ARCHITECTURE_TESTING_ROOT", dict(selected["operations"].environment))
+            self.assertEqual(dict(selected["server-sdk"].environment)["CPK_CORE_REPO"], fixture.backend.path_for("control-plane-kit-core").as_posix())
+            trace = []
+            def execute(stage, cwd, output):
+                trace.append(stage.identity)
+                return CommandOutcome(0, PackageIntegrityEvidence(17, 0, 0), 1, acceptance_evidence=SERVERS_ACCEPTANCE_EVIDENCE)
+            report = execute_gate(runner_root=fixture.root, resolved=fixture._resolved(), backend=fixture.backend, contracts=fixture.contracts, report_path=fixture.report_path, output=io.StringIO(), runner_commit="9" * 40, command_executor=execute, cleanup_observer=lambda stage, outcome: "verified-absent")
+            self.assertEqual(report.status, "passed")
+            self.assertEqual(trace.count("server-products"), 1)
+            self.assertNotIn("cpk-server-http-mcp-source-live", trace)
+            self.assertNotIn("docker-residue", trace)
+            self.assertEqual(report.stages[-1].covered_by, "server-products")
+            self.assertIsNone(report.stages[-1].integrity)
+
+    def test_coverage_rejects_early_return_environment_and_unknown_owner(self) -> None:
+        with _runner_fixture() as fixture:
+            fixture.backend_fixture.independent()
+            plan = build_gate_plan(fixture.root, fixture.backend, fixture.contracts)
+            owner_index = next(i for i, stage in enumerate(plan.stages) if stage.identity == "server-products")
+            cases = [
+                (owner_index, replace(plan.stages[owner_index], command=("./test.sh", "--mcp-source-tests"))),
+                (owner_index, replace(plan.stages[owner_index], environment=(*plan.stages[owner_index].environment, ("CPK_ROOT_ARTIFACT_MODE", "published-digest")))),
+                (-2, replace(plan.stages[-2], covered_by="docker-residue")),
+                (-1, replace(plan.stages[-1], covered_by="unknown")),
+            ]
+            for index, stage in cases:
+                with self.subTest(index=index, stage=stage):
+                    stages = list(plan.stages)
+                    stages[index] = stage
+                    with self.assertRaises(BackendGateError):
+                        replace(plan, stages=tuple(stages)).validate()
+
+    def test_operations_cleanup_uncertainty_preserves_primary_failure(self) -> None:
+        with _runner_fixture() as fixture:
+            fixture.backend_fixture.independent()
+            def execute(stage, cwd, output):
+                return CommandOutcome(7 if stage.identity == "operations" else 0, PackageIntegrityEvidence(17, 0, 0), 1)
+            report = execute_gate(runner_root=fixture.root, resolved=fixture._resolved(), backend=fixture.backend, contracts=fixture.contracts, report_path=fixture.report_path, output=io.StringIO(), runner_commit="9" * 40, command_executor=execute, cleanup_observer=lambda stage, outcome: "uncertain")
+            self.assertEqual(report.first_failed_stage, "operations")
+            self.assertEqual(report.stages[-1].detail, "command exited with status 7")
+            self.assertEqual(report.stages[-1].cleanup_status, "uncertain")
+
+    def test_resolution_failure_emits_failed_report_before_any_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lock = root / "lock.json"
+            lock.write_text('{"schema":"unsupported"}')
+            report = root / "report.json"
+            self.assertEqual(main(["--lock", str(lock), "--report", str(report)]), 1)
+            document = json.loads(report.read_text())
+            self.assertEqual(document["status"], "failed")
+            self.assertEqual(document["first_failed_stage"], "source-preflight")
+            self.assertEqual(document["stages"], [])
+            self.assertEqual(document["sources"], {})
+
+    def test_unit_only_refuses_full_report_arguments(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "not-a-backend-report.json"
+            result = subprocess.run((str(root / "current-backend-test.sh"), "--unit-only", "--report", str(report)), capture_output=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertFalse(report.exists())
+
     def test_stages_execute_in_exact_order_and_emit_bounded_report(self) -> None:
         with _runner_fixture() as fixture:
             plan = fixture.plan()
