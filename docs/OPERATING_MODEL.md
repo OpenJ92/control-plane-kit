@@ -7,6 +7,46 @@ Canonical contract: `cpk-agent-contract/v1`
 This is the normal issue-to-merge loop for Control Plane Kit. `AGENTS.md` owns
 the shared product, authority, memory, and validation laws.
 
+## Operating an installed CPK
+
+Use the named MCP connection designated for the task. Keep credential values
+in configured custody. The setup administrator grants workspace access, the
+operator authors the graph and requests a plan, the human approver reviews
+the decision, and the worker claims admitted work with its own permissions.
+
+1. Open a fresh client, read the server instructions and discover its tools.
+   Read a known workspace and its expected revision or Current graph to identify
+   the target. The restricted grandparent profile advertises four saved-state
+   reads. A read-only principal on the standard profile can see a different
+   catalogue and still receive a permission denial. Check the registered
+   products and runtime authority through the authorized reads available. If a
+   required tool or permission is missing, record the gap and stop that step.
+2. Save the draft and retain its workspace, draft ID, revision and graph ID.
+   Read that revision back. Select it as Desired and prepare against the
+   observed Current and Desired graph IDs, projection IDs and Desired generation.
+   Keep the caller's preparation key and the returned plan ID. Read the session
+   ID from `get_plan_detail` and correlate it with the exact revision's
+   preparations. The response includes an approval request ID only when approval
+   is required. A no-change or review-blocked plan has no decision to request.
+3. For the Hello workflow, the human decides on the exact pending plan in the
+   website. The operator reads back the decision. Where the installed profile
+   exposes admission, submit the approved plan with its recorded approval and
+   caller-owned key. Keep the queued execution request ID. The worker claims
+   the request separately.
+4. Match the request ID in that plan's run history. Read the terminal result,
+   compare Current with the target revision, then check the intended application
+   or management route. After a lost reply, use the original durable identities.
+   An empty run page can coexist with a committed, unclaimed request. If the
+   evidence cannot identify the outcome, report it as unknown and stop.
+
+For recursive deployment, the selected sibling acts as grandparent. Use its
+dedicated child-deployment workspace and keep the Hello workspace separate.
+After the child is ready, connect under a distinct MCP name with a scoped child
+identity. Before any child write, read a known child-only workspace or revision
+through a fresh child client. The grandparent owns the installation run and
+its gateway observation. The child owns the application plan and run.
+[Target decision](https://github.com/OpenJ92/control-plane-kit-servers/issues/163#issuecomment-6907372519) · [Child login and handoff](https://github.com/OpenJ92/control-plane-kit-servers/issues/163#issuecomment-6907614504)
+
 ## Normal Loop
 
 ```text

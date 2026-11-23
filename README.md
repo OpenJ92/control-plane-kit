@@ -11,6 +11,29 @@ This repository is the coordination, pure-language, and durable-operations
 repository. Concrete interpreters, packaged server products, and durable secret
 custody live in sibling repositories.
 
+## Follow one deployment
+
+Suppose Hello serves a greeting and a multiplexer (mux) forwards requests to
+it. In the workspace, select the registered products, put both nodes on one
+Docker runtime, and connect the mux's `primary` requirement to Hello's
+`internal` provider socket. The runtime record groups the nodes. Its
+`authority_ref` selects the workspace registration for the engine that will
+run them. The engine endpoint and private credentials stay outside the graph.
+
+The operator saves the graph, reads back the exact revision, selects it as
+Desired and requests a plan. After the human approves that plan and the worker
+completes it, compare Current with the intended revision. Requesting the
+configured greeting through mux then checks the connection between the two
+nodes. A later revision can expose mux through application ingress and the
+gateway through a separate management ingress. Each route has its own check.
+See [Operating an installed CPK](docs/OPERATING_MODEL.md#operating-an-installed-cpk).
+
+Teardown has an observable result too. In the earlier r1105 Hello run, Current
+reached the empty graph. Docker confirmed removal of the workload containers
+and network, and Cloudflare confirmed removal of both original tunnels and DNS
+records. Six configuration volumes and two secret volumes remained at that
+inspection. [Teardown receipt](https://github.com/OpenJ92/control-plane-kit-servers/issues/225#issuecomment-6653018702)
+
 ## Repository Shape
 
 ```text
@@ -33,6 +56,12 @@ control-plane-kit-secrets
 control-plane-kit-servers
   cpk-server, cpk-local-gateway, seeded product processes, descriptors,
   Dockerfiles, OCI coordinates, and catalogue metadata
+
+control-plane-kit-server-sdk
+  application wrappers and receivers for declared management and health checks
+
+control-plane-kit-web
+  operator website, graph inspection and human review of deployment plans
 ```
 
 The governing dependency direction is:
@@ -112,8 +141,9 @@ cpk-server
 
 Interpreter availability is process capability. A
 `RegisteredRuntimeAuthority` is workspace-scoped permission and material for a
-specific runtime target. Graph nodes reference admitted authorities; endpoints,
-TLS private material, tokens, and local socket paths do not become graph truth.
+specific runtime target. A named Docker runtime selects its registered
+authority through `RuntimeRecord.authority_ref`. Endpoints, TLS private
+material, tokens, and local socket paths do not become graph truth.
 
 ## Products And Sockets
 
@@ -178,8 +208,9 @@ descriptors, events, observations, logs, errors, or public responses.
 ## Public Boundary
 
 `cpk-server` is the FastAPI/MCP process wrapper around operations. HTTP and MCP
-project the same operations command/read services and authorization laws. The
-server process composes dependencies; it does not own runtime, ingress, graph,
+share Operations services and authorization laws. The installed MCP profile
+determines which tools are advertised, and workspace permissions govern their
+use. The server process composes dependencies; it does not own runtime, ingress, graph,
 approval, or secret semantics.
 
 ## Documentation
