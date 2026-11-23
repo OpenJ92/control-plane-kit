@@ -191,9 +191,9 @@ public greeting remained unverified. [Recorded handoffs](https://github.com/Open
 Keep disposable receipts with their original scenarios. In #409 the standard
 MCP client prepared a fresh managed PostgreSQL/HTTP graph. A fresh reader
 correlated its saved revision, preparation session, 13-activity plan and
-pending approval. Its runs page was empty. In #410 a human reviewer using a
-synthetic identity approved a different, ten-activity retained Hello/mux plan
-in the website. A fresh operator MCP client read back that decision. Provider
+pending approval. Its runs page was empty. In #410 a browser using a synthetic
+reviewer identity approved a different, ten-activity retained Hello/mux plan
+through the website. A fresh operator MCP client read back that decision. Provider
 effects were disabled in the website witness.
 [#409 planning receipt](https://github.com/OpenJ92/control-plane-kit-servers/issues/409#issuecomment-7111996771) · [#410 website receipt](https://github.com/OpenJ92/control-plane-kit-servers/issues/410#issuecomment-6925793266)
 

@@ -24,8 +24,10 @@ the decision, and the worker claims admitted work with its own permissions.
 2. Save the draft and retain its workspace, draft ID, revision and graph ID.
    Read that revision back. Select it as Desired and prepare against the
    observed Current and Desired graph IDs, projection IDs and Desired generation.
-   Keep the preparation key and returned session, plan and approval identities.
-   Follow the recorded outcome: no changes, review blocked, or approval required.
+   Keep the caller's preparation key and the returned plan ID. Read the session
+   ID from `get_plan_detail` and correlate it with the exact revision's
+   preparations. The response includes an approval request ID only when approval
+   is required. A no-change or review-blocked plan has no decision to request.
 3. For the Hello workflow, the human decides on the exact pending plan in the
    website. The operator reads back the decision. Where the installed profile
    exposes admission, submit the approved plan with its recorded approval and
