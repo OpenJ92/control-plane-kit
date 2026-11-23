@@ -96,17 +96,25 @@ result and its meaning, not a dump of every local artifact.
 
 ## Branch And Issue Flow
 
-The normal feature flow is:
+During the current [consolidation](https://github.com/OpenJ92/control-plane-kit/issues/2119),
+`main` is the single persistent integration branch. Start each new issue or
+adjacent batch on a temporary branch from the current GitHub `main`.
 
 ```text
-current develop
-  -> codex/<issue-id>-<slug>
-    -> PR into develop
+main -> codex/<issue-or-batch>-<slug> -> reviewed PR into main
 ```
 
-Use a roadmap integration branch only when a parent issue explicitly defines a
-dependent multi-PR vertical and its merge order. Do not create roadmap branches,
-draft roadmap PRs, migration manifests, or separate hardening PRs by default.
+Record dependency order in the governing issue. Existing roadmap stacks keep
+their recorded destinations and checks until their owners reconcile them.
+Draft roadmap PRs, migration manifests and separate hardening PRs still require
+a concrete need in the governing issue.
+Jacob decides any future change to this workflow.
+
+After merge, verify the change on the destination and record its commit and
+acceptance on the issue. Before retiring the temporary branch, check dependent
+PRs, owner reservations and attached worktrees. Preserve unique commits and
+local edits. Follow the [branch cleanup steps](docs/OPERATING_MODEL.md#branch-shape)
+and record any branch held for later action.
 
 Keep issues small enough for one coherent decision log. Split when a change
 introduces unrelated public concepts, owners, security decisions, durable-data
