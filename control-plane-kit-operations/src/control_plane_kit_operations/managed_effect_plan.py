@@ -24,6 +24,7 @@ def require_managed_effect_plan(stores, intent, request):
         source = intent.source
         if (plan.derivation_profile not in (
                     PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
+                    PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1,
                     PlanDerivationProfile.MANAGED_UPDATE_V1,
                     PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1,
                     PlanDerivationProfile.MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1,

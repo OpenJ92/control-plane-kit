@@ -814,6 +814,7 @@ from control_plane_kit_core.planning.management_compiler import (
     ResolvedManagementBootstrap, ResolvedNodeHealth, compile_graph_activity_plan,
     compile_http_sample_bootstrap_activity_plan,
     compile_managed_verification_bootstrap_activity_plan,
+    compile_existing_runtime_bootstrap_activity_plan,
     compile_managed_update_activity_plan, compile_retained_image_ingress_activity_plan,
     resolve_management_observation,
 )
@@ -825,6 +826,7 @@ __all__ += [
     "compile_graph_activity_plan", "compile_http_sample_bootstrap_activity_plan", "compile_managed_update_activity_plan",
     "compile_managed_verification_bootstrap_activity_plan",
     "compile_retained_image_ingress_activity_plan",
+    "compile_existing_runtime_bootstrap_activity_plan",
     "resolve_management_observation",
 ]
 

@@ -185,3 +185,10 @@ test groups cover both graph directions, transit-only and SDK material,
 equal/name-only no-ops, forged emptiness and direct activity rejection.
 General product-contract congruence and transport support remain downstream work;
 declarations and these tests do not prove live execution.
+
+For an existing-runtime bootstrap, preparation checks the complete configured
+gateway route set. The profile-specific execution check derives the canonical
+plan from both validated snapshots and compares it with the recorded approval
+subject. It rechecks active product bindings and the new-node image and ingress
+origin constraints, including for older records. Each effect still requires its
+own current authority, worker fence and installation evidence.

@@ -117,7 +117,8 @@ def _current_schema_is_exact(connection: PostgresConnection) -> bool:
         validate_workspace_permission_rows(connection)
         from .managed_runtime_assignment_store import validate_managed_runtime_assignment_rows
         validate_managed_runtime_assignment_rows(connection)
-        from .execution import validate_execution_invocation_rows
+        from .execution import validate_execution_invocation_rows, validate_command_diagnostic_rows
+        validate_command_diagnostic_rows(connection)
         validate_execution_invocation_rows(connection)
         from .runtime_effect_origin_store import validate_runtime_effect_origin_rows
         validate_runtime_effect_origin_rows(connection)

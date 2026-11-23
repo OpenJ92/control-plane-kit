@@ -12,6 +12,7 @@ from control_plane_kit_core.planning import (
     ManagementObservationError,
     compile_activity_plan,
     compile_graph_activity_plan,
+    compile_existing_runtime_bootstrap_activity_plan,
     compile_http_sample_bootstrap_activity_plan,
     compile_managed_verification_bootstrap_activity_plan,
     compile_managed_update_activity_plan,
@@ -40,6 +41,7 @@ class PlanDerivationProfile(StrEnum):
     MANAGEMENT_GRAPH_PAIR_V1 = "management-graph-pair-v1"
     MANAGED_HTTP_SAMPLE_BOOTSTRAP_V1 = "managed-http-sample-bootstrap-v1"
     MANAGED_SQL_HTTP_BOOTSTRAP_V1 = "managed-sql-http-bootstrap-v1"
+    EXISTING_RUNTIME_BOOTSTRAP_V1 = "existing-runtime-bootstrap-v1"
     MANAGED_UPDATE_V1 = "managed-update-v1"
     RETAINED_IMAGE_INGRESS_V1 = "retained-image-ingress-v1"
     CONFIGURATION_CLEANUP_V1 = "configuration-cleanup-v1"
@@ -96,6 +98,8 @@ def derive_activity_plan(
         return compile_managed_update_activity_plan(
             transition.current, transition.desired,
         )
+    if profile is PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1:
+        return compile_existing_runtime_bootstrap_activity_plan(transition.current, transition.desired)
     if profile is PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1:
         return compile_retained_image_ingress_activity_plan(
             transition.current, transition.desired,

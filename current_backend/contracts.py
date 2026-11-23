@@ -8,13 +8,18 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 import tomllib
 from typing import Iterable, Mapping
 
-from .source_lock import BackendLockError, MaterializedBackend
+from .source_lock import (
+    BackendLockError, MaterializedBackend, LOCK_SCHEMA, PACKAGE_LOCK_SCHEMA,
+    PACKAGE_ROOTS, PACKAGE_UPSTREAMS, repository_identity,
+)
 
 
 CONTRACT_SCHEMA = "cpk.current-backend-contracts.v1"
+PACKAGE_CONTRACT_SCHEMA = "cpk.current-backend-contracts.v2"
 COORDINATE_SCHEMA = "cpk-servers.coordinates"
 CATALOGUE_SCHEMA = "cpk-servers.descriptor-catalogue"
 MAX_FINDINGS = 64
@@ -73,6 +78,7 @@ class AcceptanceContract:
     diagnostic_only: bool
     uses_application_mocks: bool
     residue_command_path: PurePosixPath
+    covered_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,7 @@ class BackendContracts:
     pin_surfaces: tuple[PinSurface, ...]
     protocols: tuple[ProtocolContract, ...]
     acceptance: tuple[AcceptanceContract, ...]
+    schema: str = CONTRACT_SCHEMA
 
 
 @dataclass(frozen=True)
@@ -114,17 +121,18 @@ def load_backend_contracts(path: Path) -> BackendContracts:
         {"schema", "distributions", "pin_surfaces", "protocols", "acceptance"},
         "contracts",
     )
-    if raw["schema"] != CONTRACT_SCHEMA:
+    if raw["schema"] not in {CONTRACT_SCHEMA, PACKAGE_CONTRACT_SCHEMA}:
         raise BackendContractError("backend contract schema is unsupported")
+    modern = raw["schema"] == PACKAGE_CONTRACT_SCHEMA
     distributions = tuple(_distribution(value) for value in _list(raw, "distributions"))
     names = tuple(value.name for value in distributions)
-    if len(names) != len(set(names)) or set(names) != {
+    if len(names) != len(set(names)) or set(names) != ({
         "core",
         "operations",
         "interpreters",
         "secrets",
         "server-products",
-    }:
+    } | ({"server-sdk"} if modern else set())):
         raise BackendContractError("distribution inventory is inconsistent")
     known = set(names)
     repositories = {value.repository for value in distributions}
@@ -141,8 +149,16 @@ def load_backend_contracts(path: Path) -> BackendContracts:
         distributions=distributions,
         pin_surfaces=tuple(_pin_surface(value) for value in _list(raw, "pin_surfaces")),
         protocols=tuple(_protocol(value) for value in _list(raw, "protocols")),
-        acceptance=tuple(_acceptance(value) for value in _list(raw, "acceptance")),
+        acceptance=tuple(_acceptance(value, modern=modern) for value in _list(raw, "acceptance")),
+        schema=raw["schema"],
     )
+    if modern:
+        roles = {"core": "control-plane-kit-core", "operations": "control-plane-kit-operations", "server-sdk": "control-plane-kit-server-sdk", "interpreters": "control-plane-kit-interpreters", "secrets": "control-plane-kit-secrets", "server-products": "control-plane-kit-servers"}
+        for distribution in distributions:
+            role = roles[distribution.name]
+            project = PurePosixPath(PACKAGE_ROOTS.get(role, ".")) / "pyproject.toml"
+            if distribution.repository != role or distribution.project_path != project:
+                raise BackendContractError("distribution package selection is inconsistent")
     _require_unique((value.name for value in contracts.protocols), "protocol")
     _require_unique((value.name for value in contracts.acceptance), "acceptance")
     _require_unique(
@@ -168,6 +184,9 @@ def validate_backend(
     backend: MaterializedBackend,
     contracts: BackendContracts,
 ) -> BackendContractReport:
+    expected = PACKAGE_LOCK_SCHEMA if contracts.schema == PACKAGE_CONTRACT_SCHEMA else LOCK_SCHEMA
+    if backend.schema != expected:
+        raise BackendContractError("lock and contract profiles do not match")
     findings: list[str] = []
     distributions = {value.name: value for value in contracts.distributions}
     module_owners = {
@@ -195,6 +214,10 @@ def validate_backend(
                 if not path.is_file():
                     continue
                 relative = path.relative_to(root).as_posix()
+                selected_root = PACKAGE_ROOTS.get(distribution.repository)
+                if selected_root and not relative.startswith(selected_root + "/"):
+                    findings.append(f"source is outside selected package: {distribution.repository}/{relative}")
+                    continue
                 identity = (distribution.repository, relative)
                 previous = source_owners.get(identity)
                 if previous is not None:
@@ -229,6 +252,9 @@ def validate_backend(
                 for path in root.glob(pattern)
                 if path.is_file()
             )
+        if backend.schema == PACKAGE_LOCK_SCHEMA and repository in PACKAGE_ROOTS:
+            counterpart = "control-plane-kit-operations" if repository == "control-plane-kit-core" else "control-plane-kit-core"
+            candidates = {path for path in candidates if not path.startswith(counterpart + "/")}
         owned = {
             path for (owner_repository, path), _owner in source_owners.items()
             if owner_repository == repository
@@ -317,6 +343,10 @@ def _coordinate_commits(
         "control-plane-kit-interpreters": "control_plane_kit_interpreters_commit",
         "control-plane-kit-secrets": "control_plane_kit_secrets_commit",
     }
+    if backend.schema == PACKAGE_LOCK_SCHEMA:
+        mapping = PACKAGE_UPSTREAMS
+    if set(upstreams) != set(mapping.values()):
+        findings.append("coordinate upstream inventory is inconsistent")
     result: dict[str, str] = {}
     for repository, key in mapping.items():
         value = upstreams.get(key)
@@ -324,6 +354,10 @@ def _coordinate_commits(
             findings.append(f"coordinate commit is malformed: {key}")
         else:
             result[repository] = value
+    if backend.schema == PACKAGE_LOCK_SCHEMA and backend.sources:
+        for source in backend.sources:
+            if source.name in mapping and result.get(source.name) != source.commit:
+                findings.append(f"materialized coordinate mismatch: {source.name}")
     return result
 
 
@@ -343,6 +377,9 @@ def _check_pin_surfaces(
         except (OSError, UnicodeError):
             findings.append(f"pin surface is unavailable: {surface.repository}/{surface.path}")
             continue
+        if backend.schema == PACKAGE_LOCK_SCHEMA:
+            _check_package_pins(text, surface, commits, findings)
+            continue
         found: dict[str, set[str]] = {}
         for match in _ARCHIVE_COORDINATE.finditer(text):
             found.setdefault(match.group("repository"), set()).add(match.group("commit"))
@@ -358,6 +395,36 @@ def _check_pin_surfaces(
             findings.append(
                 f"unowned pin coordinate: {surface.repository}/{surface.path} -> {sorted(unexpected)}"
             )
+
+
+def _check_package_pins(text: str, surface: PinSurface, commits: Mapping[str, str], findings: list[str]) -> None:
+    expected = {}
+    for role in surface.coordinate_repositories:
+        commit = commits.get(role)
+        if commit is None:
+            findings.append(f"pin coordinate is unavailable: {role}")
+            continue
+        fragment = "#subdirectory=" + PACKAGE_ROOTS[role] if role in PACKAGE_ROOTS else ""
+        expected[f"https://github.com/{repository_identity(role)}/archive/{commit}.zip{fragment}"] = role
+    found: set[str] = set()
+    # Capture the complete URL, including malformed/extra fragments and foreign
+    # origins. A valid prefix of an invalid archive is never accepted.
+    for match in re.finditer(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>\\]+", text):
+        url = match.group()
+        if "/archive/" not in url:
+            continue
+        role = expected.get(url)
+        if role is None:
+            findings.append(f"unowned or mismatched archive pin: {surface.repository}/{surface.path}")
+            continue
+        prefix = text[max(0, match.start() - 200):match.start()]
+        name = re.search(r"([A-Za-z0-9_-]+)(?:\[[A-Za-z0-9_,.-]+\])?\s*@\s*$", prefix)
+        if name is None or name.group(1).replace("_", "-") != role:
+            findings.append(f"archive distribution/subdirectory mismatch: {surface.repository}/{surface.path}")
+            continue
+        found.add(role)
+    for role in sorted(surface.coordinate_repositories - found):
+        findings.append(f"pin mismatch: {surface.repository}/{surface.path} -> {role}")
 
 
 def _check_products(
@@ -511,6 +578,31 @@ def _check_acceptance(
             findings.append(f"acceptance command lacks authoritative composition: {contract.name}")
         if re.search(r"\b(mock|unittest\.mock)\b", source, re.IGNORECASE):
             findings.append(f"acceptance command contains application mock: {contract.name}")
+        if contract.covered_by is not None:
+            try:
+                gate = (root / "test.sh").read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                findings.append("covering Servers gate is unavailable")
+                continue
+            expected_smoke = [
+                "CPK_SERVER_SMOKE_PROFILE=wrapped-source",
+                "CPK_SERVERS_TEST_IMAGE=$IMAGE",
+                "CPK_SERVER_BUILD_IMAGE=1", "sh", contract.command_path.as_posix(),
+            ]
+            expected_residue = ["sh", contract.residue_command_path.as_posix()]
+            # This is the reviewed normal entrance, not arbitrary shell evaluation.
+            # Join shell continuations, then require whole command tokens. Prefixes
+            # such as comments, false &&, or a different profile cannot earn coverage.
+            lines = gate.replace("\\\n", "").splitlines()
+            commands = []
+            for line in lines:
+                try:
+                    commands.append(shlex.split(line, comments=True))
+                except ValueError:
+                    continue  # Other shell bodies are not candidate entrances.
+            for expected in (expected_smoke, expected_residue):
+                if commands.count(expected) != 1:
+                    findings.append(f"normal Servers gate does not include exact invocation: {expected[-1]}")
     return tuple(sorted(value.name for value in contracts))
 
 
@@ -694,13 +786,17 @@ def _protocol(value: object) -> ProtocolContract:
     )
 
 
-def _acceptance(value: object) -> AcceptanceContract:
+def _acceptance(value: object, *, modern: bool = False) -> AcceptanceContract:
     keys = {
         "name", "repository", "command_path", "classification", "authoritative_caller",
         "provider_mutating", "published_digest", "diagnostic_only", "uses_application_mocks",
         "residue_command_path",
     }
+    if modern:
+        keys.add("covered_by")
     _exact_keys(value, keys, "acceptance")
+    if modern and value["covered_by"] != "server-products":
+        raise BackendContractError("acceptance covering owner is inconsistent")
     booleans = {key: value[key] for key in ("provider_mutating", "published_digest", "diagnostic_only", "uses_application_mocks")}
     if not all(type(item) is bool for item in booleans.values()):
         raise BackendContractError("acceptance flags must be booleans")
@@ -715,6 +811,7 @@ def _acceptance(value: object) -> AcceptanceContract:
         diagnostic_only=booleans["diagnostic_only"],
         uses_application_mocks=booleans["uses_application_mocks"],
         residue_command_path=_path(value["residue_command_path"], "residue command"),
+        covered_by=value["covered_by"] if modern else None,
     )
 
 

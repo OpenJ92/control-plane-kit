@@ -738,6 +738,15 @@ class ActivityPlanningCommandService:
                     raise InvalidOperationCommand(
                         "runtime management planning is unsupported"
                     )
+                if selected_profile is PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1:
+                    runtime, = transition.current.graph.runtimes.values()
+                    try:
+                        authority = unit_of_work.stores.runtime_authorities.get_active_for_update(
+                            command.workspace_id, runtime.authority_ref)
+                    except RuntimeAuthorityRegistrationError:
+                        raise ActivityPlanningGraphStateConflict("existing Docker runtime authority is unavailable") from None
+                    if authority.runtime_kind is not runtime.kind:
+                        raise ActivityPlanningGraphStateConflict("existing Docker runtime authority is unavailable")
                 if selected_profile is not profile:
                     profile = selected_profile
                     transition, plan = _planning_transition(

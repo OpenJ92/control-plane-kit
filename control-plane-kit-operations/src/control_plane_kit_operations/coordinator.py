@@ -78,7 +78,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.topology.validation import validate_graph
 from control_plane_kit_core.planning.management_compiler import resolve_management_observation
 from control_plane_kit_operations.connector_installation import (
-    CurrentConnectorInstallation, CurrentConnectorInstallationRead,
+    CurrentConnectorInstallation, CurrentConnectorInstallationRead, RunConnectorInstallation,
 )
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.activity_journal import activity_journal_events
@@ -197,6 +197,7 @@ from control_plane_kit_operations.records import (
     ActivityRunRecord,
     BoundedEvidence,
     CoordinatorStatus,
+    ExecutionCommandDiagnostic,
     ExecutionCommandReceiptRecord,
     ExecutionCommandReceiptStatus,
     ExecutionCommandResultRecord,
@@ -221,6 +222,20 @@ class ExecutionCoordinatorNotFound(ExecutionCoordinatorError):
 
 class ExecutionCoordinatorConflict(ExecutionCoordinatorError):
     """Raised when durable state rejects coordinator progress."""
+
+
+class ExecutionCommandPreparationFailure(ExecutionCoordinatorConflict):
+    """Closed preparation cause and evidence acknowledgement, never a raw cause."""
+
+    def __init__(self, category, *, diagnostic_status="unacknowledged", preparation_exit_acknowledged=False):
+        if category not in ("evidence-capacity", "material-unavailable") or diagnostic_status not in (
+                "recorded", "unacknowledged"):
+            raise ValueError("invalid preparation failure")
+        self.category = category
+        self.diagnostic_status = diagnostic_status
+        self.preparation_exit_acknowledged = preparation_exit_acknowledged
+        super().__init__("execution command context preparation failed: " + category +
+            "; diagnostic " + diagnostic_status)
 
 
 class ExecutionCoordinatorDenied(ExecutionCoordinatorError):
@@ -341,6 +356,7 @@ class ActivityRealizationContext:
     ingress_resources: tuple[CloudflareOwnedIngressResource, ...] = ()
     generated_ingress_secrets: tuple[GeneratedIngressSecretReference, ...] = ()
     connector_installation: CurrentConnectorInstallation | None = field(default=None, repr=False)
+    run_connector_installation: RunConnectorInstallation | None = field(default=None, repr=False)
 
     @property
     def plan(self) -> ActivityPlan:
@@ -521,6 +537,24 @@ class ActivityRealizationContext:
                 )
         if self.intent_event.activity_id != self.activity.activity_id.value:
             raise InvalidOperationCommand("realization intent must match activity")
+        if self.run_connector_installation is not None:
+            proof = self.run_connector_installation
+            if not is_native_connection_operation(self.activity.operation):
+                raise InvalidOperationCommand("active connector installation requires the native connector observation")
+            resolved = _native_connector_observation(self)
+            runtime = resolved.selected_graph.graph.runtimes[resolved.connector_node.runtime_id]
+            if (type(proof) is not RunConnectorInstallation or self.connector_installation is not None
+                    or proof.authority_ref != runtime.authority_ref
+                    or not any(a.registration_id == proof.runtime_registration_id and a.authority_ref == proof.authority_ref
+                        and a.workspace_id == self.request.identity.workspace_id for a in self.runtime_authorities)
+                    or self.plan_record.derivation_profile is not PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1
+                    or (proof.source.workspace_id, proof.source.request_id, proof.source.run_id.value,
+                        proof.source.plan_id, proof.source.base_graph_id, proof.source.desired_graph_id,
+                        proof.wrapper.node_id, proof.wrapper.runtime_id, proof.ingress_id) !=
+                    (self.request.identity.workspace_id, self.request.identity.request_id, self.run.run_id,
+                        self.plan_record.plan_id, self.plan_record.base_graph_id, self.plan_record.desired_graph_id,
+                        resolved.connector_node.node_id, resolved.connector_node.runtime_id, resolved.ingress.ingress_id)):
+                raise InvalidOperationCommand("active connector installation differs from pinned observation")
         if self.connector_installation is not None:
             valid = False
             try:
@@ -1070,7 +1104,13 @@ class ExecutionCoordinator:
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
         with _configuration_accounting(command.run_id, active=False):
             self._configure_run(command.run_id)
-            return self._execute_command(command)
+            failure = None
+            try:
+                return self._execute_command(command)
+            except ExecutionCommandPreparationFailure as error:
+                failure = error
+            status = self._record_preparation_failure(command, None, failure)
+        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status)
 
     def _configure_run(self, run_id):
         try:
@@ -1102,7 +1142,43 @@ class ExecutionCoordinator:
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
         with _configuration_accounting(command.execution.run_id, active=False) as accounting:
             self._configure_run(command.execution.run_id)
-            return await self._execute_managed_command(command, accounting)
+            failure = None
+            try:
+                return await self._execute_managed_command(command, accounting)
+            except ExecutionCommandPreparationFailure as error:
+                failure = error
+            status = self._record_preparation_failure(command.execution, self._managed_provenance(command), failure)
+        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status)
+
+    def _record_preparation_failure(self, command, provenance, failure):
+        if not failure.preparation_exit_acknowledged:
+            return "unacknowledged"
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        try:
+            # Fresh evidence allowance and transaction; no external effect or retry.
+            with _configuration_accounting(command.run_id, active=False):
+                with self._unit_of_work_factory() as uow:
+                    store = uow.stores.execution
+                    store.lock_command_idempotency(command.run_id, command.idempotency_key.value)
+                    _locked_request_and_run(uow.stores, command)
+                    receipt = store.command_receipt_for_idempotency(command.run_id,
+                        command.idempotency_key.value, for_update=True)
+                    if receipt is not None and receipt.diagnostic is not None:
+                        diagnostic = receipt.diagnostic
+                        if diagnostic.category != failure.category:
+                            return "unacknowledged"
+                    else:
+                        ordinal, _ = store.command_diagnostic_frontier(command.run_id)
+                        diagnostic = ExecutionCommandDiagnostic("context-preparation", failure.category,
+                            self._clock(), ordinal)
+                    store.record_command_diagnostic(command.run_id, command.idempotency_key.value,
+                        intent_fingerprint=_execution_command_fingerprint(command, provenance),
+                        fence=command.fence, diagnostic=diagnostic)
+                    uow.commit()
+            return "recorded"
+        except Exception:
+            # Commit-before-ack may have persisted. Never claim absence or retry.
+            return "unacknowledged"
 
     async def _execute_managed_command(
         self,
@@ -1436,6 +1512,7 @@ class ExecutionCoordinator:
     def _native_connector_installation(self, stores, realization):
         """Join accepted provenance inside fresh admission, never across effects."""
         if realization.plan_record.derivation_profile not in (
+                PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1,
                 PlanDerivationProfile.MANAGED_UPDATE_V1,
                 PlanDerivationProfile.RETAINED_IMAGE_INGRESS_V1):
             return realization
@@ -1453,6 +1530,14 @@ class ExecutionCoordinator:
         active = accounting.active
         accounting.active = True
         try:
+            if plan.derivation_profile is PlanDerivationProfile.EXISTING_RUNTIME_BOOTSTRAP_V1:
+                runtime_id = resolved.operation.target.runtime_id
+                runtime = resolved.selected_graph.graph.runtimes[runtime_id]
+                proof = self._unit_of_work_factory().read_run_connector_installation(
+                    workspace_id=workspace.workspace_id, request_id=realization.request.identity.request_id,
+                    plan_id=plan.plan_id, run_id=realization.run.run_id, activity_id=realization.activity.activity_id.value,
+                    node_id=resolved.connector_node.node_id, authority_ref=runtime.authority_ref, fence=realization.fence)
+                return None if proof is None else replace(realization, run_connector_installation=proof)
             proof = stores.configuration_acceptance.read_current_connector_installation(
                 workspace.workspace_id, expected_current_graph_id=plan.base_graph_id,
                 expected_current_realized_projection_id=plan.base_realized_projection_id,
@@ -2615,6 +2700,21 @@ class ExecutionCoordinator:
             return outcome
 
     def _load_context(self, command: ExecuteActivityRun, *, material_activity_id=None) -> "_CoordinatorContext":
+        failure = []
+        acknowledged = False
+        try:
+            return self._load_context_read(command, material_activity_id=material_activity_id,
+                preparation_failure=failure)
+        except Exception as error:
+            if not failure:
+                raise
+            acknowledged = error is failure[0]
+        # Raising outside the handler keeps raw preparation/cleanup causes out of chaining.
+        raise ExecutionCommandPreparationFailure(failure[0].category,
+            preparation_exit_acknowledged=acknowledged)
+
+    def _load_context_read(self, command: ExecuteActivityRun, *, material_activity_id=None,
+            preparation_failure) -> "_CoordinatorContext":
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
@@ -2625,11 +2725,14 @@ class ExecutionCoordinator:
                 if active:
                     return self._configuration_context(stores, command, request, run,
                         material_activity_id=material_activity_id)
-            except (KeyError, ValueError, TypeError, AttributeError):
+            except (KeyError, ValueError, TypeError, AttributeError) as error:
                 if not active:
                     raise
+                from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceCapacityError
+                category = "evidence-capacity" if isinstance(error, ConfigurationEvidenceCapacityError) else "material-unavailable"
+                preparation_failure.append(ExecutionCommandPreparationFailure(category))
             if active:
-                raise ExecutionCoordinatorConflict("configuration material is unavailable")
+                raise preparation_failure[0]
             missing_plan = False
             try:
                 plan_record = stores.activity_history.get_plan(run.plan_id)

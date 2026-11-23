@@ -89,12 +89,12 @@ def _lock_and_validate(connection, contract):
     validate_workspace_permission_rows(connection)
     from .managed_runtime_assignment_store import validate_managed_runtime_assignment_rows
     validate_managed_runtime_assignment_rows(connection)
-    from .execution import validate_execution_invocation_rows
-    validate_execution_invocation_rows(connection)
+    from .execution import validate_execution_invocation_rows, historical_command_receipt_identity
+    validate_execution_invocation_rows(connection, receipt_identity_reader=historical_command_receipt_identity)
     from .runtime_effect_origin_store import validate_runtime_effect_origin_rows
-    validate_runtime_effect_origin_rows(connection)
+    validate_runtime_effect_origin_rows(connection, receipt_identity_reader=historical_command_receipt_identity)
     from .ingress_invocation_store import validate_ingress_invocation_rows
-    validate_ingress_invocation_rows(connection)
+    validate_ingress_invocation_rows(connection, receipt_identity_reader=historical_command_receipt_identity)
     if contract is HISTORICAL_POLICY_UPGRADE_TARGET_SCHEMA_CONTRACT:
         from .provider_policy_command_store import validate_provider_policy_command_rows
         validate_provider_policy_command_rows(connection)
