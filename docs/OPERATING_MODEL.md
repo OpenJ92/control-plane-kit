@@ -51,7 +51,7 @@ its gateway observation. The child owns the application plan and run.
 
 ```text
 current issue contract
-  -> feature branch from the accepted base
+  -> temporary codex branch from current main for new work
     -> inspect current public contract, source, and owning tests
       -> choose the smallest ownership-local proof
         -> implement the bounded change
@@ -100,18 +100,31 @@ Do not reconstruct hidden decisions from chat or local artifacts.
 
 ## Branch Shape
 
-Default:
+For new work during the current consolidation, use the latest GitHub `main`
+as both the starting point and the PR destination.
 
 ```text
-develop
+main
   -> codex/<issue-id>-<slug>
-    -> PR into develop
+    -> reviewed PR into main
 ```
 
-Use a roadmap integration branch only when a parent issue explicitly establishes
-an ordered multi-PR vertical. In that case, child PRs target the named roadmap
-branch and the roadmap PR targets `develop`. Do not infer this topology from a
-roadmap label or create a draft roadmap PR automatically.
+For an existing stack, consult the parent issue for its owner, base and merge
+order. Keep its CI checks active through the migration.
+
+The branch owner handles cleanup after merge.
+
+1. Verify that the reviewed change landed on the destination. Record the merge
+   commit and validation on the governing issue.
+2. Retarget any dependent PRs and verify their resulting diffs. Check the exact
+   remote tip, remaining owner reservations, attached worktrees and uncommitted
+   or untracked files. Preserve unique deferred commits and their evidence
+   before retiring their last ref.
+3. Within the approved cleanup scope, retire the merged remote branch and
+   verify its absence. Retire the local branch and checkout only when their
+   owner releases them and their work is preserved. Verify remote state before
+   pruning tracking refs. Record the owner, reason and next action for anything
+   retained.
 
 ## Proportional Tests And Review
 
@@ -200,7 +213,7 @@ when appropriate.
 
 On merge, record:
 
-- merged PR and develop coordinate;
+- merged PR, destination branch and verified merge commit;
 - capability now available;
 - owning validation and result;
 - security/data/history consequences;
