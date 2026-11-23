@@ -151,10 +151,14 @@ class PostgresWorkspaceStore:
         return record
 
     def get(self, workspace_id: str) -> WorkspaceRecord:
-        return self._get(workspace_id, for_update=False)
+        return self._get(workspace_id)
 
     def get_for_update(self, workspace_id: str) -> WorkspaceRecord:
-        return self._get(workspace_id, for_update=True)
+        return self._get(workspace_id, lock=" FOR UPDATE")
+
+    def get_for_no_key_update(self, workspace_id: str) -> WorkspaceRecord:
+        """Serialize workspace changes while allowing foreign-key references."""
+        return self._get(workspace_id, lock=" FOR NO KEY UPDATE")
 
     def set_lifecycle(
         self,
@@ -403,11 +407,11 @@ class PostgresWorkspaceStore:
             self._require_legacy_pointer_material(workspace_id, graph_id, projection_id,
                 configuration_free=configuration_free)
 
-    def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
+    def _get(self, workspace_id: str, *, lock: str = "") -> WorkspaceRecord:
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
-            if for_update:
-                read.query("SELECT 1 FROM cpk_workspaces WHERE workspace_id=%s FOR UPDATE",
+            if lock:
+                read.query("SELECT 1 FROM cpk_workspaces WHERE workspace_id=%s" + lock,
                     (workspace_id,), records=1, octets=1, cells=1)
             names = ("workspace_id", "name", "lifecycle", "current_graph_id", "desired_graph_id",
                 "metadata", "current_realized_projection_id", "desired_realized_projection_id", "desired_graph_revision")
@@ -417,7 +421,6 @@ class PostgresWorkspaceStore:
             if not rows:
                 raise KeyError("missing workspace")
             return _workspace_record(rows[0])
-        lock = " FOR UPDATE" if for_update else ""
         row = self._connection.execute(
             f"""
             SELECT workspace_id, name, lifecycle, current_graph_id, desired_graph_id,

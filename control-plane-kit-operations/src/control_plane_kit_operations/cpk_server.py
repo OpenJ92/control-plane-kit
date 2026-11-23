@@ -190,7 +190,7 @@ from control_plane_kit_operations.read_services.receiver_authoring_context impor
     ReceiverAuthoringContextError, ReceiverAuthoringContextQuery, ReceiverAuthoringContextReadService,
 )
 from control_plane_kit_operations.desired_topology_drafts import (
-    CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft, DesiredTopologyDraftCommandService,
+    CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft, ReviseDesiredTopologyDraftFromPreview, DesiredTopologyDraftCommandService,
     DesiredTopologyDraftError, DesiredTopologyDraftConflict,
     SelectDesiredTopologyDraft, DeleteDesiredTopologyDraft,
 )
@@ -897,6 +897,28 @@ class CpkServerPlanningService:
                 raise _service_not_configured(request)
             values = _arguments(request)
             try:
+                if "product_recipe" in values and request.route_id.endswith(".revise"):
+                    required = {"workspace_id", "draft_id", "expected_head_revision", "session_id", "idempotency_key",
+                        "product_recipe", "expected_proposal_commitment", "receiver_lifecycle"}
+                    path = {"workspace_id", "draft_id"}
+                    if (set(values) != required or request.surface not in {"http", "mcp"}
+                            or (request.surface == "http" and (set(request.path_parameters) != path or path & request.payload.keys()))
+                            or (request.surface == "mcp" and request.path_parameters)):
+                        raise ProductTopologyAuthoringError()
+                    public_json_bytes(values)
+                    recipe = _mapping(values, "product_recipe")
+                    commitment = _mapping(values, "expected_proposal_commitment")
+                    if self._product_topologies is None:
+                        raise _service_not_configured(request)
+                    command = ReviseDesiredTopologyDraftFromPreview(context, _text(values, "session_id"),
+                        _text(values, "draft_id"), _positive_int(values, "expected_head_revision", default=0),
+                        recipe, commitment, _draft_idempotency_key(values), _receiver_expectation(values))
+                    try:
+                        return self._desired_topology_drafts.append_preview(command, self._product_topologies).descriptor()
+                    except DesiredTopologyDraftConflict:
+                        raise CpkServerApplicationError(409, "draft intent conflicts with current truth") from None
+                    except DesiredTopologyDraftError:
+                        raise CpkServerApplicationError(400, "draft command was not admitted") from None
                 if "product_recipe" in values:
                     if (not request.route_id.endswith(".create") or "graph" in values
                             or (request.surface == "http" and (set(request.path_parameters) != {"workspace_id"}
