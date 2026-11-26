@@ -143,7 +143,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
         if refuses:
             self.assertEqual(generated, [], "first-gate refusal must precede clock and IDs")
             self.assertLessEqual(state["snapshot"].accounted_bytes, 3 * 1024 * 1024)
-            self.assertLessEqual(decisions[-1][0].records, 4096)
+            self.assertLessEqual(decisions[-1][0].records, 8192)
             self.assertEqual(durable_snapshot(), before)
             return state
         self.assertFalse(accepted.replayed)
@@ -179,7 +179,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
                     psycopg.connect(self.base.database_url), cold, cold=True)) as uow:
                 result = uow.stores.configuration_acceptance.read_current_configuration("workspace-a")
         self.assertEqual((result.state, result.graph_id, result.pinned_revision, result.manifest_slot_count),
-            ("complete", "graph-final", accepted.desired_graph_revision, 16))
+            ("complete", "graph-final", accepted.desired_graph_revision, len(refs)))
         self.assertEqual(tuple(binding.ref for binding in result.bindings), refs)
         for binding in result.bindings:
             self.assertEqual(binding.source.identity, originals[binding.ref.node_id].identity)
@@ -200,7 +200,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             provenance=difference(cold["accounting"].used, snapshots[0]), graph_widths=graph_widths)
         return state
 
-    def construct(self, padding, *, final_metadata_width=None, outstanding_tail=False, refuses=False):
+    def construct(self, padding, *, nodes=8, final_metadata_width=None, outstanding_tail=False, refuses=False):
         self.base = acceptance_fixture.PostgresConfigurationAcceptanceTests()
         try:
             self.base.setUp()
@@ -216,8 +216,8 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
                     imported_by=registered.imported_by, imported_at=registered.imported_at)
                 uow.commit()
             originals, completions, acceptances, blocks = {}, {}, {}, []
-            for index in range(1, 9):
-                node = "n" + str(index)
+            node_ids = [f"n{i:0{len(str(nodes))}d}" for i in range(1, nodes + 1)]
+            for index, node in enumerate(node_ids, start=1):
                 blocks.append(instantiate_product(product, node,
                     ProductInstanceConfiguration.from_contract(product.runtime_contract)))
                 graph = compile_topology(DeploymentTopology("configured", DockerRuntime(
@@ -242,21 +242,21 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
                     acceptances[node] = carry.advance(command)
 
             # Preserve the explicit historical reader-defense premise after
-            # eight receipts with retained pre-C claim dispositions.
+            # receipts with retained pre-C claim dispositions.
             for node, original in originals.items():
                 self.original, self.completion = original, completions[node]
                 self.refs = original.intent.configuration_instances.instances
                 self.revision = acceptances[node].desired_graph_revision
-                self.record_transfer(self.refs[:-1] if outstanding_tail and node == "n8" else self.refs)
+                self.record_transfer(self.refs[:-1] if outstanding_tail and node == node_ids[-1] else self.refs)
             refs = tuple(ref for original in originals.values()
                 for ref in original.intent.configuration_instances.instances)
-            self.assertEqual(len(refs), 16)
+            self.assertEqual(len(refs), 2 * nodes)
             before = self.transfer_snapshot()
             extra = compile_topology(DeploymentTopology("extra", DockerRuntime(runtime_id="runtime-b")))
             final_graph = graph.add_runtime(extra.runtimes["runtime-b"])
             with self.base.unit_of_work() as uow:
                 uow.stores.graphs.save(GraphVersionRecord.from_graph(graph_id="graph-final",
-                    workspace_id="workspace-a", version=11, graph=final_graph,
+                    workspace_id="workspace-a", version=nodes + 3, graph=final_graph,
                     created_by="operator-a", created_at="2026-07-22T12:00:30Z",
                     metadata={} if final_metadata_width is None else
                         {"padding": "a" * (final_metadata_width - 15)}))
@@ -288,7 +288,7 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
             # Independent diagnostic SQL is outside the command/read accounting.
             widths = self.connection.execute("SELECT graph_id,octet_length(metadata::text) "
                 "FROM cpk_graph_versions WHERE graph_id LIKE 'graph-n%' ORDER BY graph_id").fetchall()
-            self.assertEqual(widths, [("graph-n" + str(i), padding + 15) for i in range(1, 9)])
+            self.assertEqual(widths, [("graph-" + node, padding + 15) for node in node_ids])
             if not refuses:
                 for graph_id, width in widths:
                     self.assertEqual(measured["graph_widths"][graph_id], {width})
@@ -342,15 +342,19 @@ class PostgresConfigurationTransferLargeProvenanceTests(ConfigurationTransferFix
         # manifest graph rereads. The last remains required for empty bindings.
         # Fresh database timestamps/txids can also change actual widths. Start
         # calibration lower because generated caps are now admitted before IDs.
-        limit, calibration_width = 16 * 1024 * 1024, 500000
+        limit, calibration_width = 40 * 1024 * 1024, 500000
         prior_slope, publication_slope = 5, 3
         total_slope = prior_slope + publication_slope
-        prior_variation, publication_variation, margin = 874, 105, 1000
+        # Conservatively scale the eight-receipt proof (114 timestamp cells)
+        # to twelve receipts. Each SQL timestamp width varies by at most
+        # seven bytes, plus four transaction IDs by at most nineteen each.
+        prior_variation = 171 * 7 + 4 * 19
+        publication_variation, margin = 105, 1400
         self.assertGreater(margin, prior_variation + publication_variation)
         def build(width, *, refuses=False):
             self.assertGreaterEqual(width, calibration_width)
             self.assertLessEqual(width, 1048576)
-            return self.construct(409585, final_metadata_width=width,
+            return self.construct(1_000_000, nodes=12, final_metadata_width=width,
                 outstanding_tail=True, refuses=refuses)
         calibration = build(calibration_width)
         def total(case, phase):

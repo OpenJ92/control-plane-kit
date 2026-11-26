@@ -37,6 +37,25 @@ def plan_paths(plan, parents=()):
 
 
 class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_shared_evidence_reads_after_16_mib_until_40_mib(self):
+        module = self.require_scopes()
+        self.admit()
+        with _configuration_accounting("child-execution"):
+            recording = QueryRecorder(self.connection)
+            read = _EvidenceRead(recording)
+            read.used = ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024, 0, 0)
+            point = ("cpk_workspaces", (("workspace_id", "text", 2048),),
+                     "workspace_id=%s", ("workspace-a",))
+            self.assertEqual(read.bounded_rows(*point), (("workspace-a",),))
+            receiver = _ExecutionScopeStorage(recording, read)
+            self.assertEqual(receiver.candidates("workspace-a",
+                (module.ExecutionReceiverScope("docker", None),)), ("execution-a",))
+            calls = len(recording.calls)
+            read.used = ConfigurationEvidenceFootprint(0, 40 * 1024 * 1024, 0, 0)
+            with self.assertRaises(_Capacity):
+                read.bounded_rows(*point)
+            self.assertEqual(len(recording.calls), calls)
+
     def test_shared_bounded_point_transport_uses_8192_record_allowance(self):
         # Literal policy edges; injected prior work is not a large-history claim.
         for prior in (4096, 8190):
@@ -95,7 +114,7 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
         # Explicit local ledger boundaries, not evidence of a naturally huge
         # application history. Actual candidate reads still use PostgreSQL.
         for used in (ConfigurationEvidenceFootprint(8192, 0, 0, 0),
-                     ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024, 0, 0)):
+                     ConfigurationEvidenceFootprint(0, 40 * 1024 * 1024, 0, 0)):
             with self.subTest(used=used), _configuration_accounting("candidate-query"):
                 recording = QueryRecorder(self.connection)
                 read = _EvidenceRead(recording)
@@ -113,7 +132,7 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
         # reservation ceilings shorten the page to two, which cannot prove
         # exhaustion even though deduplication would yield only one request.
         for used in (ConfigurationEvidenceFootprint(8190, 0, 0, 0),
-                     ConfigurationEvidenceFootprint(0, 16 * 1024 * 1024 - 8800, 0, 0)):
+                     ConfigurationEvidenceFootprint(0, 40 * 1024 * 1024 - 8800, 0, 0)):
             with self.subTest(used=used), _configuration_accounting("candidate-query"):
                 recording = QueryRecorder(self.connection)
                 read = _EvidenceRead(recording)
@@ -125,7 +144,7 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                 self.assertEqual(recording.calls[0][1][-1], 2)
                 self.assertEqual(read.used.records, used.records + 2)
                 self.assertLessEqual(read.used.records, 8192)
-                self.assertLessEqual(read.used.accounted_bytes, 16 * 1024 * 1024)
+                self.assertLessEqual(read.used.accounted_bytes, 40 * 1024 * 1024)
 
     def seed_fanout(self, *, groups, nodes, copies):
         runtimes = tuple(DockerRuntime(runtime_id="runtime-" + str(group), children=tuple(

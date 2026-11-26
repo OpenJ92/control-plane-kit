@@ -105,10 +105,10 @@ class PostgresConfigurationStartTailTests(ConfigurationPreparationFixture, unitt
                     accounting.used = accounting.used.plus(Footprint(extra, 0, 0, 0))
                     self.assertEqual(accounting.used.plus(future).records, 8192)
                 else:
-                    extra = 16 * 1024 * 1024 - accounting.used.plus(future).accounted_bytes
+                    extra = 40 * 1024 * 1024 - accounting.used.plus(future).accounted_bytes
                     self.assertGreater(extra, 0)
                     accounting.used = accounting.used.plus(Footprint(0, extra, 0, 0))
-                    self.assertEqual(accounting.used.plus(future).accounted_bytes, 16 * 1024 * 1024)
+                    self.assertEqual(accounting.used.plus(future).accounted_bytes, 40 * 1024 * 1024)
             decision = actual_capacity(**dict(kwargs, current=accounting.used))
             calls.append((accounting.used, kwargs["reserved_future"], decision))
             if len(calls) == 1:

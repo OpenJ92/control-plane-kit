@@ -342,7 +342,7 @@ class PostgresConfigurationCleanupTransactionTests(ConfigurationCleanupExecution
                 # Below-owner capacity fault: retain every real prefix charge
                 # and consume all but 100 KiB of remaining bytes. No SQL,
                 # record limit or future declaration is replaced.
-                extra = 16 * 1024 * 1024 - prefix.accounted_bytes - 100 * 1024
+                extra = 40 * 1024 * 1024 - prefix.accounted_bytes - 100 * 1024
                 self.assertGreater(extra, 0)
                 accounting.used = prefix.plus(ConfigurationEvidenceFootprint(0, extra, 0, 0))
                 reached.append(accounting)

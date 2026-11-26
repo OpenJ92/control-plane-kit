@@ -532,11 +532,11 @@ class PostgresConfigurationTransferCapacityTests(ConfigurationTransferredConsume
             self.assertIsNotNone(accounting)
             self.assertEqual(kwargs["current"], accounting.used)
             if not calls:
-                extra = 16 * 1024 * 1024 - accounting.used.plus(kwargs["reserved_future"]).accounted_bytes
+                extra = 40 * 1024 * 1024 - accounting.used.plus(kwargs["reserved_future"]).accounted_bytes
                 self.assertGreater(extra, 0)
                 # Preserve real prefix charges; add only synthetic prior bytes.
                 accounting.used = accounting.used.plus(Footprint(0, extra, 0, 0))
-                self.assertEqual(accounting.used.plus(kwargs["reserved_future"]).accounted_bytes, 16 * 1024 * 1024)
+                self.assertEqual(accounting.used.plus(kwargs["reserved_future"]).accounted_bytes, 40 * 1024 * 1024)
             decision = original(**dict(kwargs, current=accounting.used))
             calls.append(decision)
             return decision

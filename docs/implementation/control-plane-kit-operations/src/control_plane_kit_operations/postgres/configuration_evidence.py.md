@@ -16,7 +16,7 @@ B1 source integration is implemented. The full owning Docker gate and independen
 The guarded length-probe allowance consumes the owner-defined
 `MAX_CONFIGURATION_EVIDENCE_RECORDS` (8192), matching the capacity predicate.
 It still subtracts prior cumulative records, divides by relational identity
-multiplicity and intersects the result with the unchanged 16 MiB byte budget.
+multiplicity and intersects the result with the footprint’s remaining byte allowance. The shared byte limit is now 40 MiB.
 Length/fetch reservations, failed-query charges and cache lifetimes are
 unchanged. Exact exhaustion refuses before SQL. Real PostgreSQL target tests
 exercise prior records above 4096 and the 8192 boundary; injected prior work is
