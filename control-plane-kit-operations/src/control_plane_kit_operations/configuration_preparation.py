@@ -19,6 +19,7 @@ from control_plane_kit_operations.records import OperationsRecordError
 
 # Shared cumulative transport allowance, independent of native collection caps.
 MAX_CONFIGURATION_EVIDENCE_RECORDS = 8192
+MAX_CONFIGURATION_EVIDENCE_BYTES = 40 * 1024 * 1024
 
 
 class ConfigurationEvidenceCapacityError(ValueError):
@@ -114,6 +115,10 @@ class ConfigurationEvidenceFootprint:
     def accounted_bytes(self) -> int:
         return self.value_octets + 16 * self.scalar_markers + 128 * self.records + 256 * self.statements
 
+    @property
+    def remaining_bytes(self) -> int:
+        return max(0, MAX_CONFIGURATION_EVIDENCE_BYTES - self.accounted_bytes)
+
     def plus(self, other: ConfigurationEvidenceFootprint) -> ConfigurationEvidenceFootprint:
         _footprint(self)
         _footprint(other)
@@ -139,7 +144,7 @@ def configuration_evidence_capacity(footprint: ConfigurationEvidenceFootprint) -
     _footprint(footprint)
     if footprint.records > MAX_CONFIGURATION_EVIDENCE_RECORDS:
         return ConfigurationCapacityDecision.RECORD_LIMIT
-    if footprint.accounted_bytes > 16 * 1024 * 1024:
+    if footprint.accounted_bytes > MAX_CONFIGURATION_EVIDENCE_BYTES:
         return ConfigurationCapacityDecision.BYTE_LIMIT
     return ConfigurationCapacityDecision.WITHIN_LIMITS
 

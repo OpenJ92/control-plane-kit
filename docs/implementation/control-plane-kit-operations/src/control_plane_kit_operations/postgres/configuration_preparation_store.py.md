@@ -41,7 +41,7 @@ are conservative limits, not a claim that all maxima are fetched on every read.
 The separate 3 MiB snapshot plus 512 KiB plan allowance includes 264 additional
 relational identities; its row cost is deducted from available value bytes.
 The current command's already-used footprint is added without resetting it.
-Any later consumer must still obey the global 4,096-identity/16 MiB limit;
+Any later consumer must still obey the global 8,192-identity/40 MiB limit;
 preparation grants no cleanup authority.
 
 B2's advancement evidence scope roots the existing command ledger before the

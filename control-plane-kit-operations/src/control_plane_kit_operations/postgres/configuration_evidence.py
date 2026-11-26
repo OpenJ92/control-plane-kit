@@ -160,7 +160,7 @@ class _EvidenceRead:
             suffix += " ORDER BY " + order
         nominal = maximum if point else maximum + 1
         limit = min(nominal, (MAX_CONFIGURATION_EVIDENCE_RECORDS - self.used.records) // identities,
-            max(0, (16 * 1024 * 1024 - self.used.accounted_bytes - 256) // (128 * identities + 28 * len(columns))))
+            max(0, (self.used.remaining_bytes - 256) // (128 * identities + 28 * len(columns))))
         if limit <= 0:
             raise _Capacity
         suffix += " LIMIT %s"

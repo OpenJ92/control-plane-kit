@@ -373,7 +373,7 @@ class PostgresSecretInstallationAdmissionTests(PostgresEffectAttemptReconciliati
                         # Explicit near-capacity state after the real scalar
                         # probe; never modify returned rows or decoder results.
                         read = holder["read"]
-                        remaining = 16 * 1024 * 1024 - 1024 - read.used.accounted_bytes
+                        remaining = 40 * 1024 * 1024 - 1024 - read.used.accounted_bytes
                         self.assertGreater(remaining, 0)
                         read.used = read.used.plus(ConfigurationEvidenceFootprint(0, remaining, 0, 0))
                         injected.append(True)
@@ -397,7 +397,7 @@ class PostgresSecretInstallationAdmissionTests(PostgresEffectAttemptReconciliati
                         self.assertEqual(read.used.value_octets, observer.value_bytes)
                         self.assertEqual(read.used.scalar_markers, sum(len(row) for _, row in rows))
                         self.assertIs(original_rows[1][-1], True)
-                    self.assertLessEqual(read.used.accounted_bytes, 16 * 1024 * 1024)
+                    self.assertLessEqual(read.used.accounted_bytes, 40 * 1024 * 1024)
 
     def test_coordinator_direct_adapter_cannot_bypass_receipt_admission(self):
         from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC

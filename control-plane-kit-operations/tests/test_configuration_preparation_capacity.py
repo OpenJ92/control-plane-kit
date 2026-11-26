@@ -72,13 +72,13 @@ class ConfigurationPreparationCapacityTests(unittest.TestCase):
         cases = (
             (value(8192, 0, 0, 0), decision.WITHIN_LIMITS),
             (value(8193, 0, 0, 0), decision.RECORD_LIMIT),
-            # Nonzero overhead is 560; literal octet values straddle 16MiB.
-            (value(2, 16_776_655, 3, 1), decision.WITHIN_LIMITS),
-            (value(2, 16_776_656, 3, 1), decision.WITHIN_LIMITS),
-            (value(2, 16_776_657, 3, 1), decision.BYTE_LIMIT),
-            (value(8193, 16_777_217, 0, 0), decision.RECORD_LIMIT),
+            # Nonzero overhead is 560; literal octet values straddle 40 MiB.
+            (value(2, 41_942_479, 3, 1), decision.WITHIN_LIMITS),
+            (value(2, 41_942_480, 3, 1), decision.WITHIN_LIMITS),
+            (value(2, 41_942_481, 3, 1), decision.BYTE_LIMIT),
+            (value(8193, 41_943_041, 0, 0), decision.RECORD_LIMIT),
         )
-        self.assertEqual(value(2, 16_776_656, 3, 1).accounted_bytes, 16_777_216)
+        self.assertEqual(value(2, 41_942_480, 3, 1).accounted_bytes, 41_943_040)
         for footprint, expected in cases:
             with self.subTest(footprint=footprint):
                 self.assertIs(module.configuration_evidence_capacity(footprint), expected)
@@ -116,17 +116,17 @@ class ConfigurationPreparationCapacityTests(unittest.TestCase):
         module = self.language()
         value, decision = module.ConfigurationEvidenceFootprint, module.ConfigurationCapacityDecision
         future = value(1, 0, 0, 1)  # 384 accounted bytes
-        for octets, expected in ((16_776_704, decision.WITHIN_LIMITS), (16_776_705, decision.BYTE_LIMIT)):
+        for octets, expected in ((41_942_528, decision.WITHIN_LIMITS), (41_942_529, decision.BYTE_LIMIT)):
             current = value(1, octets, 0, 0)
             self.assertIs(module.configuration_evidence_capacity(current), decision.WITHIN_LIMITS)
             self.assertIs(module.configuration_preparation_capacity(current=current, reserved_future=future,
                 existing_claim_keys=(), proposed_claim_key=self.key(0), existing_total_claims=0), expected)
-        self.assertEqual(value(1, 16_776_704, 0, 0).plus(future).accounted_bytes, 16_777_216)
+        self.assertEqual(value(1, 41_942_528, 0, 0).plus(future).accounted_bytes, 41_943_040)
 
     def test_preflight_validates_shapes_before_reporting_claim_or_byte_capacity(self):
         module = self.language()
         value = module.ConfigurationEvidenceFootprint
-        arguments = dict(current=value(8193, 16_777_217, 0, 0), reserved_future=value(0, 0, 0, 0),
+        arguments = dict(current=value(8193, 41_943_041, 0, 0), reserved_future=value(0, 0, 0, 0),
             existing_claim_keys=(self.key(0),), proposed_claim_key=self.key(1), existing_total_claims=1)
         for changes in (
                 {"existing_claim_keys": (self.key(0), self.key(0)), "existing_total_claims": 2},

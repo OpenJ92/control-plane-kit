@@ -26,8 +26,9 @@ including advancement, start, transfer and cleanup. Independent native limits
 are unchanged. Literal policy tests retain exact 8192/8193 boundaries.
 
 The accounted-byte law remains `value_octets + 128*records + 16*scalar_markers +
-256*statements`, capped at 16 MiB; the separate acceptance snapshot cap remains
-3 MiB. Doubling records can increase SQL/CPU work; these limits do not establish
+256*statements`. Its 40 MiB ceiling is owned by `MAX_CONFIGURATION_EVIDENCE_BYTES`.
+Readers use `remaining_bytes` to reserve against that ceiling before fetching.
+The separate acceptance snapshot cap remains 3 MiB. Doubling records can increase SQL/CPU work; these limits do not establish
 latency or process-memory guarantees. Larger retained histories can still
 refuse. No authority, transaction, history freshness or retry semantics change.
 Focused owner validation passed at `1dacbc4a`; full owning validation is pending.

@@ -23,3 +23,7 @@ The query still intersects native cardinality, remaining transport bytes and
 prior shared accounting before SQL. A filled shortened prefix still refuses
 before request deduplication; no history read or freshness check is removed.
 Focused owner validation passed at `1dacbc4a`; full validation is pending.
+
+A receiver lookup joining configuration evidence reserves against both the remaining
+40 MiB of shared accounted evidence and its own 16 MiB returned-value limit.
+Standalone lookups use the receiver limit.

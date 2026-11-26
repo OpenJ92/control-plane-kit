@@ -9,6 +9,12 @@ It is not a hosted API process and it does not contain concrete Docker,
 Cloudflare, or secret-provider SDKs. `cpk-server` composes these services behind
 HTTP and MCP; external interpreters perform runtime IO.
 
+Operations allows up to 40 MiB of accounted configuration evidence and 8,192
+records in a shared read budget. PostgreSQL readers use the remaining allowance
+before fetching rows. A receiver lookup also has its own 16 MiB returned-value
+limit. A lookup must fit both budgets when it participates in a command.
+
+
 The package is pre-alpha. Its durable boundaries and tests are substantial, but
 recovery, fencing, and executable-program hardening remain active roadmap work.
 

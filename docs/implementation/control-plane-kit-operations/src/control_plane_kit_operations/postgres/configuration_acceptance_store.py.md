@@ -69,7 +69,7 @@ Before CAS the nonempty path measures the actual owner/projection read footprint
 accounts complete ref/claim material and generated slot transport, and reserves
 the original pair/header envelope. The complete cold snapshot must fit 3 MiB;
 snapshot plus measured source proof and discovery allowance must fit the global
-4096-record/16 MiB limits. Publication reserves the reviewed fixed owner tail plus
+8192-record/40 MiB limits. Publication reserves the reviewed fixed owner tail plus
 every slot insertion return, size/value pass and sentinel. Exact immutable PK caches
 avoid retransporting source evidence during in-transaction readback. All actual
 duplicate reads still count. Original intent hashing is capped at 512 distinct
@@ -142,7 +142,7 @@ failed and uncertain uses remain protective and consume the same unchanged
 64-active-use/256-claim limits. Current membership independently blocks cleanup;
 a departed allocation requires the existing approved cleanup protocol and fresh
 non-use proof. No schema, Core, provider, credential, migration or backfill
-surface is added. The 4096-record/16-MiB shared budget, 3-MiB snapshot and other
+surface is added. At this milestone the 4096-record/16-MiB shared budget, 3-MiB snapshot and other
 existing limits are unchanged; selected examples do not establish maximal
 combination capacity. Source-level proof and simulated adapters do not establish
 provider terminality or release live deployment.

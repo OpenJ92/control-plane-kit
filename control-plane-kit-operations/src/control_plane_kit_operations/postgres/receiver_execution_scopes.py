@@ -34,7 +34,7 @@ changed row can never turn a small probe into an unbounded transported value.
     def remaining(self):
         if self.configuration_read is not None:
             return max(0, min(MAX_VALUE_BYTES - self.used,
-                16 * 1024 * 1024 - self.configuration_read.used.accounted_bytes))
+                self.configuration_read.used.remaining_bytes))
         return MAX_VALUE_BYTES - self.used
 
     def reserve(self, amount):
@@ -353,7 +353,7 @@ class _ExecutionScopeStorage:
                 # The same ledger reserves markers/records as well as values.
                 # A full shortened prefix still refuses below, before dedup.
                 limit = min(limit, max(0, MAX_CONFIGURATION_EVIDENCE_RECORDS - used.records),
-                    max(0, (16 * 1024 * 1024 - used.accounted_bytes - statement_bytes) // row_bytes))
+                    max(0, (used.remaining_bytes - statement_bytes) // row_bytes))
             _capacity(limit > 0)
             reserved = limit * row_octets
             self.transport.reserve(reserved)

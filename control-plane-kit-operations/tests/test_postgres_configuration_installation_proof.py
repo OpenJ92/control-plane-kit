@@ -678,7 +678,7 @@ class PostgresConfigurationInstallationProofTests(ConfigurationEvidenceHistoryFi
             if not injected and proof_sql(query) and all(type(value) is int for value in row):
                 read = holder["read"]
                 # Synthetic prior command usage, not fabricated returned data.
-                additional = 16 * 1024 * 1024 - 768 - read.used.accounted_bytes
+                additional = 40 * 1024 * 1024 - 768 - read.used.accounted_bytes
                 self.assertGreater(additional, 0)
                 read.used = read.used.plus(Footprint(0, additional, 0, 0))
                 injected.append(read.used)
@@ -690,7 +690,7 @@ class PostgresConfigurationInstallationProofTests(ConfigurationEvidenceHistoryFi
             self.assertEqual(len(injected), 1)
             self.assertEqual(len([row for query, row in rows if proof_sql(query)]), 1)
             self.assertGreaterEqual(read.used.statements, injected[0].statements + 1)
-            self.assertLessEqual(read.used.accounted_bytes, 16 * 1024 * 1024)
+            self.assertLessEqual(read.used.accounted_bytes, 40 * 1024 * 1024)
             self.assertTrue(any(query.startswith("RELEASE SAVEPOINT ") for query in observer.queries))
             observer.enabled = False
             self.assertEqual(uow.stores.connection.execute("SELECT 1").fetchone(), (1,))
