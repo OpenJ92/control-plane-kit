@@ -289,12 +289,14 @@ class ActivityRecoveryReadTests(ConfigurationPreparationFixture, unittest.TestCa
         self.assertEqual(caught.exception.category, "capacity")
         from control_plane_kit_operations.postgres.activity_recovery_read import ActivityRecoverySnapshot
         from control_plane_kit_operations.postgres.configuration_evidence import _composed_read
-        from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceFootprint
+        from control_plane_kit_operations.configuration_preparation import (
+            MAX_CONFIGURATION_EVIDENCE_BYTES, ConfigurationEvidenceFootprint,
+        )
         before = self.complete_start_snapshot()
         with self.unit_of_work() as uow:
             with _composed_read(uow.stores.connection) as read:
                 # Exhaust the real shared owner budget, not a substitute reader.
-                read.used = ConfigurationEvidenceFootprint(4096, 8388608, 1000000, 1024)
+                read.used = ConfigurationEvidenceFootprint(0, MAX_CONFIGURATION_EVIDENCE_BYTES, 0, 0)
                 with self.assertRaises(self.api.ActivityRecoveryError) as caught:
                     ActivityRecoverySnapshot(uow.stores).inspect(self.query)
                 self.assertEqual(caught.exception.category, "capacity")
