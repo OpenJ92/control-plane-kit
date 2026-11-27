@@ -271,6 +271,22 @@ class PostgresHttpSampleInvocationTests(_HttpSampleFixture, unittest.TestCase):
             self.assertGreater(accounting.used.statements, 0)
         self.assertEqual(permit.record.activity_id, self.sample_start.transition.identity.activity_id)
 
+    def test_configured_wait_exhausted_budget_preserves_planned_acquisition(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.configuration_preparation import (
+            ConfigurationEvidenceFootprint, MAX_CONFIGURATION_EVIDENCE_BYTES,
+        )
+
+        _, port = self.sample_port(acquire=False)
+        with _configuration_accounting("run-a") as accounting:
+            accounting.used = ConfigurationEvidenceFootprint(0, MAX_CONFIGURATION_EVIDENCE_BYTES, 0, 0)
+            with self.assertRaises(operations.ExecutionInvocationConflict):
+                port.admit("ordinary-verification-acquisition")
+        with self.unit_of_work() as uow:
+            rows = uow.stores.execution.ordinary_verification_invocations(port.marker, port.profile)
+        self.assertEqual(rows, (port.marker,))
+        self.assertEqual(port.marker.disposition.value, "planned")
+
     def test_reached_original_check_returns_two_exact_signing_roles(self):
         _, port = self.sample_port()
         child = port.for_check("ready")
