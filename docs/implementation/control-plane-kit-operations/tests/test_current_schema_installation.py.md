@@ -38,3 +38,9 @@ Corrected focused red at 7e7da80a ran seven methods in 3.260 seconds: twelve
 failure assertions and three direct errors, all attributable to the absent
 require_empty keyword. No duplicate-object cascade remained. This proves the
 missing entrance; the implementation must still reach all deeper assertions.
+
+The #2130 restore test opens the disposable database restored by the Operations
+gate using PostgreSQL's custom archive format. The installer must accept that
+database and preserve its workspace row. Changing either the upper byte limit
+or the permitted character set on the restored provider-ID constraint must still
+make the installer refuse it.

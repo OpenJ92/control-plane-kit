@@ -5,6 +5,21 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 
+# PostgreSQL expands BETWEEN into two comparisons. Restoring its emitted DDL
+# flattens that inner AND while retaining the same byte bounds and alphabet.
+_PROVIDER_ID_LENGTH = (
+    "(octet_length(generation_provider_registration_id) >= 1) AND "
+    "(octet_length(generation_provider_registration_id) <= 200)"
+)
+_PROVIDER_ID_CHECK = (
+    "((generation_provider_registration_id IS NULL) OR ({} AND "
+    """((generation_provider_registration_id COLLATE "C") ~ '^[A-Za-z0-9]'::text) AND """
+    """((generation_provider_registration_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'::text)))"""
+)
+GENERATION_PROVIDER_CHECK = _PROVIDER_ID_CHECK.format(f"({_PROVIDER_ID_LENGTH})")
+RESTORED_GENERATION_PROVIDER_CHECK = _PROVIDER_ID_CHECK.format(_PROVIDER_ID_LENGTH)
+
+
 @dataclass(frozen=True, slots=True)
 class RelationContract:
     name: str
@@ -1293,7 +1308,7 @@ _HISTORICAL_SCHEMA_CONTRACT = CurrentSchemaContract(
         ConstraintContract(kind='c', name='cpk_gateway_key_rotations_fingerprint_check', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=False, delete_action=None, local_columns=('intent_fingerprint',), update_action=None, check_expression="(intent_fingerprint ~ '^[0-9a-f]{64}$'::text)", referenced_columns=None, referenced_relation=None),
         ConstraintContract(kind='c', name='cpk_gateway_key_rotations_generation_checkpoint_check', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=False, delete_action=None, local_columns=('generation_provider_registration_id', 'generation_action_digest'), update_action=None, check_expression='((generation_provider_registration_id IS NULL) = (generation_action_digest IS NULL))', referenced_columns=None, referenced_relation=None),
         ConstraintContract(kind='c', name='cpk_gateway_key_rotations_generation_digest_check', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=False, delete_action=None, local_columns=('generation_action_digest',), update_action=None, check_expression='((generation_action_digest IS NULL) OR ((generation_action_digest COLLATE "C") ~ \'^[0-9a-f]{64}$\'::text))', referenced_columns=None, referenced_relation=None),
-        ConstraintContract(kind='c', name='cpk_gateway_key_rotations_generation_provider_check', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=False, delete_action=None, local_columns=('generation_provider_registration_id',), update_action=None, check_expression='((generation_provider_registration_id IS NULL) OR (((octet_length(generation_provider_registration_id) >= 1) AND (octet_length(generation_provider_registration_id) <= 200)) AND ((generation_provider_registration_id COLLATE "C") ~ \'^[A-Za-z0-9]\'::text) AND ((generation_provider_registration_id COLLATE "C") !~ \'[^A-Za-z0-9._:-]\'::text)))', referenced_columns=None, referenced_relation=None),
+        ConstraintContract(kind='c', name='cpk_gateway_key_rotations_generation_provider_check', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=False, delete_action=None, local_columns=('generation_provider_registration_id',), update_action=None, check_expression=GENERATION_PROVIDER_CHECK, referenced_columns=None, referenced_relation=None),
         ConstraintContract(kind='c', name='cpk_gateway_key_rotations_lifetime_check', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=False, delete_action=None, local_columns=('maximum_grant_lifetime_seconds',), update_action=None, check_expression='((maximum_grant_lifetime_seconds >= 1) AND (maximum_grant_lifetime_seconds <= 300))', referenced_columns=None, referenced_relation=None),
         ConstraintContract(kind='p', name='cpk_gateway_key_rotations_pkey', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=True, delete_action=None, local_columns=('rotation_id',), update_action=None, check_expression=None, referenced_columns=None, referenced_relation=None),
         ConstraintContract(kind='c', name='cpk_gateway_key_rotations_purpose_check', deferred=False, relation='cpk_gateway_key_rotations', validated=True, deferrable=False, match_type=None, no_inherit=False, delete_action=None, local_columns=('purpose',), update_action=None, check_expression="(purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text]))", referenced_columns=None, referenced_relation=None),

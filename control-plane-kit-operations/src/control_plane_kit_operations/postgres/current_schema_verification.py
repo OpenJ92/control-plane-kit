@@ -6,7 +6,11 @@ import json
 from dataclasses import asdict
 from typing import Protocol
 
-from .current_schema_contract import CURRENT_POSTGRES_SCHEMA_CONTRACT
+from .current_schema_contract import (
+    CURRENT_POSTGRES_SCHEMA_CONTRACT,
+    GENERATION_PROVIDER_CHECK,
+    RESTORED_GENERATION_PROVIDER_CHECK,
+)
 
 
 class PostgresConnection(Protocol):
@@ -557,7 +561,14 @@ SELECT
               AND (referenced_cardinality IS NULL OR referenced_cardinality =
                 jsonb_array_length(value -> 'referenced_columns'))
             )
-            AND jsonb_agg(value ORDER BY relname, conname) = %s::jsonb
+            AND jsonb_agg(
+              CASE WHEN relname = 'cpk_gateway_key_rotations'
+                     AND conname = 'cpk_gateway_key_rotations_generation_provider_check'
+                     AND value ->> 'check_expression' = %s
+                   THEN jsonb_set(value, '{check_expression}', to_jsonb(%s::text))
+                   ELSE value
+              END ORDER BY relname, conname
+            ) = %s::jsonb
      FROM semantic_constraints),
     FALSE
   ),
@@ -590,7 +601,8 @@ def current_schema_contract_is_exact(
             *(len(section) + 1 for section in sections),
             len(contract.relations), expected[0],
             len(contract.columns), expected[1],
-            len(contract.constraints), expected[2],
+            len(contract.constraints), RESTORED_GENERATION_PROVIDER_CHECK,
+            GENERATION_PROVIDER_CHECK, expected[2],
             len(contract.indexes), expected[3],
         ),
     ).fetchall()
