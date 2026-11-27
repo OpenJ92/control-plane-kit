@@ -702,6 +702,33 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         )
 
 
+class RestoredCurrentSchemaTests(unittest.TestCase):
+    def test_backup_restore_preserves_current_schema_and_rejects_constraint_drift(self):
+        database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
+        with psycopg.connect(database_url, dbname="cpk_backup_restored") as connection:
+            postgres.install_schema(connection)
+            self.assertEqual(connection.execute(
+                "SELECT name FROM cpk_workspaces WHERE workspace_id = 'backup-test'"
+            ).fetchone(), ("Retained workspace",))
+
+            constraint = "cpk_gateway_key_rotations_generation_provider_check"
+            (original,) = connection.execute(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conrelid = 'cpk_gateway_key_rotations'::regclass AND conname = %s",
+                (constraint,),
+            ).fetchone()
+            for before, after in (("<= 200", "<= 201"), ("0-9._:-", "0-9._:@-")):
+                with self.subTest(change=after):
+                    self.assertEqual(original.count(before), 1)
+                    with connection.transaction(force_rollback=True):
+                        connection.execute(f"ALTER TABLE cpk_gateway_key_rotations DROP CONSTRAINT {constraint}")
+                        connection.execute(f"ALTER TABLE cpk_gateway_key_rotations ADD CONSTRAINT {constraint} "
+                                           + original.replace(before, after))
+                        with self.assertRaisesRegex(postgres.SchemaInstallationError,
+                                                    "^operations schema reset is required$"):
+                            postgres.install_schema(connection)
+
+
 class CurrentSchemaInstallationTests(unittest.TestCase):
     def test_ingress_invocation_catalog_matches_declared_contract(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract
