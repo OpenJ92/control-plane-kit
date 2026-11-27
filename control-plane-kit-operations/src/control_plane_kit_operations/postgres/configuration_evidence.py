@@ -108,7 +108,9 @@ class _EvidenceRead:
         # Maxima are fixed by each owner's SQL projection/CASE/LIMIT. A nested
         # source read shares this same ledger; cache hits execute no statement.
         reserve = ConfigurationEvidenceFootprint(records * identities, octets, records * cells, 1)
-        if configuration_evidence_capacity(self.used.plus(reserve)) is not ConfigurationCapacityDecision.WITHIN_LIMITS:
+        decision = configuration_evidence_capacity(self.used.plus(reserve))
+        if decision is not ConfigurationCapacityDecision.WITHIN_LIMITS:
+            self.accounting.refused_limit = decision.value
             raise _Capacity
         if records == 0 and (params or not sql.startswith(("SAVEPOINT ", "RELEASE SAVEPOINT ", "ROLLBACK TO SAVEPOINT "))):
             raise _Unavailable
@@ -159,14 +161,17 @@ class _EvidenceRead:
         if order:
             suffix += " ORDER BY " + order
         nominal = maximum if point else maximum + 1
-        limit = min(nominal, (MAX_CONFIGURATION_EVIDENCE_RECORDS - self.used.records) // identities,
-            max(0, (self.used.remaining_bytes - 256) // (128 * identities + 28 * len(columns))))
+        record_room = (MAX_CONFIGURATION_EVIDENCE_RECORDS - self.used.records) // identities
+        byte_room = max(0, (self.used.remaining_bytes - 256) // (128 * identities + 28 * len(columns)))
+        limit = min(nominal, record_room, byte_room)
         if limit <= 0:
+            self.accounting.refused_limit = "record-limit" if record_room <= byte_room else "byte-limit"
             raise _Capacity
         suffix += " LIMIT %s"
         lengths = self.query("SELECT " + ",".join("octet_length(" + value + ")" for value in expressions)
             + suffix, (*params, limit), records=limit, octets=limit * len(columns) * 12, cells=len(columns), identities=identities)
         if limit < nominal and len(lengths) == limit:
+            self.accounting.refused_limit = "record-limit" if record_room <= byte_room else "byte-limit"
             raise _Capacity
         if not point and len(lengths) > maximum:
             raise _Capacity

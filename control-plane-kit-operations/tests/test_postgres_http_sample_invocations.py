@@ -287,6 +287,35 @@ class PostgresHttpSampleInvocationTests(_HttpSampleFixture, unittest.TestCase):
         self.assertEqual(rows, (port.marker,))
         self.assertEqual(port.marker.disposition.value, "planned")
 
+    def test_outcome_refusals_name_the_limit_and_preserve_pending(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.configuration_preparation import (
+            ConfigurationEvidenceFootprint, MAX_CONFIGURATION_EVIDENCE_BYTES, MAX_CONFIGURATION_EVIDENCE_RECORDS,
+        )
+        from control_plane_kit_operations.execution_invocations import ExecutionInvocationEvidenceLimit
+
+        _, port = self.sample_port(acquire=False)
+        permit = port.admit("ordinary-verification-acquisition")
+        limits = (
+            ("record-limit", ConfigurationEvidenceFootprint(MAX_CONFIGURATION_EVIDENCE_RECORDS, 0, 0, 0)),
+            ("byte-limit", ConfigurationEvidenceFootprint(0, MAX_CONFIGURATION_EVIDENCE_BYTES, 0, 0)),
+        )
+        for limit, footprint in limits:
+            with self.subTest(limit=limit), _configuration_accounting("run-a") as accounting:
+                accounting.used = footprint
+                with self.assertRaises(ExecutionInvocationEvidenceLimit) as failure:
+                    port.record_outcome(permit, "returned")
+                self.assertEqual(failure.exception.limit, limit)
+                self.assertIsNone(accounting.refused_limit)
+            with self.unit_of_work() as uow:
+                row = uow.stores.execution.command_invocation(permit.record.command, permit.record.invocation_id)
+                self.assertEqual(row.outcome.value, "pending")
+        with _configuration_accounting("run-a") as accounting:
+            accounting.refused_limit = "record-limit"
+            with self.assertRaises(operations.ExecutionInvocationConflict) as conflict:
+                port.record_outcome(object(), "returned")
+            self.assertNotIsInstance(conflict.exception, ExecutionInvocationEvidenceLimit)
+
     def test_reached_original_check_returns_two_exact_signing_roles(self):
         _, port = self.sample_port()
         child = port.for_check("ready")

@@ -20,6 +20,7 @@ class _ConfigurationAccounting:
     owner: object = None
     execution_context: object = None
     active: bool = True
+    refused_limit: str | None = None
 
 
 _ACCOUNTING = ContextVar("cpk_configuration_accounting", default=None)

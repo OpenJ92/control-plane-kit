@@ -19,6 +19,16 @@ class ExecutionCommandDiagnosticTests(unittest.TestCase):
             self.assertEqual(set(value.descriptor()),
                 {"phase", "category", "occurred_at", "last_committed_event_ordinal"})
 
+    def test_verification_reports_the_specific_evidence_limit(self):
+        for category in ("evidence-record-limit", "evidence-byte-limit"):
+            with self.subTest(category=category):
+                value = records.ExecutionCommandDiagnostic("execution-invocation", category,
+                    "2030-01-01T00:00:00Z", 4)
+                self.assertEqual(type(value).from_descriptor(value.descriptor()), value)
+        with self.assertRaises(records.OperationsRecordError):
+            records.ExecutionCommandDiagnostic("execution-invocation", "material-unavailable",
+                "2030-01-01T00:00:00Z", 4)
+
     def test_command_diagnostic_refuses_open_fields_and_invalid_values(self):
         kind = self.diagnostic_type()
         value = kind("context-preparation", "evidence-capacity", "2030-01-01T00:00:00Z", 1)
