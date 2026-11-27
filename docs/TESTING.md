@@ -266,6 +266,19 @@ normalize uncertainty into success.
 - No test may make application success depend on host-side repair or a private
   call that bypasses the public boundary.
 
+## Activity composition
+
+For each activity an interpreter supports, exercise its observable behavior in
+the execution modes in which the planner can emit it. A product configuration
+elsewhere in the graph can enable evidence accounting for the entire command.
+Cover that composition when an activity reads execution history. Reuse a test
+across products when they use the same operation and evidence path.
+
+For a verification activity, check that admission, each declared check, and its
+recorded outcome belong to the original attempt. Exercise a refusal before
+dispatch and verify that it creates no permit for an external effect. Keep
+provider-specific health assertions in the interpreter or server suite.
+
 ## Reporting Results
 
 Record the owning command, terminal status, meaningful failure identities,

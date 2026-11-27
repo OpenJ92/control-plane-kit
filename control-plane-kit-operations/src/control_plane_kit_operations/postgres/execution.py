@@ -362,9 +362,10 @@ class PostgresExecutionStore:
         parent = self.command_receipt_for_idempotency(command.run_id, command.idempotency_key)
         if parent is None or parent.intent_fingerprint != command.intent_fingerprint:
             raise ExecutionInvocationConflict()
-        row = self._connection.execute(_INVOCATION_SELECT
-            + " WHERE run_id=%s AND command_key=%s AND activity_id=%s AND kind=%s AND slot_key=%s",
-            (command.run_id, command.idempotency_key, activity_id, kind.value, slot)).fetchone()
+        rows = self._verification_invocation_rows(
+            "run_id=%s AND command_key=%s AND activity_id=%s AND kind=%s AND slot_key=%s",
+            (command.run_id, command.idempotency_key, activity_id, kind.value, slot), limit=1)
+        row = rows[0] if rows else None
         if row is None:
             return None
         record = _invocation_row(row)
@@ -409,26 +410,31 @@ class PostgresExecutionStore:
         _require_invocation_owners(self, record, receipt_identity_reader=receipt_identity_reader)
         return record
 
+    def _verification_invocation_rows(self, where, parameters, *, limit, order=""):
+        from .configuration_evidence import _active_read
+
+        read = _active_read(self._connection)
+        if read is not None:
+            return read.bounded_rows("cpk_execution_command_invocations", _INVOCATION_READ_COLUMNS,
+                where, parameters, maximum=limit, order=order)
+        order_by = " ORDER BY " + order if order else ""
+        return self._connection.execute(_INVOCATION_SELECT + " WHERE " + where + order_by + " LIMIT %s",
+            (*parameters, limit)).fetchall()
+
     def ordinary_verification_invocations(self, marker, profile):
         """Read only the original bounded family, including one overflow witness."""
         from control_plane_kit_operations.ordinary_verification_invocations import OrdinaryVerificationInvocationProfile
-        from .configuration_evidence import _active_read
         _invocation_record(marker)
         if (marker.kind is not ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION
                 or type(profile) is not OrdinaryVerificationInvocationProfile
                 or profile.target_fingerprint != marker.target_fingerprint):
             raise ExecutionInvocationConflict()
-        # This closed REALIZE/WaitForHealthy path has no configuration suffix.
-        # Refuse a configuration ledger rather than perform unaccounted reads.
-        if _active_read(self._connection) is not None:
-            raise ExecutionInvocationConflict()
+        where = ("run_id=%s AND command_key=%s AND activity_id=%s AND attempt=%s"
+            " AND kind IN ('ordinary-verification-acquisition','ordinary-verification-check','secret-resolution')")
+        parameters = (marker.command.run_id, marker.command.idempotency_key, marker.activity_id, marker.attempt)
         _require_invocation_owners(self, marker)
-        rows = self._connection.execute(_INVOCATION_SELECT
-            + " WHERE run_id=%s AND command_key=%s AND activity_id=%s AND attempt=%s"
-            + " AND kind IN ('ordinary-verification-acquisition','ordinary-verification-check','secret-resolution')"
-            + ' ORDER BY invocation_id COLLATE "C" LIMIT %s',
-            (marker.command.run_id, marker.command.idempotency_key, marker.activity_id,
-                marker.attempt, profile.family_bound + 1)).fetchall()
+        rows = self._verification_invocation_rows(where, parameters, limit=profile.family_bound + 1,
+            order='invocation_id COLLATE "C"')
         if len(rows) > profile.family_bound:
             raise ExecutionInvocationConflict()
         records = tuple(_invocation_row(row) for row in rows)
@@ -1958,11 +1964,18 @@ def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_r
             if record.kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION:
                 original = record
                 # The original attempt has one acquisition, even across commands.
-                rows = store._connection.execute(
-                    "SELECT invocation_id FROM cpk_execution_command_invocations "
-                    "WHERE run_id=%s AND activity_id=%s AND attempt=%s "
-                    "AND kind='ordinary-verification-acquisition' LIMIT 2",
-                    (record.command.run_id, record.activity_id, record.attempt)).fetchall()
+                from .configuration_evidence import _active_read
+                where = ("run_id=%s AND activity_id=%s AND attempt=%s"
+                    " AND kind='ordinary-verification-acquisition'")
+                parameters = (record.command.run_id, record.activity_id, record.attempt)
+                read = _active_read(store._connection)
+                if read is None:
+                    rows = store._connection.execute(
+                        "SELECT invocation_id FROM cpk_execution_command_invocations WHERE " + where + " LIMIT 2",
+                        parameters).fetchall()
+                else:
+                    rows = read.bounded_rows("cpk_execution_command_invocations",
+                        (("invocation_id", "text", 64),), where, parameters, maximum=2)
                 if any(row != (record.invocation_id,) for row in rows):
                     raise ExecutionInvocationConflict(record.invocation_id)
             else:

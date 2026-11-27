@@ -686,11 +686,11 @@ consumer = "Execution invocation storage and health marker/service tests consume
 
 [[read]]
 module = "control_plane_kit_operations.postgres.execution"
-selector = "PostgresExecutionStore.ordinary_verification_invocations"
+selector = "PostgresExecutionStore._verification_invocation_rows"
 category = "closed-finite"
-sql = "Exact command/activity/attempt and three allowed kinds; invocation_id COLLATE C order; LIMIT family_bound+1 with overflow refusal; family bound at most 204 for ordinary checks/TLS or 301 for 100 HTTP sample checks with two role resolutions each and one acquisition"
+sql = "One unique command slot, or the command/activity/attempt verification family ordered by invocation_id COLLATE C with LIMIT family_bound+1 for overflow detection; active accounting bounds the same projections"
 consumer_kind = "production"
-consumer = "ExecutionInvocationService._ordinary_history validates the complete finite per-check family and refuses an active configuration ledger"
+consumer = "PostgresExecutionStore.command_invocation_for_slot reads one slot and ExecutionInvocationService._ordinary_history checks the complete per-check family under both accounting modes"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.execution"

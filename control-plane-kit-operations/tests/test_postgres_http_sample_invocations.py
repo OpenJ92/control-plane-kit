@@ -233,7 +233,7 @@ class _HttpSampleFixture(_ManagedPermissionStartFixture):
             self.sample_keys[family] = owner.activate(ActivateDelegationSigningKeyCommand("workspace-a", purpose,
                 "cpk-server", "sample-" + family, "operator-a", self.clock(), (PolicyScope.DELEGATION_KEY_ACTIVATE,)))
 
-    def sample_port(self):
+    def sample_port(self, *, acquire=True):
         started = self.service().execute(self.sample_start, command_context=self.bound)
         with self.unit_of_work() as uow:
             marker = uow.stores.execution.original_final_invocation(started.attempt.state.identity,
@@ -247,12 +247,46 @@ class _HttpSampleFixture(_ManagedPermissionStartFixture):
         service = operations.ExecutionInvocationService(self.unit_of_work, permission_policy=self.policy,
             clock=now, http_sample_support=support, http_sample_registration=registration)
         port = service.bind_runtime(command_context=self.bound, start=self.sample_start, started=started)
-        permit = port.admit("ordinary-verification-acquisition")
-        port.record_outcome(permit, "returned")
+        if acquire:
+            permit = port.admit("ordinary-verification-acquisition")
+            port.record_outcome(permit, "returned")
         return service, port
 
 
 class PostgresHttpSampleInvocationTests(_HttpSampleFixture, unittest.TestCase):
+    def test_configured_wait_accounts_for_http_acquisition_and_check(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+
+        _, port = self.sample_port(acquire=False)
+        with _configuration_accounting("run-a") as accounting:
+            acquisition = port.admit("ordinary-verification-acquisition")
+            port.record_outcome(acquisition, "returned")
+            check = port.for_check("ready")
+            prepared = check.prepare_http_sample()
+            for grant in (prepared.sender_input.transit_grant, prepared.sender_input.workload_grant):
+                permit = check.admit("secret-resolution", authorization_id=grant.authorization_id)
+                check.record_outcome(permit, "returned")
+            permit = check.admit("ordinary-verification-check")
+            check.record_outcome(permit, "returned")
+            self.assertGreater(accounting.used.statements, 0)
+        self.assertEqual(permit.record.activity_id, self.sample_start.transition.identity.activity_id)
+
+    def test_configured_wait_exhausted_budget_preserves_planned_acquisition(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.configuration_preparation import (
+            ConfigurationEvidenceFootprint, MAX_CONFIGURATION_EVIDENCE_BYTES,
+        )
+
+        _, port = self.sample_port(acquire=False)
+        with _configuration_accounting("run-a") as accounting:
+            accounting.used = ConfigurationEvidenceFootprint(0, MAX_CONFIGURATION_EVIDENCE_BYTES, 0, 0)
+            with self.assertRaises(operations.ExecutionInvocationConflict):
+                port.admit("ordinary-verification-acquisition")
+        with self.unit_of_work() as uow:
+            rows = uow.stores.execution.ordinary_verification_invocations(port.marker, port.profile)
+        self.assertEqual(rows, (port.marker,))
+        self.assertEqual(port.marker.disposition.value, "planned")
+
     def test_reached_original_check_returns_two_exact_signing_roles(self):
         _, port = self.sample_port()
         child = port.for_check("ready")

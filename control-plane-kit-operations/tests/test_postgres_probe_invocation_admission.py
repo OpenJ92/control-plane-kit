@@ -324,6 +324,18 @@ class PostgresAuthoritylessProbeInvocationTests(_ProbeAdmissionFixture, unittest
 class PostgresNonsecretProbeInvocationTests(_ProbeAdmissionFixture, unittest.TestCase):
     no_credentials = True
 
+    def test_configured_wait_accounts_for_postgres_checks(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+
+        _, port, _ = self.prepared_port()
+        with _configuration_accounting("run-a"):
+            self.returned_acquisition(port)
+            for name in ("database-first", "database-second"):
+                child = port.for_check(name)
+                permit = child.admit("ordinary-verification-check")
+                child.record_outcome(permit, "returned")
+        self.assertEqual(self.ledger.active, 0)
+
     def test_revocation_after_admitted_check_denies_later_nonsecret_check(self):
         _, port, request = self.prepared_port()
         self.assertEqual(request.secret_resolution_grants, ())
