@@ -336,7 +336,7 @@ class OperationsPackageGateTests(unittest.TestCase):
                 "-e",
                 "POSTGRES_PASSWORD=cpk",
                 "--health-cmd",
-                "pg_isready -U cpk -d cpk",
+                "pg_isready -h 127.0.0.1 -p 5432 -U cpk -d cpk",
                 "--health-interval",
                 "1s",
                 "--health-timeout",
@@ -527,6 +527,14 @@ class OperationsPackageGateTests(unittest.TestCase):
                         if [ "$phase" = "unittest" ]; then
                           exit "$FAKE_DOCKER_UNITTEST_STATUS"
                         fi
+                        ;;
+                      exec)
+                        case "$*" in
+                          "exec cpk-operations-test-postgres createdb -U cpk cpk_backup_source") ;;
+                          "exec -i cpk-operations-test-postgres psql -Xq -v ON_ERROR_STOP=1 -U cpk -d cpk_backup_source") ;;
+                          "exec cpk-operations-test-postgres sh -eu -c "*"pg_dump "*"pg_restore "*) ;;
+                          *) exit 99 ;;
+                        esac
                         ;;
                       inspect)
                         printf 'inspect:%s\n' "$*" >>"$FAKE_DOCKER_EVENTS"

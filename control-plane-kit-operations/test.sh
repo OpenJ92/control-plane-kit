@@ -110,7 +110,7 @@ docker run -d \
   -e POSTGRES_DB=cpk \
   -e POSTGRES_USER=cpk \
   -e POSTGRES_PASSWORD=cpk \
-  --health-cmd "pg_isready -U cpk -d cpk" \
+  --health-cmd "pg_isready -h 127.0.0.1 -p 5432 -U cpk -d cpk" \
   --health-interval 1s \
   --health-timeout 5s \
   --health-retries 30 \
@@ -135,6 +135,20 @@ if [ "$(docker inspect -f '{{.State.Health.Status}}' "$POSTGRES_CONTAINER")" != 
   docker logs --timestamps --tail 400 "$POSTGRES_CONTAINER" >&2 || true
   exit 1
 fi
+
+# Exercise the server's own dump and restore tools inside the disposable PostgreSQL.
+docker exec "$POSTGRES_CONTAINER" createdb -U cpk cpk_backup_source
+docker exec -i "$POSTGRES_CONTAINER" psql -Xq -v ON_ERROR_STOP=1 -U cpk -d cpk_backup_source \
+  < "$ROOT/src/control_plane_kit_operations/postgres/current_schema.sql"
+docker exec -i "$POSTGRES_CONTAINER" psql -Xq -v ON_ERROR_STOP=1 -U cpk -d cpk_backup_source <<'SQL'
+INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+VALUES ('backup-test', 'Retained workspace', 'created');
+SQL
+docker exec "$POSTGRES_CONTAINER" sh -eu -c '
+  pg_dump -U cpk -Fc -f /tmp/schema-backup.dump cpk_backup_source
+  createdb -U cpk cpk_backup_restored
+  pg_restore -e --no-owner --no-acl -U cpk -d cpk_backup_restored /tmp/schema-backup.dump
+'
 
 if run_behavior \
   -v "$REPO_ROOT/control-plane-kit-core:/core:ro" \
