@@ -110,7 +110,7 @@ docker run -d \
   -e POSTGRES_DB=cpk \
   -e POSTGRES_USER=cpk \
   -e POSTGRES_PASSWORD=cpk \
-  --health-cmd "pg_isready -U cpk -d cpk" \
+  --health-cmd "pg_isready -h 127.0.0.1 -p 5432 -U cpk -d cpk" \
   --health-interval 1s \
   --health-timeout 5s \
   --health-retries 30 \
