@@ -5,7 +5,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from control_plane_kit_core.operations import EffectAttemptIdentity
+    from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
+    from control_plane_kit_operations.ordinary_verification_invocations import OrdinaryVerificationInvocationProfile
 
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -432,16 +437,22 @@ class PostgresExecutionStore:
         where = ("run_id=%s AND command_key=%s AND activity_id=%s AND attempt=%s"
             " AND kind IN ('ordinary-verification-acquisition','ordinary-verification-check','secret-resolution')")
         parameters = (marker.command.run_id, marker.command.idempotency_key, marker.activity_id, marker.attempt)
-        _require_invocation_owners(self, marker)
         rows = self._verification_invocation_rows(where, parameters, limit=profile.family_bound + 1,
             order='invocation_id COLLATE "C"')
         if len(rows) > profile.family_bound:
             raise ExecutionInvocationConflict()
         records = tuple(_invocation_row(row) for row in rows)
+        acquisitions = [record for record in records
+            if record.kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION]
+        if len(acquisitions) != 1 or acquisitions[0].invocation_id != marker.invocation_id:
+            raise ExecutionInvocationConflict(marker.invocation_id)
+        # A caller may hold the planned marker after its outcome was recorded.
+        # Validate the retained acquisition and its immutable identity once.
+        acquisition = acquisitions[0]
+        family = _require_invocation_owners(self, acquisition)
         for record in records:
-            if record.command != marker.command:
-                raise ExecutionInvocationConflict()
-            _require_invocation_owners(self, record)
+            if record is not acquisition:
+                _require_invocation_owners(self, record, family=family)
         return records
 
     def replace_command_invocation(self, expected: ExecutionInvocationRecord,
@@ -1908,7 +1919,27 @@ def _invocation_row(row):
         raise ExecutionInvocationConflict() from None
 
 
-def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_reader=None):
+@dataclass(frozen=True)
+class _VerificationFamily:
+    """Ownership already checked for the acquisition in this single store read."""
+    marker: ExecutionInvocationRecord
+    parent: ExecutionCommandReceiptRecord
+    request: ExecutionRequestRecord
+    identity: EffectAttemptIdentity
+    intent: EffectAttemptIntentRecord
+    profile: OrdinaryVerificationInvocationProfile
+
+    def require_member(self, record):
+        marker = self.marker
+        if (record.kind not in (ExecutionInvocationKind.SECRET_RESOLUTION, ExecutionInvocationKind.ORDINARY_VERIFICATION_CHECK)
+                or record.command != marker.command or record.workspace_id != marker.workspace_id
+                or record.activity_id != marker.activity_id or record.attempt != marker.attempt
+                or record.original_event_id != marker.original_event_id
+                or record.request_fingerprint != marker.request_fingerprint):
+            raise ExecutionInvocationConflict(record.invocation_id)
+
+
+def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_reader=None, family=None):
     """Check immutable joins; semantic permission remains with the admitting owner."""
     from control_plane_kit_core.operations import EffectAttemptIdentity
     from control_plane_kit_core.planning import ActivityId
@@ -1923,31 +1954,35 @@ def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_r
             return
         if fresh and receipt_identity_reader is not None:
             raise ExecutionInvocationConflict(record.invocation_id)
-        parent = (store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
-            if receipt_identity_reader is None else receipt_identity_reader(store._connection,
-                record.command.run_id, record.command.idempotency_key))
-        if (parent is None or parent.intent_fingerprint != record.command.intent_fingerprint
-                or parent.managed_intent is None or parent.managed_intent.workspace_id != record.workspace_id
-                or (fresh and parent.status is not ExecutionCommandReceiptStatus.INCOMPLETE)):
-            raise ExecutionInvocationConflict(record.invocation_id)
-        run = store.get_run(record.command.run_id)
-        request = store.get_request(run.admission.request_id)
-        if (request.identity.workspace_id != record.workspace_id
-                or parent.initial_run.admission.request_id != request.identity.request_id
-                or parent.initial_run.plan_id != run.plan_id):
-            raise ExecutionInvocationConflict(record.invocation_id)
-        plan = PostgresActivityHistoryStore(store._connection).get_plan(run.plan_id)
-        plan.plan.activity(ActivityId(record.activity_id))
-        if record.attempt is not None:
-            identity = EffectAttemptIdentity(RunId(record.command.run_id), record.activity_id, record.attempt)
-            intent = EffectAttemptIntentStore(store._connection).get(identity)
-            attempt = EffectAttemptStore(store._connection).get(identity)
-            if (intent.original_start_event != attempt.original_start_event
-                    or intent.request_fingerprint != record.request_fingerprint
-                    or attempt.original_start_event.event_id != record.original_event_id
-                    or intent.intent.source.workspace_id != record.workspace_id
-                    or intent.intent.source.plan_id != run.plan_id):
+        if family is not None:
+            family.require_member(record)
+            parent, request, identity, intent = family.parent, family.request, family.identity, family.intent
+        else:
+            parent = (store.command_receipt_for_idempotency(record.command.run_id, record.command.idempotency_key)
+                if receipt_identity_reader is None else receipt_identity_reader(store._connection,
+                    record.command.run_id, record.command.idempotency_key))
+            if (parent is None or parent.intent_fingerprint != record.command.intent_fingerprint
+                    or parent.managed_intent is None or parent.managed_intent.workspace_id != record.workspace_id
+                    or (fresh and parent.status is not ExecutionCommandReceiptStatus.INCOMPLETE)):
                 raise ExecutionInvocationConflict(record.invocation_id)
+            run = store.get_run(record.command.run_id)
+            request = store.get_request(run.admission.request_id)
+            if (request.identity.workspace_id != record.workspace_id
+                    or parent.initial_run.admission.request_id != request.identity.request_id
+                    or parent.initial_run.plan_id != run.plan_id):
+                raise ExecutionInvocationConflict(record.invocation_id)
+            plan = PostgresActivityHistoryStore(store._connection).get_plan(run.plan_id)
+            plan.plan.activity(ActivityId(record.activity_id))
+            if record.attempt is not None:
+                identity = EffectAttemptIdentity(RunId(record.command.run_id), record.activity_id, record.attempt)
+                intent = EffectAttemptIntentStore(store._connection).get(identity)
+                attempt = EffectAttemptStore(store._connection).get(identity)
+                if (intent.original_start_event != attempt.original_start_event
+                        or intent.request_fingerprint != record.request_fingerprint
+                        or attempt.original_start_event.event_id != record.original_event_id
+                        or intent.intent.source.workspace_id != record.workspace_id
+                        or intent.intent.source.plan_id != run.plan_id):
+                    raise ExecutionInvocationConflict(record.invocation_id)
         if record.kind is ExecutionInvocationKind.PREPARED_RUNTIME_DISPATCH:
             from .runtime_authority_store import RuntimeAuthorityStore
             from control_plane_kit_operations.prepared_runtime_invocations import prepared_runtime_invocation_profile
@@ -1978,6 +2013,8 @@ def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_r
                         (("invocation_id", "text", 64),), where, parameters, maximum=2)
                 if any(row != (record.invocation_id,) for row in rows):
                     raise ExecutionInvocationConflict(record.invocation_id)
+            elif family is not None:
+                original = family.marker
             else:
                 original = store.original_final_invocation(identity,
                     original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
@@ -1985,14 +2022,19 @@ def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_r
                         receipt_identity_reader=receipt_identity_reader)
                 if original is None or original.command != record.command:
                     raise ExecutionInvocationConflict(record.invocation_id)
-            runtime = RuntimeAuthorityStore(store._connection).get_registration(
-                record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
-            profile = ordinary_verification_invocation_profile(intent.intent,
-                original_event_id=record.original_event_id, runtime_authority=runtime, plan=plan)
+            if family is not None:
+                profile = family.profile
+            else:
+                runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                    record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
+                profile = ordinary_verification_invocation_profile(intent.intent,
+                    original_event_id=record.original_event_id, runtime_authority=runtime, plan=plan)
             targets = ((profile.target_fingerprint,) if original is record else
                 tuple(check.target_fingerprint for check in profile.checks))
             if record.target_fingerprint not in targets:
                 raise ExecutionInvocationConflict(record.invocation_id)
+            if original is record:
+                return _VerificationFamily(record, parent, request, identity, intent, profile)
         if record.kind is ExecutionInvocationKind.RECONCILIATION_OBSERVATION:
             from .runtime_observation_source import original_observation_source
             original, _, _, target = original_observation_source(store._connection, intent,
@@ -2010,16 +2052,19 @@ def _require_invocation_owners(store, record, *, fresh=False, receipt_identity_r
                 if ordinary_verification_candidate(intent.intent):
                     from .runtime_authority_store import RuntimeAuthorityStore
                     from control_plane_kit_core.runtime_effect_observation import runtime_effect_request_for_intent
-                    original = store.original_final_invocation(identity,
-                        original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
-                        kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
-                        receipt_identity_reader=receipt_identity_reader)
-                    if original is None or original.command != record.command:
-                        raise ExecutionInvocationConflict(record.invocation_id)
-                    runtime = RuntimeAuthorityStore(store._connection).get_registration(
-                        record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
-                    profile = ordinary_verification_invocation_profile(intent.intent,
-                        original_event_id=record.original_event_id, runtime_authority=runtime, plan=plan)
+                    if family is not None:
+                        original, profile = family.marker, family.profile
+                    else:
+                        original = store.original_final_invocation(identity,
+                            original_event_id=record.original_event_id, request_fingerprint=record.request_fingerprint,
+                            kind=ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION,
+                            receipt_identity_reader=receipt_identity_reader)
+                        if original is None or original.command != record.command:
+                            raise ExecutionInvocationConflict(record.invocation_id)
+                        runtime = RuntimeAuthorityStore(store._connection).get_registration(
+                            record.workspace_id, intent.intent.authority_ref, original.runtime_registration_id)
+                        profile = ordinary_verification_invocation_profile(intent.intent,
+                            original_event_id=record.original_event_id, runtime_authority=runtime, plan=plan)
                     roles = tuple(role for role in profile.secret_roles
                         if role[1].reference == authorized.reference and role[1].intent == authorized.intent
                         and (None if role[0] is None else role[0].probe_id) == authorized.probe_id)

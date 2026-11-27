@@ -247,7 +247,7 @@ class NativeConnectorInstallationDispatchTests(CurrentConnectorInstallationFixtu
                 from control_plane_kit_operations.coordinator import ExecutionCommandPreparationFailure
                 with self.assertRaises(ExecutionCommandPreparationFailure) as caught:
                     await self.execute_to_native(starts)
-                self.assertEqual(caught.exception.category, "evidence-capacity")
+                self.assertEqual(caught.exception.category, "evidence-record-limit")
                 self.assertEqual(caught.exception.diagnostic_status, "recorded")
                 result = None
         self.assertEqual(len(reads), 1, "native dispatch must acquire a fresh installation proof")

@@ -1208,6 +1208,13 @@ def _canonical_timestamp_instant(value: object, field_name: str) -> datetime:
         ) from None
 
 
+_COMMAND_DIAGNOSTIC_CAUSES = frozenset({
+    ("context-preparation", "material-unavailable"), ("context-preparation", "evidence-capacity"),
+    ("context-preparation", "evidence-record-limit"), ("context-preparation", "evidence-byte-limit"),
+    ("execution-invocation", "evidence-record-limit"), ("execution-invocation", "evidence-byte-limit"),
+})
+
+
 @dataclass(frozen=True)
 class ExecutionCommandDiagnostic:
     """Immutable bounded preparation evidence, independent of lifecycle results."""
@@ -1218,9 +1225,9 @@ class ExecutionCommandDiagnostic:
     last_committed_event_ordinal: int
 
     def __post_init__(self) -> None:
-        if (type(self.phase) is not str or self.phase != "context-preparation"
+        if (type(self.phase) is not str
                 or type(self.category) is not str
-                or self.category not in ("evidence-capacity", "material-unavailable")
+                or (self.phase, self.category) not in _COMMAND_DIAGNOSTIC_CAUSES
                 or type(self.last_committed_event_ordinal) is not int
                 or not 1 <= self.last_committed_event_ordinal <= 2**63 - 1):
             raise OperationsRecordError("execution command diagnostic is invalid")

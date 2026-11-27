@@ -144,7 +144,7 @@ from control_plane_kit_operations.execution_invocation_service import (
 from control_plane_kit_operations.execution_invocations import (
     ExecutionInvocationControlError, ExecutionInvocationDenied, ExecutionInvocationPlanned,
     ExecutionInvocationConflict, ExecutionInvocationDisposition, ExecutionInvocationOutcome,
-    ExecutionInvocationKind,
+    ExecutionInvocationKind, ExecutionInvocationEvidenceLimit,
 )
 from control_plane_kit_operations.ordinary_verification_invocations import (
     ordinary_verification_candidate, ordinary_verification_invocation_profile,
@@ -198,6 +198,7 @@ from control_plane_kit_operations.records import (
     BoundedEvidence,
     CoordinatorStatus,
     ExecutionCommandDiagnostic,
+    _COMMAND_DIAGNOSTIC_CAUSES,
     ExecutionCommandReceiptRecord,
     ExecutionCommandReceiptStatus,
     ExecutionCommandResultRecord,
@@ -227,14 +228,15 @@ class ExecutionCoordinatorConflict(ExecutionCoordinatorError):
 class ExecutionCommandPreparationFailure(ExecutionCoordinatorConflict):
     """Closed preparation cause and evidence acknowledgement, never a raw cause."""
 
-    def __init__(self, category, *, diagnostic_status="unacknowledged", preparation_exit_acknowledged=False):
-        if category not in ("evidence-capacity", "material-unavailable") or diagnostic_status not in (
+    def __init__(self, category, *, diagnostic_status="unacknowledged", preparation_exit_acknowledged=False, phase="context-preparation"):
+        if (phase, category) not in _COMMAND_DIAGNOSTIC_CAUSES or diagnostic_status not in (
                 "recorded", "unacknowledged"):
             raise ValueError("invalid preparation failure")
+        self.phase = phase
         self.category = category
         self.diagnostic_status = diagnostic_status
         self.preparation_exit_acknowledged = preparation_exit_acknowledged
-        super().__init__("execution command context preparation failed: " + category +
+        super().__init__("execution command " + phase.replace("-", " ") + " failed: " + category +
             "; diagnostic " + diagnostic_status)
 
 
@@ -1110,7 +1112,7 @@ class ExecutionCoordinator:
             except ExecutionCommandPreparationFailure as error:
                 failure = error
             status = self._record_preparation_failure(command, None, failure)
-        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status)
+        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status, phase=failure.phase)
 
     def _configure_run(self, run_id):
         try:
@@ -1147,8 +1149,11 @@ class ExecutionCoordinator:
                 return await self._execute_managed_command(command, accounting)
             except ExecutionCommandPreparationFailure as error:
                 failure = error
+            except ExecutionInvocationEvidenceLimit as error:
+                failure = ExecutionCommandPreparationFailure("evidence-" + error.limit,
+                    phase="execution-invocation", preparation_exit_acknowledged=True)
             status = self._record_preparation_failure(command.execution, self._managed_provenance(command), failure)
-        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status)
+        raise ExecutionCommandPreparationFailure(failure.category, diagnostic_status=status, phase=failure.phase)
 
     def _record_preparation_failure(self, command, provenance, failure):
         if not failure.preparation_exit_acknowledged:
@@ -1165,11 +1170,11 @@ class ExecutionCoordinator:
                         command.idempotency_key.value, for_update=True)
                     if receipt is not None and receipt.diagnostic is not None:
                         diagnostic = receipt.diagnostic
-                        if diagnostic.category != failure.category:
+                        if (diagnostic.phase, diagnostic.category) != (failure.phase, failure.category):
                             return "unacknowledged"
                     else:
                         ordinal, _ = store.command_diagnostic_frontier(command.run_id)
-                        diagnostic = ExecutionCommandDiagnostic("context-preparation", failure.category,
+                        diagnostic = ExecutionCommandDiagnostic(failure.phase, failure.category,
                             self._clock(), ordinal)
                     store.record_command_diagnostic(command.run_id, command.idempotency_key.value,
                         intent_fingerprint=_execution_command_fingerprint(command, provenance),
@@ -2720,6 +2725,8 @@ class ExecutionCoordinator:
             from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
             accounting = _ACCOUNTING.get()
             active = accounting is not None and accounting.active
+            if active:
+                accounting.refused_limit = None
             try:
                 request, run = _locked_request_and_run(stores, command)
                 if active:
@@ -2730,6 +2737,8 @@ class ExecutionCoordinator:
                     raise
                 from control_plane_kit_operations.configuration_preparation import ConfigurationEvidenceCapacityError
                 category = "evidence-capacity" if isinstance(error, ConfigurationEvidenceCapacityError) else "material-unavailable"
+                if category == "evidence-capacity" and accounting.refused_limit is not None:
+                    category = "evidence-" + accounting.refused_limit
                 preparation_failure.append(ExecutionCommandPreparationFailure(category))
             if active:
                 raise preparation_failure[0]

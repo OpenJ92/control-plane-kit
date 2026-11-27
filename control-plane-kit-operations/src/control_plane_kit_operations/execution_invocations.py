@@ -41,6 +41,16 @@ class ExecutionInvocationConflict(ExecutionInvocationControlError):
     code = "invocation-conflict"
 
 
+class ExecutionInvocationEvidenceLimit(ExecutionInvocationConflict):
+    """A command-local capacity refusal observed while acknowledging a call."""
+
+    def __init__(self, limit):
+        if limit not in ("record-limit", "byte-limit"):
+            raise OperationsRecordError("invalid invocation evidence limit")
+        super().__init__()
+        self.limit = limit
+
+
 class ExecutionInvocationKind(StrEnum):
     ENDPOINT_OBSERVATION = "endpoint-observation"
     SECRET_RESOLUTION = "secret-resolution"

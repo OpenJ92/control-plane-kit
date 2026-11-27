@@ -1,6 +1,7 @@
 """Command-owned semantic admission; capability IO belongs to the caller."""
 
 from dataclasses import dataclass, field, replace
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 from typing import Protocol
@@ -15,7 +16,7 @@ from control_plane_kit_operations.effect_permissions import (
     CurrentWorkspaceEffectPolicy, EffectCommandContext, _require_execution_binding,
 )
 from control_plane_kit_operations.execution_invocations import (
-    ExecutionInvocationControlError, ExecutionInvocationConflict, ExecutionInvocationDenied,
+    ExecutionInvocationControlError, ExecutionInvocationConflict, ExecutionInvocationDenied, ExecutionInvocationEvidenceLimit,
     ExecutionInvocationExisting, ExecutionInvocationPlanned, ExecutionInvocationRecord, ExecutionInvocationDecision,
     ExecutionInvocationKind as Kind, ExecutionInvocationDisposition as Disposition,
     ExecutionInvocationOutcome as Outcome, secret_invocation_target_fingerprint,
@@ -94,6 +95,30 @@ def _require_postgres_window(binding, timestamp):
     delta = instant - datetime(1970, 1, 1, tzinfo=timezone.utc)
     current = (delta.days * 86400 + delta.seconds) * 1000 + delta.microseconds // 1000
     _require(binding.started_at_epoch_ms <= current < binding.deadline_epoch_ms)
+
+
+@contextmanager
+def _capture_outcome_limit():
+    # Only a refusal in this transaction can explain this acknowledgement.
+    # The UoW exits outside this scope, so a rollback error supersedes it.
+    from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+    accounting = _ACCOUNTING.get()
+    if accounting is None or not accounting.active:
+        yield
+        return
+    previous = accounting.refused_limit
+    accounting.refused_limit = None
+    try:
+        yield
+    except (ValueError, ExecutionInvocationConflict):
+        if accounting.refused_limit is None:
+            raise
+        limit = accounting.refused_limit
+    else:
+        return
+    finally:
+        accounting.refused_limit = previous
+    raise ExecutionInvocationEvidenceLimit(limit)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -434,7 +459,7 @@ class ExecutionInvocationService:
             _require(outcome is not Outcome.PENDING)
             reference = bound.context.receipt
             _require(permit.record.command == reference)
-            with self._unit_of_work_factory() as uow:
+            with self._unit_of_work_factory() as uow, _capture_outcome_limit():
                 stores = uow.stores
                 stores.execution.lock_command_idempotency(reference.run_id, reference.idempotency_key)
                 stores.execution.command_receipt_for_idempotency(reference.run_id,
