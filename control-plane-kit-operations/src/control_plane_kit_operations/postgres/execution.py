@@ -437,19 +437,21 @@ class PostgresExecutionStore:
         where = ("run_id=%s AND command_key=%s AND activity_id=%s AND attempt=%s"
             " AND kind IN ('ordinary-verification-acquisition','ordinary-verification-check','secret-resolution')")
         parameters = (marker.command.run_id, marker.command.idempotency_key, marker.activity_id, marker.attempt)
-        family = _require_invocation_owners(self, marker)
         rows = self._verification_invocation_rows(where, parameters, limit=profile.family_bound + 1,
             order='invocation_id COLLATE "C"')
         if len(rows) > profile.family_bound:
             raise ExecutionInvocationConflict()
         records = tuple(_invocation_row(row) for row in rows)
+        acquisitions = [record for record in records
+            if record.kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION]
+        if len(acquisitions) != 1 or acquisitions[0].invocation_id != marker.invocation_id:
+            raise ExecutionInvocationConflict(marker.invocation_id)
+        # A caller may hold the planned marker after its outcome was recorded.
+        # Validate the retained acquisition and its immutable identity once.
+        acquisition = acquisitions[0]
+        family = _require_invocation_owners(self, acquisition)
         for record in records:
-            if record.command != marker.command:
-                raise ExecutionInvocationConflict()
-            if record.kind is ExecutionInvocationKind.ORDINARY_VERIFICATION_ACQUISITION:
-                if record != marker:
-                    raise ExecutionInvocationConflict(record.invocation_id)
-            else:
+            if record is not acquisition:
                 _require_invocation_owners(self, record, family=family)
         return records
 
