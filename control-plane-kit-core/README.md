@@ -42,6 +42,15 @@ Core #1793 supplies this language; Operations #1794 owns atomic recipient matchi
 and active workspace admission. This Core slice alone does not correct existing
 runtime delivery, authorize replay of historical effects, or migrate stored graphs.
 
+For a retained managed workload, `compile_retained_image_declared_checks_activity_plan`
+compares two validated graphs and accepts an image-only change within one product
+family. Process access, selected secret versions, public routes and configuration
+must match across the two graphs. The plan observes the retained gateway path,
+reconciles the one workload, and asks for its declared signed readiness or
+liveness. An independently declared HTTP verification contract keeps its own
+wait when its sample receiver configuration covers every check. Registered
+product admission and execution authority belong to Operations.
+
 A product may declare payload-free `ConfigurationArtifactRequirement` values in
 the keyword-only `configuration_requirements` tuple. `product_configuration_slots`
 projects the canonical union of required and concrete declared slots. Every

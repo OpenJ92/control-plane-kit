@@ -275,17 +275,17 @@ def _managed_update_shape(current, desired, diff):
     )
 
 
-def _retained_update_eligible(before, after):
+def _retained_update_eligible(before, after, *, declared_checks=False):
     """Shared replacement posture; relation owners separately constrain changes."""
     # Compiled Node.secret_deliveries includes active socket-derived deliveries.
     if before.secret_deliveries != after.secret_deliveries:
         return False
     try:
         for node in (before, after):
-            if (_independent_verification(node)
+            if ((not declared_checks and (_independent_verification(node) or node.runtime_authority_deliveries))
                     or node.lifecycle.ownership is not ResourceOwnership.OWNED
                     or node.lifecycle.compute is not ResourcePersistence.EPHEMERAL
-                    or node.lifecycle.data or node.runtime_authority_deliveries):
+                    or node.lifecycle.data):
                 return False
             selections = normalize_secret_selections(node.secret_deliveries, node.secret_selections)
             if any(type(value) is not SecretVersionSelection for value in selections):
@@ -295,14 +295,14 @@ def _retained_update_eligible(before, after):
     return True
 
 
-def _retained_update_wrapper(current, desired, node_id):
+def _retained_update_wrapper(current, desired, node_id, *, declared_checks=False):
     """Select the exact receiver for an eligible retained workload update."""
     before, after = current.graph.nodes[node_id], desired.graph.nodes[node_id]
     runtime = desired.graph.runtimes[after.runtime_id]
     surface, _ = _selected_surface(after)
     if (runtime.management is None or surface is None
-            or NodeHealthReadKind.READINESS not in surface.health_reads
-            or not _retained_update_eligible(before, after)):
+            or (not declared_checks and NodeHealthReadKind.READINESS not in surface.health_reads)
+            or not _retained_update_eligible(before, after, declared_checks=declared_checks)):
         return None
     try:
         _, gateway, connector, _, _ = _pin_path(desired, after.runtime_id, PlanGraphSide.DESIRED_GRAPH)
@@ -397,7 +397,7 @@ def _managed_verifier_refresh_shape(current, desired, diff):
             and original.verifiers != refreshed.verifiers)
 
 
-def _managed_image_update_shape(current, desired, diff):
+def _managed_image_update_shape(current, desired, diff, *, declared_checks=False):
     """Recognize a pinned image transition; registered contract truth is external."""
     if len(diff.changes) != 1:
         return False
@@ -438,7 +438,7 @@ def _managed_image_update_shape(current, desired, diff):
             or (old_image.registry, old_image.repository) != (new_image.registry, new_image.repository)
             or old_image.digest == new_image.digest):
         return False
-    return _retained_update_wrapper(current, desired, node_id) is not None
+    return _retained_update_wrapper(current, desired, node_id, declared_checks=declared_checks) is not None
 
 
 def _managed_secret_selection_update_shape(current, desired, diff):
@@ -632,17 +632,26 @@ def _matching_activity(plan, operation_type, predicate):
 
 def compile_retained_image_ingress_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
     """Plan an exact image replacement after observing its retained ingress."""
+    return _compile_retained_image(current, desired, declared_checks=False)
+
+
+def compile_retained_image_declared_checks_activity_plan(current: ValidatedGraph, desired: ValidatedGraph) -> ActivityPlan:
+    """Keep the receiver's declared health observations and unchanged process access."""
+    return _compile_retained_image(current, desired, declared_checks=True)
+
+
+def _compile_retained_image(current, desired, *, declared_checks):
     _require_pair(current, desired)
     diff = diff_graphs(current, desired)
-    base = compile_graph_activity_plan(current, desired)
-    if not diff.changes:
-        return base
-    if not _managed_image_update_shape(current, desired, diff):
-        return _review_blocked(base, diff)
+    if not _managed_image_update_shape(current, desired, diff, declared_checks=declared_checks):
+        return _review_blocked(_compile_graph_activity_plan(current, desired, diff=diff), diff)
+
+    node_id = diff.changes[0].subject.owner.node_id
+    base = _compile_graph_activity_plan(current, desired, diff=diff,
+        retained_http_sample_node=node_id if declared_checks else None)
     if not base.ready_for_execution:
         return base
 
-    node_id = diff.changes[0].subject.owner.node_id
     runtime_id = desired.graph.nodes[node_id].runtime_id
     stages = tuple(_matching_activity(base, ObserveManagementBootstrap,
         lambda value, stage=stage: value.target.runtime_id == runtime_id and value.stage is stage)
@@ -978,7 +987,7 @@ def _full_http_sample_coverage(node):
 
 
 def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgres_readiness=False,
-                                 bootstrap_application=None, diff=None):
+                                 bootstrap_application=None, retained_http_sample_node=None, diff=None):
     _require_pair(current, desired)
     if diff is None:
         diff = diff_graphs(current, desired)
@@ -1025,8 +1034,9 @@ def _compile_graph_activity_plan(current, desired, *, http_samples=False, postgr
         sdk = {}
         for node_id, wait in owned_waits.items():
             node = graph.nodes[node_id]
-            sample_covered = (http_samples and fresh and node_id not in (gateway_id, connector_id)
-                and node_id in node_starts and _full_http_sample_coverage(node))
+            sample_requested = (http_samples and fresh and node_id in node_starts) or node_id == retained_http_sample_node
+            sample_covered = (sample_requested and node_id not in (gateway_id, connector_id)
+                and _full_http_sample_coverage(node))
             sql_covered = (postgres_readiness and fresh and runtime.kind is RuntimeKind.DOCKER and node_id not in (gateway_id, connector_id)
                 and node_id in node_starts and _full_postgres_readiness_coverage(node))
             if _independent_verification(node) and not (sample_covered or sql_covered):
