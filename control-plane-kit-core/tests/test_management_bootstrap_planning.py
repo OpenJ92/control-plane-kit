@@ -177,7 +177,8 @@ class CustomCodec:
 
 
 def http_sample_bootstrap_graph(*, socket="http-api", port=8080, interval=2,
-                                selected=("live", "ready"), checks=None):
+                                selected=("live", "ready"), checks=None,
+                                health_reads=(NodeHealthReadKind.LIVENESS,), added_workload=False):
     """Frozen public CPK/Secrets check shapes at Servers ca225825; no product import."""
     from control_plane_kit_core.http_verification_sample_installation import (
         HTTP_VERIFICATION_SAMPLES_CONFIGURATION_ENVIRONMENT,
@@ -191,7 +192,7 @@ def http_sample_bootstrap_graph(*, socket="http-api", port=8080, interval=2,
     checks = tuple(HttpCheck(check_id=name, provider_socket=socket, path="/health/" + name,
         policy=VerificationPolicy(timeout_seconds=5, interval_seconds=interval, maximum_attempts=10))
         for name in ("live", "ready")) if checks is None else checks
-    desired = graph(workload_surfaces=(surface(socket, (NodeHealthReadKind.LIVENESS,)),), checks=checks)
+    desired = graph(workload_surfaces=(surface(socket, health_reads),), checks=checks, added_workload=added_workload)
     node = desired.node("workload")
     old = receiver_fixtures.ReceiverConfigurationTests()
     old.setUp()
@@ -2168,6 +2169,114 @@ class RetainedImageIngressPlanningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class RetainedImageDeclaredChecksTests(unittest.TestCase):
+    """An immutable image update keeps each graph-declared verification obligation."""
+
+    def pair(self, *, selected=("live", "ready"), health_reads=(NodeHealthReadKind.LIVENESS,)):
+        graph = http_sample_bootstrap_graph(selected=selected, health_reads=health_reads, added_workload=True)
+        runtime = replace(graph.runtimes["runtime"], authority_ref=authority_fixtures.AUTHORITY)
+        graph = replace(graph, runtimes={runtime.runtime_id: runtime})
+        original = graph.node("workload")
+        # A regular retained neighbor has an independent health family. Its
+        # unchanged check is not part of the replacement.
+        neighbor = graph.node("added-workload")
+        graph = graph.update_node(replace(neighbor, block_spec=replace(neighbor.block_spec,
+            verification=VerificationContract((
+                HttpCheck(check_id="neighbor", provider_socket="control", path="/neighbor"),)))))
+        return tuple(graph.update_node(replace(original,
+            runtime_authority_deliveries=(authority_fixtures.DELIVERY,),
+            metadata={"product_identity": f"test/sample/{revision}", "product_descriptor_digest": digit * 64,
+                "oci_image": "registry.example.invalid/apps/sample@sha256:" + digit * 64}))
+            for revision, digit in ((1, "a"), (2, "b")))
+
+    def compile(self, current, desired):
+        pair = validate_graph(current), validate_graph(desired)
+        for value in pair:
+            self.assertTrue(value.valid, value.descriptor())
+        compiler = getattr(core, "compile_retained_image_declared_checks_activity_plan", None)
+        self.assertTrue(callable(compiler), "missing retained image declared checks profile")
+        return compiler(*pair)
+
+    def test_declared_signed_health_and_http_both_follow_replacement(self):
+        for kinds in ((NodeHealthReadKind.LIVENESS,), (NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS)):
+            with self.subTest(health=kinds):
+                current, desired = self.pair(health_reads=kinds)
+                plan = self.compile(current, desired)
+                self.assertTrue(plan.ready_for_execution, ActivityPlanDescriptorCodec().encode(plan))
+                reconcile, = (a for a in plan.activities if isinstance(a.operation, ReconcileNode))
+                observation, = (a for a in plan.activities if isinstance(a.operation, core.ObserveNodeHealth))
+                wait, = (a for a in plan.activities if isinstance(a.operation, WaitForHealthy))
+                self.assertEqual((reconcile.operation.target.node_id, observation.operation.node_id,
+                    wait.operation.target.node_id), ("workload",) * 3)
+                self.assertEqual(observation.operation.health_kind, kinds[-1])
+                self.assertIs(observation.operation.target.graph_side, core.PlanGraphSide.DESIRED_GRAPH)
+                self.assertIn(reconcile.activity_id, predecessors(plan, observation))
+                self.assertIn(observation.activity_id, predecessors(plan, wait))
+                stages = {a.operation.stage: a for a in plan.activities if isinstance(a.operation, core.ObserveManagementBootstrap)}
+                chain = [stages[k] for k in (core.ManagementBootstrapStage.CONNECTOR_CONNECTED,
+                    core.ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+                    core.ManagementBootstrapStage.GATEWAY_INGRESS_READY)] + [reconcile]
+                for prerequisite, dependent in zip(chain, chain[1:]):
+                    self.assertIn(prerequisite.activity_id, predecessors(plan, dependent))
+                self.assertEqual(len(plan.activities), 6)
+                self.assertEqual(ActivityPlanDescriptorCodec().decode(ActivityPlanDescriptorCodec().encode(plan)), plan)
+                self.assertFalse(core.compile_retained_image_ingress_activity_plan(validate_graph(current),
+                    validate_graph(desired)).ready_for_execution)
+
+    def test_liveness_only_does_not_invent_readiness_or_an_http_wait(self):
+        pair = []
+        for graph in self.pair():
+            node = graph.node("workload")
+            receiver, = (a for a in node.configuration_artifacts if a.artifact_id == "receiver")
+            pair.append(graph.update_node(replace(node,
+                block_spec=replace(node.block_spec, verification=VerificationContract()),
+                configuration_artifacts=(receiver,), public_environment=tuple(
+                    binding for binding in node.public_environment if binding.value == receiver.target_path))))
+        plan = self.compile(*pair)
+        self.assertTrue(plan.ready_for_execution, ActivityPlanDescriptorCodec().encode(plan))
+        health, = (a.operation for a in plan.activities if isinstance(a.operation, core.ObserveNodeHealth))
+        self.assertIs(health.health_kind, NodeHealthReadKind.LIVENESS)
+        self.assertFalse(any(isinstance(a.operation, WaitForHealthy) for a in plan.activities))
+
+    def test_mixed_checks_on_the_replaced_node_remain_review_blocked(self):
+        from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
+        from control_plane_kit_core.verification import DnsResolveCheck
+        pair = []
+        for graph in self.pair():
+            node = graph.node("workload")
+            dns = DnsResolveCheck(check_id="dns", provider_socket="dns", query_name="example.invalid")
+            pair.append(graph.update_node(replace(node,
+                sockets=replace(node.sockets, providers=(*node.sockets.providers, ProviderSocket("dns", Protocol.DNS_UDP))),
+                endpoints={**node.endpoints, "dns": Endpoint(LiteralAddress("dns+udp://workload:53"), Protocol.DNS_UDP)},
+                block_spec=replace(node.block_spec,
+                    verification=VerificationContract((*node.block_spec.verification.checks, dns))))))
+        plan = self.compile(*pair)
+        self.assertFalse(plan.ready_for_execution)
+        self.assertTrue(any(isinstance(a.operation, WaitForHealthy) for a in plan.activities))
+        self.assertTrue(any(isinstance(a.operation, ReviewChange) for a in plan.activities))
+
+    def test_refuses_partial_coverage_changed_access_pins_and_unrelated_changes(self):
+        current, desired = self.pair()
+        node = desired.node("workload")
+        neighbor = desired.node("added-workload")
+        pinned, successor = ManagedSelectedConsumerUpdateTests().pair("image")
+        self.assertTrue(self.compile(pinned, successor).ready_for_execution)
+        consumer = successor.node("workload")
+        changed_pin = replace(consumer.secret_selections[0], version_id="replacement-version")
+        cases = (
+            self.pair(selected=("ready",)),
+            (current, desired.update_node(replace(node, runtime_authority_deliveries=()))),
+            (current, desired.update_node(replace(neighbor, metadata={"other": "changed"}))),
+            (pinned, successor.update_node(replace(consumer, secret_selections=(changed_pin,)))),
+        )
+        for i, (left, right) in enumerate(cases):
+            with self.subTest(case=i):
+                plan = self.compile(left, right)
+                self.assertFalse(plan.ready_for_execution)
+                self.assertTrue(any(isinstance(a.operation, ReviewChange) for a in plan.activities))
 
 
 class ExistingRuntimeBootstrapTests(unittest.TestCase):
